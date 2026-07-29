@@ -45,9 +45,12 @@ export const NODES: GraphNode[] = [
 	{ id: 's_douglas', x: -24, y: 0.15, z: 0 },
 	{ id: 's_game', x: 24, y: 0.15, z: 0 },
 
-	// Escalator
-	{ id: 'e0', x: 8, y: 0.15, z: -2, label: 'Roltrap' },
-	{ id: 'e1', x: 8, y: 6.15, z: -2, label: 'Verdieping 1' },
+	// Escalator (east wing — clear of atrium & walkways)
+	{ id: 'e0', x: 22, y: 0.15, z: 6, label: 'Roltrap beneden' },
+	{ id: 'e1', x: 22, y: 6.15, z: -4, label: 'Roltrap boven' },
+	// Stairs (west wing — separate from escalator)
+	{ id: 'st0', x: -22, y: 0.15, z: -6, label: 'Trap beneden' },
+	{ id: 'st1', x: -22, y: 6.15, z: -16, label: 'Trap boven' },
 
 	// Floor 1 spine
 	{ id: 'f1_c', x: 0, y: 6.15, z: 0 },
@@ -102,16 +105,25 @@ export const EDGES: GraphEdge[] = [
 	{ from: 'f0_w', to: 's_douglas' },
 	{ from: 'f0_e', to: 's_game' },
 
-	// Escalator
+	// Escalator (east)
 	{ from: 'f0_e', to: 'e0' },
-	{ from: 'f0_ne', to: 'e0' },
-	{ from: 'f0_c', to: 'e0' },
+	{ from: 'f0_se', to: 'e0' },
+	{ from: 's_game', to: 'e0' },
 	{ from: 'e0', to: 'e1', cost: 1.15 },
+
+	// Stairs (west)
+	{ from: 'f0_w', to: 'st0' },
+	{ from: 'f0_nw', to: 'st0' },
+	{ from: 's_douglas', to: 'st0' },
+	{ from: 'st0', to: 'st1', cost: 1.25 },
 
 	// Floor 1 grid
 	{ from: 'e1', to: 'f1_e' },
-	{ from: 'e1', to: 'f1_c' },
 	{ from: 'e1', to: 'f1_ne' },
+	{ from: 'e1', to: 'f1_se' },
+	{ from: 'st1', to: 'f1_w' },
+	{ from: 'st1', to: 'f1_nw' },
+	{ from: 'st1', to: 'f1_sw' },
 	{ from: 'f1_c', to: 'f1_n' },
 	{ from: 'f1_c', to: 'f1_s' },
 	{ from: 'f1_c', to: 'f1_w' },

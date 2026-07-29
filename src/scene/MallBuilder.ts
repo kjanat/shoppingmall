@@ -307,81 +307,167 @@ export class MallBuilder {
 		this.group.add(accent);
 	}
 
+	/**
+	 * Escalator + stairs are SEPARATE and far apart — no intersecting spaghetti.
+	 * Escalator: east wing (x=22), runs north so it never fights atrium hole or loopbanden.
+	 * Stairs: west wing (x=-22), simple switchback-free straight run south.
+	 */
 	private buildEscalator(): void {
+		// ── ROLTRAP (east) ─────────────────────────────────
+		// Bottom near (22, 0, 6), top near (22, 6, -4)
+		this.buildInclinedRun({
+			name: 'escalator',
+			x: 22,
+			z: 6,
+			// local: steps go toward -Z while rising
+			run: 10,
+			rise: FLOOR_H,
+			width: 1.5,
+			kind: 'escalator',
+		});
+
+		// ── TRAP (west) — separate structure, other side of mall ─
+		this.buildInclinedRun({
+			name: 'stairs',
+			x: -22,
+			z: -6,
+			run: 10,
+			rise: FLOOR_H,
+			width: 2.2,
+			kind: 'stairs',
+		});
+	}
+
+	private buildInclinedRun(opts: {
+		name: string;
+		x: number;
+		z: number;
+		run: number;
+		rise: number;
+		width: number;
+		kind: 'escalator' | 'stairs';
+	}): void {
 		const g = new THREE.Group();
-		g.position.set(8, 0, -2);
-		g.name = 'escalator';
+		g.position.set(opts.x, 0, opts.z);
+		g.name = opts.name;
 
 		const metal = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x333344,
-				metalness: 0.9,
-				roughness: 0.25,
+				color: opts.kind === 'escalator' ? 0x455a64 : 0x8d6e63,
+				metalness: opts.kind === 'escalator' ? 0.85 : 0.2,
+				roughness: 0.35,
 			}),
 		);
 		const stepMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x222233,
-				metalness: 0.6,
-				roughness: 0.4,
+				color: opts.kind === 'escalator' ? 0x37474f : 0xbcaaa4,
+				metalness: 0.4,
+				roughness: 0.5,
 			}),
 		);
 		const railMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0xb0bec5,
-				metalness: 0.7,
-				roughness: 0.35,
+				color: 0x90a4ae,
+				metalness: 0.75,
+				roughness: 0.3,
 			}),
 		);
 
-		const rise = FLOOR_H;
-		const run = 8;
+		const { run, rise, width } = opts;
 		const angle = Math.atan2(rise, run);
 		const len = Math.hypot(rise, run);
+		const stepCount = opts.kind === 'stairs' ? 12 : 16;
 
-		// Truss
-		const truss = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, len), metal);
+		// Landing pads so nothing clips into floor slabs
+		const land0 = new THREE.Mesh(
+			new THREE.BoxGeometry(width + 0.8, 0.15, 1.6),
+			metal,
+		);
+		land0.position.set(0, 0.08, 0.6);
+		g.add(land0);
+
+		const land1 = new THREE.Mesh(
+			new THREE.BoxGeometry(width + 0.8, 0.15, 1.6),
+			metal,
+		);
+		land1.position.set(0, rise + 0.08, -run - 0.6);
+		g.add(land1);
+
+		// Stringer / truss under the run
+		const truss = new THREE.Mesh(new THREE.BoxGeometry(width + 0.2, 0.28, len), metal);
 		truss.rotation.x = -angle;
-		truss.position.set(0, rise / 2, -run / 2);
+		truss.position.set(0, rise / 2 + 0.05, -run / 2);
 		g.add(truss);
 
-		// Steps
-		const steps = 14;
-		for (let i = 0; i < steps; i++) {
-			const t = i / (steps - 1);
-			const step = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.12, 0.45), stepMat);
-			step.position.set(0, t * rise + 0.2, -t * run);
+		// Steps along the incline (horizontal treads)
+		for (let i = 0; i < stepCount; i++) {
+			const t = (i + 0.5) / stepCount;
+			const step = new THREE.Mesh(
+				new THREE.BoxGeometry(width, 0.1, opts.kind === 'stairs' ? 0.7 : 0.42),
+				stepMat,
+			);
+			step.position.set(0, t * rise + 0.12, -t * run);
 			g.add(step);
 		}
 
-		// Side rails
-		for (const sx of [-0.85, 0.85]) {
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, len), railMat);
+		// Handrails both sides
+		for (const sx of [-width / 2 - 0.08, width / 2 + 0.08]) {
+			const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, len), railMat);
 			rail.rotation.x = -angle;
-			rail.position.set(sx, rise / 2 + 0.55, -run / 2);
+			rail.position.set(sx, rise / 2 + 0.85, -run / 2);
 			g.add(rail);
+			// posts
+			for (let i = 0; i <= 4; i++) {
+				const u = i / 4;
+				const post = new THREE.Mesh(
+					new THREE.CylinderGeometry(0.03, 0.03, 0.75, 6),
+					railMat,
+				);
+				post.position.set(sx, u * rise + 0.45, -u * run);
+				g.add(post);
+			}
 		}
 
-		// Glass sides
+		// Simple glass sides (no broken PhysicalMaterial soup)
 		const glass = this.track(
-			new THREE.MeshPhysicalMaterial({
-				color: 0xaaccff,
+			new THREE.MeshStandardMaterial({
+				color: 0xb3d4e8,
 				transparent: true,
-				opacity: 0.15,
-				transmission: 0.5,
-				roughness: 0.1,
+				opacity: 0.22,
+				roughness: 0.15,
 				side: THREE.DoubleSide,
 			}),
 		);
-		for (const sx of [-0.9, 0.9]) {
-			const panel = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.9), glass);
+		for (const sx of [-width / 2 - 0.05, width / 2 + 0.05]) {
+			const panel = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.7), glass);
+			panel.position.set(sx, rise / 2 + 0.45, -run / 2);
+			panel.rotation.order = 'YXZ';
 			panel.rotation.y = Math.PI / 2;
 			panel.rotation.x = -angle;
-			panel.position.set(sx, rise / 2 + 0.3, -run / 2);
-			// Fix orientation: place as side panel along escalator
-			panel.rotation.set(0, Math.PI / 2, -angle);
 			g.add(panel);
 		}
+
+		// Label plate
+		const label = opts.kind === 'escalator' ? 'ROLTRAP ↑' : 'TRAP ↑';
+		const c = document.createElement('canvas');
+		c.width = 256;
+		c.height = 64;
+		const ctx = c.getContext('2d')!;
+		ctx.fillStyle = opts.kind === 'escalator' ? '#1565c0' : '#6d4c41';
+		ctx.fillRect(0, 0, 256, 64);
+		ctx.fillStyle = '#fff';
+		ctx.font = 'bold 28px system-ui,sans-serif';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(label, 128, 32);
+		const tex = new THREE.CanvasTexture(c);
+		tex.colorSpace = THREE.SRGBColorSpace;
+		const sign = new THREE.Mesh(
+			new THREE.PlaneGeometry(1.4, 0.35),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
+		);
+		sign.position.set(0, 1.4, 0.9);
+		g.add(sign);
 
 		this.group.add(g);
 	}
