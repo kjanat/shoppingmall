@@ -204,6 +204,23 @@ export const SHOP_OWNERS: Record<string, ShopOwner> = {
 		hair: 0x1a1a1a,
 		lines: ['Aanbieding bij de kassa!', 'Nog een doos? Yallah.'],
 	},
+	saucy: {
+		storeId: 'saucy',
+		name: 'Vesper',
+		title: 'Night manager',
+		meaning: 'Adult fun zonder oordeel — consent is hot',
+		shirt: 0xff2d6a,
+		skin: 0xe8b896,
+		hair: 0x1a1a1a,
+		voiceId: 'cgSgspJ2msm6clMCkdW9', // Jessica — playful
+		lang: 'nl',
+		lines: [
+			'Welcome after dark… discreet bag included.',
+			'Silk or velvet? Both if you behave.',
+			'Date night upgrade? Excellent choice.',
+			'No judgment — only good lighting.',
+		],
+	},
 };
 
 export function getOwner(storeId: string): ShopOwner | undefined {

@@ -243,6 +243,8 @@ export class Americans {
 	/** seconds until next OpenRouter gossip attempt */
 	private gossipCd = 4;
 	private gossipBusy = false;
+	/** Don't spam the player with roasts */
+	private roastPlayerCd = 5;
 
 	constructor(world: CollisionWorld, count = 20) {
 		this.world = world;
@@ -473,6 +475,50 @@ export class Americans {
 		this.tickFarts(dt);
 		this.tickCoins(dt);
 		this.tickBubbles(dt);
+	}
+
+	/**
+	 * Occasionally yell at the player when they walk too close.
+	 * Returns the line if someone roasted you (for HUD).
+	 */
+	maybeRoastPlayer(playerPos: THREE.Vector3, dt: number): string | null {
+		this.roastPlayerCd -= dt;
+		if (this.roastPlayerCd > 0) return null;
+		let best: Sim | null = null;
+		let bestD = 2.8;
+		for (const s of this.sims) {
+			if (s.f.isKid) continue;
+			if (Math.abs(s.pos.y - playerPos.y) > 2.5) continue;
+			const d = s.pos.distanceTo(playerPos);
+			if (d < bestD) {
+				bestD = d;
+				best = s;
+			}
+		}
+		if (!best || Math.random() > 0.45) {
+			this.roastPlayerCd = 2.5 + Math.random() * 3;
+			return null;
+		}
+		this.roastPlayerCd = 8 + Math.random() * 10;
+		const mean = best.f.unhappiness >= 50;
+		const lines = mean
+			? [
+				'Kijk uit, lul — dit is geen racebaan.',
+				'Hé! Loop niet door me heen, basic.',
+				'Yo, personal space. Leer het.',
+				'Man, jij botst met alles. Typisch.',
+				'Schuif op, ik shop hier.',
+				'Watch it — ik ben al hangry.',
+			]
+			: [
+				'Oh sorry — of jij was het.',
+				'Even doorlopen, ja?',
+				'Yo, bijna botsing.',
+				'Chill in de gang, oké?',
+			];
+		const line = lines[Math.floor(Math.random() * lines.length)];
+		this.sayLine(best, line, false);
+		return `${best.f.name}: ${line}`;
 	}
 
 	/** Nearby sims chat via OpenRouter (or local banter fallback) */
@@ -913,9 +959,18 @@ export class Americans {
 		}
 
 		if (f.isMiss) {
-			// Pageant hair volume
+			// Pageant hair volume — open at the front (phi gap) so the wig frames
+			// the face instead of engulfing the eyes.
 			const hair = new THREE.Mesh(
-				new THREE.SphereGeometry(0.28, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.65),
+				new THREE.SphereGeometry(
+					0.28,
+					14,
+					10,
+					Math.PI * 0.22,
+					Math.PI * 1.56,
+					0,
+					Math.PI * 0.68,
+				),
 				this.mat(f.hair),
 			);
 			hair.position.set(0, headY + 0.06, -0.02);
@@ -956,8 +1011,17 @@ export class Americans {
 			brim.position.set(0, headY + 0.02, 0.2);
 			body.add(brim);
 		} else {
+			// Same trick: leave the forehead clear of the hair shell
 			const hair = new THREE.Mesh(
-				new THREE.SphereGeometry(0.25, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+				new THREE.SphereGeometry(
+					0.25,
+					12,
+					8,
+					Math.PI * 0.2,
+					Math.PI * 1.6,
+					0,
+					Math.PI * 0.58,
+				),
 				this.mat(f.hair),
 			);
 			hair.position.set(0, headY + 0.04, 0);
@@ -1184,12 +1248,12 @@ export class Americans {
 	private pickShopForMeaning(sim: Sim): (typeof SHOPABLE)[0] {
 		const m = sim.f.lifeMeaning;
 		const prefer: Record<LifeMeaning, string[]> = {
-			love: ['rituals', 'douglas', 'sephora', 'zara'],
+			love: ['saucy', 'rituals', 'douglas', 'sephora', 'zara'],
 			family: ['primark', 'ikea', 'action', 'starbucks'],
 			health: ['kruidvat', 'decathlon', 'rituals'],
-			joy: ['gamesman', 'starbucks', 'nike', 'primark'],
+			joy: ['gamesman', 'saucy', 'starbucks', 'nike', 'primark'],
 			provide: ['ikea', 'action', 'coolblue', 'kruidvat'],
-			belong: ['zara', 'uniqlo', 'sephora', 'hm'],
+			belong: ['zara', 'uniqlo', 'sephora', 'hm', 'saucy'],
 			create: ['apple', 'mediaworld', 'uniqlo', 'coolblue'],
 		};
 		if (sim.f.isBrad && Math.random() < 0.6) {

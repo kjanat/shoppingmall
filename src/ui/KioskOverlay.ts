@@ -32,8 +32,15 @@ const CORRIDORS = EDGES.flatMap((e) => {
 
 /** Escalator + stairs, so the map actually shows how to reach floor 1. */
 const VERTICALS = [
-	{ x: 22, z: 1, label: 'ROLTRAP', short: '⇅' },
-	{ x: -22, z: -11, label: 'TRAP', short: '⇅' },
+	{ x: 22, z: 3, label: 'ROLTRAP', short: '⇅' },
+	{ x: -22, z: -5, label: 'TRAP', short: '⇅' },
+];
+
+/** Things worth walking to that aren't shops. */
+const LANDMARKS: { x: number; z: number; floor: 0 | 1; short: string; label: string }[] = [
+	{ x: -28, z: 4, floor: 0, short: '👗', label: 'CATWALK' },
+	{ x: 0, z: 0, floor: 0, short: '⛲', label: 'FONTEIN · GOD' },
+	{ x: 0, z: 0, floor: 1, short: '🛸', label: 'UFO · WEIDE' },
 ];
 
 function isTypingTarget(t: EventTarget | null): boolean {
@@ -97,6 +104,7 @@ export class KioskOverlay {
 	private zoom = 2;
 	private bigOpen = false;
 	private bigFloor: 0 | 1 = 0;
+	private mapClock = 0;
 
 	constructor(root: HTMLElement, callbacks: UICallbacks) {
 		this.root = root;
@@ -382,12 +390,23 @@ export class KioskOverlay {
 		this.elCrosshair.classList.toggle('hidden', !locked);
 	}
 
-	/** Called every frame with the real player transform. */
+	/**
+	 * Called every frame with the real player transform. Canvas work is throttled:
+	 * 30 Hz for the radar, 12 Hz for the full plan — indistinguishable while
+	 * walking, and it keeps the 2D repaint off the 60 Hz render budget.
+	 */
 	updateMap(state: MapState): void {
 		this.map = state;
-		this.paintMiniMap();
-		this.paintMapChrome();
-		if (this.bigOpen) this.paintBigMap();
+		this.mapClock++;
+		if (this.bigOpen) {
+			// The plan covers the screen; don't also paint the radar underneath
+			if (this.mapClock % 5 === 0) this.paintBigMap();
+			return;
+		}
+		if (this.mapClock % 2 === 0) {
+			this.paintMiniMap();
+			this.paintMapChrome();
+		}
 	}
 
 	toggleBigMap(force?: boolean): void {
@@ -535,6 +554,12 @@ export class KioskOverlay {
 			ctx.fillStyle = '#fbbf24';
 			ctx.font = '700 11px ui-monospace, monospace';
 			ctx.fillText(v.short, sx, sy);
+		}
+		ctx.font = '11px system-ui, sans-serif';
+		for (const l of LANDMARKS) {
+			if (l.floor !== floor) continue;
+			const { sx, sy } = this.project(l.x, l.z, cx, cy, scale);
+			ctx.fillText(l.short, sx, sy);
 		}
 
 		// View cone — screen space, always pointing up
@@ -718,6 +743,16 @@ export class KioskOverlay {
 		ctx.fillStyle = '#22d3ee';
 		ctx.font = '600 10px ui-monospace, monospace';
 		ctx.fillText('KIOSK · START', sx(0), sy(12.4));
+
+		for (const l of LANDMARKS) {
+			if (l.floor !== floor) continue;
+			ctx.font = '14px system-ui, sans-serif';
+			ctx.fillStyle = '#fff';
+			ctx.fillText(l.short, sx(l.x), sy(l.z));
+			ctx.font = '700 10px ui-monospace, monospace';
+			ctx.fillStyle = '#f0abfc';
+			ctx.fillText(l.label, sx(l.x), sy(l.z) + 16);
+		}
 
 		ctx.fillStyle = 'rgba(148,163,184,0.8)';
 		ctx.font = '600 10px ui-monospace, monospace';

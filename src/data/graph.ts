@@ -44,6 +44,7 @@ export const NODES: GraphNode[] = [
 	{ id: 's_ikea', x: 22, y: 0.15, z: 12 },
 	{ id: 's_douglas', x: -24, y: 0.15, z: 0 },
 	{ id: 's_game', x: 24, y: 0.15, z: 0 },
+	{ id: 's_saucy', x: 26, y: 0.15, z: -8, label: 'Saucy' },
 
 	// Escalator (east wing ONLY)
 	{ id: 'e0', x: 22, y: 0.15, z: 8, label: 'Roltrap beneden' },
@@ -137,6 +138,10 @@ export const EDGES: GraphEdge[] = [
 	{ from: 'f1_w', to: 'f1_sw' },
 	{ from: 'f1_e', to: 'f1_ne' },
 	{ from: 'f1_e', to: 'f1_se' },
+
+	// Saucy (floor 0 east, past Gamesman)
+	{ from: 's_game', to: 's_saucy' },
+	{ from: 'f0_ne', to: 's_saucy' },
 
 	// Stores floor 1
 	{ from: 'f1_ne', to: 's_kruidvat' },

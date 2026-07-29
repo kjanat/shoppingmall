@@ -291,6 +291,24 @@ export const INVENTORIES: Record<string, StoreInventory> = {
 			{ name: 'Party plates', price: 1.19, kind: 'box', color: 0xff69b4 },
 		],
 	},
+	/** Adult novelty — playful product names, not medical */
+	saucy: {
+		storeId: 'saucy',
+		slogan: 'After dark · 18+',
+		bestsellers: ['Silk set', 'Massage oil'],
+		items: [
+			{ name: 'Silk lingerie set', price: 49, kind: 'garment', color: 0x1a0510 },
+			{ name: 'Cherry body oil', price: 18, kind: 'bottle', color: 0xff2d6a },
+			{ name: 'Velvet handcuffs', price: 24, kind: 'box', color: 0x4a0e2e },
+			{ name: 'Massage candle', price: 22, kind: 'can', color: 0xc71585 },
+			{ name: 'Lace garter', price: 16, kind: 'garment', color: 0xff69b4 },
+			{ name: 'Feather tickler', price: 12, kind: 'bag', color: 0xf5e6d3 },
+			{ name: 'Blindfold silk', price: 14, kind: 'garment', color: 0x111111 },
+			{ name: 'Glow lube', price: 15, kind: 'bottle', color: 0xe91e8c },
+			{ name: 'Date-night dice', price: 9, kind: 'box', color: 0x9b1b4d },
+			{ name: 'Heart pasties', price: 8, kind: 'bag', color: 0xff1493 },
+		],
+	},
 };
 
 export function getInventory(storeId: string): StoreInventory | undefined {

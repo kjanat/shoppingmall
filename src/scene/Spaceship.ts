@@ -27,6 +27,8 @@ export class Spaceship {
 
 		this.buildLandingPad();
 		this.ship = this.buildShip();
+		// Slightly smaller saucer — was dominating the atrium
+		this.ship.scale.setScalar(0.78);
 		this.ship.position.y = this.baseY;
 		this.group.add(this.ship);
 
@@ -205,9 +207,9 @@ export class Spaceship {
 		ball.position.y = 2.1;
 		s.add(ball);
 
-		// Soft light from ship (stable)
-		const pl = new THREE.PointLight(0x88ccff, 18, 28, 1.6);
-		pl.position.set(0, -1, 0);
+		// Soft light from ship (stable) — scaled with smaller saucer
+		const pl = new THREE.PointLight(0x88ccff, 12, 22, 1.6);
+		pl.position.set(0, -0.8, 0);
 		s.add(pl);
 		this.lights.push(pl);
 
@@ -241,12 +243,12 @@ export class Spaceship {
 
 	/** Tractor beam: ship → ground floor, straight down the atrium hole. */
 	private buildBeam(): THREE.Mesh {
-		const geo = new THREE.CylinderGeometry(0.6, 3.2, this.baseY, 24, 1, true);
+		const geo = new THREE.CylinderGeometry(0.45, 2.4, this.baseY, 24, 1, true);
 		const mat = this.track(
 			new THREE.MeshBasicMaterial({
 				color: 0x7fd4ff,
 				transparent: true,
-				opacity: 0.14,
+				opacity: 0.12,
 				side: THREE.DoubleSide,
 				depthWrite: false,
 				toneMapped: false,
@@ -259,12 +261,12 @@ export class Spaceship {
 
 	private buildGroundRing(): THREE.Mesh {
 		const mesh = new THREE.Mesh(
-			new THREE.TorusGeometry(3.4, 0.06, 8, 40),
+			new THREE.TorusGeometry(2.6, 0.05, 8, 40),
 			this.track(
 				new THREE.MeshBasicMaterial({
 					color: 0x4fc3f7,
 					transparent: true,
-					opacity: 0.7,
+					opacity: 0.65,
 					toneMapped: false,
 				}),
 			),

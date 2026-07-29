@@ -282,6 +282,21 @@ export const STORES: StoreDef[] = [
 		accent: '#ffffff',
 		nodeId: 's_action',
 	},
+	/** Adult novelty — floor 0 east wing, past Gamesman */
+	{
+		id: 'saucy',
+		name: 'SAUCY',
+		category: 'beauty',
+		floor: 0,
+		x: 28,
+		z: -8,
+		rotation: -Math.PI / 2,
+		width: 8,
+		depth: 5.5,
+		color: '#1a0510',
+		accent: '#ff2d6a',
+		nodeId: 's_saucy',
+	},
 	{
 		id: 'info',
 		name: 'INFO',

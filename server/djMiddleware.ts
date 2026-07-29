@@ -35,10 +35,61 @@ function listPlaylist(): { file: string; title: string; url: string; bytes: numb
 		.sort((a, b) => a.title.localeCompare(b.title));
 }
 
+/**
+ * These routes spend real money (ElevenLabs, OpenRouter, YouTube quota) and write
+ * files to disk (yt-dlp), and the dev server binds every interface
+ * (`server.host = true`) with `allowedHosts: true`. So: bounded bodies, no
+ * cross-site callers, and a ceiling on how fast anyone can burn credits.
+ */
+const BODY_LIMIT = 64 * 1024;
+const RATE_LIMITS: Record<string, { max: number; windowMs: number }> = {
+	'/api/tts': { max: 30, windowMs: 60_000 },
+	'/api/sim/chat': { max: 40, windowMs: 60_000 },
+	'/api/dj/request': { max: 6, windowMs: 60_000 },
+};
+const rateHits = new Map<string, number[]>();
+
+function rateLimited(ip: string, route: string): boolean {
+	const cfg = RATE_LIMITS[route];
+	if (!cfg) return false;
+	const now = Date.now();
+	const key = `${ip}|${route}`;
+	const bucket = (rateHits.get(key) ?? []).filter((t) => now - t < cfg.windowMs);
+	rateHits.set(key, bucket);
+	if (bucket.length >= cfg.max) return true;
+	bucket.push(now);
+	return false;
+}
+
+/** A browser on some other site must not be able to drive this API. */
+function crossSite(req: Connect.IncomingMessage): boolean {
+	// `server/` is outside the tsconfig include and has no @types/node, so read
+	// the headers structurally rather than leaning on the Node typings.
+	const headers = (req as unknown as {
+		headers?: Record<string, string | undefined>;
+	}).headers ?? {};
+	const origin = headers.origin;
+	if (!origin) return false; // same-origin fetch, curl, or the app itself
+	try {
+		return new URL(origin).host !== headers.host;
+	} catch {
+		return true;
+	}
+}
+
 function readBody(req: Connect.IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const chunks: Buffer[] = [];
-		req.on('data', (c) => chunks.push(Buffer.from(c)));
+		let size = 0;
+		req.on('data', (c) => {
+			size += c.length;
+			if (size > BODY_LIMIT) {
+				req.destroy();
+				reject(new Error('body_too_large'));
+				return;
+			}
+			chunks.push(Buffer.from(c));
+		});
 		req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
 		req.on('error', reject);
 	});
@@ -390,6 +441,12 @@ function djMiddleware(): Connect.NextHandleFunction {
 		const url = req.url?.split('?')[0] ?? '';
 		if (!url.startsWith('/api/')) return next();
 
+		if (crossSite(req)) return json(res, 403, { error: 'cross_site_blocked' });
+		const ip = req.socket?.remoteAddress ?? 'unknown';
+		if (rateLimited(ip, url)) {
+			return json(res, 429, { error: 'rate_limited', hint: 'even chillen' });
+		}
+
 		try {
 			if (url === '/api/dj/status' && req.method === 'GET') {
 				const hasKey = !!resolveElevenKey();
@@ -483,7 +540,11 @@ function djMiddleware(): Connect.NextHandleFunction {
 
 			return next();
 		} catch (e) {
-			return json(res, 500, { error: String(e) });
+			const msg = String(e);
+			if (msg.includes('body_too_large')) {
+				return json(res, 413, { error: 'body_too_large' });
+			}
+			return json(res, 500, { error: msg });
 		}
 	};
 }

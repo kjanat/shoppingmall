@@ -34,7 +34,17 @@ always sits behind your eyes and never drifts toward the middle of the mall.
 | **Esc**              | Free the mouse, then cancel route                    |
 
 The minimap is player-centred and rotates with your heading (what you face is
-up), with a north marker, the yellow route, escalators and live shopper blips.
+up), with a north marker, the yellow route, escalators, landmarks and live
+shopper blips.
+
+## Landmarks
+
+| Where                    | What                                                  |
+| ------------------------ | ----------------------------------------------------- |
+| Atrium fountain (0, 0)   | Marble Greek god, beamed by the UFO overhead          |
+| Atrium void, floor 1     | The saucer hovers in the hole — nothing clips         |
+| West wing, floor 0 (−28) | **Fashion Week catwalk** — models, spotlight, flashes |
+| Atrium palms             | The monkey. Press **J** if you enjoy consequences     |
 
 ## Deploy
 

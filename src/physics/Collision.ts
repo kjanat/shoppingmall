@@ -22,6 +22,13 @@ export type Ramp = {
 	yBottom: number;
 	yTop: number;
 	label: string;
+	/**
+	 * Z span of the hole cut in the floor-1 slab above this flight — must match
+	 * the `addRectHole` calls in MallBuilder. Inside it there is no slab, so a
+	 * walker either rides the incline or drops onto it.
+	 */
+	openMinZ: number;
+	openMaxZ: number;
 };
 
 const FLOOR_H = 6;
@@ -45,6 +52,8 @@ export class CollisionWorld {
 			yBottom: 0,
 			yTop: 6,
 			label: 'escalator',
+			openMinZ: -2.6,
+			openMaxZ: 1.6,
 		},
 		// West trap only — opposite wall, cannot cross the escalator
 		{
@@ -55,6 +64,8 @@ export class CollisionWorld {
 			yBottom: 0,
 			yTop: 6,
 			label: 'stairs',
+			openMinZ: -14.6,
+			openMaxZ: -7.4,
 		},
 	];
 
@@ -125,20 +136,9 @@ export class CollisionWorld {
 		// Stairs volume (west only) — does NOT overlap escalator
 		this.add(-23.5, -20.5, -15.5, 5, { label: 'stairs', climbable: true });
 
-		// Floor-1 openings — kept in step with the holes cut in MallBuilder, which
-		// sit over the flights themselves (not beside the top landings).
-		this.add(-24.2, -19.8, -14.8, -7.2, {
-			minY: 5.2,
-			maxY: 7.5,
-			label: 'stair_shaft_top',
-			climbable: true,
-		});
-		this.add(20.1, 23.9, -2.8, 1.8, {
-			minY: 5.2,
-			maxY: 7.5,
-			label: 'esc_shaft_top',
-			climbable: true,
-		});
+		// No barrier boxes at the shaft heads: they sat exactly where a climber is
+		// at y≈5.5 and shoved sims off the top of the flight. The openings are
+		// handled vertically instead — see `Ramp.openMinZ` / `groundHeightAt`.
 
 		// Atrium fountain / planter (floor 0)
 		this.add(-2.6, 2.6, -2.6, 2.6, { minY: -0.5, maxY: 3.5, label: 'fountain' });
@@ -149,6 +149,10 @@ export class CollisionWorld {
 
 		// (No UFO pad box any more — the saucer hovers in the atrium void, so the
 		//  floor-1 balcony at z≈16 is walkable again.)
+
+		// Catwalk deck (Fashion Week, floor 0 west in front of Douglas).
+		// maxY is above eye height on purpose — the player check passes camera Y.
+		this.add(-29.5, -26.5, -5.2, 12.6, { minY: -0.5, maxY: 2.2, label: 'catwalk' });
 
 		// Aperol bar
 		this.add(-16, -12, 9, 11.5, { minY: -0.5, maxY: 3, label: 'aperol' });
@@ -183,7 +187,7 @@ export class CollisionWorld {
 	 * through it. Airborne callers pass a bigger `step` so a jump mid-escalator
 	 * doesn't snap you to the deck above.
 	 */
-	groundHeightAt(x: number, z: number, currentY: number, step = 0.5): number {
+	groundHeightAt(x: number, z: number, currentY: number, step = 0.7): number {
 		const slab = currentY < 3.2 ? 0 : FLOOR_H;
 
 		for (const r of this.ramps) {
@@ -195,7 +199,12 @@ export class CollisionWorld {
 			const raw = (z - r.zBottom) / (r.zTop - r.zBottom);
 			const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
 			const h = r.yBottom + (r.yTop - r.yBottom) * t;
+			// Close enough to stand on → ride the incline
 			if (Math.abs(h - currentY) <= step) return h;
+			// Over the slab cut-out there is no floor: drop onto the flight
+			if (currentY > h && z >= r.openMinZ && z <= r.openMaxZ) return h;
+			// Otherwise this is solid slab (or you're walking underneath the flight)
+			return slab;
 		}
 		return slab;
 	}

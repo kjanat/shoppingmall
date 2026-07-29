@@ -371,26 +371,130 @@ export class Restrooms {
 	}
 
 	private buildCorridorSigns(): void {
+		// Big wall-mounted WC bordjes on the facade (gendered, clear, boring mall energy)
+		this.group.add(
+			this.wallBoard(-2.0, 3.05, 2.15, '♂ HEREN', 'urinoirs + toilet', '#0d47a1'),
+		);
+		this.group.add(
+			this.wallBoard(2.0, 3.05, 2.15, '♀ DAMES', 'toiletten', '#880e4f'),
+		);
+		// Classic square pictogram plates next to doors
+		this.group.add(this.pictogram(-2.0, 2.2, 2.95, '♂', '#1565c0'));
+		this.group.add(this.pictogram(2.0, 2.2, 2.95, '♀', '#c2185b'));
+
+		// Overhead wayfinding strip
 		const c = document.createElement('canvas');
-		c.width = 384;
+		c.width = 512;
 		c.height = 96;
 		const ctx = c.getContext('2d')!;
-		ctx.fillStyle = '#263238';
-		ctx.fillRect(0, 0, 384, 96);
-		ctx.fillStyle = '#fff';
-		ctx.font = 'bold 26px system-ui,sans-serif';
+		ctx.fillStyle = '#111827';
+		ctx.fillRect(0, 0, 512, 96);
+		ctx.fillStyle = '#22c55e';
+		ctx.fillRect(0, 0, 8, 96);
+		ctx.fillStyle = '#f8fafc';
+		ctx.font = 'bold 28px system-ui,sans-serif';
 		ctx.textAlign = 'center';
-		ctx.fillText('TOILETTEN  ♂  ♀', 192, 38);
-		ctx.font = '15px system-ui';
-		ctx.fillStyle = '#b0bec5';
-		ctx.fillText('gebedsruimte ernaast · wudu bij de ingang', 192, 70);
+		ctx.fillText('TOILETTEN', 256, 40);
+		ctx.font = '600 18px system-ui';
+		ctx.fillStyle = '#94a3b8';
+		ctx.fillText('HEREN  ·  DAMES  ·  gender apart', 256, 72);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(2.8, 0.7),
+		const strip = new THREE.Mesh(
+			new THREE.PlaneGeometry(3.6, 0.7),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		sign.position.set(0, 2.9, 3.35);
-		this.group.add(sign);
+		strip.position.set(0, 2.95, 3.2);
+		this.group.add(strip);
+
+		// Extra wall plates on left/right outer walls facing corridor
+		this.group.add(this.sideWallPlate(-4.02, 1.8, 0.5, 'WC', '♂', '#0d47a1', 1));
+		this.group.add(this.sideWallPlate(4.02, 1.8, 0.5, 'WC', '♀', '#880e4f', -1));
+	}
+
+	/** Flat board on the front wall */
+	private wallBoard(
+		x: number,
+		y: number,
+		z: number,
+		title: string,
+		sub: string,
+		color: string,
+	): THREE.Mesh {
+		const c = document.createElement('canvas');
+		c.width = 320;
+		c.height = 140;
+		const ctx = c.getContext('2d')!;
+		ctx.fillStyle = color;
+		ctx.fillRect(0, 0, 320, 140);
+		ctx.fillStyle = '#ffffff';
+		ctx.font = 'bold 36px system-ui,sans-serif';
+		ctx.textAlign = 'center';
+		ctx.fillText(title, 160, 58);
+		ctx.font = '20px system-ui,sans-serif';
+		ctx.fillText(sub, 160, 100);
+		const tex = new THREE.CanvasTexture(c);
+		tex.colorSpace = THREE.SRGBColorSpace;
+		const mesh = new THREE.Mesh(
+			new THREE.PlaneGeometry(1.7, 0.75),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
+		);
+		mesh.position.set(x, y, z);
+		return mesh;
+	}
+
+	private pictogram(x: number, y: number, z: number, symbol: string, color: string): THREE.Mesh {
+		const c = document.createElement('canvas');
+		c.width = 128;
+		c.height = 128;
+		const ctx = c.getContext('2d')!;
+		ctx.fillStyle = color;
+		ctx.fillRect(0, 0, 128, 128);
+		ctx.fillStyle = '#fff';
+		ctx.font = 'bold 72px system-ui,sans-serif';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(symbol, 64, 68);
+		const tex = new THREE.CanvasTexture(c);
+		tex.colorSpace = THREE.SRGBColorSpace;
+		const mesh = new THREE.Mesh(
+			new THREE.PlaneGeometry(0.55, 0.55),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
+		);
+		mesh.position.set(x, y, z);
+		return mesh;
+	}
+
+	/** Sign flush on outer side wall (face = ±1 for +X / −X) */
+	private sideWallPlate(
+		x: number,
+		y: number,
+		z: number,
+		title: string,
+		symbol: string,
+		color: string,
+		face: 1 | -1,
+	): THREE.Mesh {
+		const c = document.createElement('canvas');
+		c.width = 160;
+		c.height = 200;
+		const ctx = c.getContext('2d')!;
+		ctx.fillStyle = color;
+		ctx.fillRect(0, 0, 160, 200);
+		ctx.fillStyle = '#fff';
+		ctx.font = 'bold 56px system-ui';
+		ctx.textAlign = 'center';
+		ctx.fillText(symbol, 80, 80);
+		ctx.font = 'bold 32px system-ui';
+		ctx.fillText(title, 80, 140);
+		const tex = new THREE.CanvasTexture(c);
+		tex.colorSpace = THREE.SRGBColorSpace;
+		const mesh = new THREE.Mesh(
+			new THREE.PlaneGeometry(0.7, 0.9),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide })),
+		);
+		mesh.position.set(x, y, z);
+		mesh.rotation.y = face > 0 ? -Math.PI / 2 : Math.PI / 2;
+		return mesh;
 	}
 }

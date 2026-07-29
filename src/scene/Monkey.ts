@@ -64,6 +64,8 @@ export class Monkey {
 	private onHit: ((hit: MonkeyHit) => void) | null = null;
 	private pendingTarget = new THREE.Vector3();
 	private pendingAtPlayer = false;
+	/** scratch — update() runs 60×/s, it must not allocate */
+	private tmp = new THREE.Vector3();
 
 	constructor(world: CollisionWorld, camera: THREE.PerspectiveCamera) {
 		this.world = world;
@@ -116,9 +118,8 @@ export class Monkey {
 
 		const look = this.nearestVictim();
 		if (look) {
-			const dx = look.x - this.body.getWorldPosition(new THREE.Vector3()).x;
-			const dz = look.z - this.body.getWorldPosition(new THREE.Vector3()).z;
-			const want = Math.atan2(dx, dz);
+			this.body.getWorldPosition(this.tmp);
+			const want = Math.atan2(look.x - this.tmp.x, look.z - this.tmp.z);
 			this.body.rotation.y = this.approachAngle(this.body.rotation.y, want, dt * 3);
 			this.head.rotation.x = THREE.MathUtils.lerp(this.head.rotation.x, -0.1, 0.1);
 		}

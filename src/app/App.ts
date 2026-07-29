@@ -15,6 +15,7 @@ import { createComposer } from '../post/Composer';
 import { AlienProbe } from '../scene/AlienProbe';
 import { Amenities } from '../scene/Amenities';
 import { Atmosphere } from '../scene/Atmosphere';
+import { Catwalk } from '../scene/Catwalk';
 import { DiscoParty } from '../scene/Disco';
 import { BARTEK_LINES, DJBartek } from '../scene/DJBartek';
 import { setupLighting } from '../scene/Lighting';
@@ -60,6 +61,7 @@ export class App {
 	private djBartek = new DJBartek();
 	private alienProbe = new AlienProbe();
 	private monkey!: Monkey;
+	private catwalk = new Catwalk();
 	/** reused each frame for the monkey's target list */
 	private simPositions: THREE.Vector3[] = [];
 	private djPlayer = new DJPlayer();
@@ -142,6 +144,12 @@ export class App {
 		this.scene.add(this.djBartek.group);
 		this.scene.add(this.alienProbe.group);
 		this.alienProbe.bind(this.atmosphere.americans);
+
+		// Fashion Week runway, floor 0 west (in front of Douglas)
+		this.scene.add(this.catwalk.group);
+		this.catwalk.setAnnounceCallback((name) => {
+			this.ui.setStatus(`👗 CATWALK · ${name} komt op · Fashion Week Prairie Lakes`);
+		});
 
 		// Camera lives in the scene so the monkey can smear the lens
 		this.scene.add(this.camera);
@@ -905,6 +913,7 @@ export class App {
 		}
 		this.monkey.setSimPositions(this.simPositions);
 		this.monkey.update(dt);
+		this.catwalk.update(dt, this.clock.elapsedTime);
 		this.shopVoice.update(dt);
 		this.tickBartekDrama(dt);
 		// Auto-greet Youssef when you walk into Kruidvat
@@ -916,6 +925,10 @@ export class App {
 		} else if (dYoussef > 10) {
 			this.youssefHint = false;
 		}
+
+		// Sims yell at you if you walk up their ass
+		const roast = this.atmosphere.americans.maybeRoastPlayer(this.camera.position, dt);
+		if (roast) this.ui.setStatus(`💬 ${roast}`);
 
 		// Meet sims nearby = score (viral "I know Brad" energy)
 		this.nearHudT += dt;
