@@ -8,6 +8,7 @@ import { Pathfinder } from '../path/Pathfinder';
 import { PathMesh } from '../path/PathMesh';
 import { createComposer } from '../post/Composer';
 import { Atmosphere } from '../scene/Atmosphere';
+import { StoreLabels } from '../scene/Labels';
 import { setupLighting } from '../scene/Lighting';
 import { MallBuilder } from '../scene/MallBuilder';
 import { KioskOverlay } from '../ui/KioskOverlay';
@@ -23,6 +24,7 @@ export class App {
 	private pathMesh = new PathMesh();
 	private atmosphere = new Atmosphere();
 	private mall = new MallBuilder();
+	private labels: StoreLabels;
 	private ui: KioskOverlay;
 	private clock = new THREE.Clock();
 	private currentPath: GraphNode[] = [];
@@ -30,7 +32,6 @@ export class App {
 	private confetti: THREE.Points | null = null;
 	private confettiVel: Float32Array | null = null;
 	private atriumOrb: THREE.Object3D | null = null;
-	private atriumRing: THREE.Object3D | null = null;
 	private youAreHere: THREE.Object3D | null = null;
 
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
@@ -43,66 +44,79 @@ export class App {
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-		this.renderer.toneMapping = THREE.NoToneMapping; // handled in post
+		this.renderer.toneMapping = THREE.NoToneMapping;
 		canvasParent.appendChild(this.renderer.domElement);
 
 		this.camera = new THREE.PerspectiveCamera(
-			50,
+			45,
 			window.innerWidth / window.innerHeight,
-			0.1,
-			300,
+			0.5,
+			400,
 		);
 
 		setupLighting(this.scene);
 		this.scene.add(this.mall.build());
+		this.labels = new StoreLabels(STORES);
+		this.scene.add(this.labels.group);
 		this.scene.add(this.atmosphere.group);
 		this.scene.add(this.pathMesh.group);
 
 		this.atriumOrb = this.scene.getObjectByName('atriumOrb') ?? null;
-		this.atriumRing = this.scene.getObjectByName('atriumRing') ?? null;
 		this.youAreHere = this.scene.getObjectByName('youAreHere') ?? null;
 
 		this.controls = new OrbitControls(this.camera, this.renderer.domElement);
 		this.controls.enableDamping = true;
-		this.controls.dampingFactor = 0.06;
+		this.controls.dampingFactor = 0.08;
+		this.controls.minPolarAngle = 0.15;
 		this.controls.maxPolarAngle = Math.PI * 0.48;
-		this.controls.minDistance = 8;
-		this.controls.maxDistance = 80;
-		this.controls.target.set(0, 2, 0);
-		this.controls.addEventListener('start', () => this.director.notifyUserControl());
+		this.controls.minDistance = 12;
+		this.controls.maxDistance = 110;
+		this.controls.target.set(0, 3, 0);
+		// Prevent panning into the void forever
+		this.controls.enablePan = true;
+		this.controls.screenSpacePanning = false;
+		this.controls.maxTargetRadius = 40;
 
-		this.director = new Director(this.camera);
+		this.director = new Director(this.camera, this.controls);
 		this.composer = createComposer(this.renderer, this.scene, this.camera);
 
 		this.ui = new KioskOverlay(uiRoot, {
 			onSelectStore: (s) => this.onSelectStore(s),
 			onStartRoute: (s) => this.onStartRoute(s),
 			onCancel: () => this.onCancel(),
+			onHome: () => this.onHome(),
 			onReplay: () => {
-				if (this.currentStore) this.onStartRoute(this.currentStore);
-				else {
-					const k = getStore('kruidvat')!;
-					this.onStartRoute(k);
-				}
+				const store = this.currentStore ?? getStore('kruidvat')!;
+				this.onStartRoute(store);
 			},
 		});
 
 		window.addEventListener('resize', () => this.onResize());
 		window.addEventListener('keydown', (e) => {
 			if (e.key === 'k' || e.key === 'K') {
-				const store = getStore('kruidvat')!;
-				this.onStartRoute(store);
+				this.onStartRoute(getStore('kruidvat')!);
 			}
 			if (e.key === 'Escape') this.onCancel();
+			if (e.key === 'h' || e.key === 'H') this.onHome();
 		});
 
-		// Intro
 		this.director.playIntro(() => {
 			this.ui.hideBoot();
-			this.controls.target.set(0, 2, 0);
+			this.ui.setStatus('OVERZICHT · kies een winkel of Kruidvat');
 		});
 
 		this.animate();
+	}
+
+	private onHome(): void {
+		this.pathMesh.clear();
+		this.currentPath = [];
+		this.clearConfetti();
+		this.ui.clearSelection();
+		this.ui.hideArrive();
+		this.director.goHome(true, () => {
+			this.ui.setStatus('OVERZICHT · hele mall in beeld');
+		});
 	}
 
 	private onSelectStore(store: StoreDef): void {
@@ -110,9 +124,7 @@ export class App {
 		const y = store.floor * 6 + 2;
 		const pos = new THREE.Vector3(store.x, y, store.z);
 		this.director.focusStore(pos);
-		this.controls.enabled = false;
 
-		// Preview path
 		const path = this.pathfinder.findPath('kiosk', store.nodeId);
 		this.currentPath = path;
 		this.pathMesh.setPath(path);
@@ -121,7 +133,7 @@ export class App {
 		const steps = this.buildStepLabels(path, store);
 		const floors = store.floor === 0 ? 'Begane grond' : 'Via roltrap · verdieping 1';
 		this.ui.showSteps(steps, dist, floors);
-		this.ui.setStatus(`SELECTED · ${store.name.replace('\n', ' ')}`);
+		this.ui.setStatus(`GEKOZEN · ${store.name.replace('\n', ' ')}`);
 	}
 
 	private onStartRoute(store: StoreDef): void {
@@ -130,6 +142,11 @@ export class App {
 		this.clearConfetti();
 
 		const path = this.pathfinder.findPath('kiosk', store.nodeId);
+		if (path.length < 2) {
+			this.ui.setStatus('GEEN ROUTE · pad niet gevonden');
+			return;
+		}
+
 		this.currentPath = path;
 		this.pathMesh.setPath(path);
 
@@ -139,18 +156,13 @@ export class App {
 		this.ui.showSteps(steps, dist, floors);
 		this.ui.showTouring(store);
 
-		this.controls.enabled = false;
 		this.director.tourPath(path, () => this.onArrive(store));
 	}
 
 	private onArrive(store: StoreDef): void {
 		this.ui.showArrive(store);
-		this.spawnConfetti(
-			new THREE.Vector3(store.x, store.floor * 6 + 3, store.z),
-		);
-		// brief celebration cam freedom
+		this.spawnConfetti(new THREE.Vector3(store.x, store.floor * 6 + 3, store.z));
 		this.controls.target.set(store.x, store.floor * 6 + 1.5, store.z);
-		this.controls.enabled = true;
 	}
 
 	private onCancel(): void {
@@ -161,13 +173,13 @@ export class App {
 		this.ui.clearSelection();
 		this.ui.hideArrive();
 		this.director.stopTour();
-		this.director.startIdle();
-		this.controls.enabled = true;
-		this.controls.target.set(0, 2, 0);
+		this.director.goHome(true, () => {
+			this.ui.setStatus('OVERZICHT · kies een winkel');
+		});
 	}
 
 	private buildStepLabels(path: GraphNode[], store: StoreDef): string[] {
-		const steps: string[] = ['Start bij de directory-kiosk'];
+		const steps: string[] = ['Start bij de directory-kiosk (rood)'];
 		const ids = path.map((n) => n.id);
 
 		if (ids.includes('e0') && ids.includes('e1')) {
@@ -175,7 +187,6 @@ export class App {
 			steps.push('Neem de roltrap omhoog naar verdieping 1');
 		}
 
-		// Landmark stores near path
 		const landmarks = ['s_hm', 's_apple', 's_primark', 's_sephora'];
 		for (const id of landmarks) {
 			if (ids.includes(id) && id !== store.nodeId) {
@@ -184,13 +195,13 @@ export class App {
 			}
 		}
 
-		steps.push(`Bestemming: ${store.name.replace('\n', ' ')} (ingang)`);
+		steps.push(`Bestemming: ${store.name.replace('\n', ' ')}`);
 		return steps.slice(0, 6);
 	}
 
 	private spawnConfetti(origin: THREE.Vector3): void {
 		this.clearConfetti();
-		const count = 200;
+		const count = 160;
 		const positions = new Float32Array(count * 3);
 		const colors = new Float32Array(count * 3);
 		this.confettiVel = new Float32Array(count * 3);
@@ -218,7 +229,7 @@ export class App {
 		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 		geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 		const mat = new THREE.PointsMaterial({
-			size: 0.15,
+			size: 0.18,
 			vertexColors: true,
 			transparent: true,
 			opacity: 0.95,
@@ -226,7 +237,6 @@ export class App {
 		});
 		this.confetti = new THREE.Points(geo, mat);
 		this.scene.add(this.confetti);
-
 		setTimeout(() => this.clearConfetti(), 4000);
 	}
 
@@ -272,22 +282,13 @@ export class App {
 		this.updateConfetti(dt);
 
 		if (this.atriumOrb) {
-			this.atriumOrb.rotation.y += dt * 0.6;
-			this.atriumOrb.rotation.x += dt * 0.2;
-		}
-		if (this.atriumRing) {
-			this.atriumRing.rotation.z += dt * 0.4;
+			this.atriumOrb.rotation.y += dt * 0.4;
 		}
 		if (this.youAreHere) {
 			const s = 1 + Math.sin(this.clock.elapsedTime * 3) * 0.08;
-			this.youAreHere.scale.set(s, s, s);
+			this.youAreHere.scale.setScalar(s);
 		}
 
-		if (this.director.mode === 'idle' || this.director.mode === 'arrived') {
-			this.controls.update();
-		}
-
-		// Minimap
 		this.ui.updateMinimap(
 			STORES,
 			this.currentPath.map((n) => ({ x: n.x, z: n.z })),

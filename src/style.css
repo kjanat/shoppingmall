@@ -192,6 +192,32 @@ body {
 	font-family: var(--mono);
 }
 
+.topbar-right {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	pointer-events: auto;
+}
+
+.btn-home {
+	padding: 8px 14px;
+	border-radius: 99px;
+	border: 1px solid var(--panel-border);
+	background: var(--panel);
+	backdrop-filter: blur(16px);
+	color: var(--text);
+	font-family: var(--font);
+	font-size: 0.8rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-home:hover {
+	border-color: var(--neon);
+	color: var(--neon);
+}
+
 .status-chip {
 	padding: 8px 14px;
 	border-radius: 99px;

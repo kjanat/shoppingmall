@@ -10,6 +10,7 @@ import {
 } from 'postprocessing';
 import * as THREE from 'three';
 
+/** Lighter post stack — less bloom/vignette so the mall stays readable. */
 export function createComposer(
 	renderer: THREE.WebGLRenderer,
 	scene: THREE.Scene,
@@ -22,16 +23,16 @@ export function createComposer(
 	composer.addPass(new RenderPass(scene, camera));
 
 	const bloom = new BloomEffect({
-		intensity: 0.85,
-		luminanceThreshold: 0.35,
-		luminanceSmoothing: 0.4,
+		intensity: 0.35,
+		luminanceThreshold: 0.55,
+		luminanceSmoothing: 0.35,
 		mipmapBlur: true,
-		radius: 0.7,
+		radius: 0.55,
 	});
 
 	const vignette = new VignetteEffect({
-		darkness: 0.55,
-		offset: 0.35,
+		darkness: 0.28,
+		offset: 0.4,
 	});
 
 	const tone = new ToneMappingEffect({

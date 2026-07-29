@@ -5,6 +5,7 @@ export type UICallbacks = {
 	onStartRoute: (store: StoreDef) => void;
 	onCancel: () => void;
 	onReplay: () => void;
+	onHome: () => void;
 };
 
 export class KioskOverlay {
@@ -50,13 +51,16 @@ export class KioskOverlay {
               <div class="brand-tag">Neon Plaza · Directory</div>
             </div>
           </div>
-          <div class="status-chip" id="status">IDLE · je bent bij de kiosk</div>
+          <div class="topbar-right">
+            <button type="button" class="btn-home" id="btn-home" title="Terug naar overzicht (H)">⌂ Overzicht</button>
+            <div class="status-chip" id="status">OVERZICHT · hele mall in beeld</div>
+          </div>
         </header>
 
         <aside class="panel">
           <div class="panel-head">
             <h1>Waar wil je heen?</h1>
-            <p class="panel-sub">Zoek een winkel of kies Kruidvat — de ultimate route.</p>
+            <p class="panel-sub">Je kijkt op de hele mall. Labels = winkels. Rood = kiosk. Tik Kruidvat voor de route.</p>
           </div>
 
           <button class="hero-cta" id="btn-kruidvat" type="button">
@@ -84,7 +88,7 @@ export class KioskOverlay {
           <canvas id="minimap" width="180" height="140"></canvas>
         </div>
 
-        <div class="hint-bar" id="hint">Sleep om te kijken · scroll om te zoomen</div>
+        <div class="hint-bar" id="hint">Sleep = draaien · scroll = zoom · <b>H</b> = overzicht · <b>K</b> = Kruidvat</div>
       </div>
 
       <div class="arrive hidden" id="arrive">
@@ -124,6 +128,10 @@ export class KioskOverlay {
 			this.callbacks.onStartRoute(k);
 		});
 
+		this.root.querySelector('#btn-home')!.addEventListener('click', () => {
+			this.callbacks.onHome();
+		});
+
 		this.root.querySelector('#btn-replay')!.addEventListener('click', () => {
 			this.hideArrive();
 			this.callbacks.onReplay();
@@ -131,7 +139,7 @@ export class KioskOverlay {
 
 		this.root.querySelector('#btn-done')!.addEventListener('click', () => {
 			this.hideArrive();
-			this.callbacks.onCancel();
+			this.callbacks.onHome();
 		});
 	}
 
@@ -188,7 +196,7 @@ export class KioskOverlay {
 		this.elDetail.classList.remove('touring');
 		this.hideSteps();
 		this.renderList();
-		this.setStatus('IDLE · je bent bij de kiosk');
+		this.setStatus('OVERZICHT · kies een winkel');
 	}
 
 	updateMinimap(
