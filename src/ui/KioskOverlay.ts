@@ -10,6 +10,7 @@ export type UICallbacks = {
 	onDisco: () => void;
 	onGiveMoney: () => void;
 	onSummonThief: () => void;
+	onMood: (delta: number) => void;
 };
 
 export class KioskOverlay {
@@ -92,6 +93,11 @@ export class KioskOverlay {
           <button class="btn thief-btn" type="button" id="btn-thief">
             🧔 Roep baard-dief (juwelen!)
           </button>
+          <div class="mood-row">
+            <span class="mood-label">Guest mood (jij = viewer)</span>
+            <button type="button" class="btn mood-up" id="btn-mood-up">😊 Blijer</button>
+            <button type="button" class="btn mood-down" id="btn-mood-down">😭 Ongelukkiger</button>
+          </div>
 
           <div class="search-wrap">
             <input id="search" type="search" placeholder="Zoek winkel (bijv. Rituals)…" autocomplete="off" />
@@ -168,6 +174,12 @@ export class KioskOverlay {
 		});
 		this.root.querySelector('#btn-thief')!.addEventListener('click', () => {
 			this.callbacks.onSummonThief();
+		});
+		this.root.querySelector('#btn-mood-up')!.addEventListener('click', () => {
+			this.callbacks.onMood(-15);
+		});
+		this.root.querySelector('#btn-mood-down')!.addEventListener('click', () => {
+			this.callbacks.onMood(15);
 		});
 
 		this.root.querySelector('#btn-replay')!.addEventListener('click', () => {

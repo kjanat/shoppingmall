@@ -60,7 +60,7 @@ export class BakerThief {
 
 		const a = this.path[this.i];
 		const b = this.path[this.i + 1];
-		this.t += dt * 2.8; // sprint
+		this.t += dt * 0.5; // slow heist — you can actually see it
 		if (this.t >= 1) {
 			this.t = 0;
 			this.i++;

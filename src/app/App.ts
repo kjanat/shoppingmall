@@ -16,6 +16,7 @@ import { setupLighting } from '../scene/Lighting';
 import { MallBuilder } from '../scene/MallBuilder';
 import { PalmForest } from '../scene/Palms';
 import { Spaceship } from '../scene/Spaceship';
+import { StockDisplay } from '../scene/StockDisplay';
 import { BakerThief } from '../scene/Thief';
 import { MovingWalkways } from '../scene/Walkways';
 import { KioskOverlay } from '../ui/KioskOverlay';
@@ -38,6 +39,7 @@ export class App {
 	private walkways = new MovingWalkways();
 	private amenities = new Amenities();
 	private disco = new DiscoParty();
+	private stock = new StockDisplay();
 	private spaceship = new Spaceship();
 	private thief: BakerThief;
 	private player!: PlayerControls;
@@ -81,11 +83,13 @@ export class App {
 		);
 
 		setupLighting(this.scene);
+		this.disco.bindScene(this.scene);
 		this.scene.add(this.mall.build());
 		this.scene.add(this.palms.group);
 		this.scene.add(this.walkways.group);
 		this.scene.add(this.amenities.group);
 		this.scene.add(this.disco.group);
+		this.scene.add(this.stock.group);
 		this.scene.add(this.spaceship.group);
 		this.scene.add(this.atmosphere.group);
 		this.scene.add(this.thief.group);
@@ -103,15 +107,17 @@ export class App {
 		this.player = new PlayerControls(this.camera, this.renderer.domElement, this.world);
 		this.player.enabled = false;
 
-		this.atmosphere.americans.setTransactionCallback((count, pos) => {
+		this.atmosphere.americans.setTransactionCallback((count, pos, storeId) => {
 			this.score += 2;
 			this.ui.setScore(this.score, this.metSims.size);
-			this.ui.setStatus(`Checkout #${count} · muntjes 💰`);
-			// Every 5 checkouts → baard-dief (juwelen/goud, neutral comedy thief)
+			// Money goes to SHOPKEEPER register — not the void
+			if (storeId) this.stock.flashSale(storeId);
+			this.ui.setStatus(`Kassa ${storeId ?? '?'} · checkout #${count} · muntjes → verkoper 💰`);
+			// Every 5 checkouts → baard-dief (slow heist)
 			if (count > 0 && count % 5 === 0 && count !== this.thiefFiredAt) {
 				this.thiefFiredAt = count;
 				this.thief.trigger();
-				this.ui.setStatus(`🧔 BAARD-DIEF pakt de juwelen! (txn ${count})`);
+				this.ui.setStatus(`🧔 BAARD-DIEF (langzaam) pakt juwelen! (txn ${count})`);
 				this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 2, 0)));
 			}
 		});
@@ -135,8 +141,9 @@ export class App {
 			onGiveMoney: () => this.giveMoney(),
 			onSummonThief: () => {
 				this.thief.trigger();
-				this.ui.setStatus('🧔 BAARD-DIEF is los — juwelen alert!');
+				this.ui.setStatus('🧔 BAARD-DIEF is los (traag) — kijk goed!');
 			},
+			onMood: (delta) => this.nudgeGuestMood(delta),
 		});
 
 		window.addEventListener('resize', () => this.onResize());
@@ -236,7 +243,13 @@ export class App {
 
 	private toggleDisco(): void {
 		const on = this.disco.toggle();
-		this.ui.setStatus(on ? '🕺 DANCE PARTY — disco overal!' : 'Disco uit');
+		this.atmosphere.americans.setDancing(on);
+		this.atmosphere.americans.ensureAudio();
+		this.ui.setStatus(
+			on
+				? '🕺 ARCADE DANCE PARTY — shitty bangers + iedereen danst!'
+				: 'Disco uit · sims shoppen weer',
+		);
 	}
 
 	private giveMoney(): void {
@@ -247,7 +260,19 @@ export class App {
 		}
 		this.score += 5;
 		this.ui.setScore(this.score, this.metSims.size);
-		this.ui.setStatus(`💰 Je gaf €25 aan ${got.name} — ze is blijer`);
+		// Tip also hits nearest store register if they have a target shop
+		if (got.targetShopId) this.stock.flashSale(got.targetShopId);
+		this.ui.setStatus(`💰 €25 naar ${got.name} · kassa knippert bij ${got.targetShop}`);
+	}
+
+	/** RCT-style: you control guest happiness as the mall viewer */
+	private nudgeGuestMood(delta: number): void {
+		this.atmosphere.americans.nudgeAllMood(delta);
+		this.ui.setStatus(
+			delta < 0
+				? `😊 Guest mood UP (−${Math.abs(delta)} ongelukkig)`
+				: `😭 Guest mood DOWN (+${delta} ongelukkig)`,
+		);
 	}
 
 	private onSelectStore(store: StoreDef): void {

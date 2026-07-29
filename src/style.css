@@ -255,6 +255,30 @@ body {
 	border-color: #334155;
 }
 
+.mood-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 6px;
+	margin-top: 10px;
+}
+
+.mood-label {
+	grid-column: 1 / -1;
+	font-size: 0.75rem;
+	color: var(--muted);
+	font-weight: 600;
+}
+
+.mood-up {
+	background: #dcfce7 !important;
+	border-color: #22c55e !important;
+}
+
+.mood-down {
+	background: #fee2e2 !important;
+	border-color: #ef4444 !important;
+}
+
 .possess-banner {
 	position: absolute;
 	top: 72px;

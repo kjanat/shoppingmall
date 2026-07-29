@@ -187,7 +187,7 @@ export class Americans {
 	private fartClouds: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
 	private coinBursts: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
 	private bubbles: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
-	private onTransaction: ((count: number, pos: THREE.Vector3) => void) | null = null;
+	private onTransaction: ((count: number, pos: THREE.Vector3, storeId: string) => void) | null = null;
 
 	constructor(world: CollisionWorld, count = 20) {
 		this.world = world;
@@ -205,8 +205,31 @@ export class Americans {
 		}
 	}
 
-	setTransactionCallback(cb: (count: number, pos: THREE.Vector3) => void): void {
+	setTransactionCallback(
+		cb: (count: number, pos: THREE.Vector3, storeId: string) => void,
+	): void {
 		this.onTransaction = cb;
+	}
+
+	/** Viewer controls guest unhappiness (RCT style) */
+	nudgeAllMood(delta: number): void {
+		for (const s of this.sims) {
+			s.f.unhappiness = Math.max(0, Math.min(100, s.f.unhappiness + delta));
+			this.paintFace(s);
+			this.paintLabel(s);
+		}
+	}
+
+	dancing = false;
+
+	setDancing(on: boolean): void {
+		this.dancing = on;
+		if (on) {
+			for (const s of this.sims) {
+				s.f.unhappiness = Math.max(0, s.f.unhappiness - 10);
+				this.paintFace(s);
+			}
+		}
 	}
 
 	getSimsNear(worldPos: THREE.Vector3, radius: number): SimFactors[] {
@@ -251,11 +274,40 @@ export class Americans {
 	}
 
 	update(dt: number): void {
-		for (const s of this.sims) this.tick(s, dt);
-		this.resolveAgents();
+		if (this.dancing) {
+			for (const s of this.sims) this.tickDance(s, dt);
+		} else {
+			for (const s of this.sims) this.tick(s, dt);
+			this.resolveAgents();
+		}
 		this.tickFarts(dt);
 		this.tickCoins(dt);
 		this.tickBubbles(dt);
+	}
+
+	/** Freeze pathing — everyone boogies in place */
+	private tickDance(sim: Sim, dt: number): void {
+		sim.phase += dt * 9;
+		const bounce = Math.abs(Math.sin(sim.phase * 2)) * 0.18;
+		const sway = Math.sin(sim.phase) * 0.35;
+		sim.root.position.set(sim.pos.x, sim.pos.y + bounce, sim.pos.z);
+		sim.root.rotation.y += dt * 1.8;
+		sim.body.rotation.z = sway * 0.25;
+		sim.body.rotation.x = Math.sin(sim.phase * 1.5) * 0.12;
+		// Arms up dance
+		sim.armL.rotation.x = -1.2 + Math.sin(sim.phase * 2) * 0.5;
+		sim.armR.rotation.x = -1.2 + Math.cos(sim.phase * 2) * 0.5;
+		sim.armL.rotation.z = 0.8 + Math.sin(sim.phase) * 0.3;
+		sim.armR.rotation.z = -0.8 - Math.cos(sim.phase) * 0.3;
+		// Legs step
+		sim.legL.hip.rotation.x = Math.sin(sim.phase * 2) * 0.6;
+		sim.legR.hip.rotation.x = Math.sin(sim.phase * 2 + Math.PI) * 0.6;
+		sim.legL.knee.rotation.x = 0.4;
+		sim.legR.knee.rotation.x = 0.4;
+		// Happier faces while dancing
+		if (Math.floor(sim.phase) % 8 === 0) {
+			sim.f.unhappiness = Math.max(0, sim.f.unhappiness - 0.02);
+		}
 	}
 
 	private tickBubbles(dt: number): void {
@@ -737,7 +789,9 @@ export class Americans {
 
 			this.spawnCoins(sim.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), spend);
 			this.transactionCount++;
-			this.onTransaction?.(this.transactionCount, sim.pos.clone());
+			// Money paid AT this shop → shopkeeper register
+			const paidAt = sim.f.targetShopId || sim.shopId;
+			this.onTransaction?.(this.transactionCount, sim.pos.clone(), paidAt);
 			this.sayGibberish(sim, true);
 
 			sim.wait = 1.2 + f.windowShop * 3.5 + (f.mood === 'lost' ? 2 : 0);
