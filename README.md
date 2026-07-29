@@ -13,14 +13,34 @@ Open the URL Vite prints (usually `http://localhost:5173`).
 
 ## Controls
 
-| Input               | Action                             |
-| ------------------- | ---------------------------------- |
-| **Naar Kruidvat**   | Hero CTA — full tour via escalator |
-| Store list / search | Select shop, preview neon path     |
-| **Start route**     | Camera fly-through                 |
-| Drag / scroll       | Orbit & zoom (idle / arrived)      |
-| **K**               | Instant Kruidvat route             |
-| **Esc**             | Cancel route, back to idle         |
+First person, no orbit rig: yaw/pitch are the only camera state, so the view
+always sits behind your eyes and never drifts toward the middle of the mall.
+
+| Input                | Action                                               |
+| -------------------- | ---------------------------------------------------- |
+| **Click the view**   | Capture the mouse (Esc frees it, route stays)        |
+| **W A S D** / arrows | Walk (A/D strafe, or turn — see ⚙ Besturing)         |
+| **Shift**            | Sprint                                               |
+| **Space**            | Jump                                                 |
+| **Q / E**            | Turn — always works, mouse or not                    |
+| **R / F**            | Look up / down without a mouse                       |
+| Escalator / stairs   | Walkable ramps to floor 1 (⇅ on the map)             |
+| **M** / Tab          | Full floor plan, per deck                            |
+| **+ / −** / wheel    | Minimap zoom                                         |
+| **O** / ⚙            | Besturing menu: mouse-look off, tank steering, lefty |
+| **K**                | Instant Kruidvat route (cinematic auto-walk)         |
+| **V**                | Guest view (ride along as a shopper)                 |
+| **Esc**              | Free the mouse, then cancel route                    |
+
+The minimap is player-centred and rotates with your heading (what you face is
+up), with a north marker, the yellow route, escalators and live shopper blips.
+
+## Deploy
+
+Pushing to `master` builds and publishes to GitHub Pages via
+`.github/workflows/deploy.yml`. One-time setup: **Settings → Pages → Build and
+deployment → Source: GitHub Actions**. The build uses a relative `base`, so it
+works from `kjanat.github.io/shoppingmall/` and from a domain root alike.
 
 ## Stack
 
@@ -36,8 +56,11 @@ src/
   app/App.ts           # orchestration + loop
   scene/               # mall, lights, atmosphere
   path/                # A* + neon ribbon
-  camera/Director.ts   # idle / tour / arrive
-  ui/KioskOverlay.ts   # NL kiosk chrome
+  player/Controls.ts   # first-person walking, ramps, control schemes
+  physics/Collision.ts # AABB world + walkable inclines
+  camera/Director.ts   # intro / tour / arrive (cinematics only)
+  ui/KioskOverlay.ts   # NL kiosk chrome + rotating minimap + floor plan
+  ui/SettingsPanel.ts  # besturing: mouse / no-mouse / left-handed
   data/                # stores + waypoint graph
   post/Composer.ts
 ```

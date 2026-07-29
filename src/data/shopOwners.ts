@@ -127,10 +127,14 @@ export const SHOP_OWNERS: Record<string, ShopOwner> = {
 		skin: 0xc68642,
 		hair: 0x1a1a1a,
 		lines: [
-			'Marhaba! Welkom.',
-			'Vitamines? Goede keuze, wallah.',
-			'Drie voor de prijs — take it.',
-			'Yallah, fijne dag nog!',
+			'Marhaba! Welkom bij Kruidvat, ik ben Youssef Benali.',
+			'Vitamines? Goede keuze, wallah. Je moeder gaat blij zijn.',
+			'Drie voor de prijs van twee — take it, yallah!',
+			'Yallah, fijne dag nog! En let op de loopbanden he.',
+			'Ah, een klant! Kom dichterbij, de kassa is open.',
+			'Shampoo, zonnebrand, paracetamol — alles hier, broeder.',
+			'Brad? Die is er gisteren al geweest. Jij ook vitamines?',
+			'Bismillah, volgende klant. Marhaba nogmaals!',
 		],
 	},
 	sephora: {

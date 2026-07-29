@@ -696,6 +696,138 @@ body {
 	color: var(--neon);
 }
 
+/* Besturing / settings */
+
+.settings-host {
+	position: absolute;
+	left: 16px;
+	bottom: 16px;
+	z-index: 21;
+	display: flex;
+	flex-direction: column-reverse;
+	align-items: flex-start;
+	gap: 8px;
+	pointer-events: none;
+}
+
+.settings-btn {
+	padding: 8px 14px;
+	border-radius: 99px;
+	border: 1px solid var(--panel-border);
+	background: var(--panel);
+	backdrop-filter: blur(16px);
+	color: var(--text);
+	font-family: var(--font);
+	font-size: 0.78rem;
+	font-weight: 600;
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+.settings-btn:hover {
+	border-color: var(--neon);
+	color: var(--neon);
+}
+
+.settings-card {
+	width: min(340px, calc(100vw - 32px));
+	padding: 14px;
+	border-radius: 14px;
+	background: var(--panel);
+	border: 1px solid var(--panel-border);
+	backdrop-filter: blur(20px);
+	box-shadow: 0 18px 44px rgba(5, 8, 18, 0.32);
+	pointer-events: auto;
+}
+
+.settings-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 10px;
+	font-size: 0.9rem;
+}
+
+.settings-close {
+	width: 22px;
+	height: 22px;
+	display: grid;
+	place-items: center;
+	border-radius: 6px;
+	border: 1px solid var(--panel-border);
+	background: rgba(15, 23, 42, 0.05);
+	color: var(--muted);
+	cursor: pointer;
+	font-size: 0.7rem;
+}
+
+.settings-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 0;
+	border-top: 1px solid var(--panel-border);
+	cursor: pointer;
+}
+
+.settings-row b {
+	display: block;
+	font-size: 0.8rem;
+	font-weight: 600;
+}
+
+.settings-row small {
+	display: block;
+	margin-top: 2px;
+	font-size: 0.7rem;
+	line-height: 1.35;
+	color: var(--muted);
+}
+
+.settings-row input[type="checkbox"] {
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+	accent-color: var(--neon);
+	cursor: pointer;
+}
+
+.settings-row input[type="range"] {
+	width: 96px;
+	flex-shrink: 0;
+	accent-color: var(--neon);
+	cursor: pointer;
+}
+
+.settings-row.settings-off {
+	opacity: 0.45;
+}
+
+.settings-keys {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--panel-border);
+	font-family: var(--mono);
+	font-size: 0.65rem;
+	line-height: 1.5;
+	color: var(--muted);
+}
+
+.settings-reset {
+	margin-top: 10px;
+	width: 100%;
+	padding: 8px;
+	border-radius: 8px;
+	border: 1px solid var(--panel-border);
+	background: #f1f5f9;
+	font-family: var(--font);
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--text);
+	cursor: pointer;
+}
+
 /* Crosshair — only while the mouse is captured */
 
 .crosshair {
@@ -908,4 +1040,187 @@ body {
 		flex-direction: column;
 		align-items: flex-start;
 	}
+}
+
+/* ── DJ Bartek booth ─────────────────────────────── */
+.dj-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 40;
+	display: grid;
+	place-items: center;
+	background: rgba(5, 8, 18, 0.55);
+	backdrop-filter: blur(8px);
+	pointer-events: auto;
+}
+.dj-overlay.hidden {
+	display: none;
+}
+
+.dj-panel {
+	width: min(440px, 94vw);
+	max-height: 88vh;
+	overflow: auto;
+	padding: 18px 18px 14px;
+	border-radius: 18px;
+	background: linear-gradient(160deg, #1a1030 0%, #0f172a 55%, #111827 100%);
+	border: 1px solid rgba(244, 114, 182, 0.45);
+	box-shadow: 0 0 40px rgba(236, 72, 153, 0.25), 0 24px 60px rgba(0, 0, 0, 0.5);
+	color: #f8fafc;
+	font-family: var(--font);
+}
+
+.dj-head {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	align-items: flex-start;
+}
+.dj-badge {
+	display: inline-block;
+	font-size: 0.65rem;
+	font-weight: 800;
+	letter-spacing: 0.08em;
+	color: #0f172a;
+	background: #f472b6;
+	padding: 2px 8px;
+	border-radius: 99px;
+	margin-bottom: 6px;
+}
+.dj-head h2 {
+	margin: 0;
+	font-size: 1.45rem;
+	letter-spacing: 0.04em;
+	background: linear-gradient(90deg, #f472b6, #a78bfa, #22d3ee);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+.dj-sub {
+	margin: 4px 0 0;
+	font-size: 0.8rem;
+	color: #94a3b8;
+}
+.dj-x {
+	border: none;
+	background: rgba(255, 255, 255, 0.08);
+	color: #e2e8f0;
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	font-size: 1.4rem;
+	cursor: pointer;
+	line-height: 1;
+}
+.dj-x:hover {
+	background: rgba(244, 114, 182, 0.3);
+}
+
+.dj-now {
+	margin-top: 14px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: rgba(168, 85, 247, 0.15);
+	border: 1px solid rgba(168, 85, 247, 0.35);
+	font-weight: 700;
+	font-size: 0.9rem;
+	color: #e9d5ff;
+}
+.dj-status {
+	margin-top: 8px;
+	font-size: 0.78rem;
+	color: #94a3b8;
+	min-height: 1.2em;
+}
+
+.dj-request-row {
+	display: flex;
+	gap: 8px;
+	margin-top: 14px;
+}
+.dj-request-row input {
+	flex: 1;
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid rgba(244, 114, 182, 0.35);
+	background: #0b1220;
+	color: #f8fafc;
+	font-family: inherit;
+	font-size: 0.9rem;
+}
+.dj-request-row input:focus {
+	outline: 2px solid #f472b6;
+	outline-offset: 1px;
+}
+
+.dj-actions {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	margin-top: 12px;
+}
+.dj-btn {
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: #1e293b;
+	color: #f1f5f9;
+	font-weight: 600;
+	font-family: inherit;
+	cursor: pointer;
+	font-size: 0.85rem;
+}
+.dj-btn:hover {
+	background: #334155;
+}
+.dj-btn.primary {
+	background: linear-gradient(90deg, #ec4899, #a855f7);
+	border: none;
+	color: #fff;
+}
+.dj-btn.probe {
+	grid-column: 1 / -1;
+	background: linear-gradient(90deg, #14532d, #065f46);
+	border-color: #34d399;
+	color: #bbf7d0;
+}
+
+.dj-list-label {
+	margin-top: 14px;
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	color: #64748b;
+	text-transform: uppercase;
+}
+.dj-list {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0;
+	max-height: 180px;
+	overflow: auto;
+}
+.dj-list li {
+	margin: 0 0 4px;
+}
+.dj-track {
+	width: 100%;
+	text-align: left;
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid transparent;
+	background: rgba(255, 255, 255, 0.04);
+	color: #e2e8f0;
+	font-family: inherit;
+	font-size: 0.82rem;
+	cursor: pointer;
+}
+.dj-track:hover {
+	background: rgba(244, 114, 182, 0.12);
+	border-color: rgba(244, 114, 182, 0.3);
+}
+.dj-empty {
+	padding: 10px;
+	font-size: 0.8rem;
+	color: #94a3b8;
 }

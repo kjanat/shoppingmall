@@ -17,6 +17,30 @@ const LOCK_SENS = 0.0022;
 const DRAG_SENS = 0.0030;
 const TOUCH_SENS = 0.0045;
 const STICK_MAX = 64;
+/** keyboard turning, rad/s */
+const TURN_SPEED = 2.2;
+const PITCH_SPEED = 1.2;
+
+/**
+ * How you steer. `turnWithKeys` is the no-mouse mode: A/D (and ←/→) swing the
+ * whole camera like a tank instead of side-stepping.
+ */
+export type ControlSettings = {
+	turnWithKeys: boolean;
+	mouseLook: boolean;
+	/** 0 = left button, 2 = right button (left-handed mice) */
+	lookButton: 0 | 2;
+	sensitivity: number;
+	invertY: boolean;
+};
+
+export const DEFAULT_SETTINGS: ControlSettings = {
+	turnWithKeys: false,
+	mouseLook: true,
+	lookButton: 0,
+	sensitivity: 1,
+	invertY: false,
+};
 
 function isTypingTarget(t: EventTarget | null): boolean {
 	const el = t as HTMLElement | null;
@@ -35,9 +59,8 @@ function isTypingTarget(t: EventTarget | null): boolean {
  */
 export class PlayerControls {
 	enabled = true;
-	sensitivity = 1;
-	invertY = false;
 	locked = false;
+	settings: ControlSettings = { ...DEFAULT_SETTINGS };
 	onLockChange: ((locked: boolean) => void) | null = null;
 
 	private cam: THREE.PerspectiveCamera;
@@ -82,10 +105,17 @@ export class PlayerControls {
 		window.addEventListener('keyup', this.onKeyUp);
 		window.addEventListener('blur', this.onBlur);
 		this.dom.addEventListener('pointerdown', this.onPointerDown);
+		this.dom.addEventListener('contextmenu', this.onContextMenu);
 		window.addEventListener('pointerup', this.onPointerUp);
 		window.addEventListener('pointercancel', this.onPointerUp);
 		window.addEventListener('pointermove', this.onPointerMove);
 		document.addEventListener('pointerlockchange', this.onLockChangeEvent);
+	}
+
+	/** Swap control scheme at runtime; releases the mouse if look is turned off. */
+	applySettings(next: Partial<ControlSettings>): void {
+		this.settings = { ...this.settings, ...next };
+		if (!this.settings.mouseLook) this.releaseLook();
 	}
 
 	dispose(): void {
@@ -93,6 +123,7 @@ export class PlayerControls {
 		window.removeEventListener('keyup', this.onKeyUp);
 		window.removeEventListener('blur', this.onBlur);
 		this.dom.removeEventListener('pointerdown', this.onPointerDown);
+		this.dom.removeEventListener('contextmenu', this.onContextMenu);
 		window.removeEventListener('pointerup', this.onPointerUp);
 		window.removeEventListener('pointercancel', this.onPointerUp);
 		window.removeEventListener('pointermove', this.onPointerMove);
@@ -151,18 +182,50 @@ export class PlayerControls {
 		if (!this.enabled) return;
 
 		const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+
+		// ── Steering ─────────────────────────────────────────
+		// Q/E always turn, so a mouseless player is never stuck facing one way.
+		let turn = 0;
+		if (this.keys.has('KeyQ')) turn += 1;
+		if (this.keys.has('KeyE')) turn -= 1;
+		let fwd = this.axisY;
+		let strafe = this.axisX;
+		if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) fwd += 1;
+		if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) fwd -= 1;
+
+		const left = this.keys.has('KeyA') || this.keys.has('ArrowLeft');
+		const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
+		if (this.settings.turnWithKeys) {
+			// Tank mode: left/right swing the view instead of side-stepping
+			if (right) turn -= 1;
+			if (left) turn += 1;
+		} else {
+			if (right) strafe += 1;
+			if (left) strafe -= 1;
+		}
+
+		if (turn !== 0) {
+			this.yaw += turn * TURN_SPEED * (sprint ? 1.5 : 1) * dt;
+			this.wrapYaw();
+		}
+		// R/F tilt, for people who never touch the mouse
+		let tilt = 0;
+		if (this.keys.has('KeyR')) tilt += 1;
+		if (this.keys.has('KeyF')) tilt -= 1;
+		if (tilt !== 0) {
+			this.pitch = THREE.MathUtils.clamp(
+				this.pitch + tilt * PITCH_SPEED * dt,
+				-PITCH_MAX,
+				PITCH_MAX,
+			);
+		}
+
 		const sin = Math.sin(this.yaw);
 		const cos = Math.cos(this.yaw);
 
 		// Wish direction in world space (forward = where you look)
 		let wx = 0;
 		let wz = 0;
-		let fwd = this.axisY;
-		let strafe = this.axisX;
-		if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) fwd += 1;
-		if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) fwd -= 1;
-		if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) strafe += 1;
-		if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) strafe -= 1;
 		fwd = THREE.MathUtils.clamp(fwd, -1, 1);
 		strafe = THREE.MathUtils.clamp(strafe, -1, 1);
 
@@ -202,7 +265,14 @@ export class PlayerControls {
 		p.z = solved.z;
 
 		// ── Vertical: ramps, gravity, hop ────────────────────
-		const ground = this.world.groundHeightAt(p.x, p.z, this.feetY);
+		// Airborne gets a looser step so hopping on the escalator doesn't snap you
+		// onto the deck above.
+		const ground = this.world.groundHeightAt(
+			p.x,
+			p.z,
+			this.feetY,
+			this.grounded ? 0.5 : 2.5,
+		);
 		if (this.jumpQueued && this.grounded) {
 			this.vy = JUMP_V;
 			this.grounded = false;
@@ -298,7 +368,8 @@ export class PlayerControls {
 			return;
 		}
 
-		if (e.button !== 0) return;
+		if (!this.settings.mouseLook) return;
+		if (e.button !== this.settings.lookButton) return;
 		if (!this.locked) {
 			// Capture the mouse like a real FPS; drag-look is the fallback
 			this.dom.requestPointerLock?.();
@@ -306,6 +377,11 @@ export class PlayerControls {
 		this.dragging = true;
 		this.lastX = e.clientX;
 		this.lastY = e.clientY;
+	};
+
+	/** Right-button look needs the browser menu out of the way. */
+	private onContextMenu = (e: Event): void => {
+		if (this.settings.lookButton === 2 && this.settings.mouseLook) e.preventDefault();
 	};
 
 	private onPointerUp = (e: PointerEvent): void => {
@@ -333,6 +409,8 @@ export class PlayerControls {
 			return;
 		}
 
+		if (!this.settings.mouseLook) return;
+
 		let dx: number;
 		let dy: number;
 		let sens: number;
@@ -356,11 +434,16 @@ export class PlayerControls {
 			return;
 		}
 
-		this.yaw -= dx * sens * this.sensitivity;
-		this.pitch -= dy * sens * this.sensitivity * (this.invertY ? -1 : 1);
+		const s = this.settings;
+		this.yaw -= dx * sens * s.sensitivity;
+		this.pitch -= dy * sens * s.sensitivity * (s.invertY ? -1 : 1);
 		this.pitch = THREE.MathUtils.clamp(this.pitch, -PITCH_MAX, PITCH_MAX);
-		// keep yaw in ±π so the minimap needle never wraps oddly
+		this.wrapYaw();
+	};
+
+	/** Keep yaw in ±π so the minimap needle never wraps oddly. */
+	private wrapYaw(): void {
 		if (this.yaw > Math.PI) this.yaw -= Math.PI * 2;
 		else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
-	};
+	}
 }

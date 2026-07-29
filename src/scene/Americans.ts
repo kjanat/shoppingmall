@@ -305,6 +305,79 @@ export class Americans {
 			.map((s) => s.f);
 	}
 
+	/** Fat Americans for UFO probe (prefer thicc / hangry) */
+	getProbeCandidates(max = 6): { id: number; pos: THREE.Vector3 }[] {
+		const ranked = [...this.sims]
+			.filter((s) => !s.f.isKid)
+			.sort((a, b) => b.f.thicc - a.f.thicc || b.f.unhappiness - a.f.unhappiness)
+			.slice(0, max);
+		// Cluster: pick around a random thicc seed
+		if (!ranked.length) return [];
+		const seed = ranked[Math.floor(Math.random() * Math.min(4, ranked.length))];
+		return this.sims
+			.filter((s) => s.pos.distanceTo(seed.pos) < 9 && !s.f.isKid)
+			.slice(0, max)
+			.map((s) => ({ id: s.f.id, pos: s.pos.clone() }));
+	}
+
+	/** Probe shock: unhappiness + temporary freeze */
+	applyProbeShock(ids: number[]): void {
+		for (const id of ids) {
+			const s = this.sims.find((x) => x.f.id === id);
+			if (!s) continue;
+			s.f.unhappiness = Math.min(100, s.f.unhappiness + 18);
+			s.f.mood = 'lost';
+			s.wait = Math.max(s.wait, 2.5);
+			this.paintLabel(s);
+			this.applyFaceMood(s);
+			this.sayGibberish(s);
+		}
+	}
+
+	/** Alien lift — override root Y without breaking path pos permanently */
+	nudgeSimHeight(id: number, worldY: number): void {
+		const s = this.sims.find((x) => x.f.id === id);
+		if (!s) return;
+		s.root.position.y = worldY;
+	}
+
+	/** Crowd at DJ Bartek: speech bubbles + happier + short freeze-dance */
+	cheerNear(worldPos: THREE.Vector3, radius: number): void {
+		const cheers = [
+			'BARTEK! BARTEK!',
+			'DROP IT!',
+			'Squeak banger!',
+			'Thicc & thriving',
+			'Trap-gat forever',
+			'Yallah dansen!',
+		];
+		for (const s of this.sims) {
+			if (s.pos.distanceTo(worldPos) > radius) continue;
+			s.f.unhappiness = Math.max(0, s.f.unhappiness - 8);
+			s.f.mood = Math.random() > 0.4 ? 'hyped' : s.f.mood;
+			s.wait = Math.max(s.wait, 0.8 + Math.random());
+			const line = cheers[Math.floor(Math.random() * cheers.length)];
+			const ctx = s.speechCtx;
+			ctx.clearRect(0, 0, 280, 72);
+			ctx.fillStyle = 'rgba(255,255,255,0.96)';
+			ctx.fillRect(6, 6, 268, 60);
+			ctx.strokeStyle = '#ec4899';
+			ctx.lineWidth = 3;
+			ctx.strokeRect(6, 6, 268, 60);
+			ctx.fillStyle = '#be185d';
+			ctx.font = '700 18px system-ui,sans-serif';
+			ctx.textAlign = 'center';
+			ctx.textBaseline = 'middle';
+			ctx.fillText(line, 140, 36);
+			s.speechTex.needsUpdate = true;
+			s.speech.visible = true;
+			(s.speech.material as THREE.SpriteMaterial).visible = true;
+			s.speechLife = 2.2 + Math.random();
+			this.paintLabel(s);
+			this.applyFaceMood(s);
+		}
+	}
+
 	getNearestSimId(worldPos: THREE.Vector3): number | null {
 		let best: Sim | null = null;
 		let bestD = Infinity;

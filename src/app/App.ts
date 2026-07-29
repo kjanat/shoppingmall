@@ -1,5 +1,7 @@
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
+import { DJPlayer } from '../audio/DJPlayer';
+import { fetchDjStatus, playBoothFile, speakBartek } from '../audio/ElevenVoice';
 import { Director } from '../camera/Director';
 import type { GraphNode } from '../data/graph';
 import { getStore, type StoreDef } from '../data/stores';
@@ -8,17 +10,22 @@ import { PathMesh } from '../path/PathMesh';
 import { CollisionWorld } from '../physics/Collision';
 import { PlayerControls } from '../player/Controls';
 import { createComposer } from '../post/Composer';
+import { AlienProbe } from '../scene/AlienProbe';
 import { Amenities } from '../scene/Amenities';
 import { Atmosphere } from '../scene/Atmosphere';
 import { DiscoParty } from '../scene/Disco';
+import { BARTEK_LINES, DJBartek } from '../scene/DJBartek';
 import { setupLighting } from '../scene/Lighting';
 import { MallBuilder } from '../scene/MallBuilder';
 import { PalmForest } from '../scene/Palms';
+import { ShopVoice } from '../scene/ShopVoice';
 import { Spaceship } from '../scene/Spaceship';
 import { StockDisplay } from '../scene/StockDisplay';
 import { BakerThief } from '../scene/Thief';
 import { MovingWalkways } from '../scene/Walkways';
+import { DJOverlay } from '../ui/DJOverlay';
 import { KioskOverlay, type MapBlip } from '../ui/KioskOverlay';
+import { SettingsPanel } from '../ui/SettingsPanel';
 
 const PLAYER_RADIUS = 0.4;
 
@@ -40,6 +47,13 @@ export class App {
 	private stock = new StockDisplay();
 	private spaceship = new Spaceship();
 	private thief: BakerThief;
+	private djBartek = new DJBartek();
+	private alienProbe = new AlienProbe();
+	private djPlayer = new DJPlayer();
+	private shopVoice = new ShopVoice();
+	private djUi!: DJOverlay;
+	private youssefHint = false;
+	private settingsUi!: SettingsPanel;
 	private player!: PlayerControls;
 	private ui: KioskOverlay;
 	private clock = new THREE.Clock();
@@ -58,6 +72,9 @@ export class App {
 	/** RCT-style: ride along as a guest */
 	private possessId: number | null = null;
 	private thiefFiredAt = 0;
+	private nearDjHint = false;
+	private bartekSpeaking = false;
+	private crowdCheerCd = 0;
 
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
 		this.atmosphere = new Atmosphere(this.world);
@@ -86,6 +103,8 @@ export class App {
 		setupLighting(this.scene);
 		this.disco.bindScene(this.scene);
 		this.scene.add(this.mall.build());
+		// Wire Youssef + all keepers for speech bubbles + ElevenLabs
+		this.shopVoice.bindFromMall(this.mall.group);
 		this.scene.add(this.palms.group);
 		this.scene.add(this.walkways.group);
 		this.scene.add(this.amenities.group);
@@ -95,6 +114,9 @@ export class App {
 		this.scene.add(this.atmosphere.group);
 		this.scene.add(this.thief.group);
 		this.scene.add(this.pathMesh.group);
+		this.scene.add(this.djBartek.group);
+		this.scene.add(this.alienProbe.group);
+		this.alienProbe.bind(this.atmosphere.americans);
 
 		this.director = new Director(this.camera);
 		this.composer = createComposer(this.renderer, this.scene, this.camera);
@@ -114,8 +136,15 @@ export class App {
 			this.score += 2;
 			this.ui.setScore(this.score, this.metSims.size);
 			// Money goes to SHOPKEEPER register — not the void
-			if (storeId) this.stock.flashSale(storeId);
-			this.ui.setStatus(`Kassa ${storeId ?? '?'} · checkout #${count} · muntjes → verkoper 💰`);
+			if (storeId) {
+				this.stock.flashSale(storeId);
+				// Owner SPEAKS (Youssef especially) — not silent text on a guest
+				void this.shopVoice.onCheckout(storeId);
+			}
+			const ownerHint = storeId === 'kruidvat' ? 'Youssef Benali' : storeId ?? '?';
+			this.ui.setStatus(
+				`Kassa ${ownerHint} · checkout #${count} · muntjes → verkoper 💰`,
+			);
 			// Every 5 checkouts → baard-dief (slow heist)
 			if (count > 0 && count % 5 === 0 && count !== this.thiefFiredAt) {
 				this.thiefFiredAt = count;
@@ -149,12 +178,35 @@ export class App {
 			onMood: (delta) => this.nudgeGuestMood(delta),
 		});
 
+		this.djUi = new DJOverlay(uiRoot);
+		this.wireDjBooth();
+
+		// Control scheme menu (⚙ / O) — mouse, no-mouse or tank steering
+		this.settingsUi = new SettingsPanel(uiRoot, (s) => {
+			this.player.applySettings(s);
+			this.ui.setStatus(
+				s.mouseLook
+					? `Besturing: muis kijken${s.lookButton === 2 ? ' (rechtsklik)' : ''}${
+						s.turnWithKeys ? ' + A/D draaien' : ''
+					}`
+					: 'Besturing: geen muis · A/D draaien · R/F kijken',
+			);
+		});
+
 		window.addEventListener('resize', () => this.onResize());
 		window.addEventListener('keydown', (e) => {
+			// DJ booth captures typing — don't steal keys
+			if (this.djUi.isOpen() && e.key !== 'Escape' && e.key !== 'e' && e.key !== 'E') {
+				return;
+			}
 			if (e.key === 'k' || e.key === 'K') {
 				this.onStartRoute(getStore('kruidvat')!);
 			}
 			if (e.key === 'Escape') {
+				if (this.djUi.isOpen()) {
+					this.djUi.hide();
+					return;
+				}
 				// Esc while the mouse is captured just frees the mouse — it must not
 				// also cancel your route and teleport you back to the kiosk.
 				const justUnlocked = performance.now() - this.unlockedAt < 400;
@@ -173,6 +225,18 @@ export class App {
 			if (e.key === 't' || e.key === 'T') {
 				this.thief.trigger();
 				this.ui.setStatus('🧔 BAARD-DIEF (T) — juwelen heist!');
+			}
+			// E = talk to DJ Bartek OR nearest shopkeeper (Youssef!)
+			if (e.key === 'e' || e.key === 'E') {
+				if (this.djBartek.inRange(this.camera.position)) {
+					void this.openDjBooth();
+				} else {
+					void this.talkToShopkeeper();
+				}
+			}
+			if (e.key === 'b' || e.key === 'B') {
+				// Jump cue to Bartek
+				this.ui.setStatus('→ DJ Bartek bij de west-trap (−20, −6)');
 			}
 		});
 
@@ -311,6 +375,171 @@ export class App {
 		);
 	}
 
+	private wireDjBooth(): void {
+		this.djPlayer.onChange = (info) => {
+			this.djUi.setNowPlaying(info.title, info.playing);
+		};
+		this.djUi.onRequest = (q) => void this.djRequest(q);
+		this.djUi.onPlay = () => void this.djPlayer.play();
+		this.djUi.onPause = () => this.djPlayer.pause();
+		this.djUi.onNext = () => this.djPlayer.next();
+		this.djUi.onProbe = () => {
+			this.alienProbe.trigger();
+			void this.bartekSpeak(BARTEK_LINES.probe);
+			this.djUi.setStatus('👽 Aliens scannen de dikke Amerikanen…');
+			this.ui.setStatus('👽 PROBE WAVE — dikke gasten in de beam');
+			this.atmosphere.americans.cheerNear(this.djBartek.pos, 20);
+		};
+		this.djUi.onGreet = () => void this.bartekSpeak(BARTEK_LINES.greet);
+		this.djUi.onClose = () => {
+			this.player.enabled = this.freeMove && this.possessId === null;
+		};
+		// Play track by index from list click
+		(
+			document.getElementById('dj-overlay') as HTMLElement | null
+		)?.addEventListener(
+			'dj-play-index',
+			((e: CustomEvent<number>) => {
+				void this.djPlayer.playIndex(e.detail);
+			}) as EventListener,
+		);
+	}
+
+	/** E near a counter — Youssef / any named keeper speaks aloud */
+	private async talkToShopkeeper(): Promise<void> {
+		this.atmosphere.americans.ensureAudio();
+		const owner = await this.shopVoice.talkNear(this.camera.position, 7);
+		if (!owner) {
+			this.ui.setStatus('Geen verkoper dichtbij — loop naar een OPEN winkel (E)');
+			return;
+		}
+		this.ui.setStatus(`💬 ${owner.name} (${owner.title}): praat…`);
+		this.score += 2;
+		this.ui.setScore(this.score, this.metSims.size);
+	}
+
+	private async openDjBooth(): Promise<void> {
+		this.player.releaseLook?.();
+		this.player.enabled = false;
+		this.djUi.show();
+		const tracks = await this.djPlayer.refreshPlaylist();
+		// Music crates only — skip short voice intros in the list UI if named
+		this.djUi.setTracks(tracks.filter((t) => !/intro_voice|voice/i.test(t.file)));
+		const st = await fetchDjStatus();
+		this.djUi.setStatus(
+			st.elevenlabs
+				? `ElevenLabs ON · ${tracks.length} files · live drama mode`
+				: `Browser-stem · ${tracks.length} files · zet ELEVENLABS_API_KEY`,
+		);
+		if (!this.djBartek.greetingDone) {
+			this.djBartek.greetingDone = true;
+			// Pre-baked intro first (instant), then full ElevenLabs greets
+			this.djBartek.say(BARTEK_LINES.greet, 6);
+			const baked = await playBoothFile('bartek_intro_voice.mp3');
+			if (baked.source === 'silent' || (baked.durationMs ?? 0) < 500) {
+				await this.bartekSpeak(BARTEK_LINES.greet);
+			} else {
+				this.djUi.setStatus('🎤 Bartek intro (ElevenLabs) — BARTEK BARTEK');
+				// Full longer line after baked clip
+				await this.bartekSpeak(
+					'Welkom bij het trap-gat. Request een plaatje en ik draai hem live. Drama gratis erbij.',
+				);
+			}
+			if (!st.elevenlabs) {
+				await this.bartekSpeak(BARTEK_LINES.noKey);
+			}
+		} else {
+			const line = BARTEK_LINES.idle[Math.floor(Math.random() * BARTEK_LINES.idle.length)];
+			await this.bartekSpeak(line);
+		}
+		// Prefer real music over voice file
+		const music = tracks.filter((t) => !/intro_voice|voice/i.test(t.file));
+		if (music.length && !this.djPlayer.playing) {
+			const idx = tracks.findIndex((t) => t.file === music[0].file);
+			if (idx >= 0) void this.djPlayer.playIndex(idx);
+		}
+		// Crowd reacts to the booth opening
+		this.atmosphere.americans.cheerNear(this.djBartek.pos, 14);
+	}
+
+	private async bartekSpeak(text: string): Promise<void> {
+		if (this.bartekSpeaking) return;
+		this.bartekSpeaking = true;
+		this.atmosphere.americans.ensureAudio();
+		this.djBartek.say(text, Math.min(8, 2.5 + text.length * 0.04));
+		const r = await speakBartek(text);
+		if (r.source === 'elevenlabs') {
+			this.djUi.setStatus('🎤 Bartek (ElevenLabs) praat…');
+			this.ui.setStatus(`🎤 DJ Bartek: ${text.slice(0, 60)}…`);
+		} else if (r.source === 'browser') {
+			this.djUi.setStatus('🎤 Bartek (browser TTS)');
+		} else if (r.source === 'file') {
+			this.djUi.setStatus('🎤 Bartek (booth file)');
+		} else {
+			this.djUi.setStatus(`🎤 Geen audio: ${r.error ?? 'silent'}`);
+		}
+		// Let the line mostly finish so ElevenLabs drama doesn't overlap
+		const wait = Math.min(14000, r.durationMs ?? text.length * 55);
+		await new Promise((res) => setTimeout(res, Math.max(800, wait * 0.85)));
+		this.bartekSpeaking = false;
+	}
+
+	/** Ambient mall drama: Bartek monologues + crowd squeaks */
+	private tickBartekDrama(dt: number): void {
+		this.crowdCheerCd -= dt;
+		const near = this.djBartek.inRange(this.camera.position);
+		const music = this.djPlayer.playing;
+
+		// When music is on, crowd near the trap occasionally cheers
+		if (music && this.crowdCheerCd <= 0) {
+			this.crowdCheerCd = 9 + Math.random() * 12;
+			this.atmosphere.americans.cheerNear(this.djBartek.pos, 16);
+		}
+
+		// Bartek ambient drama (even if booth UI closed) when player is in the wing
+		const dx = this.camera.position.x - this.djBartek.pos.x;
+		const dz = this.camera.position.z - this.djBartek.pos.z;
+		const dist = Math.hypot(dx, dz);
+		if (
+			dist < 18
+			&& this.camera.position.y < 4
+			&& this.djBartek.dramaCd <= 0
+			&& !this.bartekSpeaking
+			&& !this.djUi.isOpen()
+		) {
+			this.djBartek.dramaCd = 18 + Math.random() * 22;
+			const line = BARTEK_LINES.drama[Math.floor(Math.random() * BARTEK_LINES.drama.length)];
+			void this.bartekSpeak(line);
+		}
+
+		// First approach without opening booth: short teaser shout
+		if (near && !this.nearDjHint && !this.djUi.isOpen() && !this.bartekSpeaking) {
+			// nearDjHint set later in HUD loop — teaser once via dramaCd
+		}
+	}
+
+	private async djRequest(query: string): Promise<void> {
+		await this.bartekSpeak(
+			`Request binnen: ${query}. Bartek downloadt met yt-dlp. Even geduld jongen.`,
+		);
+		const res = await this.djPlayer.requestSong(query);
+		const tracks = await this.djPlayer.refreshPlaylist();
+		this.djUi.setTracks(tracks.filter((t) => !/intro_voice|voice/i.test(t.file)));
+		if (res.ok) {
+			await this.bartekSpeak(BARTEK_LINES.requestOk(query));
+			this.djUi.setStatus(res.message);
+			this.score += 3;
+			this.ui.setScore(this.score, this.metSims.size);
+			this.atmosphere.americans.cheerNear(this.djBartek.pos, 18);
+			// Brief dance flash for the crowd
+			this.atmosphere.americans.setDancing(true);
+			window.setTimeout(() => this.atmosphere.americans.setDancing(false), 12000);
+		} else {
+			await this.bartekSpeak(BARTEK_LINES.requestFail);
+			this.djUi.setStatus(res.message);
+		}
+	}
+
 	private onSelectStore(store: StoreDef): void {
 		this.currentStore = store;
 		const y = store.floor * 6 + 1.5;
@@ -333,6 +562,8 @@ export class App {
 		this.currentStore = store;
 		this.ui.hideArrive();
 		this.clearConfetti();
+		// Cinematic walk — get the settings card out of the shot
+		this.settingsUi.toggle(false);
 
 		const path = this.pathfinder.findPath('kiosk', store.nodeId);
 		if (path.length < 2) {
@@ -377,7 +608,14 @@ export class App {
 			this.ui.showArrive(store);
 			this.spawnConfetti(stand.clone().add(new THREE.Vector3(0, 1.5, 0)));
 			this.player.lookAtPoint(this.spaceship.getShipLookPoint());
-			this.ui.setStatus(`+100 · Kruidvat open · score ${this.score}`);
+			this.ui.setStatus(`+100 · Kruidvat · Youssef praat · score ${this.score}`);
+			// Youssef finally speaks when the route lands
+			this.atmosphere.americans.ensureAudio();
+			void this.shopVoice.speak(
+				'kruidvat',
+				'Marhaba! Je bent er. Welkom bij Kruidvat — ik ben Youssef Benali. Vitamines? Shampoo voor mama? Yallah, de kassa is open.',
+				{ force: true, minGapMs: 0 },
+			);
 		} else {
 			this.ui.showArrive(store);
 			this.spawnConfetti(new THREE.Vector3(store.x, store.floor * 6 + 2, store.z));
@@ -385,6 +623,8 @@ export class App {
 				new THREE.Vector3(store.x, store.floor * 6 + 1.5, store.z),
 			);
 			this.ui.setStatus(`+50 · ${store.name.replace('\n', ' ')} OPEN · score ${this.score}`);
+			// Any named owner greets on arrival
+			void this.shopVoice.speak(store.id, undefined, { force: true, minGapMs: 0 });
 		}
 	}
 
@@ -568,6 +808,19 @@ export class App {
 		this.amenities.update(dt, this.clock.elapsedTime);
 		this.disco.update(dt);
 		this.spaceship.update(this.clock.elapsedTime);
+		this.djBartek.update(this.clock.elapsedTime, dt, this.djPlayer.playing);
+		this.alienProbe.update(dt);
+		this.shopVoice.update(dt);
+		this.tickBartekDrama(dt);
+		// Auto-greet Youssef when you walk into Kruidvat
+		void this.shopVoice.greetIfNear('kruidvat', this.camera.position, 6.5);
+		const dYoussef = this.shopVoice.distanceTo('kruidvat', this.camera.position);
+		if (dYoussef < 7 && this.camera.position.y > 4 && !this.youssefHint) {
+			this.youssefHint = true;
+			this.ui.setStatus('💊 Youssef Benali (Kruidvat) · druk E om te praten');
+		} else if (dYoussef > 10) {
+			this.youssefHint = false;
+		}
 
 		// Meet sims nearby = score (viral "I know Brad" energy)
 		this.nearHudT += dt;
@@ -592,6 +845,15 @@ export class App {
 				);
 			} else {
 				this.ui.setNearbySim(null);
+			}
+
+			// DJ Bartek proximity hint
+			const atDj = this.djBartek.inRange(this.camera.position);
+			if (atDj && !this.nearDjHint && !this.djUi.isOpen()) {
+				this.nearDjHint = true;
+				this.ui.setStatus('🎧 DJ BARTEK · druk E · request plaatjes · Bartek Bartek');
+			} else if (!atDj) {
+				this.nearDjHint = false;
 			}
 		}
 

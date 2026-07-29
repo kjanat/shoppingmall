@@ -145,14 +145,15 @@ export class CollisionWorld {
 
 	/**
 	 * Walkable surface height at (x,z) for a climber (the player).
-	 * Ramps are only mounted from a matching height, so you step onto the
-	 * escalator at a landing instead of dropping through the floor-1 slab.
+	 *
+	 * Inside an incline's corridor the incline *is* the floor, but only while it
+	 * is within `step` of where your feet already are — that's what keeps you on
+	 * the floor-1 slab when you walk over the escalator shaft instead of dropping
+	 * through it. Airborne callers pass a bigger `step` so a jump mid-escalator
+	 * doesn't snap you to the deck above.
 	 */
-	groundHeightAt(x: number, z: number, currentY: number): number {
+	groundHeightAt(x: number, z: number, currentY: number, step = 0.5): number {
 		const slab = currentY < 3.2 ? 0 : FLOOR_H;
-		let best = slab;
-		let bestDelta = Math.abs(slab - currentY);
-		const onSlab = bestDelta < 0.5;
 
 		for (const r of this.ramps) {
 			if (x < r.minX || x > r.maxX) continue;
@@ -163,16 +164,9 @@ export class CollisionWorld {
 			const raw = (z - r.zBottom) / (r.zTop - r.zBottom);
 			const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
 			const h = r.yBottom + (r.yTop - r.yBottom) * t;
-			const delta = Math.abs(h - currentY);
-			// From a slab you may only board near a landing; once on the incline,
-			// keep following it.
-			if (delta > (onSlab ? 1.1 : 2.5)) continue;
-			if (delta < bestDelta) {
-				best = h;
-				bestDelta = delta;
-			}
+			if (Math.abs(h - currentY) <= step) return h;
 		}
-		return best;
+		return slab;
 	}
 
 	/** True while the climber is standing on an incline rather than a slab. */

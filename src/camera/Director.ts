@@ -4,9 +4,13 @@ import type { GraphNode } from '../data/graph';
 
 export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
 
-/** Eye-height at the directory kiosk, looking into the mall. */
-export const HOME_POS = new THREE.Vector3(0, 1.68, 12.5);
-export const HOME_TARGET = new THREE.Vector3(0, 1.5, 2);
+/**
+ * Eye-height beside the directory kiosk, looking into the mall.
+ * Offset in X on purpose: dead centre puts the solid kiosk base 1.5 m in front
+ * of your face, so step one of walking forward was walking into it.
+ */
+export const HOME_POS = new THREE.Vector3(3.4, 1.68, 13);
+export const HOME_TARGET = new THREE.Vector3(2.2, 1.5, 3);
 
 const EYE = 1.68;
 
@@ -146,8 +150,8 @@ export class Director {
 		this.mode = 'boot';
 
 		// First frame: human height looking into the mall
-		this.camera.position.set(0, EYE, 16);
-		this.target.set(0, 1.5, 4);
+		this.camera.position.set(3.4, EYE, 16.5);
+		this.target.set(2.2, 1.5, 4);
 		this.applyLook();
 
 		this.animateCamera(HOME_POS, HOME_TARGET, 2.0, () => {
