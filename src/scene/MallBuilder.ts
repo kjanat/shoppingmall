@@ -92,23 +92,22 @@ export class MallBuilder {
 	}
 
 	private buildStructure(): void {
-		// Ground floor slab — light enough to read as a mall floor
+		// Warm beige mall floor (daylight American mall)
 		const floorMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x2a3148,
-				metalness: 0.25,
-				roughness: 0.55,
+				color: 0xd8cfc0,
+				metalness: 0.05,
+				roughness: 0.75,
 			}),
 		);
 
-		// Checker / tile pattern via canvas
 		const tileCanvas = document.createElement('canvas');
 		tileCanvas.width = 256;
 		tileCanvas.height = 256;
 		const tctx = tileCanvas.getContext('2d')!;
-		tctx.fillStyle = '#3a4560';
+		tctx.fillStyle = '#e8e0d4';
 		tctx.fillRect(0, 0, 256, 256);
-		tctx.strokeStyle = '#4a5678';
+		tctx.strokeStyle = '#d0c8ba';
 		tctx.lineWidth = 2;
 		for (let i = 0; i <= 256; i += 32) {
 			tctx.beginPath();
@@ -120,8 +119,8 @@ export class MallBuilder {
 			tctx.lineTo(256, i);
 			tctx.stroke();
 		}
-		// center walkway strip
-		tctx.fillStyle = 'rgba(0,220,180,0.18)';
+		// center walkway
+		tctx.fillStyle = 'rgba(200, 180, 140, 0.25)';
 		tctx.fillRect(112, 0, 32, 256);
 
 		const tileTex = new THREE.CanvasTexture(tileCanvas);
@@ -166,12 +165,12 @@ export class MallBuilder {
 		floor1.receiveShadow = true;
 		this.group.add(floor1);
 
-		// Outer walls — mid-tone so the shell is visible
+		// Cream mall walls
 		const wallMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x1c2438,
-				metalness: 0.15,
-				roughness: 0.75,
+				color: 0xf0ebe3,
+				metalness: 0.02,
+				roughness: 0.9,
 			}),
 		);
 		const wallH = FLOOR_H * 2 + 2;
@@ -193,9 +192,9 @@ export class MallBuilder {
 		// Ceiling with atrium opening
 		const ceilMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x151c2e,
-				metalness: 0.2,
-				roughness: 0.7,
+				color: 0xf5f0e8,
+				metalness: 0.05,
+				roughness: 0.85,
 				side: THREE.DoubleSide,
 			}),
 		);
@@ -228,9 +227,9 @@ export class MallBuilder {
 		skylight.position.y = FLOOR_H * 2 + 1.4;
 		this.group.add(skylight);
 
-		// Ground outside the mall (subtle, not pure black void)
+		// Parking lot-ish ground outside
 		const voidMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x0a0e18, roughness: 0.95 }),
+			new THREE.MeshStandardMaterial({ color: 0x8a9099, roughness: 0.95 }),
 		);
 		const voidPlane = new THREE.Mesh(
 			new THREE.PlaneGeometry(200, 200),
@@ -242,12 +241,12 @@ export class MallBuilder {
 	}
 
 	private buildAtrium(): void {
-		// Modest center planter — not a blinding green planet
+		// Atrium planter + fake palm (classic US mall energy)
 		const baseMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x3a4258,
-				metalness: 0.35,
-				roughness: 0.45,
+				color: 0xb8a090,
+				metalness: 0.1,
+				roughness: 0.7,
 			}),
 		);
 
@@ -258,32 +257,47 @@ export class MallBuilder {
 		const planter = new THREE.Mesh(
 			new THREE.CylinderGeometry(1.2, 1.4, 0.8, 24),
 			this.track(
-				new THREE.MeshStandardMaterial({ color: 0x2d3548, roughness: 0.7 }),
+				new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.85 }),
 			),
 		);
 		planter.position.y = 0.7;
 		this.group.add(planter);
 
-		// Small info totem (readable landmark, low intensity)
-		const totemMat = this.track(
-			new THREE.MeshStandardMaterial({
-				color: 0x00c9a0,
-				emissive: 0x00c9a0,
-				emissiveIntensity: 0.45,
-			}),
+		// Dirt
+		const dirt = new THREE.Mesh(
+			new THREE.CylinderGeometry(1.05, 1.05, 0.15, 20),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 1 })),
 		);
-		const totem = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2.2, 0.5), totemMat);
-		totem.position.y = 2.0;
-		totem.name = 'atriumOrb';
-		this.group.add(totem);
+		dirt.position.y = 1.05;
+		this.group.add(dirt);
+
+		// Palm trunk
+		const trunk = new THREE.Mesh(
+			new THREE.CylinderGeometry(0.12, 0.18, 2.4, 8),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 })),
+		);
+		trunk.position.y = 2.2;
+		trunk.name = 'atriumOrb';
+		this.group.add(trunk);
+
+		// Leaves
+		const leafMat = this.track(
+			new THREE.MeshStandardMaterial({ color: 0x2d8a4e, roughness: 0.85, side: THREE.DoubleSide }),
+		);
+		for (let i = 0; i < 6; i++) {
+			const leaf = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.35), leafMat);
+			const a = (i / 6) * Math.PI * 2;
+			leaf.position.set(Math.cos(a) * 0.5, 3.4, Math.sin(a) * 0.5);
+			leaf.rotation.y = a;
+			leaf.rotation.z = -0.5;
+			this.group.add(leaf);
+		}
 
 		const accent = new THREE.Mesh(
 			new THREE.RingGeometry(2.6, 3.0, 48),
 			this.track(
 				new THREE.MeshStandardMaterial({
-					color: 0x4a90a8,
-					emissive: 0x1a4050,
-					emissiveIntensity: 0.35,
+					color: 0xc4b5a0,
 					side: THREE.DoubleSide,
 				}),
 			),
@@ -314,11 +328,9 @@ export class MallBuilder {
 		);
 		const railMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x00a8ff,
-				emissive: 0x0066aa,
-				emissiveIntensity: 0.6,
-				metalness: 0.5,
-				roughness: 0.3,
+				color: 0xb0bec5,
+				metalness: 0.7,
+				roughness: 0.35,
 			}),
 		);
 
@@ -409,16 +421,14 @@ export class MallBuilder {
 		body.receiveShadow = true;
 		g.add(body);
 
-		// Storefront window — opaque-ish lit panel (no transmission black voids)
+		// Storefront glass — calm, no glow
 		const frontGlass = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0xc5d8f0,
-				metalness: 0.15,
-				roughness: 0.2,
+				color: 0xd0e4f5,
+				metalness: 0.2,
+				roughness: 0.15,
 				transparent: true,
-				opacity: 0.55,
-				emissive: new THREE.Color(store.accent),
-				emissiveIntensity: 0.12,
+				opacity: 0.45,
 			}),
 		);
 		const glass = new THREE.Mesh(
@@ -428,14 +438,13 @@ export class MallBuilder {
 		glass.position.set(0, h / 2 - 0.1, 0.05);
 		g.add(glass);
 
-		// Interior back wall glow
+		// Interior back wall (soft lit shop interior)
 		const interior = new THREE.Mesh(
 			new THREE.PlaneGeometry(w - 0.6, h - 1),
 			this.track(
 				new THREE.MeshStandardMaterial({
-					color: new THREE.Color(store.accent),
-					emissive: new THREE.Color(store.accent),
-					emissiveIntensity: store.hero ? 0.7 : 0.4,
+					color: new THREE.Color(store.accent).lerp(new THREE.Color(0xffffff), 0.55),
+					roughness: 0.8,
 					side: THREE.DoubleSide,
 				}),
 			),
@@ -466,26 +475,26 @@ export class MallBuilder {
 		sign.position.set(0, h - 0.3, 0.12);
 		g.add(sign);
 
-		// Accent strip under sign
-		const neon = new THREE.Mesh(
-			new THREE.BoxGeometry(w * 0.9, 0.08, 0.08),
+		// Accent strip under sign (solid color, NO emissive — flicker source)
+		const strip = new THREE.Mesh(
+			new THREE.BoxGeometry(w * 0.9, 0.08, 0.06),
 			this.track(
 				new THREE.MeshStandardMaterial({
 					color: store.accent,
-					emissive: new THREE.Color(store.accent),
-					emissiveIntensity: 1.2,
+					roughness: 0.5,
+					metalness: 0.1,
 				}),
 			),
 		);
-		neon.position.set(0, h - 0.95, 0.12);
-		g.add(neon);
+		strip.position.set(0, h - 0.95, 0.12);
+		g.add(strip);
 
 		// Pillars
 		const pillarMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x222233,
-				metalness: 0.7,
-				roughness: 0.3,
+				color: 0xd0cbc4,
+				metalness: 0.15,
+				roughness: 0.6,
 			}),
 		);
 		for (const px of [-w / 2 + 0.2, w / 2 - 0.2]) {
@@ -494,13 +503,13 @@ export class MallBuilder {
 			g.add(p);
 		}
 
-		// Hero extras for Kruidvat
+		// Hero extras for Kruidvat (matte green cross — still the joke destination)
 		if (store.hero) {
 			const crossMat = this.track(
 				new THREE.MeshStandardMaterial({
 					color: 0x00a651,
-					emissive: 0x00a651,
-					emissiveIntensity: 2.5,
+					roughness: 0.55,
+					metalness: 0.1,
 				}),
 			);
 			const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.4, 0.15), crossMat);
@@ -508,21 +517,7 @@ export class MallBuilder {
 			crossV.position.set(-w / 2 + 1.2, h - 1.8, 0.2);
 			crossH.position.copy(crossV.position);
 			g.add(crossV, crossH);
-
-			const beacon = new THREE.PointLight(0x00a651, 12, 20, 2);
-			beacon.position.set(0, h + 1, 2);
-			g.add(beacon);
 		}
-
-		// Soft store wash into corridor
-		const light = new THREE.PointLight(
-			new THREE.Color(store.accent),
-			store.hero ? 10 : 5,
-			14,
-			2,
-		);
-		light.position.set(0, 3, 2.5);
-		g.add(light);
 
 		return g;
 	}
@@ -534,16 +529,15 @@ export class MallBuilder {
 
 		const bodyMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x1a1a28,
-				metalness: 0.6,
-				roughness: 0.35,
+				color: 0x4a5568,
+				metalness: 0.3,
+				roughness: 0.5,
 			}),
 		);
 		const screenMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0x00ffc8,
-				emissive: 0x00ffc8,
-				emissiveIntensity: 1.5,
+				color: 0x3b82f6,
+				roughness: 0.4,
 			}),
 		);
 
@@ -555,11 +549,6 @@ export class MallBuilder {
 		pole.position.y = 1.6;
 		g.add(pole);
 
-		const screen = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.95, 0.08), screenMat);
-		screen.position.set(0, 2.4, 0.1);
-		screen.rotation.x = -0.15;
-		g.add(screen);
-
 		const bezel = new THREE.Mesh(
 			new THREE.BoxGeometry(1.55, 1.1, 0.1),
 			bodyMat,
@@ -567,22 +556,20 @@ export class MallBuilder {
 		bezel.position.set(0, 2.4, 0.05);
 		bezel.rotation.x = -0.15;
 		g.add(bezel);
-		// put screen in front of bezel
-		screen.position.z = 0.12;
 
-		const light = new THREE.PointLight(0x00ffc8, 2, 8, 2);
-		light.position.set(0, 2.5, 1);
-		g.add(light);
+		const screen = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.95, 0.08), screenMat);
+		screen.position.set(0, 2.4, 0.12);
+		screen.rotation.x = -0.15;
+		g.add(screen);
 
-		// You are here marker ring
+		// You are here marker (matte red, no pulse material)
 		const ring = new THREE.Mesh(
 			new THREE.RingGeometry(0.9, 1.15, 40),
 			this.track(
 				new THREE.MeshStandardMaterial({
-					color: 0xff2d55,
-					emissive: 0xff2d55,
-					emissiveIntensity: 2,
+					color: 0xdc2626,
 					side: THREE.DoubleSide,
+					roughness: 0.6,
 				}),
 			),
 		);
@@ -603,12 +590,11 @@ export class MallBuilder {
 			}),
 		);
 		const glassMat = this.track(
-			new THREE.MeshPhysicalMaterial({
-				color: 0xaaddff,
+			new THREE.MeshStandardMaterial({
+				color: 0xc5e0f5,
 				transparent: true,
-				opacity: 0.12,
-				transmission: 0.6,
-				roughness: 0.05,
+				opacity: 0.25,
+				roughness: 0.1,
 				side: THREE.DoubleSide,
 			}),
 		);
@@ -665,11 +651,11 @@ export class MallBuilder {
 			}
 		}
 
+		// Fluorescent panels (matte, no emissive strobe)
 		const bulbMat = this.track(
 			new THREE.MeshStandardMaterial({
-				color: 0xffeeb0,
-				emissive: 0xffcc66,
-				emissiveIntensity: 2,
+				color: 0xf5f0e0,
+				roughness: 0.4,
 			}),
 		);
 
@@ -677,13 +663,6 @@ export class MallBuilder {
 			const bulb = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.4), bulbMat);
 			bulb.position.set(x, y, z);
 			this.group.add(bulb);
-
-			// Only some real lights for perf
-			if ((x + z) % 16 === 0) {
-				const l = new THREE.PointLight(0xffd8a0, 0.6, 14, 2);
-				l.position.set(x, y - 0.5, z);
-				this.group.add(l);
-			}
 		}
 	}
 }

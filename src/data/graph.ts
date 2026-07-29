@@ -62,6 +62,8 @@ export const NODES: GraphNode[] = [
 
 	// Floor 1 stores
 	{ id: 's_kruidvat', x: 18, y: 6.15, z: -12, label: 'Kruidvat' },
+	// Epic ending: stand UNDER the spaceship (next to Kruidvat)
+	{ id: 'spaceship', x: 18, y: 6.15, z: -9, label: 'Under the spaceship' },
 	{ id: 's_sephora', x: 0, y: 6.15, z: -12 },
 	{ id: 's_uniqlo', x: -16, y: 6.15, z: -12 },
 	{ id: 's_decathlon', x: -22, y: 6.15, z: 12 },
@@ -125,6 +127,8 @@ export const EDGES: GraphEdge[] = [
 
 	// Stores floor 1
 	{ from: 'f1_ne', to: 's_kruidvat' },
+	{ from: 's_kruidvat', to: 'spaceship' },
+	{ from: 'f1_ne', to: 'spaceship' },
 	{ from: 'f1_n', to: 's_sephora' },
 	{ from: 'f1_nw', to: 's_uniqlo' },
 	{ from: 'f1_sw', to: 's_decathlon' },

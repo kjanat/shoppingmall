@@ -1,5 +1,4 @@
 import {
-	BloomEffect,
 	EffectComposer,
 	EffectPass,
 	RenderPass,
@@ -10,7 +9,7 @@ import {
 } from 'postprocessing';
 import * as THREE from 'three';
 
-/** Lighter post stack — less bloom/vignette so the mall stays readable. */
+/** Clean, stable post — NO bloom (bloom + emissive = arcade flicker). */
 export function createComposer(
 	renderer: THREE.WebGLRenderer,
 	scene: THREE.Scene,
@@ -22,17 +21,9 @@ export function createComposer(
 
 	composer.addPass(new RenderPass(scene, camera));
 
-	const bloom = new BloomEffect({
-		intensity: 0.35,
-		luminanceThreshold: 0.55,
-		luminanceSmoothing: 0.35,
-		mipmapBlur: true,
-		radius: 0.55,
-	});
-
 	const vignette = new VignetteEffect({
-		darkness: 0.28,
-		offset: 0.4,
+		darkness: 0.18,
+		offset: 0.45,
 	});
 
 	const tone = new ToneMappingEffect({
@@ -41,7 +32,7 @@ export function createComposer(
 
 	const smaa = new SMAAEffect();
 
-	composer.addPass(new EffectPass(camera, bloom, vignette, tone, smaa));
+	composer.addPass(new EffectPass(camera, vignette, tone, smaa));
 
 	return composer;
 }

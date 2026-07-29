@@ -1,17 +1,17 @@
 :root {
-	--bg: #05050c;
-	--panel: rgba(10, 10, 20, 0.78);
-	--panel-border: rgba(0, 255, 200, 0.18);
-	--text: #eef2ff;
-	--muted: #8b93b0;
-	--neon: #00ffc8;
-	--neon2: #00a8ff;
-	--hot: #ff2d55;
+	--bg: #e8eef4;
+	--panel: rgba(255, 255, 255, 0.92);
+	--panel-border: rgba(15, 23, 42, 0.1);
+	--text: #0f172a;
+	--muted: #64748b;
+	--neon: #1d4ed8;
+	--neon2: #2563eb;
+	--hot: #dc2626;
 	--kruid: #00a651;
 	--kruid-red: #e30613;
-	--radius: 16px;
-	--font: "Outfit", system-ui, sans-serif;
-	--mono: "JetBrains Mono", ui-monospace, monospace;
+	--radius: 14px;
+	--font: system-ui, -apple-system, "Segoe UI", sans-serif;
+	--mono: ui-monospace, "Cascadia Code", monospace;
 }
 
 * {
@@ -25,7 +25,7 @@ body {
 	width: 100%;
 	height: 100%;
 	overflow: hidden;
-	background: var(--bg);
+	background: #b8c4d0;
 	color: var(--text);
 	font-family: var(--font);
 	-webkit-font-smoothing: antialiased;
@@ -69,7 +69,7 @@ body {
 	inset: 0;
 	display: grid;
 	place-items: center;
-	background: radial-gradient(ellipse at center, #12122a 0%, #05050c 70%);
+	background: linear-gradient(160deg, #dbe4ee 0%, #b8c4d0 100%);
 	transition: opacity 0.7s ease;
 }
 
@@ -84,14 +84,10 @@ body {
 }
 
 .boot-logo {
-	font-size: clamp(3rem, 8vw, 5rem);
+	font-size: clamp(2.5rem, 7vw, 4rem);
 	font-weight: 800;
-	letter-spacing: 0.12em;
-	background: linear-gradient(120deg, var(--neon), var(--neon2), var(--hot));
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #0f172a;
 }
 
 .boot-sub {
@@ -105,8 +101,8 @@ body {
 .boot-bar {
 	margin: 2rem auto 0.75rem;
 	width: min(280px, 70vw);
-	height: 3px;
-	background: rgba(255, 255, 255, 0.08);
+	height: 4px;
+	background: rgba(15, 23, 42, 0.1);
 	border-radius: 99px;
 	overflow: hidden;
 }
@@ -114,9 +110,8 @@ body {
 .boot-bar-fill {
 	height: 100%;
 	width: 0%;
-	background: linear-gradient(90deg, var(--neon), var(--neon2));
-	animation: load 2.6s ease-in-out forwards;
-	box-shadow: 0 0 16px var(--neon);
+	background: #1d4ed8;
+	animation: load 2s ease-in-out forwards;
 }
 
 .boot-hint {
@@ -175,9 +170,7 @@ body {
 	width: 12px;
 	height: 12px;
 	border-radius: 50%;
-	background: var(--neon);
-	box-shadow: 0 0 16px var(--neon);
-	animation: pulse 2s ease-in-out infinite;
+	background: #1d4ed8;
 }
 
 .brand-name {
@@ -197,6 +190,29 @@ body {
 	align-items: center;
 	gap: 10px;
 	pointer-events: auto;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.score-chip {
+	padding: 8px 12px;
+	border-radius: 99px;
+	background: #0f172a;
+	color: #fbbf24;
+	font-weight: 700;
+	font-size: 0.8rem;
+	font-family: var(--mono);
+}
+
+.nearby-sim {
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: rgba(29, 78, 216, 0.08);
+	border: 1px solid rgba(29, 78, 216, 0.2);
+	font-size: 0.8rem;
+	line-height: 1.35;
+	color: var(--text);
 }
 
 .btn-home {
@@ -485,8 +501,8 @@ body {
 }
 
 .btn.primary {
-	background: linear-gradient(135deg, var(--neon), var(--neon2));
-	color: #041018;
+	background: #1d4ed8;
+	color: #ffffff;
 }
 
 .btn.primary:hover {

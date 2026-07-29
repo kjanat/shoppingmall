@@ -195,7 +195,8 @@ export const STORES: StoreDef[] = [
 		color: '#e30613',
 		accent: '#00a651',
 		hero: true,
-		nodeId: 's_kruidvat',
+		/** Epic route ends under the hovering spaceship pad */
+		nodeId: 'spaceship',
 	},
 	{
 		id: 'sephora',
