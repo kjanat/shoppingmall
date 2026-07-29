@@ -247,7 +247,7 @@ export class App {
 		this.atmosphere.americans.ensureAudio();
 		this.ui.setStatus(
 			on
-				? '🕺 ARCADE DANCE PARTY — shitty bangers + iedereen danst!'
+				? '🕺 HARDCORE MALL SET — 150BPM · boom-bam-bam-boom · mate ya'
 				: 'Disco uit · sims shoppen weer',
 		);
 	}

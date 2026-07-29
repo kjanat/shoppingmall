@@ -55,21 +55,19 @@ export class CollisionWorld {
 		this.add(-hw - wallT, hw + wallT, -hd - wallT, -hd + 0.2, { label: 'wall_n' });
 		this.add(-hw - wallT, hw + wallT, hd - 0.2, hd + wallT, { label: 'wall_s' });
 
-		// Store pods — solid BACK half only so doorways stay walkable (shops OPEN)
+		// Store: thin BACK wall only — open interior for stock + shopkeeper
 		for (const s of STORES) {
 			if (s.id === 'info') continue;
 			const y0 = s.floor * FLOOR_H;
 			const y1 = y0 + 4.5;
-			// Center of solid back mass (deeper into store, not the entrance)
-			const pull = s.depth * 0.55;
-			const cx = s.x - Math.sin(s.rotation) * pull;
-			const cz = s.z - Math.cos(s.rotation) * pull;
-			const extX = s.width * 0.45;
-			const extZ = s.depth * 0.35;
-			this.add(cx - extX, cx + extX, cz - extZ, cz + extZ, {
+			const roomDepth = s.depth * 0.92;
+			const backCx = s.x - Math.sin(s.rotation) * roomDepth;
+			const backCz = s.z - Math.cos(s.rotation) * roomDepth;
+			const halfW = s.width * 0.48;
+			this.add(backCx - halfW, backCx + halfW, backCz - 0.4, backCz + 0.4, {
 				minY: y0 - 0.5,
 				maxY: y1,
-				label: `store_${s.id}`,
+				label: `store_back_${s.id}`,
 			});
 		}
 

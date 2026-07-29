@@ -1,10 +1,11 @@
 /**
- * Intentionally shitty but catchy dance-floor loop.
- * Web Audio only — no external files. Tolerable for ~2 minutes, funny forever.
+ * Hardcore mall set + alpine JODEL energy.
+ * boom-bam-bam-boom, then yodel leaps: hi-ho-la-hi-ho
  */
 export class ShittyDiscoMusic {
 	private ctx: AudioContext | null = null;
 	private master: GainNode | null = null;
+	private comp: DynamicsCompressorNode | null = null;
 	private timer: number | null = null;
 	private step = 0;
 	playing = false;
@@ -13,8 +14,14 @@ export class ShittyDiscoMusic {
 		if (!this.ctx) {
 			this.ctx = new AudioContext();
 			this.master = this.ctx.createGain();
-			this.master.gain.value = 0.14;
-			this.master.connect(this.ctx.destination);
+			this.master.gain.value = 0.15;
+			this.comp = this.ctx.createDynamicsCompressor();
+			this.comp.threshold.value = -16;
+			this.comp.ratio.value = 5;
+			this.comp.attack.value = 0.003;
+			this.comp.release.value = 0.12;
+			this.master.connect(this.comp);
+			this.comp.connect(this.ctx.destination);
 		}
 		if (this.ctx.state === 'suspended') void this.ctx.resume();
 	}
@@ -24,8 +31,8 @@ export class ShittyDiscoMusic {
 		if (this.playing || !this.ctx || !this.master) return;
 		this.playing = true;
 		this.step = 0;
-		const bpm = 118;
-		const interval = (60 / bpm) * 1000 * 0.5; // 8th notes
+		const bpm = 148;
+		const interval = (60 / bpm) * 1000 * 0.25;
 		this.timer = window.setInterval(() => this.tick(), interval);
 		this.tick();
 	}
@@ -41,108 +48,153 @@ export class ShittyDiscoMusic {
 	private tick(): void {
 		if (!this.ctx || !this.master || !this.playing) return;
 		const t = this.ctx.currentTime;
-		// 8th-note grid in a 4-beat bar: boom-bam-bam-boom
-		// 0:boom  1:hat  2:bam  3:hat  4:bam  5:hat  6:boom  7:hat
-		const s = this.step % 8;
+		const s = this.step % 16;
 		this.step++;
 
-		// boom · bam · bam · boom
-		if (s === 0 || s === 6) this.kick(t, s === 0 ? 0.7 : 0.55);
-		if (s === 2 || s === 4) this.snare(t);
-		this.hat(t, s % 2 === 1 ? 0.05 : 0.025);
+		// boom-bam-bam-boom
+		if (s === 0 || s === 8) this.hardKick(t, s === 0 ? 0.8 : 0.6);
+		if (s === 4 || s === 12) this.noiseBurst(t, 0.08, 1600, 0.26);
+		if (s === 2 || s === 6 || s === 10 || s === 14) this.reverseBass(t);
+		if (s % 2 === 0) this.noiseBurst(t, 0.025, 7500, 0.03);
 
-		// Sparse shitty hook — not every hit
-		const scale = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25];
-		const melody = [0, -1, 4, -1, 2, -1, 0, 3]; // -1 = rest
-		const n = melody[s];
-		if (n >= 0) {
-			this.beep(t, scale[n], 0.14, s === 0 ? 'square' : 'triangle', 0.07);
+		// Alpine yodel lead: big octave jumps (hi-ho-la)
+		// Pattern over 16 steps — yodel every other bar section
+		const yodel = [
+			523.25,
+			0,
+			1046.5,
+			0, // C5 rest C6 rest
+			784.0,
+			0,
+			392.0,
+			0, // G5 rest G4 rest
+			659.25,
+			0,
+			1318.5,
+			0, // E5 rest E6
+			587.33,
+			523.25,
+			0,
+			784.0,
+		];
+		const f = yodel[s];
+		if (f > 0) {
+			this.yodelNote(t, f, 0.16);
 		}
-		if (s === 0 || s === 6) {
-			this.beep(t, 65.41, 0.2, 'sawtooth', 0.08); // fat boom bass
+
+		// Harmony under yodel
+		if (s % 4 === 0) {
+			this.beep(t, 98, 0.2, 'sawtooth', 0.07);
 		}
-		// occasional "mate, ya"
-		if (s === 7 && this.step % 16 < 8) {
-			this.mateYa(t);
-		}
+
+		if (s === 15 && this.step % 32 < 16) this.mateYa(t);
+		if (s === 14 && this.step % 64 > 40) this.screech(t);
 	}
 
-	private kick(t: number, vol = 0.6): void {
+	/** Classic yodel: pure-ish tone with vibrato + formant */
+	private yodelNote(t: number, freq: number, dur: number): void {
+		const ctx = this.ctx!;
+		const o = ctx.createOscillator();
+		const o2 = ctx.createOscillator();
+		const g = ctx.createGain();
+		const f = ctx.createBiquadFilter();
+		o.type = 'sine';
+		o2.type = 'triangle';
+		o.frequency.setValueAtTime(freq, t);
+		o2.frequency.setValueAtTime(freq * 1.003, t);
+		// vibrato
+		const lfo = ctx.createOscillator();
+		const lfoG = ctx.createGain();
+		lfo.frequency.value = 5.5;
+		lfoG.gain.value = freq * 0.012;
+		lfo.connect(lfoG);
+		lfoG.connect(o.frequency);
+		f.type = 'bandpass';
+		f.frequency.value = freq * 1.5;
+		f.Q.value = 1.2;
+		g.gain.setValueAtTime(0.0001, t);
+		g.gain.exponentialRampToValueAtTime(0.09, t + 0.03);
+		g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+		o.connect(f);
+		o2.connect(f);
+		f.connect(g);
+		g.connect(this.master!);
+		lfo.start(t);
+		o.start(t);
+		o2.start(t);
+		lfo.stop(t + dur + 0.02);
+		o.stop(t + dur + 0.02);
+		o2.stop(t + dur + 0.02);
+	}
+
+	private hardKick(t: number, vol: number): void {
 		const ctx = this.ctx!;
 		const o = ctx.createOscillator();
 		const g = ctx.createGain();
 		o.type = 'sine';
-		o.frequency.setValueAtTime(160, t);
-		o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+		o.frequency.setValueAtTime(170, t);
+		o.frequency.exponentialRampToValueAtTime(40, t + 0.15);
 		g.gain.setValueAtTime(0.0001, t);
-		g.gain.exponentialRampToValueAtTime(vol, t + 0.005);
-		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+		g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
+		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
 		o.connect(g);
 		g.connect(this.master!);
 		o.start(t);
-		o.stop(t + 0.24);
+		o.stop(t + 0.28);
+		const c = ctx.createOscillator();
+		const cg = ctx.createGain();
+		c.type = 'square';
+		c.frequency.setValueAtTime(500, t);
+		c.frequency.exponentialRampToValueAtTime(70, t + 0.03);
+		cg.gain.setValueAtTime(0.0001, t);
+		cg.gain.exponentialRampToValueAtTime(0.1, t + 0.002);
+		cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+		c.connect(cg);
+		cg.connect(this.master!);
+		c.start(t);
+		c.stop(t + 0.05);
 	}
 
-	/** Vocal-ish blip: mate… ya */
-	private mateYa(t: number): void {
+	private reverseBass(t: number): void {
 		const ctx = this.ctx!;
-		// "mate"
-		const o1 = ctx.createOscillator();
-		const g1 = ctx.createGain();
-		o1.type = 'sawtooth';
-		o1.frequency.setValueAtTime(180, t);
-		o1.frequency.linearRampToValueAtTime(140, t + 0.1);
-		g1.gain.setValueAtTime(0.0001, t);
-		g1.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
-		g1.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-		const f = ctx.createBiquadFilter();
-		f.type = 'bandpass';
-		f.frequency.value = 900;
-		o1.connect(f);
-		f.connect(g1);
-		g1.connect(this.master!);
-		o1.start(t);
-		o1.stop(t + 0.13);
-		// "ya"
-		const o2 = ctx.createOscillator();
-		const g2 = ctx.createGain();
-		o2.type = 'triangle';
-		o2.frequency.setValueAtTime(320, t + 0.14);
-		o2.frequency.linearRampToValueAtTime(280, t + 0.28);
-		g2.gain.setValueAtTime(0.0001, t + 0.14);
-		g2.gain.exponentialRampToValueAtTime(0.055, t + 0.16);
-		g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-		o2.connect(g2);
-		g2.connect(this.master!);
-		o2.start(t + 0.14);
-		o2.stop(t + 0.32);
-	}
-
-	private snare(t: number): void {
-		const ctx = this.ctx!;
-		const bufferSize = 2 * ctx.sampleRate * 0.08;
-		const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-		const data = buffer.getChannelData(0);
-		for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-		const noise = ctx.createBufferSource();
-		noise.buffer = buffer;
+		const o = ctx.createOscillator();
 		const g = ctx.createGain();
 		const f = ctx.createBiquadFilter();
-		f.type = 'highpass';
-		f.frequency.value = 1200;
+		o.type = 'sawtooth';
+		o.frequency.setValueAtTime(50, t);
+		o.frequency.exponentialRampToValueAtTime(85, t + 0.1);
+		f.type = 'lowpass';
+		f.frequency.setValueAtTime(180, t);
+		f.frequency.exponentialRampToValueAtTime(1200, t + 0.09);
 		g.gain.setValueAtTime(0.0001, t);
-		g.gain.exponentialRampToValueAtTime(0.22, t + 0.005);
-		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-		noise.connect(f);
+		g.gain.exponentialRampToValueAtTime(0.1, t + 0.04);
+		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+		o.connect(f);
 		f.connect(g);
 		g.connect(this.master!);
-		noise.start(t);
-		noise.stop(t + 0.12);
+		o.start(t);
+		o.stop(t + 0.13);
 	}
 
-	private hat(t: number, vol: number): void {
+	private screech(t: number): void {
 		const ctx = this.ctx!;
-		const bufferSize = ctx.sampleRate * 0.03;
+		const o = ctx.createOscillator();
+		const g = ctx.createGain();
+		o.type = 'square';
+		o.frequency.setValueAtTime(500, t);
+		o.frequency.exponentialRampToValueAtTime(1600, t + 0.3);
+		g.gain.setValueAtTime(0.0001, t);
+		g.gain.exponentialRampToValueAtTime(0.04, t + 0.02);
+		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+		o.connect(g);
+		g.connect(this.master!);
+		o.start(t);
+		o.stop(t + 0.36);
+	}
+
+	private noiseBurst(t: number, dur: number, hp: number, vol: number): void {
+		const ctx = this.ctx!;
+		const bufferSize = Math.floor(ctx.sampleRate * dur);
 		const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
 		const data = buffer.getChannelData(0);
 		for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
@@ -151,15 +203,15 @@ export class ShittyDiscoMusic {
 		const g = ctx.createGain();
 		const f = ctx.createBiquadFilter();
 		f.type = 'highpass';
-		f.frequency.value = 7000;
+		f.frequency.value = hp;
 		g.gain.setValueAtTime(0.0001, t);
 		g.gain.exponentialRampToValueAtTime(vol, t + 0.002);
-		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+		g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 		noise.connect(f);
 		f.connect(g);
 		g.connect(this.master!);
 		noise.start(t);
-		noise.stop(t + 0.05);
+		noise.stop(t + dur + 0.01);
 	}
 
 	private beep(
@@ -167,25 +219,47 @@ export class ShittyDiscoMusic {
 		freq: number,
 		dur: number,
 		type: OscillatorType,
-		vol = 0.09,
+		vol: number,
 	): void {
 		const ctx = this.ctx!;
 		const o = ctx.createOscillator();
 		const g = ctx.createGain();
 		o.type = type;
 		o.frequency.setValueAtTime(freq, t);
-		// slight pitch bend = cheap synth
-		o.frequency.linearRampToValueAtTime(freq * 1.02, t + dur);
 		g.gain.setValueAtTime(0.0001, t);
 		g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
 		g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-		const f = ctx.createBiquadFilter();
-		f.type = 'lowpass';
-		f.frequency.value = 2200;
-		o.connect(f);
-		f.connect(g);
+		o.connect(g);
 		g.connect(this.master!);
 		o.start(t);
 		o.stop(t + dur + 0.02);
+	}
+
+	private mateYa(t: number): void {
+		const ctx = this.ctx!;
+		const o1 = ctx.createOscillator();
+		const g1 = ctx.createGain();
+		o1.type = 'sawtooth';
+		o1.frequency.setValueAtTime(170, t);
+		o1.frequency.linearRampToValueAtTime(130, t + 0.1);
+		g1.gain.setValueAtTime(0.0001, t);
+		g1.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
+		g1.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+		o1.connect(g1);
+		g1.connect(this.master!);
+		o1.start(t);
+		o1.stop(t + 0.13);
+		const o2 = ctx.createOscillator();
+		const g2 = ctx.createGain();
+		o2.type = 'sine';
+		o2.frequency.setValueAtTime(400, t + 0.13);
+		o2.frequency.linearRampToValueAtTime(900, t + 0.28); // yodel flip up
+		g2.gain.setValueAtTime(0.0001, t + 0.13);
+		g2.gain.exponentialRampToValueAtTime(0.07, t + 0.15);
+		g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+		o2.connect(g2);
+		g2.connect(this.master!);
+		o2.start(t + 0.13);
+		o2.stop(t + 0.34);
 	}
 }

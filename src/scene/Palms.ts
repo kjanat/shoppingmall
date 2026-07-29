@@ -9,12 +9,13 @@ export class PalmForest {
 	constructor() {
 		this.group.name = 'palms';
 
-		// Atrium cluster
-		this.plant(0, 0, 0, 1.15, 0);
-		this.plant(-3.2, 0, 1.5, 0.85, 0.4);
-		this.plant(3.0, 0, -1.2, 0.9, 1.1);
-		this.plant(-1.5, 0, -2.8, 0.75, 2.0);
-		this.plant(2.2, 0, 2.5, 0.8, 2.6);
+		// Atrium ring AROUND fountain — never on top of it (radius ~3+)
+		this.plant(-4.2, 0, 0, 1.05, 0);
+		this.plant(4.2, 0, 0, 1.0, 0.5);
+		this.plant(0, 0, -4.2, 0.95, 1.1);
+		this.plant(0, 0, 4.2, 0.95, 1.6);
+		this.plant(-3.5, 0, 3.2, 0.85, 2.0);
+		this.plant(3.5, 0, -3.2, 0.85, 2.5);
 
 		// Corridor planters floor 0
 		const f0: [number, number, number][] = [
@@ -48,10 +49,9 @@ export class PalmForest {
 		];
 		f1.forEach(([x, y, z], i) => this.plant(x, y, z, 0.65 + (i % 4) * 0.06, i * 0.9 + 3));
 
-		// Extra jungle near Kruidvat / spaceship landing
-		this.plant(14, 6, -10, 1.0, 5);
-		this.plant(22, 6, -10, 0.95, 5.5);
-		this.plant(18, 6, -14, 0.85, 6);
+		// Balcony accents (not mid-void)
+		this.plant(14, 6, -12, 0.9, 5);
+		this.plant(-14, 6, -12, 0.85, 5.5);
 	}
 
 	update(t: number): void {

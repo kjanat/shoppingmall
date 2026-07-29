@@ -492,90 +492,88 @@ export class MallBuilder {
 		const h = 4.2;
 
 		const bodyColor = new THREE.Color(store.color);
-		// Keep brand tint but ensure mid brightness so pods read from overview
-		bodyColor.offsetHSL(0, 0, 0.08);
-		const bodyMat = this.track(
+		bodyColor.offsetHSL(0, 0, 0.1);
+		const wallMat = this.track(
 			new THREE.MeshStandardMaterial({
 				color: bodyColor,
-				metalness: 0.2,
-				roughness: 0.6,
+				metalness: 0.15,
+				roughness: 0.65,
 			}),
 		);
-		// Back + side walls only — FRONT OPEN so the shop feels alive
-		const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d * 0.55), bodyMat);
-		body.position.set(0, h / 2, -d * 0.65);
-		body.castShadow = true;
-		body.receiveShadow = true;
-		g.add(body);
 
-		// Side walls framing the open entrance
-		const sideMat = bodyMat;
-		for (const sx of [-w / 2 + 0.15, w / 2 - 0.15]) {
-			const side = new THREE.Mesh(new THREE.BoxGeometry(0.25, h, d * 0.85), sideMat);
-			side.position.set(sx, h / 2, -d * 0.35);
+		/**
+		 * OPEN BOX shop: front fully open toward corridor.
+		 * Local +Z = entrance, local -Z = back.
+		 * Thin walls ONLY on back + left + right — NOTHING in the middle.
+		 */
+		const wallT = 0.18;
+		const roomDepth = d * 0.92;
+		const backZ = -roomDepth;
+
+		// Floor of shop (visible mat)
+		const floor = new THREE.Mesh(
+			new THREE.BoxGeometry(w - 0.2, 0.06, roomDepth),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xe8dcc8, roughness: 0.85 })),
+		);
+		floor.position.set(0, 0.03, -roomDepth / 2);
+		g.add(floor);
+
+		// BACK wall only (thin slab at rear)
+		const backWall = new THREE.Mesh(
+			new THREE.BoxGeometry(w, h, wallT),
+			wallMat,
+		);
+		backWall.position.set(0, h / 2, backZ);
+		backWall.castShadow = true;
+		g.add(backWall);
+
+		// LEFT / RIGHT walls (thin, full depth — open storefront)
+		for (const sx of [-w / 2 + wallT / 2, w / 2 - wallT / 2]) {
+			const side = new THREE.Mesh(
+				new THREE.BoxGeometry(wallT, h, roomDepth),
+				wallMat,
+			);
+			side.position.set(sx, h / 2, -roomDepth / 2);
 			g.add(side);
 		}
 
-		// Glass panels left/right of OPEN doorway (center clear)
-		const frontGlass = this.track(
-			new THREE.MeshStandardMaterial({
-				color: 0xd0e4f5,
-				metalness: 0.2,
-				roughness: 0.15,
-				transparent: true,
-				opacity: 0.4,
-			}),
+		// Thin ceiling so it reads as a room
+		const ceil = new THREE.Mesh(
+			new THREE.BoxGeometry(w - 0.1, 0.1, roomDepth),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.9 })),
 		);
-		const doorW = Math.min(2.4, w * 0.4);
-		const paneW = (w - doorW) / 2 - 0.15;
-		if (paneW > 0.4) {
-			for (const side of [-1, 1]) {
-				const glass = new THREE.Mesh(
-					new THREE.BoxGeometry(paneW, h - 0.8, 0.06),
-					frontGlass,
-				);
-				glass.position.set(side * (doorW / 2 + paneW / 2 + 0.05), h / 2 - 0.1, 0.05);
-				g.add(glass);
-			}
-		}
+		ceil.position.set(0, h - 0.05, -roomDepth / 2);
+		g.add(ceil);
 
-		// Warm lit interior back wall
+		// Interior paint on back wall (facing into shop = +Z)
 		const interior = new THREE.Mesh(
-			new THREE.PlaneGeometry(w - 0.5, h - 0.8),
+			new THREE.PlaneGeometry(w - 0.4, h - 0.6),
 			this.track(
 				new THREE.MeshStandardMaterial({
-					color: new THREE.Color(store.accent).lerp(new THREE.Color(0xfff8f0), 0.45),
+					color: new THREE.Color(store.accent).lerp(new THREE.Color(0xfff8f0), 0.5),
 					roughness: 0.75,
 					emissive: new THREE.Color(store.accent),
-					emissiveIntensity: 0.08,
+					emissiveIntensity: 0.1,
 					side: THREE.DoubleSide,
 				}),
 			),
 		);
-		interior.position.set(0, h / 2, -d + 0.15);
+		interior.position.set(0, h / 2, backZ + wallT / 2 + 0.02);
 		g.add(interior);
 
-		// Floor mat inside
-		const matMesh = new THREE.Mesh(
-			new THREE.BoxGeometry(w * 0.7, 0.04, d * 0.5),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xc4a574, roughness: 0.9 })),
-		);
-		matMesh.position.set(0, 0.03, -d * 0.35);
-		g.add(matMesh);
-
-		// Counter + shopkeeper (verkoper)
+		// Counter + shopkeeper in OPEN floor area (visible from door)
 		const counter = new THREE.Mesh(
-			new THREE.BoxGeometry(Math.min(w * 0.55, 3.2), 0.9, 0.55),
+			new THREE.BoxGeometry(Math.min(w * 0.5, 2.8), 0.85, 0.5),
 			this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 })),
 		);
-		counter.position.set(0, 0.45, -d * 0.45);
+		counter.position.set(0, 0.42, -roomDepth * 0.55);
 		g.add(counter);
 
 		const keeper = this.makeShopkeeper(store);
-		keeper.position.set(0, 0, -d * 0.55);
+		keeper.position.set(0, 0, -roomDepth * 0.68);
 		g.add(keeper);
 
-		// OPEN sign
+		// OPEN signs
 		const openCanvas = document.createElement('canvas');
 		openCanvas.width = 256;
 		openCanvas.height = 96;
@@ -590,21 +588,19 @@ export class MallBuilder {
 		const openTex = new THREE.CanvasTexture(openCanvas);
 		openTex.colorSpace = THREE.SRGBColorSpace;
 		const openSign = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.1, 0.4),
+			new THREE.PlaneGeometry(1.2, 0.45),
 			this.track(new THREE.MeshBasicMaterial({ map: openTex, toneMapped: false })),
 		);
-		openSign.position.set(w * 0.28, h - 1.5, 0.15);
+		openSign.position.set(w * 0.32, h - 1.3, 0.08);
 		g.add(openSign);
 
-		// Soft interior light
-		const shopLight = new THREE.PointLight(
-			new THREE.Color(store.accent).lerp(new THREE.Color(0xfff0dd), 0.6),
-			4,
-			10,
-			2,
-		);
-		shopLight.position.set(0, h - 0.5, -d * 0.3);
+		// Bright interior lights so stock + keeper pop
+		const shopLight = new THREE.PointLight(0xfff4e0, 8, 14, 1.6);
+		shopLight.position.set(0, h - 0.6, -roomDepth * 0.4);
 		g.add(shopLight);
+		const shopLight2 = new THREE.PointLight(0xffffff, 4, 10, 2);
+		shopLight2.position.set(0, 2.2, -roomDepth * 0.2);
+		g.add(shopLight2);
 
 		// Sign board — bright MeshBasic so names always readable
 		const lines = store.name.split('\n');

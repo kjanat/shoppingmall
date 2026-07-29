@@ -165,7 +165,8 @@ export class Amenities {
 
 	private buildMonkeyInTree(): { monkey: THREE.Group; base: THREE.Vector3 } {
 		// Sit on a palm near atrium (Palms has trees around center)
-		const base = new THREE.Vector3(3.0, 3.6, -1.2);
+		// Monkey on palm NEXT to fountain, not in the water
+		const base = new THREE.Vector3(4.2, 3.5, 0);
 		const m = new THREE.Group();
 		m.position.copy(base);
 
