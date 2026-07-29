@@ -6,6 +6,7 @@ export type UICallbacks = {
 	onCancel: () => void;
 	onReplay: () => void;
 	onHome: () => void;
+	onPossess: () => void;
 };
 
 export class KioskOverlay {
@@ -26,6 +27,7 @@ export class KioskOverlay {
 	private elHud!: HTMLElement;
 	private elScore!: HTMLElement;
 	private elNearby!: HTMLElement;
+	private elPossessBanner!: HTMLElement;
 
 	constructor(root: HTMLElement, callbacks: UICallbacks) {
 		this.root = root;
@@ -38,9 +40,9 @@ export class KioskOverlay {
       <div class="boot" id="boot">
         <div class="boot-inner">
           <div class="boot-logo">MALL SIM</div>
-          <div class="boot-sub">Prairie Lakes · walk · meet sims · get to Kruidvat</div>
+          <div class="boot-sub">OPEN shops · WASD · faces · guest view · baard-dief</div>
           <div class="boot-bar"><div class="boot-bar-fill"></div></div>
-          <div class="boot-hint">Spawning 24 individual shoppers…</div>
+          <div class="boot-hint">Winkels openen… verkopers inklokken…</div>
         </div>
       </div>
 
@@ -62,7 +64,7 @@ export class KioskOverlay {
         <aside class="panel">
           <div class="panel-head">
             <h1>Waar wil je heen?</h1>
-            <p class="panel-sub">First-person loopband-run. Elke shopper is een eigen sim (speed, thicc, mood, goal). Loop langs ze = punten.</p>
+            <p class="panel-sub"><b>WASD</b> lopen, sleep = kijken. Winkels zijn OPEN (verkopers!). Sim-gezichten = mood. <b>V</b> = RCT guest view.</p>
           </div>
           <div class="nearby-sim hidden" id="nearby-sim"></div>
 
@@ -70,9 +72,13 @@ export class KioskOverlay {
             <span class="hero-cta-icon">✚</span>
             <span>
               <strong>Naar Kruidvat</strong>
-              <small>Verdieping 1 · loopband + roltrap · first-person</small>
+              <small>OPEN · gele route · first-person auto-walk</small>
             </span>
             <span class="hero-cta-go">Start →</span>
+          </button>
+
+          <button class="btn possess-btn" type="button" id="btn-possess">
+            👁 Guest view (word een shopper)
           </button>
 
           <div class="search-wrap">
@@ -91,7 +97,8 @@ export class KioskOverlay {
           <canvas id="minimap" width="180" height="140"></canvas>
         </div>
 
-        <div class="hint-bar" id="hint">Sleep = omkijken · <b>Start route</b> in het menu · <b>H</b> = kiosk · <b>K</b> = Kruidvat</div>
+        <div class="hint-bar" id="hint"><b>WASD</b> lopen · sleep kijken · <b>V</b> guest · <b>K</b> Kruidvat · <b>H</b> kiosk</div>
+        <div class="possess-banner hidden" id="possess-banner">GUEST VIEW</div>
       </div>
 
       <div class="arrive hidden" id="arrive">
@@ -118,6 +125,7 @@ export class KioskOverlay {
 		this.elSteps = this.root.querySelector('#steps')!;
 		this.elScore = this.root.querySelector('#score')!;
 		this.elNearby = this.root.querySelector('#nearby-sim')!;
+		this.elPossessBanner = this.root.querySelector('#possess-banner')!;
 
 		this.renderCats();
 		this.renderList();
@@ -135,6 +143,10 @@ export class KioskOverlay {
 
 		this.root.querySelector('#btn-home')!.addEventListener('click', () => {
 			this.callbacks.onHome();
+		});
+
+		this.root.querySelector('#btn-possess')!.addEventListener('click', () => {
+			this.callbacks.onPossess();
 		});
 
 		this.root.querySelector('#btn-replay')!.addEventListener('click', () => {
@@ -172,6 +184,15 @@ export class KioskOverlay {
 		}
 		this.elNearby.classList.remove('hidden');
 		this.elNearby.textContent = `👤 ${line}`;
+	}
+
+	setPossessing(on: boolean, name?: string): void {
+		if (on) {
+			this.elPossessBanner.classList.remove('hidden');
+			this.elPossessBanner.textContent = `👁 GUEST VIEW · ${name ?? 'Gast'} · Esc/V stop`;
+		} else {
+			this.elPossessBanner.classList.add('hidden');
+		}
 	}
 
 	showTouring(store: StoreDef): void {

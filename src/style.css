@@ -215,6 +215,39 @@ body {
 	color: var(--text);
 }
 
+.possess-btn {
+	width: 100%;
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid rgba(15, 23, 42, 0.15);
+	background: #f1f5f9;
+	font-weight: 600;
+	cursor: pointer;
+	font-family: var(--font);
+	color: var(--text);
+}
+
+.possess-btn:hover {
+	background: #e2e8f0;
+}
+
+.possess-banner {
+	position: absolute;
+	top: 72px;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 10px 18px;
+	border-radius: 99px;
+	background: rgba(15, 23, 42, 0.9);
+	color: #fbbf24;
+	font-weight: 700;
+	font-size: 0.85rem;
+	pointer-events: none;
+	z-index: 20;
+	white-space: nowrap;
+}
+
 .btn-home {
 	padding: 8px 14px;
 	border-radius: 99px;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { CollisionWorld } from '../physics/Collision';
 import { Americans } from './Americans';
 
 /**
@@ -8,8 +9,8 @@ export class Atmosphere {
 	readonly group = new THREE.Group();
 	readonly americans: Americans;
 
-	constructor() {
-		this.americans = new Americans(24);
+	constructor(world: CollisionWorld) {
+		this.americans = new Americans(world, 22);
 		this.group.add(this.americans.group);
 		this.createBillboards();
 	}

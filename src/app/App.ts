@@ -6,14 +6,19 @@ import type { GraphNode } from '../data/graph';
 import { getStore, type StoreDef, STORES } from '../data/stores';
 import { Pathfinder } from '../path/Pathfinder';
 import { PathMesh } from '../path/PathMesh';
+import { CollisionWorld } from '../physics/Collision';
+import { PlayerControls } from '../player/Controls';
 import { createComposer } from '../post/Composer';
 import { Atmosphere } from '../scene/Atmosphere';
 import { setupLighting } from '../scene/Lighting';
 import { MallBuilder } from '../scene/MallBuilder';
 import { PalmForest } from '../scene/Palms';
 import { Spaceship } from '../scene/Spaceship';
+import { BakerThief } from '../scene/Thief';
 import { MovingWalkways } from '../scene/Walkways';
 import { KioskOverlay } from '../ui/KioskOverlay';
+
+const PLAYER_RADIUS = 0.4;
 
 export class App {
 	private renderer: THREE.WebGLRenderer;
@@ -24,11 +29,14 @@ export class App {
 	private director: Director;
 	private pathfinder = new Pathfinder();
 	private pathMesh = new PathMesh();
-	private atmosphere = new Atmosphere();
+	private world = new CollisionWorld();
+	private atmosphere: Atmosphere;
 	private mall = new MallBuilder();
 	private palms = new PalmForest();
 	private walkways = new MovingWalkways();
 	private spaceship = new Spaceship();
+	private thief: BakerThief;
+	private player!: PlayerControls;
 	private ui: KioskOverlay;
 	private clock = new THREE.Clock();
 	private currentPath: GraphNode[] = [];
@@ -38,8 +46,16 @@ export class App {
 	private score = 0;
 	private metSims = new Set<number>();
 	private nearHudT = 0;
+	/** free walk after intro; disabled during cinematic tour */
+	private freeMove = false;
+	/** RCT-style: ride along as a guest */
+	private possessId: number | null = null;
+	private thiefFiredAt = 0;
 
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
+		this.atmosphere = new Atmosphere(this.world);
+		this.thief = new BakerThief(this.world);
+
 		this.renderer = new THREE.WebGLRenderer({
 			antialias: true,
 			powerPreference: 'high-performance',
@@ -65,8 +81,8 @@ export class App {
 		this.scene.add(this.palms.group);
 		this.scene.add(this.walkways.group);
 		this.scene.add(this.spaceship.group);
-		// NO floating labels — storefront signs only (architect-approved)
 		this.scene.add(this.atmosphere.group);
+		this.scene.add(this.thief.group);
 		this.scene.add(this.pathMesh.group);
 
 		this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -74,9 +90,30 @@ export class App {
 		this.controls.dampingFactor = 0.08;
 		this.controls.target.set(0, 1.45, 2);
 		this.controls.enablePan = false;
+		this.controls.enabled = false; // free WASD after intro
 
 		this.director = new Director(this.camera, this.controls);
 		this.composer = createComposer(this.renderer, this.scene, this.camera);
+		this.player = new PlayerControls(this.camera, this.renderer.domElement, this.world);
+		this.player.enabled = false;
+
+		this.atmosphere.americans.setTransactionCallback((count, pos) => {
+			this.score += 2;
+			this.ui.setScore(this.score, this.metSims.size);
+			this.ui.setStatus(`Checkout #${count} · muntjes 💰`);
+			// Every 10 shop transactions → baker-beard juwelen thief
+			if (count > 0 && count % 10 === 0 && count !== this.thiefFiredAt) {
+				this.thiefFiredAt = count;
+				this.thief.trigger();
+				this.ui.setStatus(`💀 BAARD-DIEF runt de juwelen! (txn ${count})`);
+				this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 2, 0)));
+			}
+		});
+		this.thief.setLootCallback((pos) => {
+			this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 1.5, 0)));
+			this.score = Math.max(0, this.score - 15);
+			this.ui.setScore(this.score, this.metSims.size);
+		});
 
 		this.ui = new KioskOverlay(uiRoot, {
 			onSelectStore: (s) => this.onSelectStore(s),
@@ -87,6 +124,7 @@ export class App {
 				const store = this.currentStore ?? getStore('kruidvat')!;
 				this.onStartRoute(store);
 			},
+			onPossess: () => this.togglePossess(),
 		});
 
 		window.addEventListener('resize', () => this.onResize());
@@ -94,11 +132,15 @@ export class App {
 			if (e.key === 'k' || e.key === 'K') {
 				this.onStartRoute(getStore('kruidvat')!);
 			}
-			if (e.key === 'Escape') this.onCancel();
+			if (e.key === 'Escape') {
+				if (this.possessId !== null) this.togglePossess(false);
+				else this.onCancel();
+			}
 			if (e.key === 'h' || e.key === 'H') this.onHome();
+			if (e.key === 'v' || e.key === 'V') this.togglePossess();
 		});
 
-		// Unlock fart/weird sim audio after first click/key
+		// Unlock audio after first click/key
 		const unlock = () => {
 			this.atmosphere.americans.ensureAudio();
 			window.removeEventListener('pointerdown', unlock);
@@ -109,22 +151,69 @@ export class App {
 
 		this.director.playIntro(() => {
 			this.ui.hideBoot();
-			this.ui.setStatus('GAME ON · kies een winkel of loop de mall');
+			this.ui.setStatus('WASD lopen · sleep kijken · V = guest view');
 			this.ui.setScore(this.score, this.metSims.size);
+			// Hand control to player
+			this.freeMove = true;
+			this.player.enabled = true;
+			this.player.syncFromCamera();
+			this.controls.enabled = false;
 		});
 
 		this.animate();
 	}
 
 	private onHome(): void {
+		this.exitPossess();
 		this.pathMesh.clear();
 		this.currentPath = [];
 		this.clearConfetti();
 		this.ui.clearSelection();
 		this.ui.hideArrive();
+		this.freeMove = false;
+		this.player.enabled = false;
+		this.controls.enabled = true;
 		this.director.goHome(true, () => {
-			this.ui.setStatus('Bij de kiosk · kies een winkel in de lijst');
+			this.ui.setStatus('WASD lopen · V = word een gast (RCT mode)');
+			this.freeMove = true;
+			this.player.enabled = true;
+			this.player.syncFromCamera();
+			this.controls.enabled = false;
 		});
+	}
+
+	private togglePossess(force?: boolean): void {
+		const want = force === undefined ? this.possessId === null : force;
+		if (!want) {
+			this.exitPossess();
+			return;
+		}
+		const id = this.atmosphere.americans.getNearestSimId(this.camera.position);
+		if (id === null) {
+			this.ui.setStatus('Geen sim dichtbij — loop dichterbij en druk V');
+			return;
+		}
+		this.possessId = id;
+		this.atmosphere.americans.setSimVisible(id, false);
+		this.freeMove = false;
+		this.player.enabled = false;
+		this.controls.enabled = false;
+		const f = this.atmosphere.americans.roster.find((r) => r.id === id);
+		this.ui.setStatus(`GUEST VIEW · ${f?.name ?? 'sim'} · Esc/V = stop`);
+		this.ui.setPossessing(true, f?.name ?? 'Gast');
+	}
+
+	private exitPossess(): void {
+		if (this.possessId !== null) {
+			this.atmosphere.americans.setSimVisible(this.possessId, true);
+			this.possessId = null;
+		}
+		this.ui.setPossessing(false);
+		this.freeMove = true;
+		this.player.enabled = true;
+		this.player.syncFromCamera();
+		this.controls.enabled = false;
+		this.ui.setStatus('WASD lopen · V = guest view');
 	}
 
 	private onSelectStore(store: StoreDef): void {
@@ -145,6 +234,7 @@ export class App {
 	}
 
 	private onStartRoute(store: StoreDef): void {
+		this.exitPossess();
 		this.currentStore = store;
 		this.ui.hideArrive();
 		this.clearConfetti();
@@ -165,6 +255,10 @@ export class App {
 
 		this.score += 10;
 		this.ui.setScore(this.score, this.metSims.size);
+		// Cinematic auto-walk — disable free move during tour
+		this.freeMove = false;
+		this.player.enabled = false;
+		this.controls.enabled = true;
 		this.director.tourPath(path, () => this.onArrive(store));
 	}
 
@@ -184,16 +278,22 @@ export class App {
 			this.ui.showArrive(store);
 			this.spawnConfetti(stand.clone().add(new THREE.Vector3(0, 1.5, 0)));
 			this.controls.target.copy(this.spaceship.getShipLookPoint());
-			this.ui.setStatus(`+100 · Kruidvat clear · score ${this.score}`);
+			this.ui.setStatus(`+100 · Kruidvat open · score ${this.score}`);
 		} else {
 			this.ui.showArrive(store);
 			this.spawnConfetti(new THREE.Vector3(store.x, store.floor * 6 + 2, store.z));
 			this.controls.target.set(store.x, store.floor * 6 + 1.5, store.z);
-			this.ui.setStatus(`+50 · ${store.name.replace('\n', ' ')} · score ${this.score}`);
+			this.ui.setStatus(`+50 · ${store.name.replace('\n', ' ')} OPEN · score ${this.score}`);
 		}
+		// Back to free walk
+		this.freeMove = true;
+		this.player.enabled = true;
+		this.player.syncFromCamera();
+		this.controls.enabled = false;
 	}
 
 	private onCancel(): void {
+		this.exitPossess();
 		this.pathMesh.clear();
 		this.currentPath = [];
 		this.currentStore = null;
@@ -201,8 +301,15 @@ export class App {
 		this.ui.clearSelection();
 		this.ui.hideArrive();
 		this.director.stopTour();
+		this.freeMove = false;
+		this.player.enabled = false;
+		this.controls.enabled = true;
 		this.director.goHome(true, () => {
-			this.ui.setStatus('Bij de kiosk · kies een winkel in de lijst');
+			this.ui.setStatus('WASD lopen · V = guest view');
+			this.freeMove = true;
+			this.player.enabled = true;
+			this.player.syncFromCamera();
+			this.controls.enabled = false;
 		});
 	}
 
@@ -303,13 +410,85 @@ export class App {
 		this.composer.setSize(w, h);
 	}
 
+	/** Keep first-person camera out of walls/stores; soft push from sims */
+	private resolvePlayerCollision(): void {
+		const cam = this.camera.position;
+		const y = cam.y;
+		const r = this.world.resolveCircle(cam.x, cam.z, y, PLAYER_RADIUS);
+		cam.x = r.x;
+		cam.z = r.z;
+
+		// Soft separate from nearby sims so you don't stand inside Brad
+		this.pushPlayerFromSims(0.9);
+
+		// Keep look-target in front so OrbitControls doesn't yank back into wall
+		const t = this.controls.target;
+		const look = this.world.resolveCircle(t.x, t.z, y, 0.2);
+		// only gently constrain target XZ relative to camera if far
+		const dx = t.x - cam.x;
+		const dz = t.z - cam.z;
+		const d = Math.hypot(dx, dz);
+		if (d > 0.01 && d < 12) {
+			// fine
+		} else if (d >= 12) {
+			t.x = cam.x + (dx / d) * 6;
+			t.z = cam.z + (dz / d) * 6;
+		}
+		void look;
+		this.controls.update();
+	}
+
+	private pushPlayerFromSims(minDist: number): void {
+		const cam = this.camera.position;
+		const playerFloor = cam.y < 4 ? 0 : 6;
+		const group = this.atmosphere.americans.group;
+		for (const child of group.children) {
+			if (!(child instanceof THREE.Object3D)) continue;
+			const sy = child.position.y;
+			if (Math.abs(sy - playerFloor) > 2.5) continue;
+			const sep = this.world.separate(
+				cam.x,
+				cam.z,
+				child.position.x,
+				child.position.z,
+				minDist,
+			);
+			cam.x = sep.ax;
+			cam.z = sep.az;
+		}
+		const r = this.world.resolveCircle(cam.x, cam.z, cam.y, PLAYER_RADIUS);
+		cam.x = r.x;
+		cam.z = r.z;
+	}
+
 	private animate = (): void => {
 		requestAnimationFrame(this.animate);
 		const dt = Math.min(this.clock.getDelta(), 0.05);
 
 		this.atmosphere.update(dt);
 		this.pathMesh.update(dt);
-		this.director.update(dt);
+		this.thief.update(dt);
+
+		if (this.possessId !== null) {
+			const eye = this.atmosphere.americans.getSimEye(this.possessId);
+			if (eye) {
+				this.camera.position.lerp(eye.pos, 0.35);
+				this.camera.rotation.order = 'YXZ';
+				this.camera.rotation.y = THREE.MathUtils.lerp(
+					this.camera.rotation.y,
+					eye.yaw,
+					0.2,
+				);
+				this.camera.rotation.x = THREE.MathUtils.lerp(this.camera.rotation.x, 0, 0.1);
+			}
+		} else if (this.freeMove && this.player.enabled) {
+			this.player.update(dt);
+			this.resolvePlayerCollision();
+		} else {
+			this.director.update(dt);
+			this.resolvePlayerCollision();
+		}
+
 		this.updateConfetti(dt);
 		this.palms.update(this.clock.elapsedTime);
 		this.walkways.update(dt);

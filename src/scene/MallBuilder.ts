@@ -501,42 +501,110 @@ export class MallBuilder {
 				roughness: 0.6,
 			}),
 		);
-		const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bodyMat);
-		body.position.set(0, h / 2, -d / 2);
+		// Back + side walls only — FRONT OPEN so the shop feels alive
+		const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d * 0.55), bodyMat);
+		body.position.set(0, h / 2, -d * 0.65);
 		body.castShadow = true;
 		body.receiveShadow = true;
 		g.add(body);
 
-		// Storefront glass — calm, no glow
+		// Side walls framing the open entrance
+		const sideMat = bodyMat;
+		for (const sx of [-w / 2 + 0.15, w / 2 - 0.15]) {
+			const side = new THREE.Mesh(new THREE.BoxGeometry(0.25, h, d * 0.85), sideMat);
+			side.position.set(sx, h / 2, -d * 0.35);
+			g.add(side);
+		}
+
+		// Glass panels left/right of OPEN doorway (center clear)
 		const frontGlass = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0xd0e4f5,
 				metalness: 0.2,
 				roughness: 0.15,
 				transparent: true,
-				opacity: 0.45,
+				opacity: 0.4,
 			}),
 		);
-		const glass = new THREE.Mesh(
-			new THREE.BoxGeometry(w - 0.4, h - 0.8, 0.08),
-			frontGlass,
-		);
-		glass.position.set(0, h / 2 - 0.1, 0.05);
-		g.add(glass);
+		const doorW = Math.min(2.4, w * 0.4);
+		const paneW = (w - doorW) / 2 - 0.15;
+		if (paneW > 0.4) {
+			for (const side of [-1, 1]) {
+				const glass = new THREE.Mesh(
+					new THREE.BoxGeometry(paneW, h - 0.8, 0.06),
+					frontGlass,
+				);
+				glass.position.set(side * (doorW / 2 + paneW / 2 + 0.05), h / 2 - 0.1, 0.05);
+				g.add(glass);
+			}
+		}
 
-		// Interior back wall (soft lit shop interior)
+		// Warm lit interior back wall
 		const interior = new THREE.Mesh(
-			new THREE.PlaneGeometry(w - 0.6, h - 1),
+			new THREE.PlaneGeometry(w - 0.5, h - 0.8),
 			this.track(
 				new THREE.MeshStandardMaterial({
-					color: new THREE.Color(store.accent).lerp(new THREE.Color(0xffffff), 0.55),
-					roughness: 0.8,
+					color: new THREE.Color(store.accent).lerp(new THREE.Color(0xfff8f0), 0.45),
+					roughness: 0.75,
+					emissive: new THREE.Color(store.accent),
+					emissiveIntensity: 0.08,
 					side: THREE.DoubleSide,
 				}),
 			),
 		);
-		interior.position.set(0, h / 2, -0.3);
+		interior.position.set(0, h / 2, -d + 0.15);
 		g.add(interior);
+
+		// Floor mat inside
+		const matMesh = new THREE.Mesh(
+			new THREE.BoxGeometry(w * 0.7, 0.04, d * 0.5),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xc4a574, roughness: 0.9 })),
+		);
+		matMesh.position.set(0, 0.03, -d * 0.35);
+		g.add(matMesh);
+
+		// Counter + shopkeeper (verkoper)
+		const counter = new THREE.Mesh(
+			new THREE.BoxGeometry(Math.min(w * 0.55, 3.2), 0.9, 0.55),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 })),
+		);
+		counter.position.set(0, 0.45, -d * 0.45);
+		g.add(counter);
+
+		const keeper = this.makeShopkeeper(store);
+		keeper.position.set(0, 0, -d * 0.55);
+		g.add(keeper);
+
+		// OPEN sign
+		const openCanvas = document.createElement('canvas');
+		openCanvas.width = 256;
+		openCanvas.height = 96;
+		const octx = openCanvas.getContext('2d')!;
+		octx.fillStyle = '#15803d';
+		octx.fillRect(0, 0, 256, 96);
+		octx.fillStyle = '#fff';
+		octx.font = 'bold 48px system-ui,sans-serif';
+		octx.textAlign = 'center';
+		octx.textBaseline = 'middle';
+		octx.fillText('OPEN', 128, 48);
+		const openTex = new THREE.CanvasTexture(openCanvas);
+		openTex.colorSpace = THREE.SRGBColorSpace;
+		const openSign = new THREE.Mesh(
+			new THREE.PlaneGeometry(1.1, 0.4),
+			this.track(new THREE.MeshBasicMaterial({ map: openTex, toneMapped: false })),
+		);
+		openSign.position.set(w * 0.28, h - 1.5, 0.15);
+		g.add(openSign);
+
+		// Soft interior light
+		const shopLight = new THREE.PointLight(
+			new THREE.Color(store.accent).lerp(new THREE.Color(0xfff0dd), 0.6),
+			4,
+			10,
+			2,
+		);
+		shopLight.position.set(0, h - 0.5, -d * 0.3);
+		g.add(shopLight);
 
 		// Sign board — bright MeshBasic so names always readable
 		const lines = store.name.split('\n');
@@ -605,6 +673,72 @@ export class MallBuilder {
 			g.add(crossV, crossH);
 		}
 
+		return g;
+	}
+
+	private makeShopkeeper(store: StoreDef): THREE.Group {
+		const g = new THREE.Group();
+		const skin = this.track(
+			new THREE.MeshStandardMaterial({ color: 0xe8c4a8, roughness: 0.85 }),
+		);
+		const uniCol = new THREE.Color(store.color);
+		uniCol.offsetHSL(0, 0, 0.1);
+		const uni = this.track(
+			new THREE.MeshStandardMaterial({
+				color: uniCol,
+				roughness: 0.8,
+			}),
+		);
+		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 4, 8), uni);
+		body.position.y = 1.05;
+		g.add(body);
+		const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), skin);
+		head.position.y = 1.55;
+		g.add(head);
+		// simple smile face
+		const faceC = document.createElement('canvas');
+		faceC.width = 64;
+		faceC.height = 64;
+		const fctx = faceC.getContext('2d')!;
+		fctx.fillStyle = '#f5d0b0';
+		fctx.fillRect(0, 0, 64, 64);
+		fctx.fillStyle = '#222';
+		fctx.beginPath();
+		fctx.arc(22, 28, 4, 0, Math.PI * 2);
+		fctx.arc(42, 28, 4, 0, Math.PI * 2);
+		fctx.fill();
+		fctx.strokeStyle = '#222';
+		fctx.lineWidth = 2;
+		fctx.beginPath();
+		fctx.arc(32, 38, 10, 0.15, Math.PI - 0.15);
+		fctx.stroke();
+		const faceTex = new THREE.CanvasTexture(faceC);
+		faceTex.colorSpace = THREE.SRGBColorSpace;
+		const face = new THREE.Mesh(
+			new THREE.PlaneGeometry(0.28, 0.28),
+			this.track(new THREE.MeshBasicMaterial({ map: faceTex, toneMapped: false })),
+		);
+		face.position.set(0, 1.55, 0.18);
+		g.add(face);
+		// "VERKOPER" tiny plate
+		const pc = document.createElement('canvas');
+		pc.width = 128;
+		pc.height = 40;
+		const pctx = pc.getContext('2d')!;
+		pctx.fillStyle = '#15803d';
+		pctx.fillRect(0, 0, 128, 40);
+		pctx.fillStyle = '#fff';
+		pctx.font = 'bold 16px system-ui';
+		pctx.textAlign = 'center';
+		pctx.fillText('VERKOPER', 64, 26);
+		const ptex = new THREE.CanvasTexture(pc);
+		ptex.colorSpace = THREE.SRGBColorSpace;
+		const plate = new THREE.Mesh(
+			new THREE.PlaneGeometry(0.7, 0.22),
+			this.track(new THREE.MeshBasicMaterial({ map: ptex, toneMapped: false })),
+		);
+		plate.position.set(0, 2.0, 0.1);
+		g.add(plate);
 		return g;
 	}
 

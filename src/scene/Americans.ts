@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { type StoreDef, STORES } from '../data/stores';
 import { Pathfinder } from '../path/Pathfinder';
+import type { CollisionWorld } from '../physics/Collision';
 
 export type SimFactors = {
 	id: number;
@@ -46,6 +47,15 @@ type Sim = {
 	armL: THREE.Object3D;
 	armR: THREE.Object3D;
 	label: THREE.Sprite;
+	speech: THREE.Sprite;
+	speechTex: THREE.CanvasTexture;
+	speechCtx: CanvasRenderingContext2D;
+	speechLife: number;
+	faceMesh: THREE.Mesh;
+	faceCanvas: HTMLCanvasElement;
+	faceCtx: CanvasRenderingContext2D;
+	faceTex: THREE.CanvasTexture;
+	headY: number;
 	pos: THREE.Vector3;
 	/** unit direction of travel — THE VECTOR */
 	velocity: THREE.Vector3;
@@ -57,6 +67,7 @@ type Sim = {
 	labelCanvas: HTMLCanvasElement;
 	labelCtx: CanvasRenderingContext2D;
 	labelTex: THREE.CanvasTexture;
+	gibberCd: number;
 };
 
 const FIRST = [
@@ -130,29 +141,91 @@ function shopEntrance(s: StoreDef): THREE.Vector3 {
  * True mall NPCs: shop → shop routes, velocity vector, legs+feet that walk hard,
  * head plates (destination / € spent / unhappiness), occasional farts + noises.
  */
+const SIM_RADIUS = 0.45;
+const SIM_SEPARATE = 0.95;
+
+const GIBBER = [
+	'blorp-skree navigare!',
+	'haplo-muntjes fwoop',
+	'kruid-vat-vat-vat',
+	'oeh shampoo expand',
+	'waar is de loopband',
+	'ik koop niks… oke alles',
+	'greeuwd mevrouw Kersch',
+	'prairie lakes forever',
+	'baard? nee, BEARD',
+	'sims energy max',
+	'ongelukkig maar open',
+	'juwelen? wacht even',
+	'navigare ad Kruidvatum',
+	'mamma rituals go brrr',
+];
+
 export class Americans {
 	readonly group = new THREE.Group();
 	readonly roster: SimFactors[] = [];
+	/** global checkout count → triggers baker thief */
+	transactionCount = 0;
 	private sims: Sim[] = [];
 	private materials: THREE.Material[] = [];
 	private pathfinder = new Pathfinder();
+	private world: CollisionWorld;
 	private audio: AudioContext | null = null;
 	private fartClouds: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
+	private coinBursts: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
+	private onTransaction: ((count: number, pos: THREE.Vector3) => void) | null = null;
 
-	constructor(count = 20) {
+	constructor(world: CollisionWorld, count = 20) {
+		this.world = world;
 		this.group.name = 'mallSims';
 		for (let i = 0; i < count; i++) {
 			const sim = this.spawn(i);
+			// snap start out of solid geometry
+			const fixed = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, SIM_RADIUS);
+			sim.pos.x = fixed.x;
+			sim.pos.z = fixed.z;
+			sim.root.position.copy(sim.pos);
 			this.sims.push(sim);
 			this.roster.push(sim.f);
 			this.group.add(sim.root);
 		}
 	}
 
+	setTransactionCallback(cb: (count: number, pos: THREE.Vector3) => void): void {
+		this.onTransaction = cb;
+	}
+
 	getSimsNear(worldPos: THREE.Vector3, radius: number): SimFactors[] {
 		return this.sims
 			.filter((s) => s.pos.distanceTo(worldPos) < radius)
 			.map((s) => s.f);
+	}
+
+	getNearestSimId(worldPos: THREE.Vector3): number | null {
+		let best: Sim | null = null;
+		let bestD = Infinity;
+		for (const s of this.sims) {
+			const d = s.pos.distanceTo(worldPos);
+			if (d < bestD) {
+				bestD = d;
+				best = s;
+			}
+		}
+		return best && bestD < 8 ? best.f.id : null;
+	}
+
+	/** Eye pose for RCT-style guest view */
+	getSimEye(id: number): { pos: THREE.Vector3; yaw: number } | null {
+		const s = this.sims.find((x) => x.f.id === id);
+		if (!s) return null;
+		const eye = s.pos.clone();
+		eye.y += s.headY * (0.95 + s.f.thicc * 0.05) + 0.15;
+		return { pos: eye, yaw: s.root.rotation.y };
+	}
+
+	setSimVisible(id: number, visible: boolean): void {
+		const s = this.sims.find((x) => x.f.id === id);
+		if (s) s.root.visible = visible;
 	}
 
 	/** Unlock audio on first user gesture (browser policy) */
@@ -165,7 +238,47 @@ export class Americans {
 
 	update(dt: number): void {
 		for (const s of this.sims) this.tick(s, dt);
+		this.resolveAgents();
 		this.tickFarts(dt);
+		this.tickCoins(dt);
+	}
+
+	/** Static walls/stores + soft sim-sim separation (no stacking) */
+	private resolveAgents(): void {
+		// World collision
+		for (const s of this.sims) {
+			const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, SIM_RADIUS);
+			s.pos.x = r.x;
+			s.pos.z = r.z;
+			s.root.position.set(s.pos.x, s.pos.y, s.pos.z);
+		}
+		// Pair separation (O(n²) fine for ~20)
+		for (let i = 0; i < this.sims.length; i++) {
+			for (let j = i + 1; j < this.sims.length; j++) {
+				const a = this.sims[i];
+				const b = this.sims[j];
+				// only same floor-ish
+				if (Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
+				const sep = this.world.separate(
+					a.pos.x,
+					a.pos.z,
+					b.pos.x,
+					b.pos.z,
+					SIM_SEPARATE,
+				);
+				a.pos.x = sep.ax;
+				a.pos.z = sep.az;
+				b.pos.x = sep.bx;
+				b.pos.z = sep.bz;
+			}
+		}
+		// Re-resolve walls after separation so pushes don't shove into walls
+		for (const s of this.sims) {
+			const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, SIM_RADIUS);
+			s.pos.x = r.x;
+			s.pos.z = r.z;
+			s.root.position.set(s.pos.x, s.pos.y, s.pos.z);
+		}
 	}
 
 	private spawn(id: number): Sim {
@@ -253,6 +366,26 @@ export class Americans {
 		head.position.set(0, headY, 0);
 		body.add(head);
 
+		// Face plane — expressions from unhappiness
+		const faceCanvas = document.createElement('canvas');
+		faceCanvas.width = 128;
+		faceCanvas.height = 128;
+		const faceCtx = faceCanvas.getContext('2d')!;
+		const faceTex = new THREE.CanvasTexture(faceCanvas);
+		faceTex.colorSpace = THREE.SRGBColorSpace;
+		const faceMesh = new THREE.Mesh(
+			new THREE.PlaneGeometry(0.32, 0.32),
+			this.track(
+				new THREE.MeshBasicMaterial({
+					map: faceTex,
+					transparent: true,
+					toneMapped: false,
+				}),
+			),
+		);
+		faceMesh.position.set(0, headY, 0.22);
+		body.add(faceMesh);
+
 		if (f.hasCap) {
 			const col = f.isBrad ? 0x00a651 : 0x1a5276;
 			const cap = new THREE.Mesh(
@@ -305,6 +438,28 @@ export class Americans {
 		label.position.set(0, headY * scale + 0.85, 0);
 		root.add(label);
 
+		// Speech bubble for smart gibberish
+		const speechCanvas = document.createElement('canvas');
+		speechCanvas.width = 280;
+		speechCanvas.height = 72;
+		const speechCtx = speechCanvas.getContext('2d')!;
+		const speechTex = new THREE.CanvasTexture(speechCanvas);
+		speechTex.colorSpace = THREE.SRGBColorSpace;
+		const speech = new THREE.Sprite(
+			this.track(
+				new THREE.SpriteMaterial({
+					map: speechTex,
+					transparent: true,
+					depthTest: false,
+					visible: false,
+				}),
+			),
+		);
+		speech.scale.set(2.0, 0.55, 1);
+		speech.position.set(0, headY * scale + 1.35, 0);
+		speech.visible = false;
+		root.add(speech);
+
 		const start = shopEntrance(startShop);
 		root.position.copy(start);
 
@@ -317,6 +472,15 @@ export class Americans {
 			armL,
 			armR,
 			label,
+			speech,
+			speechTex,
+			speechCtx,
+			speechLife: 0,
+			faceMesh,
+			faceCanvas,
+			faceCtx,
+			faceTex,
+			headY,
 			pos: start.clone(),
 			velocity: new THREE.Vector3(),
 			path: [],
@@ -327,10 +491,12 @@ export class Americans {
 			labelCanvas,
 			labelCtx,
 			labelTex,
+			gibberCd: 2 + rng() * 8,
 		};
 
 		this.assignNextShop(sim);
 		this.paintLabel(sim);
+		this.paintFace(sim);
 		return sim;
 	}
 
@@ -432,6 +598,17 @@ export class Americans {
 			this.doFart(sim);
 			f.fartCd = 8 + Math.random() * 22;
 			f.unhappiness = Math.min(100, f.unhappiness + 2);
+			this.paintFace(sim);
+		}
+
+		// Gibberish chatter
+		sim.gibberCd -= dt;
+		if (sim.speechLife > 0) {
+			sim.speechLife -= dt;
+			if (sim.speechLife <= 0) sim.speech.visible = false;
+		} else if (sim.gibberCd <= 0) {
+			this.sayGibberish(sim);
+			sim.gibberCd = 5 + Math.random() * 14;
 		}
 
 		if (sim.wait > 0) {
@@ -439,24 +616,32 @@ export class Americans {
 			sim.velocity.set(0, 0, 0);
 			this.animateLegs(sim, 0, dt);
 			sim.root.position.copy(sim.pos);
-			// slowly more unhappy while waiting (mall fatigue)
-			f.unhappiness = Math.min(100, f.unhappiness + dt * 0.8);
+			// slowly more unhappy while waiting (mall fatigue) — less if shops open
+			f.unhappiness = Math.min(100, f.unhappiness + dt * 0.35);
 			this.paintLabel(sim);
+			this.paintFace(sim);
 			return;
 		}
 
 		if (sim.pathI >= sim.path.length) {
-			// Arrived at shop — spend money, maybe unhappier/happier, pick next
+			// Arrived at OPEN shop — spend money + coin particles + happier (verkoper!)
 			const spend = 8 + Math.floor(Math.random() * 55);
 			f.moneySpent += spend;
-			if (f.mood === 'hangry') f.unhappiness = Math.min(100, f.unhappiness + 8);
-			else if (sim.f.targetShopId === 'rituals') f.unhappiness = Math.max(0, f.unhappiness - 15);
-			else if (sim.f.targetShopId === 'kruidvat') f.unhappiness = Math.max(0, f.unhappiness - 10);
-			else f.unhappiness = Math.min(100, f.unhappiness + Math.floor(Math.random() * 12) - 4);
+			// Open shops: shopping usually helps mood a bit
+			if (f.mood === 'hangry') f.unhappiness = Math.min(100, f.unhappiness + 4);
+			else if (sim.f.targetShopId === 'rituals') f.unhappiness = Math.max(0, f.unhappiness - 18);
+			else if (sim.f.targetShopId === 'kruidvat') f.unhappiness = Math.max(0, f.unhappiness - 12);
+			else f.unhappiness = Math.max(0, f.unhappiness + Math.floor(Math.random() * 8) - 6);
+
+			this.spawnCoins(sim.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), spend);
+			this.transactionCount++;
+			this.onTransaction?.(this.transactionCount, sim.pos.clone());
+			this.sayGibberish(sim, true);
 
 			sim.wait = 1.2 + f.windowShop * 3.5 + (f.mood === 'lost' ? 2 : 0);
 			this.assignNextShop(sim);
 			this.paintLabel(sim);
+			this.paintFace(sim);
 			this.animateLegs(sim, 0, dt);
 			sim.root.position.copy(sim.pos);
 			return;
@@ -482,20 +667,38 @@ export class Americans {
 			* (f.mood === 'hyped' ? 1.3 : f.mood === 'hangry' ? 1.2 : f.mood === 'chill' ? 0.8 : 1);
 
 		sim.velocity.copy(dir).multiplyScalar(spd);
+		const prevX = sim.pos.x;
+		const prevZ = sim.pos.z;
 		sim.pos.x += sim.velocity.x * dt;
 		sim.pos.z += sim.velocity.z * dt;
 		// interpolate Y gently on incline segments
 		sim.pos.y = THREE.MathUtils.lerp(sim.pos.y, target.y, Math.min(1, dt * 3));
 
-		// Face velocity vector
-		const face = Math.atan2(dir.x, dir.z);
-		let dy = face - sim.root.rotation.y;
-		while (dy > Math.PI) dy -= Math.PI * 2;
-		while (dy < -Math.PI) dy += Math.PI * 2;
-		sim.root.rotation.y += dy * Math.min(1, dt * 8);
+		// Immediate static collision (full pass later too)
+		const hit = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, SIM_RADIUS);
+		sim.pos.x = hit.x;
+		sim.pos.z = hit.z;
+		// If fully blocked, slide along wall / skip waypoint
+		const moved = Math.hypot(sim.pos.x - prevX, sim.pos.z - prevZ);
+		if (moved < spd * dt * 0.15 && dist > 1.2) {
+			// stuck — skip toward next node so they don't freeze forever
+			sim.pathI++;
+		}
 
-		// Walk phase driven by speed so feet ALWAYS move when moving
-		const speedNow = sim.velocity.length();
+		// Face actual movement vector (post-collision)
+		const mx = sim.pos.x - prevX;
+		const mz = sim.pos.z - prevZ;
+		const mlen = Math.hypot(mx, mz);
+		if (mlen > 1e-4) {
+			const face = Math.atan2(mx / mlen, mz / mlen);
+			let dy = face - sim.root.rotation.y;
+			while (dy > Math.PI) dy -= Math.PI * 2;
+			while (dy < -Math.PI) dy += Math.PI * 2;
+			sim.root.rotation.y += dy * Math.min(1, dt * 8);
+			sim.velocity.set(mx / dt, 0, mz / dt);
+		}
+
+		const speedNow = mlen / Math.max(dt, 1e-4);
 		sim.phase += dt * speedNow * 6.5 * f.stride;
 		this.animateLegs(sim, speedNow, dt);
 
@@ -577,10 +780,180 @@ export class Americans {
 		ctx.fillStyle = '#fbbf24';
 		ctx.fillText(`€${f.moneySpent} uitgegeven`, 16, 82);
 
+		const face = f.unhappiness > 70 ? '😭' : f.unhappiness > 40 ? '😕' : '😊';
 		ctx.fillStyle = f.unhappiness > 70 ? '#fca5a5' : '#e2e8f0';
-		ctx.fillText(`☹ ${Math.round(f.unhappiness)}% ongelukkig`, 16, 104);
+		ctx.fillText(`${face} ${Math.round(f.unhappiness)}% ongelukkig`, 16, 104);
 
 		sim.labelTex.needsUpdate = true;
+		this.paintFace(sim);
+	}
+
+	/** Face texture: smile → frown based on unhappiness */
+	private paintFace(sim: Sim): void {
+		const u = sim.f.unhappiness / 100;
+		const ctx = sim.faceCtx;
+		const skin = '#f5d0b0';
+		ctx.fillStyle = skin;
+		ctx.fillRect(0, 0, 128, 128);
+		// eyes
+		ctx.fillStyle = '#1a1a1a';
+		const eyeY = 48 + u * 6;
+		ctx.beginPath();
+		ctx.arc(42, eyeY, 7, 0, Math.PI * 2);
+		ctx.arc(86, eyeY, 7, 0, Math.PI * 2);
+		ctx.fill();
+		// brows (angry when unhappy)
+		ctx.strokeStyle = '#1a1a1a';
+		ctx.lineWidth = 4;
+		ctx.beginPath();
+		if (u > 0.55) {
+			ctx.moveTo(28, 32);
+			ctx.lineTo(52, 40);
+			ctx.moveTo(100, 32);
+			ctx.lineTo(76, 40);
+		} else {
+			ctx.moveTo(28, 36);
+			ctx.lineTo(52, 34);
+			ctx.moveTo(100, 36);
+			ctx.lineTo(76, 34);
+		}
+		ctx.stroke();
+		// mouth
+		ctx.lineWidth = 5;
+		ctx.beginPath();
+		if (u < 0.35) {
+			// smile
+			ctx.arc(64, 72, 22, 0.15, Math.PI - 0.15);
+		} else if (u < 0.65) {
+			// flat
+			ctx.moveTo(40, 88);
+			ctx.lineTo(88, 88);
+		} else {
+			// frown
+			ctx.arc(64, 102, 20, Math.PI + 0.2, -0.2);
+		}
+		ctx.stroke();
+		// blush when happy
+		if (u < 0.3) {
+			ctx.fillStyle = 'rgba(255,120,140,0.35)';
+			ctx.beginPath();
+			ctx.ellipse(30, 70, 10, 6, 0, 0, Math.PI * 2);
+			ctx.ellipse(98, 70, 10, 6, 0, 0, Math.PI * 2);
+			ctx.fill();
+		}
+		sim.faceTex.needsUpdate = true;
+	}
+
+	private sayGibberish(sim: Sim, checkout = false): void {
+		const line = checkout
+			? GIBBER[Math.floor(Math.random() * 3) + 2]
+			: GIBBER[Math.floor(Math.random() * GIBBER.length)];
+		const ctx = sim.speechCtx;
+		ctx.clearRect(0, 0, 280, 72);
+		ctx.fillStyle = 'rgba(255,255,255,0.95)';
+		roundRect(ctx, 4, 4, 272, 64, 14);
+		ctx.fill();
+		ctx.strokeStyle = '#334155';
+		ctx.lineWidth = 2;
+		roundRect(ctx, 4, 4, 272, 64, 14);
+		ctx.stroke();
+		ctx.fillStyle = '#0f172a';
+		ctx.font = '600 18px system-ui,sans-serif';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(line, 140, 36);
+		sim.speechTex.needsUpdate = true;
+		sim.speech.visible = true;
+		(sim.speech.material as THREE.SpriteMaterial).visible = true;
+		sim.speechLife = 2.8;
+		this.playTalkBlip();
+	}
+
+	private spawnCoins(origin: THREE.Vector3, amount: number): void {
+		const count = Math.min(40, 8 + Math.floor(amount / 3));
+		const positions = new Float32Array(count * 3);
+		const vel = new Float32Array(count * 3);
+		for (let i = 0; i < count; i++) {
+			positions[i * 3] = origin.x;
+			positions[i * 3 + 1] = origin.y;
+			positions[i * 3 + 2] = origin.z;
+			vel[i * 3] = (Math.random() - 0.5) * 3;
+			vel[i * 3 + 1] = 2 + Math.random() * 4;
+			vel[i * 3 + 2] = (Math.random() - 0.5) * 3;
+		}
+		const geo = new THREE.BufferGeometry();
+		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+		const mat = new THREE.PointsMaterial({
+			color: 0xffd700,
+			size: 0.16,
+			transparent: true,
+			opacity: 0.95,
+			depthWrite: false,
+		});
+		const mesh = new THREE.Points(geo, mat);
+		this.group.add(mesh);
+		this.coinBursts.push({ mesh, life: 1.6, vel });
+		this.playCoinSound();
+	}
+
+	private tickCoins(dt: number): void {
+		for (let i = this.coinBursts.length - 1; i >= 0; i--) {
+			const c = this.coinBursts[i];
+			c.life -= dt;
+			const pos = c.mesh.geometry.attributes.position as THREE.BufferAttribute;
+			const arr = pos.array as Float32Array;
+			for (let j = 0; j < arr.length; j += 3) {
+				arr[j] += c.vel[j] * dt;
+				arr[j + 1] += c.vel[j + 1] * dt;
+				arr[j + 2] += c.vel[j + 2] * dt;
+				c.vel[j + 1] -= 9 * dt;
+			}
+			pos.needsUpdate = true;
+			const mat = c.mesh.material as THREE.PointsMaterial;
+			mat.opacity = Math.max(0, c.life * 0.7);
+			if (c.life <= 0) {
+				this.group.remove(c.mesh);
+				c.mesh.geometry.dispose();
+				mat.dispose();
+				this.coinBursts.splice(i, 1);
+			}
+		}
+	}
+
+	private playTalkBlip(): void {
+		if (!this.audio) return;
+		const ctx = this.audio;
+		const t0 = ctx.currentTime;
+		const o = ctx.createOscillator();
+		const g = ctx.createGain();
+		o.type = 'triangle';
+		o.frequency.setValueAtTime(280 + Math.random() * 220, t0);
+		o.frequency.linearRampToValueAtTime(180 + Math.random() * 100, t0 + 0.08);
+		g.gain.setValueAtTime(0.0001, t0);
+		g.gain.exponentialRampToValueAtTime(0.06, t0 + 0.01);
+		g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+		o.connect(g);
+		g.connect(ctx.destination);
+		o.start(t0);
+		o.stop(t0 + 0.14);
+	}
+
+	private playCoinSound(): void {
+		if (!this.audio) return;
+		const ctx = this.audio;
+		const t0 = ctx.currentTime;
+		const o = ctx.createOscillator();
+		const g = ctx.createGain();
+		o.type = 'sine';
+		o.frequency.setValueAtTime(880, t0);
+		o.frequency.exponentialRampToValueAtTime(1320, t0 + 0.08);
+		g.gain.setValueAtTime(0.0001, t0);
+		g.gain.exponentialRampToValueAtTime(0.08, t0 + 0.01);
+		g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
+		o.connect(g);
+		g.connect(ctx.destination);
+		o.start(t0);
+		o.stop(t0 + 0.16);
 	}
 
 	private doFart(sim: Sim): void {
