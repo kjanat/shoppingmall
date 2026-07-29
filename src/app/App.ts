@@ -1,7 +1,9 @@
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
+import { BartekChat } from '../audio/BartekChat';
 import { DJPlayer } from '../audio/DJPlayer';
-import { fetchDjStatus, playBoothFile, speakBartek } from '../audio/ElevenVoice';
+import { fetchDjStatus, playBoothFile, speakLine } from '../audio/ElevenVoice';
+import { spatial } from '../audio/SpatialAudio';
 import { Director } from '../camera/Director';
 import type { GraphNode } from '../data/graph';
 import { getStore, type StoreDef } from '../data/stores';
@@ -17,7 +19,10 @@ import { DiscoParty } from '../scene/Disco';
 import { BARTEK_LINES, DJBartek } from '../scene/DJBartek';
 import { setupLighting } from '../scene/Lighting';
 import { MallBuilder } from '../scene/MallBuilder';
+import { MallRat } from '../scene/MallRat';
+import { Monkey } from '../scene/Monkey';
 import { PalmForest } from '../scene/Palms';
+import { PrayerRoom } from '../scene/PrayerRoom';
 import { ShopVoice } from '../scene/ShopVoice';
 import { Spaceship } from '../scene/Spaceship';
 import { StockDisplay } from '../scene/StockDisplay';
@@ -47,8 +52,14 @@ export class App {
 	private stock = new StockDisplay();
 	private spaceship = new Spaceship();
 	private thief: BakerThief;
+	private rat!: MallRat;
+	private prayer = new PrayerRoom();
+	private bartekChat = new BartekChat();
 	private djBartek = new DJBartek();
 	private alienProbe = new AlienProbe();
+	private monkey!: Monkey;
+	/** reused each frame for the monkey's target list */
+	private simPositions: THREE.Vector3[] = [];
 	private djPlayer = new DJPlayer();
 	private shopVoice = new ShopVoice();
 	private djUi!: DJOverlay;
@@ -79,6 +90,7 @@ export class App {
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
 		this.atmosphere = new Atmosphere(this.world);
 		this.thief = new BakerThief(this.world);
+		this.rat = new MallRat(this.world);
 
 		this.renderer = new THREE.WebGLRenderer({
 			antialias: true,
@@ -113,10 +125,29 @@ export class App {
 		this.scene.add(this.spaceship.group);
 		this.scene.add(this.atmosphere.group);
 		this.scene.add(this.thief.group);
+		this.scene.add(this.rat.group);
+		this.scene.add(this.prayer.group);
 		this.scene.add(this.pathMesh.group);
 		this.scene.add(this.djBartek.group);
 		this.scene.add(this.alienProbe.group);
 		this.alienProbe.bind(this.atmosphere.americans);
+
+		// Camera lives in the scene so the monkey can smear the lens
+		this.scene.add(this.camera);
+		this.monkey = new Monkey(this.world, this.camera);
+		this.scene.add(this.monkey.group);
+		this.monkey.setHitCallback((hit) => {
+			if (hit.what === 'player') {
+				this.score = Math.max(0, this.score - 8);
+				this.ui.setScore(this.score, this.metSims.size);
+				this.ui.setStatus('🐒💩 VOLLE TREFFER — de aap gooide kak in je gezicht (−8)');
+				this.spawnConfetti(new THREE.Vector3(hit.x, hit.y + 0.4, hit.z));
+			} else if (hit.what === 'sim') {
+				// The whole crowd notices
+				this.atmosphere.americans.nudgeAllMood(4);
+				this.ui.setStatus('🐒💩 De aap raakte een shopper — publiek is niet blij');
+			}
+		});
 
 		this.director = new Director(this.camera);
 		this.composer = createComposer(this.renderer, this.scene, this.camera);
@@ -226,6 +257,14 @@ export class App {
 				this.thief.trigger();
 				this.ui.setStatus('🧔 BAARD-DIEF (T) — juwelen heist!');
 			}
+			// J = provoke the atrium monkey
+			if (e.key === 'j' || e.key === 'J') {
+				this.ui.setStatus(
+					this.monkey.provoke()
+						? '🐒 De aap pakt een handvol kak… duiken!'
+						: '🐒 De aap heeft even niks bij de hand',
+				);
+			}
 			// E = talk to DJ Bartek OR nearest shopkeeper (Youssef!)
 			if (e.key === 'e' || e.key === 'E') {
 				if (this.djBartek.inRange(this.camera.position)) {
@@ -243,6 +282,12 @@ export class App {
 		// Unlock audio after first click/key
 		const unlock = () => {
 			this.atmosphere.americans.ensureAudio();
+			spatial.ensure();
+			this.prayer.ensureAudio();
+			// Resume DJ track after HMR / refresh (needs a user gesture for autoplay)
+			void this.djPlayer.restoreIfNeeded().then((ok) => {
+				if (ok) this.ui.setStatus('♪ Muziek hervat (persist na reload)');
+			});
 			window.removeEventListener('pointerdown', unlock);
 			window.removeEventListener('keydown', unlock);
 		};
@@ -391,7 +436,26 @@ export class App {
 			this.atmosphere.americans.cheerNear(this.djBartek.pos, 20);
 		};
 		this.djUi.onGreet = () => void this.bartekSpeak(BARTEK_LINES.greet);
+		this.djUi.onRat = () => {
+			this.rat.trigger();
+			this.ui.setStatus('🐀 Mall-rat is los — kijk bij de loopbanden');
+			void this.bartekSpeak('Die rat is VIP hier. Trap-gat mascotte!');
+		};
+		this.djUi.onMicStart = () => {
+			spatial.ensure();
+			this.atmosphere.americans.ensureAudio();
+			this.bartekChat.startListening();
+		};
+		this.djUi.onMicEnd = () => this.bartekChat.stopListening();
+		this.bartekChat.onUpdate = (lines, status) => {
+			this.djUi.setChat(lines, status);
+			if (lines.length) {
+				const last = lines[lines.length - 1];
+				if (last.who === 'bartek') this.djBartek.say(last.text, 5);
+			}
+		};
 		this.djUi.onClose = () => {
+			this.bartekChat.stopListening();
 			this.player.enabled = this.freeMove && this.possessId === null;
 		};
 		// Play track by index from list click
@@ -452,9 +516,10 @@ export class App {
 			const line = BARTEK_LINES.idle[Math.floor(Math.random() * BARTEK_LINES.idle.length)];
 			await this.bartekSpeak(line);
 		}
-		// Prefer real music over voice file
+		// Prefer real music; resume after HMR/reload if we had a track
 		const music = tracks.filter((t) => !/intro_voice|voice/i.test(t.file));
-		if (music.length && !this.djPlayer.playing) {
+		const resumed = await this.djPlayer.restoreIfNeeded();
+		if (!resumed && music.length && !this.djPlayer.playing) {
 			const idx = tracks.findIndex((t) => t.file === music[0].file);
 			if (idx >= 0) void this.djPlayer.playIndex(idx);
 		}
@@ -466,19 +531,22 @@ export class App {
 		if (this.bartekSpeaking) return;
 		this.bartekSpeaking = true;
 		this.atmosphere.americans.ensureAudio();
+		spatial.ensure();
 		this.djBartek.say(text, Math.min(8, 2.5 + text.length * 0.04));
-		const r = await speakBartek(text);
+		// Charlie voice — energetic DJ (not flat Adam)
+		const r = await speakLine(text, {
+			voiceId: 'IKne3meq5aSn9XLyUdCD',
+			lang: 'nl',
+			volume: 0.95,
+			allowBrowser: false,
+		});
 		if (r.source === 'elevenlabs') {
 			this.djUi.setStatus('🎤 Bartek (ElevenLabs) praat…');
 			this.ui.setStatus(`🎤 DJ Bartek: ${text.slice(0, 60)}…`);
-		} else if (r.source === 'browser') {
-			this.djUi.setStatus('🎤 Bartek (browser TTS)');
-		} else if (r.source === 'file') {
-			this.djUi.setStatus('🎤 Bartek (booth file)');
 		} else {
-			this.djUi.setStatus(`🎤 Geen audio: ${r.error ?? 'silent'}`);
+			this.djUi.setStatus(`🎤 ElevenLabs faalde: ${r.error ?? 'silent'} — niet browser-TTS`);
+			this.ui.setStatus(`🎤 TTS error: ${r.error ?? 'silent'}`);
 		}
-		// Let the line mostly finish so ElevenLabs drama doesn't overlap
 		const wait = Math.min(14000, r.durationMs ?? text.length * 55);
 		await new Promise((res) => setTimeout(res, Math.max(800, wait * 0.85)));
 		this.bartekSpeaking = false;
@@ -778,6 +846,14 @@ export class App {
 		this.atmosphere.update(dt);
 		this.pathMesh.update(dt);
 		this.thief.update(dt);
+		this.rat.update(dt);
+		// Quadratic spatial listener follows camera
+		spatial.updateListener(
+			this.camera.position.x,
+			this.camera.position.y,
+			this.camera.position.z,
+		);
+		this.prayer.update(dt, this.camera.position);
 
 		if (this.possessId !== null) {
 			const eye = this.atmosphere.americans.getSimEye(this.possessId);
@@ -810,6 +886,14 @@ export class App {
 		this.spaceship.update(this.clock.elapsedTime);
 		this.djBartek.update(this.clock.elapsedTime, dt, this.djPlayer.playing);
 		this.alienProbe.update(dt);
+
+		// Feed the monkey its victim list, then let it aim
+		this.simPositions.length = 0;
+		for (const child of this.atmosphere.americans.group.children) {
+			this.simPositions.push(child.position as THREE.Vector3);
+		}
+		this.monkey.setSimPositions(this.simPositions);
+		this.monkey.update(dt);
 		this.shopVoice.update(dt);
 		this.tickBartekDrama(dt);
 		// Auto-greet Youssef when you walk into Kruidvat

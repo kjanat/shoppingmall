@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { playBoothFile, speakLine } from '../audio/ElevenVoice';
+import { speakLine } from '../audio/ElevenVoice';
 import { getOwner, type ShopOwner } from '../data/shopOwners';
 import { STORES } from '../data/stores';
 
@@ -173,7 +173,12 @@ export class ShopVoice {
 		this.showBubble(storeId, line, Math.min(7, 2.5 + line.length * 0.05));
 
 		try {
-			await speakLine(line, { volume: 0.92 });
+			await speakLine(line, {
+				volume: 0.92,
+				voiceId: owner.voiceId,
+				lang: owner.lang,
+				allowBrowser: false,
+			});
 		} finally {
 			this.speaking = false;
 		}
@@ -196,32 +201,13 @@ export class ShopVoice {
 		const owner = getOwner(storeId);
 		if (!owner) return false;
 
-		// Youssef gets a full introduction (baked intro + live line)
+		// Youssef: full intro with his own voice + NL language hint
 		if (storeId === 'kruidvat') {
-			const line =
-				'Marhaba! Welkom bij Kruidvat. Ik ben Youssef Benali, filiaalmanager. Wat mag het zijn — vitamines, shampoo, of gewoon een praatje?';
-			this.lastSpeakAt.set(storeId, performance.now());
-			this.showBubble(storeId, line, 7);
-			this.speaking = true;
-			try {
-				const baked = await playBoothFile('youssef_intro_voice.mp3', 0.95);
-				if (baked.source === 'silent' || (baked.durationMs ?? 0) < 400) {
-					await speakLine(line, { volume: 0.95 });
-				} else {
-					// Extra live line after baked intro
-					await speakLine(
-						'Yallah, de kassa is open. Drie voor de prijs — take it!',
-						{ volume: 0.92 },
-					);
-					this.showBubble(
-						storeId,
-						'Yallah, de kassa is open. Drie voor de prijs — take it!',
-						4,
-					);
-				}
-			} finally {
-				this.speaking = false;
-			}
+			await this.speak(
+				storeId,
+				'Marhaba! Welkom bij Kruidvat. Ik ben Youssef Benali, filiaalmanager. Wat mag het zijn — vitamines, shampoo, of gewoon een praatje?',
+				{ force: true, minGapMs: 0 },
+			);
 		} else {
 			await this.speak(storeId, owner.lines[0], { force: true, minGapMs: 0 });
 		}

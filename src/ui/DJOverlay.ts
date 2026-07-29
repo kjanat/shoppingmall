@@ -9,6 +9,7 @@ export class DJOverlay {
 	private list: HTMLElement;
 	private status: HTMLElement;
 	private now: HTMLElement;
+	private chat: HTMLElement;
 	private visible = false;
 
 	onRequest: ((query: string) => void) | null = null;
@@ -18,6 +19,9 @@ export class DJOverlay {
 	onClose: (() => void) | null = null;
 	onProbe: (() => void) | null = null;
 	onGreet: (() => void) | null = null;
+	onMicStart: (() => void) | null = null;
+	onMicEnd: (() => void) | null = null;
+	onRat: (() => void) | null = null;
 
 	constructor(parent: HTMLElement) {
 		this.root = document.createElement('div');
@@ -42,12 +46,18 @@ export class DJOverlay {
           <button type="button" class="dj-btn primary" id="dj-go">Request</button>
         </div>
 
+        <div class="dj-mic-block">
+          <button type="button" class="dj-btn mic" id="dj-mic">🎙️ Houd in · praat met Bartek</button>
+          <div class="dj-chat" id="dj-chat"></div>
+        </div>
+
         <div class="dj-actions">
           <button type="button" class="dj-btn" id="dj-greet">🎤 Hallo Bartek</button>
           <button type="button" class="dj-btn" id="dj-play">▶ Play</button>
           <button type="button" class="dj-btn" id="dj-pause">⏸ Pause</button>
           <button type="button" class="dj-btn" id="dj-next">⏭ Next</button>
           <button type="button" class="dj-btn probe" id="dj-probe">👽 Probe Americans</button>
+          <button type="button" class="dj-btn" id="dj-rat">🐀 Roep rat</button>
         </div>
 
         <div class="dj-list-label">In de crates</div>
@@ -59,6 +69,7 @@ export class DJOverlay {
 		this.list = this.root.querySelector('#dj-list')!;
 		this.status = this.root.querySelector('#dj-status')!;
 		this.now = this.root.querySelector('#dj-now')!;
+		this.chat = this.root.querySelector('#dj-chat')!;
 
 		this.root.querySelector('#dj-close')!.addEventListener('click', () => this.hide());
 		this.root.querySelector('#dj-go')!.addEventListener('click', () => this.submit());
@@ -67,6 +78,20 @@ export class DJOverlay {
 		this.root.querySelector('#dj-next')!.addEventListener('click', () => this.onNext?.());
 		this.root.querySelector('#dj-probe')!.addEventListener('click', () => this.onProbe?.());
 		this.root.querySelector('#dj-greet')!.addEventListener('click', () => this.onGreet?.());
+		this.root.querySelector('#dj-rat')!.addEventListener('click', () => this.onRat?.());
+		const mic = this.root.querySelector('#dj-mic') as HTMLButtonElement;
+		mic.addEventListener('pointerdown', (e) => {
+			e.preventDefault();
+			mic.classList.add('hot');
+			this.onMicStart?.();
+		});
+		const endMic = () => {
+			mic.classList.remove('hot');
+			this.onMicEnd?.();
+		};
+		mic.addEventListener('pointerup', endMic);
+		mic.addEventListener('pointerleave', endMic);
+		mic.addEventListener('pointercancel', endMic);
 		this.input.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
 				e.preventDefault();
@@ -99,6 +124,19 @@ export class DJOverlay {
 
 	setStatus(text: string): void {
 		this.status.textContent = text;
+	}
+
+	setChat(lines: { who: 'you' | 'bartek'; text: string }[], status?: string): void {
+		this.chat.innerHTML = lines
+			.map(
+				(l) =>
+					`<div class="dj-chat-line ${l.who}"><b>${l.who === 'you' ? 'Jij' : 'Bartek'}:</b> ${
+						escapeHtml(l.text)
+					}</div>`,
+			)
+			.join('');
+		this.chat.scrollTop = this.chat.scrollHeight;
+		if (status) this.setStatus(status);
 	}
 
 	setNowPlaying(title: string, playing: boolean): void {

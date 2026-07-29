@@ -178,8 +178,9 @@ function shopEntrance(s: StoreDef): THREE.Vector3 {
  * True mall NPCs: shop → shop routes, velocity vector, legs+feet that walk hard,
  * head plates (destination / € spent / unhappiness), occasional farts + noises.
  */
-const SIM_RADIUS = 0.5;
-const SIM_SEPARATE = 1.55;
+const SIM_RADIUS = 0.55;
+/** Hard personal space — no walking through each other */
+const SIM_SEPARATE = 2.05;
 
 const GIBBER = [
 	'Komunicare… humanos!',
@@ -541,9 +542,10 @@ export class Americans {
 		}
 	}
 
-	/** Static walls/stores + hard sim-sim separation (no orgy-stack / loopband of people) */
+	/** Static walls/stores + hard sim-sim separation (no walking through people) */
 	private resolveAgents(): void {
-		for (let pass = 0; pass < 2; pass++) {
+		// More passes = less clumping when a crowd packs a corridor
+		for (let pass = 0; pass < 4; pass++) {
 			for (const s of this.sims) {
 				s.pos.y = this.world.snapFloorY(s.pos.x, s.pos.z, s.pos.y);
 				const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, SIM_RADIUS);
@@ -555,16 +557,10 @@ export class Americans {
 					const a = this.sims[i];
 					const b = this.sims[j];
 					if (Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
-					// Couples may walk closer (love/family meaning)
 					const couple = a.f.partnerId === b.f.id || b.f.partnerId === a.f.id;
-					const minD = couple ? 0.75 : SIM_SEPARATE;
-					const sep = this.world.separate(
-						a.pos.x,
-						a.pos.z,
-						b.pos.x,
-						b.pos.z,
-						minD,
-					);
+					// Couples still need space — not merge into one mesh
+					const minD = couple ? 1.05 : SIM_SEPARATE;
+					const sep = this.world.separate(a.pos.x, a.pos.z, b.pos.x, b.pos.z, minD);
 					a.pos.x = sep.ax;
 					a.pos.z = sep.az;
 					b.pos.x = sep.bx;
@@ -1133,6 +1129,22 @@ export class Americans {
 		sim.pos.x = hit.x;
 		sim.pos.z = hit.z;
 		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, sim.pos.y);
+
+		// Soft push off nearby walkers mid-step (stops body-merge before resolveAgents)
+		for (const other of this.sims) {
+			if (other === sim) continue;
+			if (Math.abs(other.pos.y - sim.pos.y) > 2.5) continue;
+			const couple = sim.f.partnerId === other.f.id || other.f.partnerId === sim.f.id;
+			const minD = couple ? 1.0 : SIM_SEPARATE * 0.95;
+			const dx = sim.pos.x - other.pos.x;
+			const dz = sim.pos.z - other.pos.z;
+			const d2 = dx * dx + dz * dz;
+			if (d2 > minD * minD || d2 < 1e-8) continue;
+			const d = Math.sqrt(d2);
+			const push = (minD - d) * 0.55;
+			sim.pos.x += (dx / d) * push;
+			sim.pos.z += (dz / d) * push;
+		}
 
 		const moved = Math.hypot(sim.pos.x - prevX, sim.pos.z - prevZ);
 		if (moved < spd * dt * 0.2 && dist > 0.8) {

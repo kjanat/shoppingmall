@@ -14,6 +14,10 @@ export type ShopOwner = {
 	hair: number;
 	/** speech lines when a guest checks out */
 	lines: string[];
+	/** ElevenLabs voice id (character-correct) */
+	voiceId?: string;
+	/** BCP-47 hint for multilingual model */
+	lang?: string;
 };
 
 export const SHOP_OWNERS: Record<string, ShopOwner> = {
@@ -117,7 +121,7 @@ export const SHOP_OWNERS: Record<string, ShopOwner> = {
 		hair: 0x5c4033,
 		lines: ['New DLC dropped.', 'Controller stock is spicy.'],
 	},
-	/** Moroccan-Dutch owner — warm, bilingual energy, no caricature */
+	/** Moroccan-Dutch owner — warm, bilingual (NL + Darija-light), no caricature */
 	kruidvat: {
 		storeId: 'kruidvat',
 		name: 'Youssef Benali',
@@ -126,15 +130,18 @@ export const SHOP_OWNERS: Record<string, ShopOwner> = {
 		shirt: 0xe30613,
 		skin: 0xc68642,
 		hair: 0x1a1a1a,
+		// Chris = warm conversational male; multilingual NL reads more natural than "Adam"
+		voiceId: 'iP95p4xoKVk53GoZ742B',
+		lang: 'nl',
 		lines: [
 			'Marhaba! Welkom bij Kruidvat, ik ben Youssef Benali.',
 			'Vitamines? Goede keuze, wallah. Je moeder gaat blij zijn.',
 			'Drie voor de prijs van twee — take it, yallah!',
-			'Yallah, fijne dag nog! En let op de loopbanden he.',
+			'Yallah, fijne dag nog! En let op de loopbanden hè.',
 			'Ah, een klant! Kom dichterbij, de kassa is open.',
 			'Shampoo, zonnebrand, paracetamol — alles hier, broeder.',
 			'Brad? Die is er gisteren al geweest. Jij ook vitamines?',
-			'Bismillah, volgende klant. Marhaba nogmaals!',
+			'Salam aleikum, volgende klant. Marhaba nogmaals!',
 		],
 	},
 	sephora: {

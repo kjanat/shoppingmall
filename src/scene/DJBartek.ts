@@ -7,7 +7,8 @@ import * as THREE from 'three';
 export class DJBartek {
 	readonly group = new THREE.Group();
 	/** Interaction radius center */
-	readonly pos = new THREE.Vector3(-20.5, 0, -6);
+	/** West trap-gat — next to stairs bottom (not crossing the escalator) */
+	readonly pos = new THREE.Vector3(-20.5, 0, 5);
 	readonly interactR = 4.2;
 	private materials: THREE.Material[] = [];
 	private bobParts: THREE.Object3D[] = [];

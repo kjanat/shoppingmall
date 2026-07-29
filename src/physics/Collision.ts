@@ -36,23 +36,22 @@ export class CollisionWorld {
 	readonly boxes: AABB[] = [];
 	/** Inclines the player can actually walk up — mirrors the built geometry. */
 	readonly ramps: Ramp[] = [
-		// ROLTRAP east: incline from (22, 0, 6) up to (22, 6, -4); landings are the
-		// flat pad either side of that (t is clamped, see groundHeightAt).
+		// East roltrap only — never shares space with west stairs
 		{
 			minX: 20.7,
 			maxX: 23.3,
-			zBottom: 6,
-			zTop: -4,
+			zBottom: 8,
+			zTop: -2,
 			yBottom: 0,
 			yTop: 6,
 			label: 'escalator',
 		},
-		// TRAP west: incline from (-22, 0, -6) up to (-22, 6, -16)
+		// West trap only — opposite wall, cannot cross the escalator
 		{
-			minX: -23.4,
-			maxX: -20.6,
-			zBottom: -6,
-			zTop: -16,
+			minX: -23.5,
+			maxX: -20.5,
+			zBottom: 4,
+			zTop: -14,
 			yBottom: 0,
 			yTop: 6,
 			label: 'stairs',
@@ -109,12 +108,15 @@ export class CollisionWorld {
 			});
 		}
 
-		// Escalator volume (east) — solid for sims, walkable ramp for the player
-		// Bottom (22,0,6) → top (22,6,-4), width ~2
-		this.add(20.8, 23.2, -5.5, 7.2, { label: 'escalator', climbable: true });
+		// Escalator volume (east only)
+		this.add(20.8, 23.2, -3.5, 9, { label: 'escalator', climbable: true });
 
-		// Stairs volume (west)
-		this.add(-23.5, -20.5, -17, -4.5, { label: 'stairs', climbable: true });
+		// Stairs volume (west only) — does NOT overlap escalator
+		this.add(-23.5, -20.5, -15.5, 5, { label: 'stairs', climbable: true });
+
+		// Floor-1 openings at stair/escalator heads (not solid walkable slab)
+		this.add(-23.8, -20.2, -17.5, -13.2, { minY: 5.2, maxY: 7.5, label: 'stair_shaft_top', climbable: true });
+		this.add(20.5, 23.5, -5.5, -1.2, { minY: 5.2, maxY: 7.5, label: 'esc_shaft_top', climbable: true });
 
 		// Atrium fountain / planter (floor 0)
 		this.add(-2.6, 2.6, -2.6, 2.6, { minY: -0.5, maxY: 3.5, label: 'fountain' });
@@ -273,7 +275,8 @@ export class CollisionWorld {
 		}
 		const d = Math.sqrt(d2);
 		if (d >= minDist) return { ax, az, bx, bz };
-		const push = (minDist - d) * 0.5;
+		// Full split each side (was 0.5 total → still overlapped under load)
+		const push = (minDist - d) * 0.52;
 		const nx = dx / d;
 		const nz = dz / d;
 		return {

@@ -138,7 +138,7 @@ export class MallBuilder {
 		floor0.receiveShadow = true;
 		this.group.add(floor0);
 
-		// Floor 1 ring (open atrium in center)
+		// Floor 1 ring: atrium void + REAL openings where stairs/escalator meet floor 1
 		const floor1Mat = this.track(floorMat.clone());
 		const f1Shape = new THREE.Shape();
 		f1Shape.moveTo(-MALL_W / 2, -MALL_D / 2);
@@ -146,15 +146,26 @@ export class MallBuilder {
 		f1Shape.lineTo(MALL_W / 2, MALL_D / 2);
 		f1Shape.lineTo(-MALL_W / 2, MALL_D / 2);
 		f1Shape.lineTo(-MALL_W / 2, -MALL_D / 2);
-		const hole = new THREE.Path();
+
+		const addRectHole = (cx: number, cz: number, hw: number, hd: number) => {
+			const h = new THREE.Path();
+			// Shape XZ after rotateX: path uses (x,z) as (x,y) of shape
+			h.moveTo(cx - hw, cz - hd);
+			h.lineTo(cx + hw, cz - hd);
+			h.lineTo(cx + hw, cz + hd);
+			h.lineTo(cx - hw, cz + hd);
+			h.lineTo(cx - hw, cz - hd);
+			f1Shape.holes.push(h);
+		};
+
+		// Center atrium
 		const aw = 16;
 		const ad = 12;
-		hole.moveTo(-aw / 2, -ad / 2);
-		hole.lineTo(aw / 2, -ad / 2);
-		hole.lineTo(aw / 2, ad / 2);
-		hole.lineTo(-aw / 2, ad / 2);
-		hole.lineTo(-aw / 2, -ad / 2);
-		f1Shape.holes.push(hole);
+		addRectHole(0, 0, aw / 2, ad / 2);
+		// TOP of west stairs lands around (-22, z=-16) — opening so you don't walk into slab
+		addRectHole(-22, -15.5, 1.8, 2.4);
+		// TOP of east escalator lands around (22, z=-4)
+		addRectHole(22, -3.5, 1.5, 2.2);
 
 		const f1Geo = new THREE.ExtrudeGeometry(f1Shape, {
 			depth: 0.3,
@@ -309,152 +320,150 @@ export class MallBuilder {
 	}
 
 	/**
-	 * Escalator + stairs are SEPARATE and far apart — no intersecting spaghetti.
-	 * Escalator: east wing (x=22), runs north so it never fights atrium hole or loopbanden.
-	 * Stairs: west wing (x=-22), simple switchback-free straight run south.
+	 * ONE escalator (east) + ONE stairs (west). Never cross. Never share a shaft.
+	 * Each has a hole cut in floor-1 at the top landing.
 	 */
 	private buildEscalator(): void {
-		// ── ROLTRAP (east) ─────────────────────────────────
-		// Bottom near (22, 0, 6), top near (22, 6, -4)
-		this.buildInclinedRun({
+		// East roltrap: bottom (22,0,8) → top (22,6,-2)  — only along +X wall
+		this.buildStraightFlight({
 			name: 'escalator',
 			x: 22,
-			z: 6,
-			// local: steps go toward -Z while rising
-			run: 10,
+			zBottom: 8,
+			zTop: -2,
 			rise: FLOOR_H,
-			width: 1.5,
+			width: 1.6,
 			kind: 'escalator',
 		});
-
-		// ── TRAP (west) — separate structure, other side of mall ─
-		this.buildInclinedRun({
+		// West trap: bottom (-22,0,4) → top (-22,6,-14) — opposite wall, no cross
+		this.buildStraightFlight({
 			name: 'stairs',
 			x: -22,
-			z: -6,
-			run: 10,
+			zBottom: 4,
+			zTop: -14,
 			rise: FLOOR_H,
-			width: 2.2,
+			width: 2.4,
 			kind: 'stairs',
 		});
 	}
 
-	private buildInclinedRun(opts: {
+	/** Proper single flight: steps don't overlap, no X-crossing truss soup */
+	private buildStraightFlight(opts: {
 		name: string;
 		x: number;
-		z: number;
-		run: number;
+		zBottom: number;
+		zTop: number;
 		rise: number;
 		width: number;
 		kind: 'escalator' | 'stairs';
 	}): void {
 		const g = new THREE.Group();
-		g.position.set(opts.x, 0, opts.z);
 		g.name = opts.name;
-
+		// World-space build so nothing is rotated into another flight
+		const z0 = opts.zBottom;
+		const z1 = opts.zTop;
+		const run = Math.abs(z1 - z0);
+		const dir = z1 < z0 ? -1 : 1;
+		const steps = opts.kind === 'stairs' ? 14 : 18;
 		const metal = this.track(
 			new THREE.MeshStandardMaterial({
-				color: opts.kind === 'escalator' ? 0x455a64 : 0x8d6e63,
-				metalness: opts.kind === 'escalator' ? 0.85 : 0.2,
-				roughness: 0.35,
+				color: opts.kind === 'escalator' ? 0x455a64 : 0x6d4c41,
+				metalness: opts.kind === 'escalator' ? 0.8 : 0.15,
+				roughness: 0.4,
 			}),
 		);
-		const stepMat = this.track(
+		const tread = this.track(
 			new THREE.MeshStandardMaterial({
-				color: opts.kind === 'escalator' ? 0x37474f : 0xbcaaa4,
-				metalness: 0.4,
-				roughness: 0.5,
+				color: opts.kind === 'escalator' ? 0x37474f : 0xd7ccc8,
+				roughness: 0.55,
 			}),
 		);
 		const railMat = this.track(
-			new THREE.MeshStandardMaterial({
-				color: 0x90a4ae,
-				metalness: 0.75,
-				roughness: 0.3,
-			}),
+			new THREE.MeshStandardMaterial({ color: 0xb0bec5, metalness: 0.7, roughness: 0.3 }),
 		);
 
-		const { run, rise, width } = opts;
-		const angle = Math.atan2(rise, run);
-		const len = Math.hypot(rise, run);
-		const stepCount = opts.kind === 'stairs' ? 12 : 16;
-
-		// Landing pads so nothing clips into floor slabs
+		// Bottom landing
 		const land0 = new THREE.Mesh(
-			new THREE.BoxGeometry(width + 0.8, 0.15, 1.6),
+			new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.4),
 			metal,
 		);
-		land0.position.set(0, 0.08, 0.6);
+		land0.position.set(opts.x, 0.06, z0 - dir * 0.5);
 		g.add(land0);
 
+		// Top landing (sits in floor-1 hole)
 		const land1 = new THREE.Mesh(
-			new THREE.BoxGeometry(width + 0.8, 0.15, 1.6),
+			new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.5),
 			metal,
 		);
-		land1.position.set(0, rise + 0.08, -run - 0.6);
+		land1.position.set(opts.x, opts.rise + 0.06, z1 + dir * 0.35);
 		g.add(land1);
 
-		// Stringer / truss under the run
-		const truss = new THREE.Mesh(new THREE.BoxGeometry(width + 0.2, 0.28, len), metal);
-		truss.rotation.x = -angle;
-		truss.position.set(0, rise / 2 + 0.05, -run / 2);
-		g.add(truss);
-
-		// Steps along the incline (horizontal treads)
-		for (let i = 0; i < stepCount; i++) {
-			const t = (i + 0.5) / stepCount;
+		// Discrete steps — each tread only occupies its own band (no cross)
+		const stepDepth = run / steps;
+		const stepRise = opts.rise / steps;
+		for (let i = 0; i < steps; i++) {
+			const z = z0 + dir * (i + 0.5) * stepDepth;
+			const y = (i + 1) * stepRise;
 			const step = new THREE.Mesh(
-				new THREE.BoxGeometry(width, 0.1, opts.kind === 'stairs' ? 0.7 : 0.42),
-				stepMat,
+				new THREE.BoxGeometry(opts.width, 0.12, stepDepth * 0.92),
+				tread,
 			);
-			step.position.set(0, t * rise + 0.12, -t * run);
+			step.position.set(opts.x, y - 0.06, z);
 			g.add(step);
+			// riser
+			const riser = new THREE.Mesh(
+				new THREE.BoxGeometry(opts.width, stepRise * 0.95, 0.06),
+				metal,
+			);
+			riser.position.set(opts.x, y - stepRise * 0.5, z - dir * stepDepth * 0.45);
+			g.add(riser);
 		}
 
-		// Handrails both sides
-		for (const sx of [-width / 2 - 0.08, width / 2 + 0.08]) {
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, len), railMat);
-			rail.rotation.x = -angle;
-			rail.position.set(sx, rise / 2 + 0.85, -run / 2);
-			g.add(rail);
-			// posts
-			for (let i = 0; i <= 4; i++) {
-				const u = i / 4;
+		// Side stringers (thin vertical boards, NOT a diagonal beam that looks like a cross)
+		for (const sx of [opts.x - opts.width / 2 - 0.06, opts.x + opts.width / 2 + 0.06]) {
+			for (let i = 0; i < steps; i++) {
+				const z = z0 + dir * (i + 0.5) * stepDepth;
+				const y = (i + 0.5) * stepRise;
+				const board = new THREE.Mesh(
+					new THREE.BoxGeometry(0.1, stepRise + 0.08, stepDepth * 0.95),
+					metal,
+				);
+				board.position.set(sx, y, z);
+				g.add(board);
+			}
+			// handrail as polyline of short segments (no single X-beam)
+			for (let i = 0; i < steps; i++) {
+				const z = z0 + dir * (i + 0.5) * stepDepth;
+				const y = (i + 1) * stepRise + 0.75;
 				const post = new THREE.Mesh(
 					new THREE.CylinderGeometry(0.03, 0.03, 0.75, 6),
 					railMat,
 				);
-				post.position.set(sx, u * rise + 0.45, -u * run);
+				post.position.set(sx, y - 0.35, z);
 				g.add(post);
+				if (i < steps - 1) {
+					const z2 = z0 + dir * (i + 1.5) * stepDepth;
+					const y2 = (i + 2) * stepRise + 0.75;
+					const midZ = (z + z2) / 2;
+					const midY = (y + y2) / 2;
+					const segLen = Math.hypot(z2 - z, y2 - y);
+					const rail = new THREE.Mesh(
+						new THREE.BoxGeometry(0.06, 0.06, segLen),
+						railMat,
+					);
+					rail.position.set(sx, midY, midZ);
+					rail.rotation.x = Math.atan2(y2 - y, z2 - z);
+					g.add(rail);
+				}
 			}
 		}
 
-		// Simple glass sides (no broken PhysicalMaterial soup)
-		const glass = this.track(
-			new THREE.MeshStandardMaterial({
-				color: 0xb3d4e8,
-				transparent: true,
-				opacity: 0.22,
-				roughness: 0.15,
-				side: THREE.DoubleSide,
-			}),
-		);
-		for (const sx of [-width / 2 - 0.05, width / 2 + 0.05]) {
-			const panel = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.7), glass);
-			panel.position.set(sx, rise / 2 + 0.45, -run / 2);
-			panel.rotation.order = 'YXZ';
-			panel.rotation.y = Math.PI / 2;
-			panel.rotation.x = -angle;
-			g.add(panel);
-		}
-
-		// Label plate
+		// Label
 		const label = opts.kind === 'escalator' ? 'ROLTRAP ↑' : 'TRAP ↑';
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 64;
 		const ctx = c.getContext('2d')!;
-		ctx.fillStyle = opts.kind === 'escalator' ? '#1565c0' : '#6d4c41';
+		ctx.fillStyle = opts.kind === 'escalator' ? '#1565c0' : '#5d4037';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#fff';
 		ctx.font = 'bold 28px system-ui,sans-serif';
@@ -464,11 +473,22 @@ export class MallBuilder {
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
 		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.4, 0.35),
+			new THREE.PlaneGeometry(1.5, 0.38),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		sign.position.set(0, 1.4, 0.9);
+		sign.position.set(opts.x, 1.5, z0 - dir * 0.2);
 		g.add(sign);
+
+		// Safety rail around floor-1 hole edges (short segments)
+		const holeZ = z1;
+		for (const side of [-1, 1]) {
+			const cap = new THREE.Mesh(
+				new THREE.BoxGeometry(0.08, 1.0, 3.5),
+				railMat,
+			);
+			cap.position.set(opts.x + side * (opts.width / 2 + 0.5), FLOOR_H + 0.55, holeZ);
+			g.add(cap);
+		}
 
 		this.group.add(g);
 	}

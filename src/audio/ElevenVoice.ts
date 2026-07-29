@@ -1,10 +1,10 @@
 /**
- * DJ Bartek voice: ElevenLabs via /api/tts, browser speechSynthesis fallback.
- * Also can play pre-baked booth lines from public/dj-music/.
+ * Character speech via ElevenLabs (/api/tts).
+ * Browser TTS is OFF by default — user hated the bubbel/robot fallback.
  */
 
 export type SpeakResult = {
-	source: 'elevenlabs' | 'browser' | 'file' | 'silent';
+	source: 'elevenlabs' | 'file' | 'browser' | 'silent';
 	error?: string;
 	durationMs?: number;
 };
@@ -22,30 +22,47 @@ function stopCurrent(): void {
 		URL.revokeObjectURL(objectUrl);
 		objectUrl = null;
 	}
+	// Always kill browser TTS so it never stacks under real audio
 	window.speechSynthesis?.cancel();
+}
+
+function isMp3(buf: ArrayBuffer): boolean {
+	if (buf.byteLength < 4) return false;
+	const u = new Uint8Array(buf);
+	// ID3 tag or MPEG frame sync
+	return (
+		(u[0] === 0x49 && u[1] === 0x44 && u[2] === 0x33)
+		|| (u[0] === 0xff && (u[1] & 0xe0) === 0xe0)
+	);
 }
 
 function playElement(el: HTMLAudioElement, volume: number): Promise<number> {
 	return new Promise((resolve) => {
-		el.volume = volume;
-		const done = () => {
-			const ms = Number.isFinite(el.duration) ? el.duration * 1000 : 2500;
+		let done = false;
+		const finish = (ms: number) => {
+			if (done) return;
+			done = true;
 			resolve(ms);
 		};
-		el.onended = done;
-		el.onerror = () => resolve(0);
-		void el.play().then(() => {
-			// duration may be NaN until metadata
-			if (el.readyState >= 1 && Number.isFinite(el.duration)) {
-				/* ok */
-			}
-		}).catch(() => resolve(0));
-		// safety cap
-		setTimeout(() => resolve(Math.min(20000, (el.duration || 4) * 1000)), 20000);
+		el.volume = volume;
+		el.onended = () => finish(Number.isFinite(el.duration) ? el.duration * 1000 : 2500);
+		el.onerror = () => finish(0);
+		const cap = window.setTimeout(() => {
+			finish(Math.min(20000, (el.duration || 4) * 1000));
+		}, 20000);
+		void el
+			.play()
+			.then(() => {
+				/* playing */
+			})
+			.catch(() => {
+				clearTimeout(cap);
+				finish(0);
+			});
 	});
 }
 
-/** Play a local mp3 under /dj-music/ (pre-generated Bartek lines) */
+/** Local mp3 under /dj-music/ */
 export async function playBoothFile(
 	file: string,
 	volume = 0.95,
@@ -56,53 +73,117 @@ export async function playBoothFile(
 	return { source: ms > 0 ? 'file' : 'silent', durationMs: ms };
 }
 
+async function fetchTts(
+	text: string,
+	voiceId?: string,
+	lang?: string,
+): Promise<{ ok: true; buf: ArrayBuffer } | { ok: false; error: string; status: number }> {
+	const res = await fetch('/api/tts', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ text, voiceId, lang }),
+	});
+	const ct = (res.headers.get('content-type') || '').toLowerCase();
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({}));
+		return {
+			ok: false,
+			status: res.status,
+			error: (err as { error?: string }).error ?? `tts ${res.status}`,
+		};
+	}
+	const buf = await res.arrayBuffer();
+	// Accept audio even if content-type is wrong (some proxies strip it)
+	if (buf.byteLength > 800 && (ct.includes('audio') || isMp3(buf) || !ct.includes('json'))) {
+		if (ct.includes('json')) {
+			// actually json body with 200? parse
+			try {
+				const j = JSON.parse(new TextDecoder().decode(buf)) as { error?: string };
+				return { ok: false, status: 200, error: j.error ?? 'json_body' };
+			} catch {
+				/* treat as audio */
+			}
+		}
+		return { ok: true, buf };
+	}
+	return { ok: false, status: res.status, error: `bad_audio ct=${ct} bytes=${buf.byteLength}` };
+}
+
 /**
- * Speak any line via ElevenLabs (shared by Bartek, Youssef, other keepers).
- * Does NOT cut off a line already playing if `queue` — default cuts previous.
+ * Speak via ElevenLabs. Browser TTS only if allowBrowser: true.
  */
 export async function speakLine(
 	text: string,
-	opts: { voiceId?: string; volume?: number; interrupt?: boolean } = {},
+	opts: {
+		voiceId?: string;
+		lang?: string;
+		volume?: number;
+		interrupt?: boolean;
+		/** default false — never fall back to robot browser voice for NPCs */
+		allowBrowser?: boolean;
+	} = {},
 ): Promise<SpeakResult> {
 	const volume = opts.volume ?? 0.95;
 	if (opts.interrupt !== false) stopCurrent();
 
 	try {
-		const res = await fetch('/api/tts', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ text, voiceId: opts.voiceId }),
-		});
-		if (res.ok && res.headers.get('content-type')?.includes('audio')) {
-			const blob = await res.blob();
-			objectUrl = URL.createObjectURL(blob);
-			audioEl = new Audio(objectUrl);
-			const ms = await playElement(audioEl, volume);
-			return { source: 'elevenlabs', durationMs: ms };
+		// 1) with lang  2) without lang (if first fails)  3) default voice
+		let result = await fetchTts(text, opts.voiceId, opts.lang);
+		if (!result.ok && opts.lang) {
+			result = await fetchTts(text, opts.voiceId, undefined);
 		}
-		const err = await res.json().catch(() => ({}));
-		const browser = speakBrowser(text, volume);
-		return {
-			source: browser ? 'browser' : 'silent',
-			error: (err as { error?: string }).error ?? `tts ${res.status}`,
-			durationMs: browser ? Math.min(12000, text.length * 55) : 0,
-		};
+		if (!result.ok && opts.voiceId) {
+			result = await fetchTts(text, undefined, opts.lang);
+		}
+		if (!result.ok) {
+			console.warn('[ElevenVoice] TTS failed:', result.error);
+			if (opts.allowBrowser) {
+				const browser = speakBrowser(text, volume);
+				return {
+					source: browser ? 'browser' : 'silent',
+					error: result.error,
+					durationMs: browser ? Math.min(12000, text.length * 55) : 0,
+				};
+			}
+			return { source: 'silent', error: result.error, durationMs: 0 };
+		}
+
+		objectUrl = URL.createObjectURL(new Blob([result.buf], { type: 'audio/mpeg' }));
+		audioEl = new Audio(objectUrl);
+		const ms = await playElement(audioEl, volume);
+		if (ms <= 0) {
+			// autoplay blocked — still ElevenLabs data, try again after tiny delay
+			try {
+				await audioEl.play();
+			} catch {
+				/* */
+			}
+			return {
+				source: 'elevenlabs',
+				error: 'play_blocked_or_short',
+				durationMs: Math.min(12000, text.length * 50),
+			};
+		}
+		return { source: 'elevenlabs', durationMs: ms };
 	} catch (e) {
-		const browser = speakBrowser(text, volume);
-		return {
-			source: browser ? 'browser' : 'silent',
-			error: String(e),
-			durationMs: browser ? Math.min(12000, text.length * 55) : 0,
-		};
+		console.warn('[ElevenVoice] exception:', e);
+		if (opts.allowBrowser) {
+			const browser = speakBrowser(text, volume);
+			return {
+				source: browser ? 'browser' : 'silent',
+				error: String(e),
+				durationMs: browser ? Math.min(12000, text.length * 55) : 0,
+			};
+		}
+		return { source: 'silent', error: String(e), durationMs: 0 };
 	}
 }
 
-/** @deprecated use speakLine — kept for Bartek call sites */
 export async function speakBartek(
 	text: string,
 	opts: { voiceId?: string; volume?: number } = {},
 ): Promise<SpeakResult> {
-	return speakLine(text, opts);
+	return speakLine(text, { ...opts, voiceId: opts.voiceId ?? 'IKne3meq5aSn9XLyUdCD', lang: 'nl' });
 }
 
 function speakBrowser(text: string, volume: number): boolean {
@@ -113,7 +194,6 @@ function speakBrowser(text: string, volume: number): boolean {
 	u.pitch = 0.95;
 	const voices = window.speechSynthesis.getVoices();
 	const pick = voices.find((v) => /dutch|nl-NL|nederlands/i.test(v.lang + v.name))
-		|| voices.find((v) => /en-GB|en-US/i.test(v.lang) && /male|daniel|google uk/i.test(v.name))
 		|| voices.find((v) => /^en/i.test(v.lang))
 		|| voices[0];
 	if (pick) u.voice = pick;

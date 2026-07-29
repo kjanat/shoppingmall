@@ -71,34 +71,53 @@ function resolveElevenKey(): string | null {
 	return key.length > 10 ? key : null;
 }
 
-async function elevenLabsTts(text: string, voiceId?: string): Promise<Buffer | null> {
+async function elevenLabsTts(
+	text: string,
+	voiceId?: string,
+	lang?: string,
+): Promise<Buffer | null> {
 	const key = resolveElevenKey();
 	if (!key) return null;
 
 	const voice = voiceId
 		|| process.env.ELEVENLABS_VOICE_ID?.trim()
-		// Adam — clear energetic male (public ElevenLabs voice)
-		|| 'pNInz6obpgDQGcFmaJgB';
+		// Charlie — energetic (good default DJ energy)
+		|| 'IKne3meq5aSn9XLyUdCD';
 
 	const url = `https://api.elevenlabs.io/v1/text-to-speech/${voice}`;
-	const res = await fetch(url, {
-		method: 'POST',
-		headers: {
-			'xi-api-key': key,
-			'Content-Type': 'application/json',
-			Accept: 'audio/mpeg',
+	const body: Record<string, unknown> = {
+		text: text.slice(0, 800),
+		model_id: 'eleven_multilingual_v2',
+		voice_settings: {
+			stability: lang === 'nl' ? 0.42 : 0.32,
+			similarity_boost: 0.82,
+			style: lang === 'nl' ? 0.35 : 0.55,
+			use_speaker_boost: true,
 		},
-		body: JSON.stringify({
-			text: text.slice(0, 800),
-			model_id: 'eleven_multilingual_v2',
-			voice_settings: {
-				stability: 0.35,
-				similarity_boost: 0.8,
-				style: 0.55,
-				use_speaker_boost: true,
+	};
+	// Multilingual language hint when supported
+	if (lang) body.language_code = lang;
+
+	const post = async (payload: Record<string, unknown>) => {
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: {
+				'xi-api-key': key,
+				'Content-Type': 'application/json',
+				Accept: 'audio/mpeg',
 			},
-		}),
-	});
+			body: JSON.stringify(payload),
+		});
+		return res;
+	};
+
+	let res = await post(body);
+	// language_code can 400 on some accounts — retry bare
+	if (!res.ok && body.language_code) {
+		const { language_code: _lc, ...bare } = body;
+		void _lc;
+		res = await post(bare);
+	}
 	if (!res.ok) {
 		const err = await res.text();
 		throw new Error(`ElevenLabs ${res.status}: ${err.slice(0, 200)}`);
@@ -107,17 +126,69 @@ async function elevenLabsTts(text: string, voiceId?: string): Promise<Buffer | n
 	return Buffer.from(ab);
 }
 
-function runYtDlp(query: string): Promise<{ ok: boolean; log: string; file?: string }> {
+function resolveYoutubeKey(): string | null {
+	const raw = process.env.YOUTUBE_API_KEY
+		|| process.env.YT_API_KEY
+		|| process.env.GOOGLE_API_KEY
+		|| '';
+	const key = raw.trim().replace(/^["']|["']$/g, '');
+	return key.length > 10 ? key : null;
+}
+
+/** Official YouTube Data API search — more reliable than yt-dlp ytsearch */
+async function youtubeSearch(
+	query: string,
+): Promise<{ videoId: string; title: string } | { error: string }> {
+	const key = resolveYoutubeKey();
+	if (!key) return { error: 'no_youtube_api_key' };
+
+	const params = new URLSearchParams({
+		part: 'snippet',
+		type: 'video',
+		maxResults: '5',
+		q: query,
+		videoEmbeddable: 'true',
+		// Prefer music-ish results; still free-form query
+		safeSearch: 'none',
+		key,
+	});
+	const url = `https://www.googleapis.com/youtube/v3/search?${params}`;
+	const res = await fetch(url);
+	if (!res.ok) {
+		const err = await res.text();
+		return { error: `youtube_search ${res.status}: ${err.slice(0, 180)}` };
+	}
+	const data = (await res.json()) as {
+		items?: Array<{ id?: { videoId?: string }; snippet?: { title?: string } }>;
+	};
+	const hit = data.items?.find((it) => it.id?.videoId);
+	if (!hit?.id?.videoId) return { error: 'no_results' };
+	return {
+		videoId: hit.id.videoId,
+		title: hit.snippet?.title ?? hit.id.videoId,
+	};
+}
+
+function newestMusicFile(beforeMs: number): string | undefined {
+	const list = listPlaylist()
+		.map((t) => ({
+			...t,
+			mtime: statSync(join(MUSIC_DIR, t.file)).mtimeMs,
+		}))
+		.filter((t) => t.mtime >= beforeMs - 500)
+		.sort((a, b) => b.mtime - a.mtime);
+	return list[0]?.file;
+}
+
+function runYtDlpUrl(
+	watchUrl: string,
+): Promise<{ ok: boolean; log: string; file?: string }> {
 	return new Promise((resolve) => {
 		ensureMusicDir();
 		const bin = findYtDlp();
-		// Sanitize: treat as ytsearch, strip shell metacharacters
-		const clean = query.replace(/[^\w\s\-'.!&()áéíóúäëïöüàèìòùñç]/gi, ' ').trim().slice(0, 80);
-		if (!clean) {
-			resolve({ ok: false, log: 'empty query' });
-			return;
-		}
+		const before = Date.now();
 		const outTpl = join(MUSIC_DIR, '%(title).80s.%(ext)s');
+		// Direct URL — no ytsearch. Prefer clients that work; cap long DJ sets.
 		const args = [
 			'-x',
 			'--audio-format',
@@ -125,17 +196,18 @@ function runYtDlp(query: string): Promise<{ ok: boolean; log: string; file?: str
 			'--audio-quality',
 			'5',
 			'--no-playlist',
-			'--max-downloads',
-			'1',
-			// Full sets are often >7min — take first ~3 min instead of skipping
-			'--download-sections',
-			'*0:00-3:00',
-			'--force-keyframes-at-cuts',
+			'--no-warnings',
 			'-o',
 			outTpl,
-			`ytsearch1:${clean}`,
+			// Prefer clients that still get media (ytsearch was the flaky bit)
+			'--extractor-args',
+			'youtube:player_client=android,web',
+			watchUrl,
 		];
-		const child = spawn(bin, args, { cwd: process.cwd(), env: process.env });
+		const child = spawn(bin, args, {
+			cwd: process.cwd(),
+			env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
+		});
 		let log = '';
 		child.stdout.on('data', (d) => {
 			log += d.toString();
@@ -145,19 +217,58 @@ function runYtDlp(query: string): Promise<{ ok: boolean; log: string; file?: str
 		});
 		child.on('error', (e) => resolve({ ok: false, log: String(e) }));
 		child.on('close', (code) => {
-			const list = listPlaylist();
-			// Prefer newest file
-			const sorted = list
-				.map((t) => ({ ...t, mtime: statSync(join(MUSIC_DIR, t.file)).mtimeMs }))
-				.sort((a, b) => b.mtime - a.mtime);
-			const file = sorted[0]?.file;
+			const file = newestMusicFile(before);
 			resolve({
-				ok: code === 0 || code === 101 || !!file, // 101 = max downloads reached
-				log: log.slice(-2000),
+				ok: (code === 0 || code === 101) && !!file,
+				log: log.slice(-2500),
 				file,
 			});
 		});
 	});
+}
+
+/** Search (YouTube API) → download (yt-dlp by URL). Fallback: ytsearch. */
+async function requestTrack(
+	query: string,
+): Promise<{ ok: boolean; log: string; file?: string; title?: string; videoId?: string }> {
+	const clean = query.replace(/[^\w\s\-'.!&()áéíóúäëïöüàèìòùñç]/gi, ' ').trim().slice(0, 100);
+	if (!clean) return { ok: false, log: 'empty query' };
+
+	ensureMusicDir();
+	let watchUrl = '';
+	let title: string | undefined;
+	let videoId: string | undefined;
+	let log = '';
+
+	// Prefer official API search when key is present
+	const ytKey = resolveYoutubeKey();
+	if (ytKey) {
+		const hit = await youtubeSearch(clean);
+		if ('error' in hit) {
+			log += `[youtube-api] ${hit.error}\n`;
+		} else {
+			videoId = hit.videoId;
+			title = hit.title;
+			watchUrl = `https://www.youtube.com/watch?v=${hit.videoId}`;
+			log += `[youtube-api] ${hit.videoId} · ${hit.title}\n`;
+		}
+	}
+
+	// Fallback: yt-dlp's own search (often flaky / 403)
+	if (!watchUrl) {
+		watchUrl = `ytsearch1:${clean}`;
+		log += '[fallback] ytsearch1 (no API hit)\n';
+	}
+
+	const dl = await runYtDlpUrl(watchUrl);
+	log += dl.log;
+	return {
+		ok: dl.ok,
+		log: log.slice(-3000),
+		file: dl.file,
+		title,
+		videoId,
+	};
 }
 
 function djMiddleware(): Connect.NextHandleFunction {
@@ -171,6 +282,7 @@ function djMiddleware(): Connect.NextHandleFunction {
 				return json(res, 200, {
 					ok: true,
 					elevenlabs: hasKey,
+					youtubeApi: !!resolveYoutubeKey(),
 					tracks: listPlaylist().length,
 					booth: 'DJ Bartek · Trap-gat · Prairie Lakes',
 					voice: process.env.ELEVENLABS_VOICE_ID?.trim() || 'pNInz6obpgDQGcFmaJgB',
@@ -186,22 +298,29 @@ function djMiddleware(): Connect.NextHandleFunction {
 				const body = JSON.parse(raw || '{}') as { query?: string };
 				const query = (body.query ?? '').trim();
 				if (!query) return json(res, 400, { ok: false, error: 'query required' });
-				const result = await runYtDlp(query);
+				const result = await requestTrack(query);
 				return json(res, result.ok ? 200 : 500, {
 					ok: result.ok,
 					file: result.file,
+					title: result.title,
+					videoId: result.videoId,
 					tracks: listPlaylist(),
-					log: result.log.slice(-500),
+					log: result.log.slice(-800),
+					error: result.ok ? undefined : 'download_failed',
 				});
 			}
 
 			if (url === '/api/tts' && req.method === 'POST') {
 				const raw = await readBody(req);
-				const body = JSON.parse(raw || '{}') as { text?: string; voiceId?: string };
+				const body = JSON.parse(raw || '{}') as {
+					text?: string;
+					voiceId?: string;
+					lang?: string;
+				};
 				const text = (body.text ?? '').trim();
 				if (!text) return json(res, 400, { error: 'text required' });
 				try {
-					const audio = await elevenLabsTts(text, body.voiceId);
+					const audio = await elevenLabsTts(text, body.voiceId, body.lang);
 					if (!audio) {
 						return json(res, 503, {
 							error: 'no_elevenlabs_key',

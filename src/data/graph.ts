@@ -45,12 +45,12 @@ export const NODES: GraphNode[] = [
 	{ id: 's_douglas', x: -24, y: 0.15, z: 0 },
 	{ id: 's_game', x: 24, y: 0.15, z: 0 },
 
-	// Escalator (east wing — clear of atrium & walkways)
-	{ id: 'e0', x: 22, y: 0.15, z: 6, label: 'Roltrap beneden' },
-	{ id: 'e1', x: 22, y: 6.15, z: -4, label: 'Roltrap boven' },
-	// Stairs (west wing — separate from escalator)
-	{ id: 'st0', x: -22, y: 0.15, z: -6, label: 'Trap beneden' },
-	{ id: 'st1', x: -22, y: 6.15, z: -16, label: 'Trap boven' },
+	// Escalator (east wing ONLY)
+	{ id: 'e0', x: 22, y: 0.15, z: 8, label: 'Roltrap beneden' },
+	{ id: 'e1', x: 22, y: 6.15, z: -2, label: 'Roltrap boven' },
+	// Stairs (west wing ONLY — never crosses escalator)
+	{ id: 'st0', x: -22, y: 0.15, z: 4, label: 'Trap beneden' },
+	{ id: 'st1', x: -22, y: 6.15, z: -14, label: 'Trap boven' },
 
 	// Floor 1 ring OUTSIDE atrium void (±8 x ±6) — no mid-air walking
 	{ id: 'f1_c', x: 12, y: 6.15, z: 0 },
