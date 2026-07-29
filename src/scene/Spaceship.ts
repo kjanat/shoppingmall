@@ -6,14 +6,14 @@ import * as THREE from 'three';
  */
 export class Spaceship {
 	readonly group = new THREE.Group();
-	/** Stand here — under the ship */
-	readonly underPos = new THREE.Vector3(18, 6.15, -9);
+	/** Stand here — under the ship (south food-court roof, not jammed in stores) */
+	readonly underPos = new THREE.Vector3(0, 6.15, 16);
 	private ship: THREE.Group;
 	private beam: THREE.Mesh;
 	private ring: THREE.Mesh;
 	private lights: THREE.PointLight[] = [];
 	private materials: THREE.Material[] = [];
-	private baseY = 14;
+	private baseY = 12;
 
 	constructor() {
 		this.group.name = 'spaceship';

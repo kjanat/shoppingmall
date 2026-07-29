@@ -80,14 +80,31 @@ export class CollisionWorld {
 		// Stairs volume (west)
 		this.add(-23.5, -20.5, -17, -4.5, { label: 'stairs' });
 
-		// Atrium planter cluster (floor 0)
-		this.add(-2.8, 2.8, -2.8, 2.8, { minY: -0.5, maxY: 3.5, label: 'atrium' });
+		// Atrium fountain / planter (floor 0)
+		this.add(-2.6, 2.6, -2.6, 2.6, { minY: -0.5, maxY: 3.5, label: 'fountain' });
 
-		// Spaceship landing pad (slight ring — soft keepout center)
-		this.add(16.2, 19.8, -10.8, -7.2, { minY: 5, maxY: 9, label: 'pad' });
+		// Floor-1 VOID (architect: weide/void) — cannot walk over atrium hole
+		// Hole is roughly ±8 x ±6 on floor 1 — solid barrier so sims don't hang mid-air
+		this.add(-8.5, 8.5, -6.5, 6.5, { minY: 4.5, maxY: 12, label: 'void_f1' });
+
+		// Spaceship pad — food-court roof / south edge (better place)
+		this.add(-4, 4, 14, 20, { minY: 5, maxY: 14, label: 'ufo_pad' });
+
+		// Aperol bar
+		this.add(-16, -12, 9, 11.5, { minY: -0.5, maxY: 3, label: 'aperol' });
 
 		// Kiosk base
 		this.add(-1.0, 1.0, 9.0, 11.0, { minY: -0.5, maxY: 3, label: 'kiosk' });
+	}
+
+	/** Snap agent Y to solid floor (never float mid-air / through slab) */
+	snapFloorY(x: number, z: number, y: number): number {
+		// Escalator/stairs mid-climb: allow intermediate Y
+		if (y > 0.4 && y < 5.6) {
+			if (x > 19 && x < 25 && z > -6 && z < 8) return y;
+			if (x > -25 && x < -19 && z > -18 && z < -4) return y;
+		}
+		return y < 3.2 ? 0 : 6;
 	}
 
 	/**
@@ -144,6 +161,20 @@ export class CollisionWorld {
 		const hd = MALL_D / 2 - m;
 		px = Math.max(-hw, Math.min(hw, px));
 		pz = Math.max(-hd, Math.min(hd, pz));
+
+		// Floor-1 void eject (don't hang over atrium hole)
+		if (y > 4) {
+			const inHole = Math.abs(px) < 8.2 && Math.abs(pz) < 6.2;
+			if (inHole) {
+				const toEdgeX = 8.4 - Math.abs(px);
+				const toEdgeZ = 6.4 - Math.abs(pz);
+				if (toEdgeX < toEdgeZ) {
+					px = px >= 0 ? 8.5 + radius : -8.5 - radius;
+				} else {
+					pz = pz >= 0 ? 6.5 + radius : -6.5 - radius;
+				}
+			}
+		}
 
 		return { x: px, z: pz };
 	}

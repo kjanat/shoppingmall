@@ -215,9 +215,12 @@ body {
 	color: var(--text);
 }
 
-.possess-btn {
+.possess-btn,
+.disco-btn,
+.money-btn,
+.thief-btn {
 	width: 100%;
-	margin-top: 10px;
+	margin-top: 8px;
 	padding: 10px 12px;
 	border-radius: 10px;
 	border: 1px solid rgba(15, 23, 42, 0.15);
@@ -228,8 +231,28 @@ body {
 	color: var(--text);
 }
 
-.possess-btn:hover {
+.possess-btn:hover,
+.disco-btn:hover,
+.money-btn:hover,
+.thief-btn:hover {
 	background: #e2e8f0;
+}
+
+.disco-btn {
+	background: linear-gradient(90deg, #ff0088, #00ffcc);
+	color: #0f172a;
+	border: none;
+}
+
+.money-btn {
+	background: #fef3c7;
+	border-color: #f59e0b;
+}
+
+.thief-btn {
+	background: #1e293b;
+	color: #fbbf24;
+	border-color: #334155;
 }
 
 .possess-banner {

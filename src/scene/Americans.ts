@@ -27,6 +27,9 @@ export type SimFactors = {
 	hair: number;
 	hasCap: boolean;
 	isBrad: boolean;
+	isKid: boolean;
+	/** pageant / Miss-style shopper */
+	isMiss: boolean;
 	/** seconds until next possible fart */
 	fartCd: number;
 };
@@ -68,6 +71,8 @@ type Sim = {
 	labelCtx: CanvasRenderingContext2D;
 	labelTex: THREE.CanvasTexture;
 	gibberCd: number;
+	stuckTime: number;
+	bubbleCd: number;
 };
 
 const FIRST = [
@@ -96,6 +101,14 @@ const FIRST = [
 	'Wayne',
 	'Butch',
 ];
+const MISS_NAMES = [
+	'Miss Dakota',
+	'Miss Texas',
+	'Miss California',
+	'Eva G.',
+	'Miss Florida',
+];
+const MISS_OUTFITS = [0xff69b4, 0xc0a0ff, 0xffd700, 0xff6b9d, 0x87ceeb];
 const LAST = [
 	'Miller',
 	'Johnson',
@@ -141,8 +154,8 @@ function shopEntrance(s: StoreDef): THREE.Vector3 {
  * True mall NPCs: shop → shop routes, velocity vector, legs+feet that walk hard,
  * head plates (destination / € spent / unhappiness), occasional farts + noises.
  */
-const SIM_RADIUS = 0.45;
-const SIM_SEPARATE = 0.95;
+const SIM_RADIUS = 0.5;
+const SIM_SEPARATE = 1.55;
 
 const GIBBER = [
 	'blorp-skree navigare!',
@@ -173,6 +186,7 @@ export class Americans {
 	private audio: AudioContext | null = null;
 	private fartClouds: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
 	private coinBursts: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
+	private bubbles: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
 	private onTransaction: ((count: number, pos: THREE.Vector3) => void) | null = null;
 
 	constructor(world: CollisionWorld, count = 20) {
@@ -241,39 +255,62 @@ export class Americans {
 		this.resolveAgents();
 		this.tickFarts(dt);
 		this.tickCoins(dt);
+		this.tickBubbles(dt);
 	}
 
-	/** Static walls/stores + soft sim-sim separation (no stacking) */
-	private resolveAgents(): void {
-		// World collision
-		for (const s of this.sims) {
-			const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, SIM_RADIUS);
-			s.pos.x = r.x;
-			s.pos.z = r.z;
-			s.root.position.set(s.pos.x, s.pos.y, s.pos.z);
-		}
-		// Pair separation (O(n²) fine for ~20)
-		for (let i = 0; i < this.sims.length; i++) {
-			for (let j = i + 1; j < this.sims.length; j++) {
-				const a = this.sims[i];
-				const b = this.sims[j];
-				// only same floor-ish
-				if (Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
-				const sep = this.world.separate(
-					a.pos.x,
-					a.pos.z,
-					b.pos.x,
-					b.pos.z,
-					SIM_SEPARATE,
-				);
-				a.pos.x = sep.ax;
-				a.pos.z = sep.az;
-				b.pos.x = sep.bx;
-				b.pos.z = sep.bz;
+	private tickBubbles(dt: number): void {
+		for (let i = this.bubbles.length - 1; i >= 0; i--) {
+			const c = this.bubbles[i];
+			c.life -= dt;
+			const pos = c.mesh.geometry.attributes.position as THREE.BufferAttribute;
+			const arr = pos.array as Float32Array;
+			for (let j = 0; j < arr.length; j += 3) {
+				arr[j] += c.vel[j] * dt;
+				arr[j + 1] += c.vel[j + 1] * dt;
+				arr[j + 2] += c.vel[j + 2] * dt;
+			}
+			pos.needsUpdate = true;
+			const mat = c.mesh.material as THREE.PointsMaterial;
+			mat.opacity = Math.max(0, c.life * 0.5);
+			if (c.life <= 0) {
+				this.group.remove(c.mesh);
+				c.mesh.geometry.dispose();
+				mat.dispose();
+				this.bubbles.splice(i, 1);
 			}
 		}
-		// Re-resolve walls after separation so pushes don't shove into walls
+	}
+
+	/** Static walls/stores + hard sim-sim separation (no orgy-stack / loopband of people) */
+	private resolveAgents(): void {
+		for (let pass = 0; pass < 2; pass++) {
+			for (const s of this.sims) {
+				s.pos.y = this.world.snapFloorY(s.pos.x, s.pos.z, s.pos.y);
+				const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, SIM_RADIUS);
+				s.pos.x = r.x;
+				s.pos.z = r.z;
+			}
+			for (let i = 0; i < this.sims.length; i++) {
+				for (let j = i + 1; j < this.sims.length; j++) {
+					const a = this.sims[i];
+					const b = this.sims[j];
+					if (Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
+					const sep = this.world.separate(
+						a.pos.x,
+						a.pos.z,
+						b.pos.x,
+						b.pos.z,
+						SIM_SEPARATE,
+					);
+					a.pos.x = sep.ax;
+					a.pos.z = sep.az;
+					b.pos.x = sep.bx;
+					b.pos.z = sep.bz;
+				}
+			}
+		}
 		for (const s of this.sims) {
+			s.pos.y = this.world.snapFloorY(s.pos.x, s.pos.z, s.pos.y);
 			const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, SIM_RADIUS);
 			s.pos.x = r.x;
 			s.pos.z = r.z;
@@ -284,10 +321,16 @@ export class Americans {
 	private spawn(id: number): Sim {
 		const rng = mulberry32(0xbadc0de + id * 7919);
 		const isBrad = id === 0;
-		const thicc = isBrad ? 0.9 : 0.3 + rng() * 0.7;
+		const isKid = !isBrad && id % 5 === 2;
+		// A few Miss USA / pageant types (incl. Eva G.)
+		const isMiss = !isBrad && !isKid && (id === 1 || id === 3 || id === 7 || id === 11);
+		const missIdx = Math.floor(id / 2) % MISS_NAMES.length;
+		const thicc = isMiss ? 0.12 : isKid ? 0.15 : isBrad ? 0.9 : 0.3 + rng() * 0.7;
 		const moodRoll = rng();
 		const mood: SimFactors['mood'] = isBrad
 			? 'on_mission'
+			: isMiss
+			? 'hyped'
 			: moodRoll < 0.2
 			? 'hangry'
 			: moodRoll < 0.4
@@ -303,25 +346,37 @@ export class Americans {
 			id,
 			name: isBrad
 				? 'Brad Miller'
+				: isMiss
+				? MISS_NAMES[missIdx]
 				: `${FIRST[Math.floor(rng() * FIRST.length)]} ${LAST[Math.floor(rng() * LAST.length)]}`,
 			thicc,
-			speed: isBrad ? 1.35 : 0.7 + rng() * 1.0,
-			stride: 0.85 + rng() * 0.5,
-			stomp: 0.6 + rng() * 0.9,
+			speed: isBrad ? 1.35 : isMiss ? 1.1 : 0.7 + rng() * 1.0,
+			stride: isMiss ? 1.05 : 0.85 + rng() * 0.5,
+			stomp: isMiss ? 0.35 : 0.6 + rng() * 0.9,
 			restless: 0.25 + rng() * 0.7,
-			windowShop: rng() * 0.65,
+			windowShop: isMiss ? 0.8 : rng() * 0.65,
 			mood,
 			targetShop: '…',
 			targetShopId: '',
 			moneySpent: Math.floor(rng() * 40),
-			unhappiness: Math.floor(20 + rng() * 40 + (mood === 'hangry' ? 25 : 0)),
-			bag: isBrad ? 'KRUIDVAT' : rng() > 0.45 ? 'bag' : null,
-			shirt: isBrad ? 0xe30613 : SHIRTS[Math.floor(rng() * SHIRTS.length)],
-			pants: PANTS[Math.floor(rng() * PANTS.length)],
-			skin: SKIN[Math.floor(rng() * SKIN.length)],
-			hair: HAIR[Math.floor(rng() * HAIR.length)],
-			hasCap: rng() > 0.5,
+			unhappiness: isMiss
+				? Math.floor(5 + rng() * 25)
+				: Math.floor(20 + rng() * 40 + (mood === 'hangry' ? 25 : 0)),
+			bag: isBrad ? 'KRUIDVAT' : isMiss ? 'Sash' : rng() > 0.45 ? 'bag' : null,
+			shirt: isBrad
+				? 0xe30613
+				: isMiss
+				? MISS_OUTFITS[missIdx]
+				: SHIRTS[Math.floor(rng() * SHIRTS.length)],
+			pants: isMiss ? MISS_OUTFITS[missIdx] : PANTS[Math.floor(rng() * PANTS.length)],
+			skin: isMiss ? 0xf5c9a8 : SKIN[Math.floor(rng() * SKIN.length)],
+			hair: isMiss
+				? [0xc4a35a, 0x2c1810, 0xd35400, 0x5c4033, 0x1a1a1a][missIdx]
+				: HAIR[Math.floor(rng() * HAIR.length)],
+			hasCap: false,
 			isBrad,
+			isKid,
+			isMiss,
 			fartCd: 3 + rng() * 12,
 		};
 
@@ -329,9 +384,9 @@ export class Americans {
 		const body = new THREE.Group();
 		root.add(body);
 
-		const scale = 0.95 + thicc * 0.18;
-		const bellyR = 0.34 + thicc * 0.36;
-		const legLen = 0.62;
+		const scale = isKid ? 0.62 : isMiss ? 1.02 : 0.95 + thicc * 0.18;
+		const bellyR = isMiss ? 0.26 : isKid ? 0.22 : 0.34 + thicc * 0.36;
+		const legLen = isMiss ? 0.72 : isKid ? 0.42 : 0.62;
 
 		const legL = this.makeLeg(f.pants, legLen, -1);
 		const legR = this.makeLeg(f.pants, legLen, 1);
@@ -342,16 +397,21 @@ export class Americans {
 			new THREE.SphereGeometry(bellyR, 12, 10),
 			this.mat(f.shirt, 0.9),
 		);
-		belly.scale.set(1.2 + thicc * 0.1, 0.9, 1.1);
-		belly.position.set(0, torsoY + bellyR * 0.45, 0.08 + thicc * 0.05);
+		if (isMiss) {
+			belly.scale.set(0.85, 1.05, 0.75);
+			belly.position.set(0, torsoY + bellyR * 0.55, 0.02);
+		} else {
+			belly.scale.set(1.2 + thicc * 0.1, 0.9, 1.1);
+			belly.position.set(0, torsoY + bellyR * 0.45, 0.08 + thicc * 0.05);
+		}
 		body.add(belly);
 
 		const chest = new THREE.Mesh(
-			new THREE.SphereGeometry(bellyR * 0.7, 10, 8),
+			new THREE.SphereGeometry(bellyR * (isMiss ? 0.85 : 0.7), 10, 8),
 			this.mat(f.shirt, 0.9),
 		);
-		chest.scale.set(1.3, 0.65, 0.85);
-		chest.position.set(0, torsoY + bellyR * 1.0, 0);
+		chest.scale.set(isMiss ? 1.15 : 1.3, isMiss ? 0.75 : 0.65, isMiss ? 0.7 : 0.85);
+		chest.position.set(0, torsoY + bellyR * (isMiss ? 1.15 : 1.0), isMiss ? 0.04 : 0);
 		body.add(chest);
 
 		const armGeo = new THREE.CapsuleGeometry(0.09, 0.45, 3, 5);
@@ -362,31 +422,63 @@ export class Americans {
 		body.add(armL, armR);
 
 		const headY = torsoY + bellyR * 1.4 + 0.28;
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), this.mat(f.skin));
-		head.position.set(0, headY, 0);
-		body.add(head);
-
-		// Face plane — expressions from unhappiness
+		// Face lives ON the head sphere (UV), not a floating square plate
 		const faceCanvas = document.createElement('canvas');
-		faceCanvas.width = 128;
-		faceCanvas.height = 128;
+		faceCanvas.width = 256;
+		faceCanvas.height = 256;
 		const faceCtx = faceCanvas.getContext('2d')!;
 		const faceTex = new THREE.CanvasTexture(faceCanvas);
 		faceTex.colorSpace = THREE.SRGBColorSpace;
-		const faceMesh = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.32, 0.32),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: faceTex,
-					transparent: true,
-					toneMapped: false,
-				}),
-			),
+		const headMat = this.track(
+			new THREE.MeshStandardMaterial({
+				map: faceTex,
+				roughness: 0.85,
+				metalness: 0,
+			}),
 		);
-		faceMesh.position.set(0, headY, 0.22);
-		body.add(faceMesh);
+		const head = new THREE.Mesh(
+			new THREE.SphereGeometry(isKid ? 0.2 : isMiss ? 0.23 : 0.24, 20, 20),
+			headMat,
+		);
+		head.position.set(0, headY, 0);
+		// Face texture faces +Z after this rotate (was showing on the back)
+		head.rotation.y = Math.PI;
+		body.add(head);
+		const faceMesh = head;
 
-		if (f.hasCap) {
+		if (f.isMiss) {
+			// Pageant hair volume
+			const hair = new THREE.Mesh(
+				new THREE.SphereGeometry(0.28, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.65),
+				this.mat(f.hair),
+			);
+			hair.position.set(0, headY + 0.06, -0.02);
+			body.add(hair);
+			// Crown
+			const crown = new THREE.Mesh(
+				new THREE.TorusGeometry(0.14, 0.025, 6, 12),
+				this.track(
+					new THREE.MeshStandardMaterial({
+						color: 0xffd700,
+						metalness: 0.9,
+						roughness: 0.25,
+					}),
+				),
+			);
+			crown.rotation.x = Math.PI / 2;
+			crown.position.set(0, headY + 0.22, 0);
+			body.add(crown);
+			// Sash
+			const sash = new THREE.Mesh(
+				new THREE.BoxGeometry(0.12, 0.9, 0.02),
+				this.track(
+					new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }),
+				),
+			);
+			sash.position.set(0.18, torsoY + 0.5, 0.2);
+			sash.rotation.z = -0.35;
+			body.add(sash);
+		} else if (f.hasCap) {
 			const col = f.isBrad ? 0x00a651 : 0x1a5276;
 			const cap = new THREE.Mesh(
 				new THREE.SphereGeometry(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
@@ -406,7 +498,7 @@ export class Americans {
 			body.add(hair);
 		}
 
-		if (f.bag) {
+		if (f.bag && !f.isMiss) {
 			const bag = new THREE.Mesh(
 				new THREE.BoxGeometry(0.28, 0.34, 0.12),
 				this.mat(f.isBrad ? 0xe30613 : 0x333333),
@@ -492,6 +584,8 @@ export class Americans {
 			labelCtx,
 			labelTex,
 			gibberCd: 2 + rng() * 8,
+			stuckTime: 0,
+			bubbleCd: 1 + rng() * 4,
 		};
 
 		this.assignNextShop(sim);
@@ -578,11 +672,19 @@ export class Americans {
 
 		const nodes = this.pathfinder.findPath(fromStoreNode, toNode);
 		if (nodes.length >= 2) {
-			sim.path = nodes.map((n) => new THREE.Vector3(n.x, n.y < 3 ? 0 : 6, n.z));
-			// append precise entrance in front of shop
+			sim.path = nodes.map((n) => {
+				const y = n.y < 3 ? 0 : 6;
+				return new THREE.Vector3(n.x, y, n.z);
+			});
+			// Avoid atrium void on floor 1 mid-path
+			sim.path = sim.path.map((p) => {
+				if (p.y > 3 && Math.abs(p.x) < 8 && Math.abs(p.z) < 6) {
+					return new THREE.Vector3(p.x >= 0 ? 10 : -10, 6, p.z);
+				}
+				return p;
+			});
 			sim.path.push(shopEntrance(next));
 		} else {
-			// fallback straight line corridor-ish
 			sim.path = [sim.pos.clone(), shopEntrance(next)];
 		}
 		sim.pathI = 0;
@@ -671,18 +773,42 @@ export class Americans {
 		const prevZ = sim.pos.z;
 		sim.pos.x += sim.velocity.x * dt;
 		sim.pos.z += sim.velocity.z * dt;
-		// interpolate Y gently on incline segments
-		sim.pos.y = THREE.MathUtils.lerp(sim.pos.y, target.y, Math.min(1, dt * 3));
+		// Climb only on escalator/stairs; otherwise hard floor snap
+		if (Math.abs(target.y - sim.pos.y) > 0.5) {
+			sim.pos.y = THREE.MathUtils.lerp(sim.pos.y, target.y, Math.min(1, dt * 2.5));
+		}
 
-		// Immediate static collision (full pass later too)
+		// Floor snap — feet stay on slab (no through-floor / floating)
+		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, target.y);
+
 		const hit = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, SIM_RADIUS);
 		sim.pos.x = hit.x;
 		sim.pos.z = hit.z;
-		// If fully blocked, slide along wall / skip waypoint
+		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, sim.pos.y);
+
 		const moved = Math.hypot(sim.pos.x - prevX, sim.pos.z - prevZ);
-		if (moved < spd * dt * 0.15 && dist > 1.2) {
-			// stuck — skip toward next node so they don't freeze forever
-			sim.pathI++;
+		if (moved < spd * dt * 0.2 && dist > 0.8) {
+			sim.stuckTime += dt;
+			// Unstick: skip waypoint + random lateral kick so they don't form a meat loopband
+			if (sim.stuckTime > 0.45) {
+				sim.pathI++;
+				const kick = (Math.random() - 0.5) * 2.4;
+				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(kick);
+				sim.pos.x += side.x;
+				sim.pos.z += side.z;
+				sim.stuckTime = 0;
+			}
+		} else {
+			sim.stuckTime = 0;
+		}
+
+		// Kids leave soap-bubble trail (NOT weird particles — family mall)
+		if (f.isKid) {
+			sim.bubbleCd -= dt;
+			if (sim.bubbleCd <= 0) {
+				this.spawnBubbles(sim.pos.clone().add(new THREE.Vector3(0, 0.9, 0)));
+				sim.bubbleCd = 0.8 + Math.random() * 1.5;
+			}
 		}
 
 		// Face actual movement vector (post-collision)
@@ -788,60 +914,175 @@ export class Americans {
 		this.paintFace(sim);
 	}
 
-	/** Face texture: smile → frown based on unhappiness */
+	/**
+	 * Normal human face on sphere UV (head.rotation.y = PI so front faces walk dir).
+	 * Smile / neutral / sad / cry from unhappiness.
+	 */
 	private paintFace(sim: Sim): void {
 		const u = sim.f.unhappiness / 100;
 		const ctx = sim.faceCtx;
-		const skin = '#f5d0b0';
+		const W = 256;
+		const H = 256;
+		const skin = `#${sim.f.skin.toString(16).padStart(6, '0')}`;
+		const hair = `#${sim.f.hair.toString(16).padStart(6, '0')}`;
+
+		// Soft skin fill (no weird UV seams of pure blocks)
 		ctx.fillStyle = skin;
-		ctx.fillRect(0, 0, 128, 128);
-		// eyes
-		ctx.fillStyle = '#1a1a1a';
-		const eyeY = 48 + u * 6;
+		ctx.fillRect(0, 0, W, H);
+		// Hair top + sides
+		ctx.fillStyle = hair;
 		ctx.beginPath();
-		ctx.arc(42, eyeY, 7, 0, Math.PI * 2);
-		ctx.arc(86, eyeY, 7, 0, Math.PI * 2);
+		ctx.ellipse(W / 2, H * 0.18, W * 0.48, H * 0.22, 0, 0, Math.PI * 2);
 		ctx.fill();
-		// brows (angry when unhappy)
-		ctx.strokeStyle = '#1a1a1a';
-		ctx.lineWidth = 4;
+		ctx.fillRect(0, 0, W, H * 0.22);
+
+		// Face oval highlight
+		const cx = W * 0.5;
+		const cy = H * 0.55;
+		const grd = ctx.createRadialGradient(cx, cy, 10, cx, cy, 90);
+		grd.addColorStop(0, skin);
+		grd.addColorStop(1, 'rgba(0,0,0,0.06)');
+		ctx.fillStyle = grd;
 		ctx.beginPath();
-		if (u > 0.55) {
-			ctx.moveTo(28, 32);
-			ctx.lineTo(52, 40);
-			ctx.moveTo(100, 32);
-			ctx.lineTo(76, 40);
+		ctx.ellipse(cx, cy, 78, 88, 0, 0, Math.PI * 2);
+		ctx.fill();
+
+		// Eyes (white + iris + pupil)
+		const eyeY = cy - 16 + u * 6;
+		const drawEye = (ex: number) => {
+			ctx.fillStyle = '#fff';
+			ctx.beginPath();
+			ctx.ellipse(ex, eyeY, 14, sim.f.isKid ? 12 : 11, 0, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.fillStyle = sim.f.isMiss ? '#4a7c59' : '#3d5a80';
+			ctx.beginPath();
+			ctx.arc(ex, eyeY + 1, 7, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.fillStyle = '#111';
+			ctx.beginPath();
+			ctx.arc(ex, eyeY + 1, 3.5, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.fillStyle = '#fff';
+			ctx.beginPath();
+			ctx.arc(ex + 2, eyeY - 2, 2, 0, Math.PI * 2);
+			ctx.fill();
+		};
+		drawEye(cx - 28);
+		drawEye(cx + 28);
+
+		// Brows
+		ctx.strokeStyle = hair;
+		ctx.lineWidth = 4;
+		ctx.lineCap = 'round';
+		ctx.beginPath();
+		if (u > 0.65) {
+			ctx.moveTo(cx - 44, eyeY - 16);
+			ctx.lineTo(cx - 14, eyeY - 6);
+			ctx.moveTo(cx + 44, eyeY - 16);
+			ctx.lineTo(cx + 14, eyeY - 6);
 		} else {
-			ctx.moveTo(28, 36);
-			ctx.lineTo(52, 34);
-			ctx.moveTo(100, 36);
-			ctx.lineTo(76, 34);
+			ctx.moveTo(cx - 44, eyeY - 14);
+			ctx.quadraticCurveTo(cx - 28, eyeY - 22, cx - 12, eyeY - 12);
+			ctx.moveTo(cx + 12, eyeY - 12);
+			ctx.quadraticCurveTo(cx + 28, eyeY - 22, cx + 44, eyeY - 14);
 		}
 		ctx.stroke();
-		// mouth
+
+		// Nose hint
+		ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+		ctx.lineWidth = 2;
+		ctx.beginPath();
+		ctx.moveTo(cx, cy - 4);
+		ctx.lineTo(cx - 3, cy + 14);
+		ctx.lineTo(cx + 6, cy + 14);
+		ctx.stroke();
+
+		// Mouth
+		ctx.strokeStyle = u > 0.7 ? '#8b2942' : '#c45c6a';
 		ctx.lineWidth = 5;
 		ctx.beginPath();
-		if (u < 0.35) {
-			// smile
-			ctx.arc(64, 72, 22, 0.15, Math.PI - 0.15);
-		} else if (u < 0.65) {
-			// flat
-			ctx.moveTo(40, 88);
-			ctx.lineTo(88, 88);
+		if (u < 0.28) {
+			ctx.arc(cx, cy + 18, 26, 0.12, Math.PI - 0.12);
+			ctx.stroke();
+			// teeth hint
+			ctx.fillStyle = '#fff';
+			ctx.fillRect(cx - 12, cy + 20, 24, 5);
+		} else if (u < 0.5) {
+			ctx.arc(cx, cy + 22, 20, 0.2, Math.PI - 0.2);
+			ctx.stroke();
+		} else if (u < 0.7) {
+			ctx.moveTo(cx - 20, cy + 30);
+			ctx.lineTo(cx + 20, cy + 30);
+			ctx.stroke();
+		} else if (u < 0.85) {
+			ctx.arc(cx, cy + 48, 20, Math.PI + 0.25, -0.25);
+			ctx.stroke();
 		} else {
-			// frown
-			ctx.arc(64, 102, 20, Math.PI + 0.2, -0.2);
-		}
-		ctx.stroke();
-		// blush when happy
-		if (u < 0.3) {
-			ctx.fillStyle = 'rgba(255,120,140,0.35)';
+			ctx.arc(cx, cy + 50, 22, Math.PI + 0.2, -0.2);
+			ctx.stroke();
+			ctx.fillStyle = '#5eb8e8';
 			ctx.beginPath();
-			ctx.ellipse(30, 70, 10, 6, 0, 0, Math.PI * 2);
-			ctx.ellipse(98, 70, 10, 6, 0, 0, Math.PI * 2);
+			ctx.ellipse(cx - 30, cy + 6, 4, 12, 0.2, 0, Math.PI * 2);
+			ctx.ellipse(cx + 30, cy + 6, 4, 12, -0.2, 0, Math.PI * 2);
 			ctx.fill();
 		}
+
+		if (u < 0.35 || sim.f.isMiss) {
+			ctx.fillStyle = 'rgba(255,140,160,0.35)';
+			ctx.beginPath();
+			ctx.ellipse(cx - 50, cy + 10, 14, 8, 0, 0, Math.PI * 2);
+			ctx.ellipse(cx + 50, cy + 10, 14, 8, 0, 0, Math.PI * 2);
+			ctx.fill();
+		}
+
 		sim.faceTex.needsUpdate = true;
+	}
+
+	/** Player tips nearest sim — muntjes + happiness */
+	giveMoneyNear(worldPos: THREE.Vector3, amount = 25): SimFactors | null {
+		let best: Sim | null = null;
+		let bestD = Infinity;
+		for (const s of this.sims) {
+			const d = s.pos.distanceTo(worldPos);
+			if (d < bestD && d < 6) {
+				bestD = d;
+				best = s;
+			}
+		}
+		if (!best) return null;
+		best.f.moneySpent += amount;
+		best.f.unhappiness = Math.max(0, best.f.unhappiness - 20);
+		this.spawnCoins(best.pos.clone().add(new THREE.Vector3(0, 1.3, 0)), amount);
+		this.sayGibberish(best, true);
+		this.paintLabel(best);
+		this.paintFace(best);
+		return best.f;
+	}
+
+	private spawnBubbles(origin: THREE.Vector3): void {
+		const count = 14;
+		const positions = new Float32Array(count * 3);
+		const vel = new Float32Array(count * 3);
+		for (let i = 0; i < count; i++) {
+			positions[i * 3] = origin.x + (Math.random() - 0.5) * 0.3;
+			positions[i * 3 + 1] = origin.y;
+			positions[i * 3 + 2] = origin.z + (Math.random() - 0.5) * 0.3;
+			vel[i * 3] = (Math.random() - 0.5) * 0.4;
+			vel[i * 3 + 1] = 0.6 + Math.random() * 1.2;
+			vel[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+		}
+		const geo = new THREE.BufferGeometry();
+		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+		const mat = new THREE.PointsMaterial({
+			color: 0xa8e6ff,
+			size: 0.12,
+			transparent: true,
+			opacity: 0.7,
+			depthWrite: false,
+		});
+		const mesh = new THREE.Points(geo, mat);
+		this.group.add(mesh);
+		this.bubbles.push({ mesh, life: 1.5, vel });
 	}
 
 	private sayGibberish(sim: Sim, checkout = false): void {

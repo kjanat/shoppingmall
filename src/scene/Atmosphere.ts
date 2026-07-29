@@ -10,7 +10,7 @@ export class Atmosphere {
 	readonly americans: Americans;
 
 	constructor(world: CollisionWorld) {
-		this.americans = new Americans(world, 22);
+		this.americans = new Americans(world, 14);
 		this.group.add(this.americans.group);
 		this.createBillboards();
 	}

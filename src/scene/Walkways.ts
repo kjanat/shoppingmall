@@ -6,8 +6,8 @@ type Belt = {
 };
 
 /**
- * Schiphol loopbanden — corridors ONLY.
- * Never overlap escalator (east x≈22) or stairs (west x≈-22).
+ * Minimal loopbanden — brother was right, too many was ugly.
+ * Only two short belts, far from stairs/escalator/void.
  */
 export class MovingWalkways {
 	readonly group = new THREE.Group();
@@ -16,19 +16,9 @@ export class MovingWalkways {
 
 	constructor() {
 		this.group.name = 'walkways';
-
-		// Floor 0 — N/S along corridors left of escalator / right of stairs
-		this.addBelt({ x: -8, y: 0, z: 0, length: 18, rotY: 0 });
-		this.addBelt({ x: 8, y: 0, z: 0, length: 18, rotY: Math.PI });
-		// Floor 0 — E/W south & north (stop short of wing stairs/escalator)
-		this.addBelt({ x: 0, y: 0, z: 12, length: 14, rotY: Math.PI / 2 });
-		this.addBelt({ x: 0, y: 0, z: -12, length: 14, rotY: -Math.PI / 2 });
-
-		// Floor 1 — same safe lanes
-		this.addBelt({ x: -8, y: 6, z: 0, length: 16, rotY: 0 });
-		this.addBelt({ x: 8, y: 6, z: 0, length: 16, rotY: Math.PI });
-		this.addBelt({ x: 0, y: 6, z: 11, length: 12, rotY: Math.PI / 2 });
-		this.addBelt({ x: 0, y: 6, z: -11, length: 12, rotY: -Math.PI / 2 });
+		// One on floor 0 south corridor, one on floor 1 north — that's it
+		this.addBelt({ x: 0, y: 0, z: 13, length: 10, rotY: Math.PI / 2 });
+		this.addBelt({ x: 0, y: 6, z: -13, length: 10, rotY: -Math.PI / 2 });
 	}
 
 	update(dt: number): void {
@@ -55,7 +45,7 @@ export class MovingWalkways {
 		g.position.set(opts.x, opts.y, opts.z);
 		g.rotation.y = opts.rotY;
 
-		const w = 1.25;
+		const w = 1.2;
 		const len = opts.length;
 
 		const canvas = document.createElement('canvas');
@@ -87,7 +77,6 @@ export class MovingWalkways {
 
 		const belt = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, len), beltMat);
 		belt.position.y = 0.06;
-		belt.receiveShadow = true;
 		g.add(belt);
 
 		const frameMat = this.track(
@@ -101,37 +90,6 @@ export class MovingWalkways {
 			const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.85, len), frameMat);
 			rail.position.set(sx, 0.48, 0);
 			g.add(rail);
-			const hand = new THREE.Mesh(
-				new THREE.BoxGeometry(0.12, 0.08, len),
-				this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 })),
-			);
-			hand.position.set(sx, 0.92, 0);
-			g.add(hand);
-		}
-
-		const glass = this.track(
-			new THREE.MeshStandardMaterial({
-				color: 0xc5d8ea,
-				transparent: true,
-				opacity: 0.25,
-				roughness: 0.1,
-				side: THREE.DoubleSide,
-			}),
-		);
-		for (const sx of [-w / 2 - 0.02, w / 2 + 0.02]) {
-			const panel = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.7), glass);
-			panel.rotation.y = Math.PI / 2;
-			panel.position.set(sx, 0.48, 0);
-			g.add(panel);
-		}
-
-		const capMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xb0b6c0, metalness: 0.7, roughness: 0.35 }),
-		);
-		for (const sz of [-len / 2, len / 2]) {
-			const cap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 0.1, 0.35), capMat);
-			cap.position.set(0, 0.08, sz);
-			g.add(cap);
 		}
 
 		this.group.add(g);

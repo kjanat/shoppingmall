@@ -32,18 +32,21 @@ export class BakerThief {
 		this.mesh.visible = true;
 		this.i = 0;
 		this.t = 0;
-		// dash across floor 0 then floor 1
+		// Visible sprint path (avoid atrium void on floor 1)
 		this.path = [
-			new THREE.Vector3(-28, 0, 10),
-			new THREE.Vector3(0, 0, 0),
-			new THREE.Vector3(28, 0, -8),
+			new THREE.Vector3(-28, 0, 12),
+			new THREE.Vector3(-10, 0, 8),
+			new THREE.Vector3(10, 0, -6),
 			new THREE.Vector3(22, 0, 6),
 			new THREE.Vector3(22, 6, -4),
-			new THREE.Vector3(0, 6, 0),
-			new THREE.Vector3(-20, 6, 8),
-			new THREE.Vector3(18, 6, -12),
+			new THREE.Vector3(14, 6, -10),
+			new THREE.Vector3(0, 6, -12),
+			new THREE.Vector3(-14, 6, 10),
+			new THREE.Vector3(0, 6, 16),
 		];
 		this.mesh.position.copy(this.path[0]);
+		this.mesh.visible = true;
+		this.active = true;
 	}
 
 	update(dt: number): void {

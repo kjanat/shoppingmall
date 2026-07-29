@@ -7,6 +7,9 @@ export type UICallbacks = {
 	onReplay: () => void;
 	onHome: () => void;
 	onPossess: () => void;
+	onDisco: () => void;
+	onGiveMoney: () => void;
+	onSummonThief: () => void;
 };
 
 export class KioskOverlay {
@@ -80,6 +83,15 @@ export class KioskOverlay {
           <button class="btn possess-btn" type="button" id="btn-possess">
             👁 Guest view (word een shopper)
           </button>
+          <button class="btn disco-btn" type="button" id="btn-disco">
+            🕺 DANCE PARTY
+          </button>
+          <button class="btn money-btn" type="button" id="btn-money">
+            💰 Geef geld (dichtstbijzijnde sim)
+          </button>
+          <button class="btn thief-btn" type="button" id="btn-thief">
+            🧔 Roep baard-dief (juwelen!)
+          </button>
 
           <div class="search-wrap">
             <input id="search" type="search" placeholder="Zoek winkel (bijv. Rituals)…" autocomplete="off" />
@@ -147,6 +159,15 @@ export class KioskOverlay {
 
 		this.root.querySelector('#btn-possess')!.addEventListener('click', () => {
 			this.callbacks.onPossess();
+		});
+		this.root.querySelector('#btn-disco')!.addEventListener('click', () => {
+			this.callbacks.onDisco();
+		});
+		this.root.querySelector('#btn-money')!.addEventListener('click', () => {
+			this.callbacks.onGiveMoney();
+		});
+		this.root.querySelector('#btn-thief')!.addEventListener('click', () => {
+			this.callbacks.onSummonThief();
 		});
 
 		this.root.querySelector('#btn-replay')!.addEventListener('click', () => {

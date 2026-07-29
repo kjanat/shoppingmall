@@ -9,7 +9,9 @@ import { PathMesh } from '../path/PathMesh';
 import { CollisionWorld } from '../physics/Collision';
 import { PlayerControls } from '../player/Controls';
 import { createComposer } from '../post/Composer';
+import { Amenities } from '../scene/Amenities';
 import { Atmosphere } from '../scene/Atmosphere';
+import { DiscoParty } from '../scene/Disco';
 import { setupLighting } from '../scene/Lighting';
 import { MallBuilder } from '../scene/MallBuilder';
 import { PalmForest } from '../scene/Palms';
@@ -34,6 +36,8 @@ export class App {
 	private mall = new MallBuilder();
 	private palms = new PalmForest();
 	private walkways = new MovingWalkways();
+	private amenities = new Amenities();
+	private disco = new DiscoParty();
 	private spaceship = new Spaceship();
 	private thief: BakerThief;
 	private player!: PlayerControls;
@@ -80,6 +84,8 @@ export class App {
 		this.scene.add(this.mall.build());
 		this.scene.add(this.palms.group);
 		this.scene.add(this.walkways.group);
+		this.scene.add(this.amenities.group);
+		this.scene.add(this.disco.group);
 		this.scene.add(this.spaceship.group);
 		this.scene.add(this.atmosphere.group);
 		this.scene.add(this.thief.group);
@@ -101,11 +107,11 @@ export class App {
 			this.score += 2;
 			this.ui.setScore(this.score, this.metSims.size);
 			this.ui.setStatus(`Checkout #${count} · muntjes 💰`);
-			// Every 10 shop transactions → baker-beard juwelen thief
-			if (count > 0 && count % 10 === 0 && count !== this.thiefFiredAt) {
+			// Every 5 checkouts → baard-dief (juwelen/goud, neutral comedy thief)
+			if (count > 0 && count % 5 === 0 && count !== this.thiefFiredAt) {
 				this.thiefFiredAt = count;
 				this.thief.trigger();
-				this.ui.setStatus(`💀 BAARD-DIEF runt de juwelen! (txn ${count})`);
+				this.ui.setStatus(`🧔 BAARD-DIEF pakt de juwelen! (txn ${count})`);
 				this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 2, 0)));
 			}
 		});
@@ -125,6 +131,12 @@ export class App {
 				this.onStartRoute(store);
 			},
 			onPossess: () => this.togglePossess(),
+			onDisco: () => this.toggleDisco(),
+			onGiveMoney: () => this.giveMoney(),
+			onSummonThief: () => {
+				this.thief.trigger();
+				this.ui.setStatus('🧔 BAARD-DIEF is los — juwelen alert!');
+			},
 		});
 
 		window.addEventListener('resize', () => this.onResize());
@@ -138,6 +150,12 @@ export class App {
 			}
 			if (e.key === 'h' || e.key === 'H') this.onHome();
 			if (e.key === 'v' || e.key === 'V') this.togglePossess();
+			if (e.key === 'p' || e.key === 'P') this.toggleDisco();
+			if (e.key === 'g' || e.key === 'G') this.giveMoney();
+			if (e.key === 't' || e.key === 'T') {
+				this.thief.trigger();
+				this.ui.setStatus('🧔 BAARD-DIEF (T) — juwelen heist!');
+			}
 		});
 
 		// Unlock audio after first click/key
@@ -213,7 +231,23 @@ export class App {
 		this.player.enabled = true;
 		this.player.syncFromCamera();
 		this.controls.enabled = false;
-		this.ui.setStatus('WASD lopen · V = guest view');
+		this.ui.setStatus('WASD lopen · V guest · P disco · G geld · T dief');
+	}
+
+	private toggleDisco(): void {
+		const on = this.disco.toggle();
+		this.ui.setStatus(on ? '🕺 DANCE PARTY — disco overal!' : 'Disco uit');
+	}
+
+	private giveMoney(): void {
+		const got = this.atmosphere.americans.giveMoneyNear(this.camera.position, 25);
+		if (!got) {
+			this.ui.setStatus('Niemand dichtbij — loop dichter bij een sim');
+			return;
+		}
+		this.score += 5;
+		this.ui.setScore(this.score, this.metSims.size);
+		this.ui.setStatus(`💰 Je gaf €25 aan ${got.name} — ze is blijer`);
 	}
 
 	private onSelectStore(store: StoreDef): void {
@@ -492,6 +526,8 @@ export class App {
 		this.updateConfetti(dt);
 		this.palms.update(this.clock.elapsedTime);
 		this.walkways.update(dt);
+		this.amenities.update(dt, this.clock.elapsedTime);
+		this.disco.update(dt);
 		this.spaceship.update(this.clock.elapsedTime);
 
 		// Meet sims nearby = score (viral "I know Brad" energy)
