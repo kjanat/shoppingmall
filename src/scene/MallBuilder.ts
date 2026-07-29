@@ -162,10 +162,14 @@ export class MallBuilder {
 		const aw = 16;
 		const ad = 12;
 		addRectHole(0, 0, aw / 2, ad / 2);
-		// TOP of west stairs lands around (-22, z=-16) — opening so you don't walk into slab
-		addRectHole(-22, -15.5, 1.8, 2.4);
-		// TOP of east escalator lands around (22, z=-4)
-		addRectHole(22, -3.5, 1.5, 2.2);
+
+		// The openings must sit OVER the flights, not next to their top landings —
+		// each hole spans from just past the top down to where the incline is ~2 m
+		// under the slab, which is the stretch where your head would hit concrete.
+		// West stairs: incline z=+4 (bottom) → z=-14 (top), so open z -14.6 … -7.4
+		addRectHole(-22, -11, 2.0, 3.6);
+		// East escalator: incline z=+8 → z=-2, so open z -2.6 … +1.6
+		addRectHole(22, -0.5, 1.7, 2.1);
 
 		const f1Geo = new THREE.ExtrudeGeometry(f1Shape, {
 			depth: 0.3,
@@ -252,6 +256,134 @@ export class MallBuilder {
 		this.group.add(voidPlane);
 	}
 
+	/**
+	 * Marble Greek god in the middle of the fountain — the owner himself.
+	 * Sits inside the atrium void, so nothing pokes through the floor-1 slab.
+	 */
+	private buildGodStatue(): void {
+		const marble = this.track(
+			new THREE.MeshStandardMaterial({
+				color: 0xe9e5dd,
+				roughness: 0.35,
+				metalness: 0.05,
+			}),
+		);
+		const gold = this.track(
+			new THREE.MeshStandardMaterial({
+				color: 0xd4af37,
+				metalness: 0.9,
+				roughness: 0.25,
+			}),
+		);
+
+		const g = new THREE.Group();
+		g.name = 'godStatue';
+		g.position.set(0, 1.12, 0);
+
+		// Plinth
+		const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.7, 0.5, 16), marble);
+		plinth.position.y = 0.25;
+		plinth.castShadow = true;
+		g.add(plinth);
+		const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.68, 0.08, 16), marble);
+		cap.position.y = 0.54;
+		g.add(cap);
+
+		const figure = new THREE.Group();
+		figure.position.y = 0.58;
+		// Contrapposto — a god does not stand to attention
+		figure.rotation.y = -0.35;
+		g.add(figure);
+
+		// Legs under a robe
+		for (const side of [-1, 1] as const) {
+			const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.9, 10), marble);
+			leg.position.set(side * 0.14, 0.45, side === 1 ? 0.06 : -0.02);
+			leg.rotation.x = side === 1 ? 0.12 : -0.05;
+			leg.castShadow = true;
+			figure.add(leg);
+		}
+
+		// Robe / himation draped from the hip
+		const robe = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.15, 14, 1, true), marble);
+		robe.position.y = 0.72;
+		robe.castShadow = true;
+		figure.add(robe);
+		const sash = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.05, 6, 14), marble);
+		sash.rotation.x = Math.PI / 2 - 0.25;
+		sash.position.y = 1.2;
+		figure.add(sash);
+
+		// Torso + shoulders
+		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.42, 6, 12), marble);
+		torso.position.y = 1.5;
+		torso.castShadow = true;
+		figure.add(torso);
+		const pecs = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 10), marble);
+		pecs.scale.set(1.25, 0.62, 0.8);
+		pecs.position.set(0, 1.66, 0.06);
+		figure.add(pecs);
+
+		// Head, beard, laurel
+		const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 14), marble);
+		head.position.y = 2.02;
+		head.castShadow = true;
+		figure.add(head);
+		const nose = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 8), marble);
+		nose.rotation.x = Math.PI / 2;
+		nose.position.set(0, 2.02, 0.2);
+		figure.add(nose);
+		const beard = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), marble);
+		beard.scale.set(0.9, 1.1, 0.75);
+		beard.position.set(0, 1.88, 0.09);
+		figure.add(beard);
+		const hair = new THREE.Mesh(
+			new THREE.SphereGeometry(0.215, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62),
+			marble,
+		);
+		hair.position.set(0, 2.04, -0.02);
+		figure.add(hair);
+		const laurel = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.022, 6, 16), gold);
+		laurel.rotation.x = Math.PI / 2 - 0.12;
+		laurel.position.y = 2.12;
+		figure.add(laurel);
+
+		// Right arm raised, holding a golden shopping bag. Obviously.
+		const armGeo = new THREE.CapsuleGeometry(0.075, 0.4, 5, 8);
+		const armUp = new THREE.Mesh(armGeo, marble);
+		armUp.position.set(0.3, 1.78, 0.02);
+		armUp.rotation.z = -1.15;
+		figure.add(armUp);
+		const forearm = new THREE.Mesh(armGeo, marble);
+		forearm.position.set(0.54, 2.02, 0.02);
+		forearm.rotation.z = -0.2;
+		figure.add(forearm);
+
+		const bag = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.3, 0.14), gold);
+		bag.position.set(0.6, 2.32, 0.02);
+		figure.add(bag);
+		const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.014, 5, 12, Math.PI), gold);
+		handle.position.set(0.6, 2.47, 0.02);
+		figure.add(handle);
+
+		// Left arm down, palm out — benevolent landlord energy
+		const armDown = new THREE.Mesh(armGeo, marble);
+		armDown.position.set(-0.29, 1.5, 0.05);
+		armDown.rotation.z = 0.28;
+		figure.add(armDown);
+		const hand = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), marble);
+		hand.scale.set(1, 0.7, 1.1);
+		hand.position.set(-0.36, 1.22, 0.1);
+		figure.add(hand);
+
+		// Plaque
+		const plaque = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.02), gold);
+		plaque.position.set(0, 0.3, 0.69);
+		g.add(plaque);
+
+		this.group.add(g);
+	}
+
 	private buildAtrium(): void {
 		// Atrium planter + fake palm (classic US mall energy)
 		const baseMat = this.track(
@@ -275,35 +407,25 @@ export class MallBuilder {
 		planter.position.y = 0.7;
 		this.group.add(planter);
 
-		// Dirt
-		const dirt = new THREE.Mesh(
-			new THREE.CylinderGeometry(1.05, 1.05, 0.15, 20),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 1 })),
+		// Water instead of dirt — it is a fountain, not a plant pot
+		const water = new THREE.Mesh(
+			new THREE.CylinderGeometry(1.15, 1.15, 0.12, 24),
+			this.track(
+				new THREE.MeshStandardMaterial({
+					color: 0x2a7ea8,
+					metalness: 0.35,
+					roughness: 0.15,
+					transparent: true,
+					opacity: 0.85,
+				}),
+			),
 		);
-		dirt.position.y = 1.05;
-		this.group.add(dirt);
+		water.position.y = 1.06;
+		this.group.add(water);
 
-		// Palm trunk
-		const trunk = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.12, 0.18, 2.4, 8),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 })),
-		);
-		trunk.position.y = 2.2;
-		trunk.name = 'atriumOrb';
-		this.group.add(trunk);
-
-		// Leaves
-		const leafMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x2d8a4e, roughness: 0.85, side: THREE.DoubleSide }),
-		);
-		for (let i = 0; i < 6; i++) {
-			const leaf = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.35), leafMat);
-			const a = (i / 6) * Math.PI * 2;
-			leaf.position.set(Math.cos(a) * 0.5, 3.4, Math.sin(a) * 0.5);
-			leaf.rotation.y = a;
-			leaf.rotation.z = -0.5;
-			this.group.add(leaf);
-		}
+		// The palm that used to grow out of the middle of the fountain is gone.
+		// In its place: the owner, immortalised in marble.
+		this.buildGodStatue();
 
 		const accent = new THREE.Mesh(
 			new THREE.RingGeometry(2.6, 3.0, 48),
@@ -319,6 +441,7 @@ export class MallBuilder {
 		this.group.add(accent);
 	}
 
+	/** Small marble pedestal figure on the fountain island */
 	/**
 	 * ONE escalator (east) + ONE stairs (west). Never cross. Never share a shaft.
 	 * Each has a hole cut in floor-1 at the top landing.

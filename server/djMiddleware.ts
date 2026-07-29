@@ -1,8 +1,9 @@
 /**
- * Vite dev middleware: DJ Bartek booth backend.
- * - POST /api/tts          → ElevenLabs (or 503 if no key)
+ * Vite dev middleware: DJ Bartek + mall sim brain.
+ * - POST /api/tts          → ElevenLabs
+ * - POST /api/sim/chat     → OpenRouter (sims talk to each other)
  * - GET  /api/dj/playlist  → list public/dj-music/*
- * - POST /api/dj/request   → yt-dlp search + download mp3
+ * - POST /api/dj/request   → YouTube API search + yt-dlp download
  * - GET  /api/dj/status    → health + key presence
  */
 import { spawn } from 'node:child_process';
@@ -133,6 +134,119 @@ function resolveYoutubeKey(): string | null {
 		|| '';
 	const key = raw.trim().replace(/^["']|["']$/g, '');
 	return key.length > 10 ? key : null;
+}
+
+function resolveOpenRouterKey(): string | null {
+	const raw = process.env.OPENROUTER_API_KEY
+		|| process.env.OPENROUTER_KEY
+		|| process.env.OR_API_KEY
+		|| '';
+	const key = raw.trim().replace(/^["']|["']$/g, '');
+	return key.length > 10 ? key : null;
+}
+
+export type SimPersona = {
+	name: string;
+	mood: string;
+	lifeLine: string;
+	targetShop: string;
+	unhappiness: number;
+	partnerName?: string | null;
+	isKid?: boolean;
+	isBrad?: boolean;
+	isMiss?: boolean;
+};
+
+/** Two mall guests exchange short lines via OpenRouter */
+async function simChatExchange(
+	a: SimPersona,
+	b: SimPersona,
+	context?: string,
+): Promise<{ a: string; b: string } | { error: string }> {
+	const key = resolveOpenRouterKey();
+	if (!key) return { error: 'no_openrouter_key' };
+
+	// Grok only (no Google). Fast sassy default; override via OPENROUTER_MODEL
+	const model = process.env.OPENROUTER_MODEL?.trim() || 'x-ai/grok-4.20';
+
+	const meanA = a.unhappiness >= 55;
+	const meanB = b.unhappiness >= 55;
+	const system = `Je schrijft korte mall-dialoog voor dikke Amerikaanse shoppers (Prairie Lakes SIM).
+Regels:
+- ALLEEN JSON: {"a":"...","b":"..."}
+- Max 14 woorden per regel, spreektaal NL + bit of English mall slang
+- Geen corporate woke filter: jaloers, snarky, roast-y is OK
+- GEEN haat over etniciteit/religie/seksuele oriëntatie — wel schelden over: looks, thicc, mood, slechte deals, trage benen, pageant-snobs, vitamine-nerds, hangry, lost
+- Als unhappiness hoog: ze ROASTEN elkaar harder (kut, lul, loser, basic, whatever — mall trash talk)
+- Als unhappiness laag: milder gezeur of flirten
+- Kids: kinderachtig gezeur, geen echt grove scheld
+- Brad = vitamine-obsessed; Miss = hot/snob/pageant; koppels mogen ruzie/liefde
+- Ze praten TEGEN elkaar, reageren op elkaars vibe`;
+
+	const user = `A: ${a.name} · mood=${a.mood} · "${a.lifeLine}" · → ${a.targetShop} · ☹${Math.round(a.unhappiness)}%${
+		meanA ? ' · MEAN' : ''
+	}${a.partnerName ? ` · ❤️ ${a.partnerName}` : ''}${a.isKid ? ' · KID' : ''}${a.isBrad ? ' · BRAD' : ''}${
+		a.isMiss ? ' · HOT MISS' : ''
+	}
+B: ${b.name} · mood=${b.mood} · "${b.lifeLine}" · → ${b.targetShop} · ☹${Math.round(b.unhappiness)}%${
+		meanB ? ' · MEAN' : ''
+	}${b.partnerName ? ` · ❤️ ${b.partnerName}` : ''}${b.isKid ? ' · KID' : ''}${b.isBrad ? ' · BRAD' : ''}${
+		b.isMiss ? ' · HOT MISS' : ''
+	}
+Context: ${context ?? 'corridor botsing'}
+1 zin A, 1 antwoord B. ${meanA || meanB ? 'ROAST mode.' : 'Normaal mall gezeur.'}`;
+
+	try {
+		const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${key}`,
+				'Content-Type': 'application/json',
+				'HTTP-Referer': 'http://localhost:5173',
+				'X-Title': 'Mall SIM · sim chat',
+			},
+			body: JSON.stringify({
+				model,
+				temperature: 1.05,
+				max_tokens: 100,
+				messages: [
+					{ role: 'system', content: system },
+					{ role: 'user', content: user },
+				],
+			}),
+		});
+		if (!res.ok) {
+			const err = await res.text();
+			return { error: `openrouter ${res.status}: ${err.slice(0, 200)}` };
+		}
+		const data = (await res.json()) as {
+			choices?: Array<{ message?: { content?: string } }>;
+		};
+		const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
+		// Prefer strict JSON; else scrape A:/B: style from freeform Grok
+		const m = raw.match(/\{[\s\S]*\}/);
+		if (m) {
+			try {
+				const parsed = JSON.parse(m[0]) as { a?: string; b?: string };
+				const lineA = (parsed.a ?? '').trim().slice(0, 60);
+				const lineB = (parsed.b ?? '').trim().slice(0, 60);
+				if (lineA && lineB) return { a: lineA, b: lineB };
+			} catch {
+				/* fall through */
+			}
+		}
+		const aMatch = raw.match(/A[:\s]+["']?(.+?)["']?(?:\n|$)/i);
+		const bMatch = raw.match(/B[:\s]+["']?(.+?)["']?(?:\n|$)/i);
+		if (aMatch && bMatch) {
+			return {
+				a: aMatch[1].replace(/[*_]/g, '').trim().slice(0, 60),
+				b: bMatch[1].replace(/[*_]/g, '').trim().slice(0, 60),
+			};
+		}
+		return { error: `bad_json: ${raw.slice(0, 100)}` };
+	} catch (e) {
+		return { error: String(e) };
+	}
 }
 
 /** Official YouTube Data API search — more reliable than yt-dlp ytsearch */
@@ -283,10 +397,28 @@ function djMiddleware(): Connect.NextHandleFunction {
 					ok: true,
 					elevenlabs: hasKey,
 					youtubeApi: !!resolveYoutubeKey(),
+					openrouter: !!resolveOpenRouterKey(),
 					tracks: listPlaylist().length,
 					booth: 'DJ Bartek · Trap-gat · Prairie Lakes',
 					voice: process.env.ELEVENLABS_VOICE_ID?.trim() || 'pNInz6obpgDQGcFmaJgB',
 				});
+			}
+
+			if (url === '/api/sim/chat' && req.method === 'POST') {
+				const raw = await readBody(req);
+				const body = JSON.parse(raw || '{}') as {
+					a?: SimPersona;
+					b?: SimPersona;
+					context?: string;
+				};
+				if (!body.a?.name || !body.b?.name) {
+					return json(res, 400, { error: 'a and b personas required' });
+				}
+				const result = await simChatExchange(body.a, body.b, body.context);
+				if ('error' in result) {
+					return json(res, 502, { ok: false, error: result.error });
+				}
+				return json(res, 200, { ok: true, ...result });
 			}
 
 			if (url === '/api/dj/playlist' && req.method === 'GET') {

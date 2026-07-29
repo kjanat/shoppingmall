@@ -6,18 +6,24 @@ import * as THREE from 'three';
  */
 export class Spaceship {
 	readonly group = new THREE.Group();
-	/** Stand here — under the ship (south food-court roof, not jammed in stores) */
-	readonly underPos = new THREE.Vector3(0, 6.15, 16);
+	/**
+	 * Stand here: the floor-1 balcony rail on the south side of the atrium void,
+	 * looking north into the hole at the saucer.
+	 */
+	readonly underPos = new THREE.Vector3(0, 6.15, 7.4);
 	private ship: THREE.Group;
 	private beam: THREE.Mesh;
 	private ring: THREE.Mesh;
 	private lights: THREE.PointLight[] = [];
 	private materials: THREE.Material[] = [];
-	private baseY = 12;
+	/** Hovers inside the atrium void — above floor 1, under the skylight */
+	private baseY = 9.6;
 
 	constructor() {
 		this.group.name = 'spaceship';
-		this.group.position.set(this.underPos.x, 0, this.underPos.z);
+		// Dead centre of the mall: the saucer hangs in the void ("de weide"), so
+		// nothing intersects the floor-1 slab. It used to sit at z=16 and skewer it.
+		this.group.position.set(0, 0, 0);
 
 		this.buildLandingPad();
 		this.ship = this.buildShip();
@@ -58,36 +64,46 @@ export class Spaceship {
 		return m;
 	}
 
+	/**
+	 * No pad under the saucer any more — it hovers over the atrium hole. Instead:
+	 * a lit frame around the void on floor 1 and the H mark on the ground floor.
+	 */
 	private buildLandingPad(): void {
-		const pad = new THREE.Mesh(
-			new THREE.CylinderGeometry(4.5, 4.8, 0.12, 32),
-			this.track(
-				new THREE.MeshStandardMaterial({
-					color: 0x3a3f4a,
-					metalness: 0.6,
-					roughness: 0.4,
-				}),
-			),
-		);
-		pad.position.y = 6.06;
-		pad.receiveShadow = true;
-		this.group.add(pad);
-
-		// H markings
 		const hMat = this.track(
 			new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }),
 		);
-		const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.04, 2.2), hMat);
-		const h2 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.04, 2.2), hMat);
-		const h3 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.04, 0.35), hMat);
-		h1.position.set(-0.55, 6.14, 0);
-		h2.position.set(0.55, 6.14, 0);
-		h3.position.set(0, 6.14, 0);
-		this.group.add(h1, h2, h3);
 
-		// Circle stripe
+		// Hazard frame hugging the floor-1 void edge (hole is 16 × 12)
+		const edge = this.track(
+			new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }),
+		);
+		const railLong = new THREE.BoxGeometry(16.8, 0.05, 0.35);
+		const railShort = new THREE.BoxGeometry(0.35, 0.05, 12.8);
+		for (const z of [-6.2, 6.2]) {
+			const bar = new THREE.Mesh(railLong, edge);
+			bar.position.set(0, 6.17, z);
+			this.group.add(bar);
+		}
+		for (const x of [-8.2, 8.2]) {
+			const bar = new THREE.Mesh(railShort, edge);
+			bar.position.set(x, 6.17, 0);
+			this.group.add(bar);
+		}
+
+		// Landing H painted on the ground floor, framing the fountain
+		const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.03, 3.4), hMat);
+		const h2 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.03, 3.4), hMat);
+		h1.position.set(-4.2, 0.03, 0);
+		h2.position.set(4.2, 0.03, 0);
+		this.group.add(h1, h2);
+		const h3 = new THREE.Mesh(new THREE.BoxGeometry(8.0, 0.03, 0.35), hMat);
+		h3.position.set(0, 0.03, 0);
+		h3.visible = false; // the statue stands here — keep the crossbar clear
+		this.group.add(h3);
+
+		// Circle stripe on the ground floor, outside the fountain kerb
 		const stripe = new THREE.Mesh(
-			new THREE.RingGeometry(3.6, 3.9, 48),
+			new THREE.RingGeometry(5.2, 5.6, 48),
 			this.track(
 				new THREE.MeshBasicMaterial({
 					color: 0xf5c518,
@@ -97,7 +113,7 @@ export class Spaceship {
 			),
 		);
 		stripe.rotation.x = -Math.PI / 2;
-		stripe.position.y = 6.13;
+		stripe.position.y = 0.04;
 		this.group.add(stripe);
 	}
 
@@ -223,8 +239,9 @@ export class Spaceship {
 		return s;
 	}
 
+	/** Tractor beam: ship → ground floor, straight down the atrium hole. */
 	private buildBeam(): THREE.Mesh {
-		const geo = new THREE.CylinderGeometry(0.6, 3.2, 12, 24, 1, true);
+		const geo = new THREE.CylinderGeometry(0.6, 3.2, this.baseY, 24, 1, true);
 		const mat = this.track(
 			new THREE.MeshBasicMaterial({
 				color: 0x7fd4ff,
@@ -236,13 +253,13 @@ export class Spaceship {
 			}),
 		);
 		const mesh = new THREE.Mesh(geo, mat);
-		mesh.position.y = 6 + 6;
+		mesh.position.y = this.baseY / 2;
 		return mesh;
 	}
 
 	private buildGroundRing(): THREE.Mesh {
 		const mesh = new THREE.Mesh(
-			new THREE.TorusGeometry(2.8, 0.06, 8, 40),
+			new THREE.TorusGeometry(3.4, 0.06, 8, 40),
 			this.track(
 				new THREE.MeshBasicMaterial({
 					color: 0x4fc3f7,
@@ -253,7 +270,7 @@ export class Spaceship {
 			),
 		);
 		mesh.rotation.x = Math.PI / 2;
-		mesh.position.y = 6.2;
+		mesh.position.y = 0.08;
 		return mesh;
 	}
 
@@ -273,7 +290,7 @@ export class Spaceship {
 		ctx.font = '700 36px system-ui,sans-serif';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText('Kruidvat · hier beneden', 256, 52);
+		ctx.fillText('UFO · boven de weide', 256, 52);
 		ctx.font = '500 20px system-ui,sans-serif';
 		ctx.fillStyle = '#94a3b8';
 		ctx.fillText('einde van de route', 256, 88);
@@ -282,7 +299,7 @@ export class Spaceship {
 		const sprite = new THREE.Sprite(
 			this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })),
 		);
-		sprite.position.set(0, 9.5, 0);
+		sprite.position.set(0, 12.4, 0);
 		sprite.scale.set(8, 2, 1);
 		return sprite;
 	}

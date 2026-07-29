@@ -3,6 +3,7 @@ import { getOwner } from '../data/shopOwners';
 import { type StoreDef, STORES } from '../data/stores';
 import { Pathfinder } from '../path/Pathfinder';
 import type { CollisionWorld } from '../physics/Collision';
+import { fetchSimChat, type SimPersona } from '../sim/SimChat';
 
 export type LifeMeaning =
 	| 'love'
@@ -56,6 +57,29 @@ type Limb = {
 	knee: THREE.Group;
 	foot: THREE.Mesh;
 };
+
+const SKULL_OUT = new THREE.Vector3(0, 0, 1);
+
+/**
+ * Park an object on a head sphere of radius `headR`, local +Z pointing straight
+ * out of the surface. `sink` < 1 pushes it slightly into the skull so flattened
+ * features sit flush instead of floating.
+ */
+function placeOnSkull(
+	obj: THREE.Object3D,
+	headR: number,
+	yaw: number,
+	pitch: number,
+	sink: number,
+): void {
+	const n = new THREE.Vector3(
+		Math.sin(yaw) * Math.cos(pitch),
+		Math.sin(pitch),
+		Math.cos(yaw) * Math.cos(pitch),
+	);
+	obj.position.copy(n).multiplyScalar(headR * sink);
+	obj.quaternion.setFromUnitVectors(SKULL_OUT, n);
+}
 
 type Sim = {
 	f: SimFactors;
@@ -132,7 +156,8 @@ const MISS_NAMES = [
 	'Eva G.',
 	'Miss Florida',
 ];
-const MISS_OUTFITS = [0xff69b4, 0xc0a0ff, 0xffd700, 0xff6b9d, 0x87ceeb];
+// Hotter palette — neon pink, cherry, gold, violet, icy blue
+const MISS_OUTFITS = [0xff1493, 0xe040fb, 0xffd700, 0xff2d55, 0x00e5ff];
 const LAST = [
 	'Miller',
 	'Johnson',
@@ -215,6 +240,9 @@ export class Americans {
 	private coinBursts: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
 	private bubbles: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
 	private onTransaction: ((count: number, pos: THREE.Vector3, storeId: string) => void) | null = null;
+	/** seconds until next OpenRouter gossip attempt */
+	private gossipCd = 4;
+	private gossipBusy = false;
 
 	constructor(world: CollisionWorld, count = 20) {
 		this.world = world;
@@ -440,10 +468,69 @@ export class Americans {
 				this.tickFace(s, dt);
 			}
 			this.resolveAgents();
+			this.tickGossip(dt);
 		}
 		this.tickFarts(dt);
 		this.tickCoins(dt);
 		this.tickBubbles(dt);
+	}
+
+	/** Nearby sims chat via OpenRouter (or local banter fallback) */
+	private tickGossip(dt: number): void {
+		this.gossipCd -= dt;
+		if (this.gossipCd > 0 || this.gossipBusy) return;
+		// Find a close pair on the same floor
+		let best: [Sim, Sim] | null = null;
+		let bestD = 3.4;
+		for (let i = 0; i < this.sims.length; i++) {
+			for (let j = i + 1; j < this.sims.length; j++) {
+				const a = this.sims[i];
+				const b = this.sims[j];
+				if (Math.abs(a.pos.y - b.pos.y) > 2.2) continue;
+				// Don't interrupt if both already mid-speech bubble
+				if (a.speechLife > 0.8 && b.speechLife > 0.8) continue;
+				const d = a.pos.distanceTo(b.pos);
+				if (d < bestD) {
+					bestD = d;
+					best = [a, b];
+				}
+			}
+		}
+		if (!best) {
+			this.gossipCd = 2.5;
+			return;
+		}
+		this.gossipCd = 7 + Math.random() * 6;
+		const [sa, sb] = best;
+		// Brief pause so they "face" the chat
+		sa.wait = Math.max(sa.wait, 1.4);
+		sb.wait = Math.max(sb.wait, 1.4);
+		this.gossipBusy = true;
+		const persona = (s: Sim): SimPersona => ({
+			name: s.f.name,
+			mood: s.f.mood,
+			lifeLine: s.f.lifeLine,
+			targetShop: s.f.targetShop,
+			unhappiness: s.f.unhappiness,
+			partnerName: s.f.partnerName,
+			isKid: s.f.isKid,
+			isBrad: s.f.isBrad,
+			isMiss: s.f.isMiss,
+		});
+		const ctx = sa.f.partnerId === sb.f.id
+			? 'koppel loopt hand in hand'
+			: bestD < 1.8
+			? 'bijna botsing in de gang'
+			: 'passeren in de mall';
+		void fetchSimChat(persona(sa), persona(sb), ctx)
+			.then((ex) => {
+				this.sayLine(sa, ex.a, false);
+				// B answers a beat later
+				window.setTimeout(() => this.sayLine(sb, ex.b, false), 900);
+			})
+			.finally(() => {
+				this.gossipBusy = false;
+			});
 	}
 
 	/**
@@ -466,16 +553,21 @@ export class Americans {
 		sim.eyeL.scale.set(1, eyeY, 1);
 		sim.eyeR.scale.set(1, eyeY, 1);
 
-		// Talk: mouth oval pumps while speech bubble is up
+		// Mood shapes the arc: happy curves up (smile), miserable flips to a frown.
 		const u = sim.f.unhappiness / 100;
-		// Base mouth from mood: happy = wider flatter smile oval, sad = thinner
-		const baseX = u > 0.65 ? 1.0 : u > 0.4 ? 1.2 : 1.45;
-		const baseY = u > 0.65 ? 0.25 : u > 0.4 ? 0.35 : 0.5;
-		const baseZ = 0.55;
+		const baseX = u > 0.65 ? 0.85 : u > 0.4 ? 0.95 : 1.1;
+		const baseY = u > 0.65 ? 0.5 : u > 0.4 ? 0.7 : 1;
+		const baseZ = 1;
+		// Arc opens downward by default (∩) — π turns it into a smile (∪)
+		const want = u > 0.55 ? 0 : Math.PI;
+		let d = want - sim.mouth.rotation.z;
+		while (d > Math.PI) d -= Math.PI * 2;
+		while (d < -Math.PI) d += Math.PI * 2;
+		sim.mouth.rotation.z += d * Math.min(1, dt * 6 || 1);
 
 		if (sim.speechLife > 0) {
 			sim.talkPhase += dt * 14;
-			const open = 0.55 + Math.abs(Math.sin(sim.talkPhase)) * 0.95;
+			const open = 0.55 + Math.abs(Math.sin(sim.talkPhase)) * 1.5;
 			sim.mouth.scale.set(baseX * 0.95, baseY * open, baseZ);
 			// One soft chirp now and then — not a bubble machine
 			sim.squeakT -= dt;
@@ -675,9 +767,10 @@ export class Americans {
 		const body = new THREE.Group();
 		root.add(body);
 
-		const scale = isKid ? 0.62 : isMiss ? 1.02 : 0.95 + thicc * 0.18;
-		const bellyR = isMiss ? 0.26 : isKid ? 0.22 : 0.34 + thicc * 0.36;
-		const legLen = isMiss ? 0.72 : isKid ? 0.42 : 0.62;
+		// Miss = taller, longer legs, hourglass, more glam ("hotter babes")
+		const scale = isKid ? 0.62 : isMiss ? 1.08 : 0.95 + thicc * 0.18;
+		const bellyR = isMiss ? 0.2 : isKid ? 0.22 : 0.34 + thicc * 0.36;
+		const legLen = isMiss ? 0.82 : isKid ? 0.42 : 0.62;
 
 		const legL = this.makeLeg(f.pants, legLen, -1);
 		const legR = this.makeLeg(f.pants, legLen, 1);
@@ -689,8 +782,9 @@ export class Americans {
 			this.mat(f.shirt, 0.9),
 		);
 		if (isMiss) {
-			belly.scale.set(0.85, 1.05, 0.75);
-			belly.position.set(0, torsoY + bellyR * 0.55, 0.02);
+			// tight waist
+			belly.scale.set(0.72, 1.0, 0.62);
+			belly.position.set(0, torsoY + bellyR * 0.5, 0.02);
 		} else {
 			belly.scale.set(1.2 + thicc * 0.1, 0.9, 1.1);
 			belly.position.set(0, torsoY + bellyR * 0.45, 0.08 + thicc * 0.05);
@@ -698,18 +792,59 @@ export class Americans {
 		body.add(belly);
 
 		const chest = new THREE.Mesh(
-			new THREE.SphereGeometry(bellyR * (isMiss ? 0.85 : 0.7), 10, 8),
+			new THREE.SphereGeometry(bellyR * (isMiss ? 1.15 : 0.7), 10, 8),
 			this.mat(f.shirt, 0.9),
 		);
-		chest.scale.set(isMiss ? 1.15 : 1.3, isMiss ? 0.75 : 0.65, isMiss ? 0.7 : 0.85);
-		chest.position.set(0, torsoY + bellyR * (isMiss ? 1.15 : 1.0), isMiss ? 0.04 : 0);
+		// Miss: bigger chest, push forward
+		chest.scale.set(isMiss ? 1.55 : 1.3, isMiss ? 1.05 : 0.65, isMiss ? 1.05 : 0.85);
+		chest.position.set(0, torsoY + bellyR * (isMiss ? 1.35 : 1.0), isMiss ? 0.12 : 0);
 		body.add(chest);
 
-		const armGeo = new THREE.CapsuleGeometry(0.09, 0.45, 3, 5);
-		const armL = new THREE.Mesh(armGeo, this.mat(f.shirt));
-		const armR = new THREE.Mesh(armGeo, this.mat(f.shirt));
-		armL.position.set(-bellyR * 1.05, torsoY + bellyR * 0.8, 0);
-		armR.position.set(bellyR * 1.05, torsoY + bellyR * 0.8, 0);
+		// Miss: hip flare + heels
+		if (isMiss) {
+			const hips = new THREE.Mesh(
+				new THREE.SphereGeometry(0.22, 10, 8),
+				this.mat(f.pants, 0.85),
+			);
+			hips.scale.set(1.45, 0.55, 0.85);
+			hips.position.set(0, torsoY - 0.08, 0.02);
+			body.add(hips);
+			// stiletto nubs under feet (leg groups already have feet — add glamour shine)
+			const heelMat = this.track(
+				new THREE.MeshStandardMaterial({
+					color: 0x1a1a1a,
+					metalness: 0.4,
+					roughness: 0.35,
+				}),
+			);
+			for (const side of [-1, 1] as const) {
+				const heel = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 6), heelMat);
+				heel.position.set(side * 0.14, 0.02, 0.12);
+				heel.rotation.x = Math.PI;
+				body.add(heel);
+			}
+		}
+
+		// Arms pivot AT THE SHOULDER. Rotating the bare mesh spun it around its
+		// own middle, so the hand and the elbow swung in opposite directions.
+		const armLen = 0.45;
+		const armGeo = new THREE.CapsuleGeometry(0.09, armLen, 3, 5);
+		const makeArm = (side: -1 | 1): THREE.Group => {
+			const pivot = new THREE.Group();
+			pivot.position.set(side * bellyR * 1.05, torsoY + bellyR * 1.15, 0);
+			const limb = new THREE.Mesh(armGeo, this.mat(f.shirt));
+			limb.position.y = -(armLen / 2 + 0.09);
+			pivot.add(limb);
+			const hand = new THREE.Mesh(
+				new THREE.SphereGeometry(0.075, 8, 6),
+				this.mat(f.skin, 0.8),
+			);
+			hand.position.y = -(armLen + 0.13);
+			pivot.add(hand);
+			return pivot;
+		};
+		const armL = makeArm(-1);
+		const armR = makeArm(1);
 		body.add(armL, armR);
 
 		const headY = torsoY + bellyR * 1.4 + 0.28;
@@ -722,28 +857,60 @@ export class Americans {
 		head.position.set(0, headY, 0);
 		body.add(head);
 
-		// Eyes = black spheres on the front of the head (+Z)
-		const eyeMat = this.track(
-			new THREE.MeshBasicMaterial({ color: 0x111111 }),
-		);
-		const eyeGeo = new THREE.SphereGeometry(isKid ? 0.035 : 0.042, 10, 10);
-		const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-		const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
-		const eyeY = headY + 0.02;
-		const eyeZ = headR * 0.82;
-		const eyeX = headR * 0.32;
-		eyeL.position.set(-eyeX, eyeY, eyeZ);
-		eyeR.position.set(eyeX, eyeY, eyeZ);
-		body.add(eyeL, eyeR);
+		// ── Face ─────────────────────────────────────────────
+		// Features sit ON the skull surface and point outward. The old version put
+		// flat-Z spheres at 0.8·R, which buried the mouth completely inside the
+		// head and left only a sliver of each eye poking out.
+		const darkMat = this.track(new THREE.MeshBasicMaterial({ color: 0x141414 }));
+		const scleraMat = this.track(new THREE.MeshBasicMaterial({ color: 0xf7f4f0 }));
 
-		// Mouth = black oval (scaled sphere) — scale Y/X for talk & mood
-		const mouth = new THREE.Mesh(
-			new THREE.SphereGeometry(isKid ? 0.04 : 0.05, 12, 10),
-			eyeMat,
+		const eyeRad = isKid ? 0.055 : 0.062;
+		// Pre-scaled geometry: mesh.scale stays free for blinking (tickFace)
+		const scleraGeo = new THREE.SphereGeometry(eyeRad, 12, 10);
+		scleraGeo.scale(1, 1.1, 0.45);
+		const pupilGeo = new THREE.SphereGeometry(eyeRad * 0.52, 10, 8);
+		pupilGeo.scale(1, 1, 0.6);
+
+		const makeEye = (side: -1 | 1): THREE.Mesh => {
+			const anchor = new THREE.Group();
+			placeOnSkull(anchor, headR, side * 0.36, 0.1, 0.93);
+			const sclera = new THREE.Mesh(scleraGeo, scleraMat);
+			const pupil = new THREE.Mesh(pupilGeo, darkMat);
+			pupil.position.z = eyeRad * 0.36;
+			sclera.add(pupil);
+			anchor.add(sclera);
+			head.add(anchor);
+			return sclera;
+		};
+		const eyeL = makeEye(-1);
+		const eyeR = makeEye(1);
+
+		// Mouth = curved arc on the surface: smile, and rotate π for a frown.
+		// Kept as a Mesh whose scale/rotation.z belong to tickFace, inside an
+		// anchor group that owns the orientation.
+		const mouthAnchor = new THREE.Group();
+		placeOnSkull(mouthAnchor, headR, 0, -0.42, 0.95);
+		const mouthGeo = new THREE.TorusGeometry(
+			headR * 0.3,
+			headR * 0.055,
+			5,
+			14,
+			Math.PI,
 		);
-		mouth.position.set(0, headY - headR * 0.35, eyeZ * 0.95);
-		mouth.scale.set(1.35, 0.45, 0.55);
-		body.add(mouth);
+		const mouth = new THREE.Mesh(mouthGeo, darkMat);
+		mouthAnchor.add(mouth);
+		head.add(mouthAnchor);
+
+		// Brows — cheap, and they carry most of the mood
+		const browGeo = new THREE.BoxGeometry(headR * 0.34, headR * 0.06, headR * 0.05);
+		for (const side of [-1, 1] as const) {
+			const brow = new THREE.Group();
+			placeOnSkull(brow, headR, side * 0.36, 0.34, 0.95);
+			const bar = new THREE.Mesh(browGeo, darkMat);
+			bar.rotation.z = side * -0.12;
+			brow.add(bar);
+			head.add(brow);
+		}
 
 		if (f.isMiss) {
 			// Pageant hair volume
@@ -1211,7 +1378,8 @@ export class Americans {
 		}
 
 		const speedNow = mlen / Math.max(dt, 1e-4);
-		sim.phase += dt * speedNow * 6.5 * f.stride;
+		// One half-cycle (π) = one step, so cadence follows actual ground speed
+		sim.phase += (dt * Math.PI * speedNow) / this.walkParams(sim).step;
 		this.animateLegs(sim, speedNow, dt);
 
 		sim.root.position.set(sim.pos.x, sim.pos.y, sim.pos.z);
@@ -1219,7 +1387,17 @@ export class Americans {
 	}
 
 	/**
-	 * POOTJES. Big hip swing, knee bend, foot plant.
+	 * Swing amplitude and the ground distance one step covers.
+	 * `phase` is advanced from this so the feet never slide.
+	 */
+	private walkParams(sim: Sim): { amp: number; step: number } {
+		const legLen = sim.legL.hip.position.y || 0.62;
+		const amp = 0.42 * sim.f.stride;
+		return { amp, step: Math.max(0.2, 2 * legLen * Math.sin(amp)) };
+	}
+
+	/**
+	 * POOTJES. Hip swing, knee flex on lift-off, heel-to-toe foot roll.
 	 * speed=0 → idle; speed>0 → full walk cycle.
 	 */
 	private animateLegs(sim: Sim, speed: number, dt: number): void {
@@ -1238,30 +1416,33 @@ export class Americans {
 			return;
 		}
 
-		const amp = 0.75 * f.stride; // BIG swing — must see the feet
+		// Amplitude is tied to the step length that drives `phase` (see walkParams),
+		// so the planted foot travels backwards at exactly walking speed instead of
+		// skating across the tiles.
+		const { amp } = this.walkParams(sim);
 		const L = Math.sin(sim.phase) * amp;
 		const R = Math.sin(sim.phase + Math.PI) * amp;
 
-		// Hips
+		// Hips — positive rotation swings the leg behind the body (+Z is the face)
 		sim.legL.hip.rotation.x = L;
 		sim.legR.hip.rotation.x = R;
 
-		// Knees bend on rear swing
-		sim.legL.knee.rotation.x = Math.max(0, -L) * 0.9 + 0.15;
-		sim.legR.knee.rotation.x = Math.max(0, -R) * 0.9 + 0.15;
+		// Knees flex while the leg is BEHIND and lifting off — bending on the
+		// forward swing (the old `max(0, -L)`) read as a backwards moonwalk.
+		sim.legL.knee.rotation.x = Math.max(0, L) * 1.15 + 0.1;
+		sim.legR.knee.rotation.x = Math.max(0, R) * 1.15 + 0.1;
 
-		// Feet plant / toe lift
-		const plantL = Math.max(0, Math.cos(sim.phase)) * 0.35 * f.stomp;
-		const plantR = Math.max(0, Math.cos(sim.phase + Math.PI)) * 0.35 * f.stomp;
-		sim.legL.foot.rotation.x = -L * 0.4 + plantL;
-		sim.legR.foot.rotation.x = -R * 0.4 + plantR;
+		// Toe up in front (heel strike), toe down behind (toe-off)
+		const toe = (l: number) => (l < 0 ? l * 0.5 : l * 0.3 * (0.7 + 0.3 * f.stomp));
+		sim.legL.foot.rotation.x = toe(L);
+		sim.legR.foot.rotation.x = toe(R);
 
-		// Arms opposite
-		sim.armL.rotation.x = -L * 0.55;
-		sim.armR.rotation.x = -R * 0.55;
+		// Arms opposite the same-side leg
+		sim.armL.rotation.x = -L * 0.7;
+		sim.armR.rotation.x = -R * 0.7;
 
-		// Stomp bob
-		sim.body.position.y = Math.abs(Math.sin(sim.phase)) * 0.05 * f.stomp;
+		// Body rises over each planted leg — twice per cycle
+		sim.body.position.y = Math.abs(Math.sin(sim.phase)) * 0.035 * f.stomp;
 	}
 
 	private paintLabel(sim: Sim): void {
@@ -1350,10 +1531,46 @@ export class Americans {
 		this.bubbles.push({ mesh, life: 1.5, vel });
 	}
 
+	/** Speech bubble with real words (gossip / checkout) */
+	private sayLine(sim: Sim, line: string, checkout = false): void {
+		const ctx = sim.speechCtx;
+		ctx.clearRect(0, 0, 280, 72);
+		ctx.fillStyle = 'rgba(255,255,255,0.96)';
+		roundRect(ctx, 4, 4, 272, 64, 14);
+		ctx.fill();
+		ctx.strokeStyle = checkout ? '#16a34a' : '#7c3aed';
+		ctx.lineWidth = 2.5;
+		roundRect(ctx, 4, 4, 272, 64, 14);
+		ctx.stroke();
+		ctx.fillStyle = '#0f172a';
+		ctx.font = '600 14px system-ui,sans-serif';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		const words = line.split(' ');
+		let l1 = '';
+		let l2 = '';
+		for (const w of words) {
+			const t = (l1 ? `${l1} ` : '') + w;
+			if (ctx.measureText(t).width < 250 && !l2) l1 = t;
+			else l2 = (l2 ? `${l2} ` : '') + w;
+		}
+		if (l2) {
+			ctx.fillText(l1.slice(0, 36), 140, 28);
+			ctx.fillText(l2.slice(0, 36), 140, 48);
+		} else {
+			ctx.fillText(l1.slice(0, 40), 140, 36);
+		}
+		sim.speechTex.needsUpdate = true;
+		sim.speech.visible = true;
+		(sim.speech.material as THREE.SpriteMaterial).visible = true;
+		sim.speechLife = 3.2 + Math.random() * 1.4;
+		sim.squeakT = 0.5;
+		this.playSqueak(sim, 0);
+	}
+
 	private sayGibberish(sim: Sim, checkout = false): void {
 		let line: string;
 		if (checkout) {
-			// Shop owner greets at the register — meaning for both guest & keeper
 			const owner = getOwner(sim.f.targetShopId || sim.shopId);
 			if (owner && owner.lines.length > 0 && Math.random() < 0.85) {
 				line = `${owner.name.split(' ')[0]}: ${owner.lines[Math.floor(Math.random() * owner.lines.length)]}`;
@@ -1364,14 +1581,14 @@ export class Americans {
 					'Pecunia accepta, amore!',
 				][Math.floor(Math.random() * 3)];
 			} else {
-				line = ['Pecunia accepta! Squeak!', 'Gratias, humanos!', 'Komunicare complete ✓'][
+				line = ['Pecunia accepta!', 'Dankjewel, next!', 'Kassa done ✓'][
 					Math.floor(Math.random() * 3)
 				];
 			}
 		} else if (sim.f.partnerName && Math.random() < 0.35) {
 			const p = sim.f.partnerName.split(' ')[0];
 			line = [
-				`${p}… squeak ❤️`,
+				`${p}… even wachten ❤️`,
 				'Handje? Handje.',
 				`Voor ons, ${p}.`,
 				sim.f.lifeLine.slice(0, 26),
@@ -1379,27 +1596,7 @@ export class Americans {
 		} else {
 			line = GIBBER[Math.floor(Math.random() * GIBBER.length)];
 		}
-		const ctx = sim.speechCtx;
-		ctx.clearRect(0, 0, 280, 72);
-		ctx.fillStyle = 'rgba(255,255,255,0.95)';
-		roundRect(ctx, 4, 4, 272, 64, 14);
-		ctx.fill();
-		ctx.strokeStyle = checkout ? '#16a34a' : '#334155';
-		ctx.lineWidth = 2;
-		roundRect(ctx, 4, 4, 272, 64, 14);
-		ctx.stroke();
-		ctx.fillStyle = '#0f172a';
-		ctx.font = '600 15px system-ui,sans-serif';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(line.slice(0, 34), 140, 36);
-		sim.speechTex.needsUpdate = true;
-		sim.speech.visible = true;
-		(sim.speech.material as THREE.SpriteMaterial).visible = true;
-		sim.speechLife = 2.6 + Math.random() * 1.2;
-		// Single soft open-chirp (no triple bubble burst)
-		sim.squeakT = 0.4;
-		this.playSqueak(sim, 0);
+		this.sayLine(sim, line, checkout);
 	}
 
 	/** Soft short chirp when someone talks — not a soap-bubble machine */

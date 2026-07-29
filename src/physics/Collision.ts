@@ -81,6 +81,17 @@ export class CollisionWorld {
 		});
 	}
 
+	/** Runtime colliders (WC walls, props added after construct) */
+	addBox(
+		minX: number,
+		maxX: number,
+		minZ: number,
+		maxZ: number,
+		opts?: { minY?: number; maxY?: number; label?: string; climbable?: boolean },
+	): void {
+		this.add(minX, maxX, minZ, maxZ, opts);
+	}
+
 	private buildMall(): void {
 		const hw = MALL_W / 2;
 		const hd = MALL_D / 2;
@@ -114,9 +125,20 @@ export class CollisionWorld {
 		// Stairs volume (west only) — does NOT overlap escalator
 		this.add(-23.5, -20.5, -15.5, 5, { label: 'stairs', climbable: true });
 
-		// Floor-1 openings at stair/escalator heads (not solid walkable slab)
-		this.add(-23.8, -20.2, -17.5, -13.2, { minY: 5.2, maxY: 7.5, label: 'stair_shaft_top', climbable: true });
-		this.add(20.5, 23.5, -5.5, -1.2, { minY: 5.2, maxY: 7.5, label: 'esc_shaft_top', climbable: true });
+		// Floor-1 openings — kept in step with the holes cut in MallBuilder, which
+		// sit over the flights themselves (not beside the top landings).
+		this.add(-24.2, -19.8, -14.8, -7.2, {
+			minY: 5.2,
+			maxY: 7.5,
+			label: 'stair_shaft_top',
+			climbable: true,
+		});
+		this.add(20.1, 23.9, -2.8, 1.8, {
+			minY: 5.2,
+			maxY: 7.5,
+			label: 'esc_shaft_top',
+			climbable: true,
+		});
 
 		// Atrium fountain / planter (floor 0)
 		this.add(-2.6, 2.6, -2.6, 2.6, { minY: -0.5, maxY: 3.5, label: 'fountain' });
@@ -125,8 +147,8 @@ export class CollisionWorld {
 		// Hole is roughly ±8 x ±6 on floor 1 — solid barrier so sims don't hang mid-air
 		this.add(-8.5, 8.5, -6.5, 6.5, { minY: 4.5, maxY: 12, label: 'void_f1' });
 
-		// Spaceship pad — food-court roof / south edge (better place)
-		this.add(-4, 4, 14, 20, { minY: 5, maxY: 14, label: 'ufo_pad' });
+		// (No UFO pad box any more — the saucer hovers in the atrium void, so the
+		//  floor-1 balcony at z≈16 is walkable again.)
 
 		// Aperol bar
 		this.add(-16, -12, 9, 11.5, { minY: -0.5, maxY: 3, label: 'aperol' });
@@ -135,14 +157,21 @@ export class CollisionWorld {
 		this.add(-1.0, 1.0, 9.0, 11.0, { minY: -0.5, maxY: 3, label: 'kiosk' });
 	}
 
-	/** Snap agent Y to solid floor (never float mid-air / through slab) */
+	/**
+	 * Snap agent Y to solid floor (never float mid-air / through slab).
+	 * Derived from `ramps` so it can't drift out of sync with the built geometry —
+	 * hard-coded windows are what made sims pop on the west stairs.
+	 */
 	snapFloorY(x: number, z: number, y: number): number {
-		// Escalator/stairs mid-climb: allow intermediate Y
-		if (y > 0.4 && y < 5.6) {
-			if (x > 19 && x < 25 && z > -6 && z < 8) return y;
-			if (x > -25 && x < -19 && z > -18 && z < -4) return y;
+		if (y > 0.4 && y < FLOOR_H - 0.4) {
+			for (const r of this.ramps) {
+				if (x < r.minX - 1 || x > r.maxX + 1) continue;
+				if (z < Math.min(r.zBottom, r.zTop) - 1.5) continue;
+				if (z > Math.max(r.zBottom, r.zTop) + 1.5) continue;
+				return y;
+			}
 		}
-		return y < 3.2 ? 0 : 6;
+		return y < 3.2 ? 0 : FLOOR_H;
 	}
 
 	/**

@@ -66,7 +66,8 @@ export const NODES: GraphNode[] = [
 	// Floor 1 stores
 	{ id: 's_kruidvat', x: 18, y: 6.15, z: -12, label: 'Kruidvat' },
 	// Epic ending: UFO over south food-court balcony
-	{ id: 'spaceship', x: 0, y: 6.15, z: 16, label: 'Under the UFO' },
+	// Balcony rail on the south side of the atrium void — look north into the hole
+	{ id: 'spaceship', x: 0, y: 6.15, z: 7.4, label: 'Under the UFO' },
 	{ id: 's_sephora', x: 0, y: 6.15, z: -12 },
 	{ id: 's_uniqlo', x: -16, y: 6.15, z: -12 },
 	{ id: 's_decathlon', x: -22, y: 6.15, z: 12 },

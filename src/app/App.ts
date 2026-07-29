@@ -23,6 +23,7 @@ import { MallRat } from '../scene/MallRat';
 import { Monkey } from '../scene/Monkey';
 import { PalmForest } from '../scene/Palms';
 import { PrayerRoom } from '../scene/PrayerRoom';
+import { Restrooms } from '../scene/Restrooms';
 import { ShopVoice } from '../scene/ShopVoice';
 import { Spaceship } from '../scene/Spaceship';
 import { StockDisplay } from '../scene/StockDisplay';
@@ -54,6 +55,7 @@ export class App {
 	private thief: BakerThief;
 	private rat!: MallRat;
 	private prayer = new PrayerRoom();
+	private restrooms = new Restrooms();
 	private bartekChat = new BartekChat();
 	private djBartek = new DJBartek();
 	private alienProbe = new AlienProbe();
@@ -127,6 +129,15 @@ export class App {
 		this.scene.add(this.thief.group);
 		this.scene.add(this.rat.group);
 		this.scene.add(this.prayer.group);
+		this.scene.add(this.restrooms.group);
+		// WC walls block walking
+		for (const c of this.restrooms.getColliders()) {
+			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
+				minY: -0.5,
+				maxY: 3.2,
+				label: c.label,
+			});
+		}
 		this.scene.add(this.pathMesh.group);
 		this.scene.add(this.djBartek.group);
 		this.scene.add(this.alienProbe.group);

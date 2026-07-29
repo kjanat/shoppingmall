@@ -22,6 +22,7 @@ export class DJBartek {
 	greetingDone = false;
 	/** drama beat timer (seconds) */
 	dramaCd = 8;
+	private groupies: THREE.Group[] = [];
 
 	constructor() {
 		this.group.name = 'djBartek';
@@ -31,6 +32,7 @@ export class DJBartek {
 		this.buildBartek();
 		this.decks = this.buildDecks();
 		this.group.add(this.decks);
+		this.buildGroupies();
 
 		this.glow = new THREE.PointLight(0xff00aa, 4, 10, 2);
 		this.glow.position.set(0, 2.2, 0.4);
@@ -117,6 +119,17 @@ export class DJBartek {
 		this.glow.intensity = 3 + Math.sin(t * (musicOn ? 10 : 2)) * 1.5 * pulse;
 		this.nameSprite.material.rotation = Math.sin(t * 1.5) * 0.02;
 
+		// Groupies bounce & cheer harder when music is on
+		for (let i = 0; i < this.groupies.length; i++) {
+			const g = this.groupies[i];
+			const base = g.userData.baseY as number;
+			const phase = g.userData.phase as number;
+			const amp = musicOn ? 0.14 : 0.05;
+			g.position.y = base + Math.abs(Math.sin(t * (musicOn ? 9 : 3) + phase)) * amp;
+			g.rotation.y = Math.sin(t * 1.2 + phase) * 0.25;
+			g.rotation.z = Math.sin(t * 2.4 + phase) * 0.08;
+		}
+
 		if (this.speechLife > 0) {
 			this.speechLife -= dt;
 			if (this.speechLife <= 0) {
@@ -130,6 +143,91 @@ export class DJBartek {
 	private track<T extends THREE.Material>(m: T): T {
 		this.materials.push(m);
 		return m;
+	}
+
+	/** Hot groupies Bartek deserves — front-row trap-gat fans */
+	private buildGroupies(): void {
+		const looks: { shirt: number; hair: number; x: number; z: number }[] = [
+			{ shirt: 0xff1493, hair: 0xc4a35a, x: -1.6, z: 1.7 },
+			{ shirt: 0x00e5ff, hair: 0x2c1810, x: 1.55, z: 1.75 },
+			{ shirt: 0xffd700, hair: 0xd35400, x: 0.15, z: 2.1 },
+		];
+		for (let i = 0; i < looks.length; i++) {
+			const L = looks[i];
+			const g = new THREE.Group();
+			const skin = this.track(
+				new THREE.MeshStandardMaterial({ color: 0xf5c9a8, roughness: 0.8 }),
+			);
+			const top = this.track(
+				new THREE.MeshStandardMaterial({ color: L.shirt, roughness: 0.55 }),
+			);
+			const legs = this.track(
+				new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7 }),
+			);
+			const hairM = this.track(
+				new THREE.MeshStandardMaterial({ color: L.hair, roughness: 0.85 }),
+			);
+
+			const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.55, 4, 6), legs);
+			leg.position.y = 0.5;
+			g.add(leg);
+			// hourglass-ish
+			const hips = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), top);
+			hips.scale.set(1.35, 0.55, 0.8);
+			hips.position.y = 0.95;
+			g.add(hips);
+			const waist = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), top);
+			waist.scale.set(0.75, 0.9, 0.65);
+			waist.position.y = 1.2;
+			g.add(waist);
+			const chest = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), top);
+			chest.scale.set(1.4, 0.95, 1.0);
+			chest.position.set(0, 1.48, 0.08);
+			g.add(chest);
+			const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), skin);
+			head.position.y = 1.85;
+			g.add(head);
+			const hair = new THREE.Mesh(
+				new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6),
+				hairM,
+			);
+			hair.position.set(0, 1.95, -0.02);
+			g.add(hair);
+			// phone / hand in air
+			const phone = new THREE.Mesh(
+				new THREE.BoxGeometry(0.08, 0.14, 0.02),
+				this.track(new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6 })),
+			);
+			phone.position.set(0.28, 1.7, 0.15);
+			phone.rotation.z = -0.4;
+			g.add(phone);
+
+			// tiny "BARTEK" fan plate
+			const c = document.createElement('canvas');
+			c.width = 128;
+			c.height = 40;
+			const ctx = c.getContext('2d')!;
+			ctx.fillStyle = '#ec4899';
+			ctx.fillRect(0, 0, 128, 40);
+			ctx.fillStyle = '#fff';
+			ctx.font = 'bold 16px system-ui';
+			ctx.textAlign = 'center';
+			ctx.fillText('BARTEK ❤️', 64, 26);
+			const tex = new THREE.CanvasTexture(c);
+			tex.colorSpace = THREE.SRGBColorSpace;
+			const fan = new THREE.Mesh(
+				new THREE.PlaneGeometry(0.55, 0.18),
+				this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
+			);
+			fan.position.set(0, 2.2, 0.12);
+			g.add(fan);
+
+			g.position.set(L.x, 0, L.z);
+			g.userData.baseY = 0;
+			g.userData.phase = i * 1.7;
+			this.groupies.push(g);
+			this.group.add(g);
+		}
 	}
 
 	private buildBooth(): void {
@@ -302,8 +400,8 @@ export class DJBartek {
 		ctx.textAlign = 'center';
 		ctx.fillText('DJ BARTEK', 160, 40);
 		ctx.fillStyle = '#e2e8f0';
-		ctx.font = '16px system-ui,sans-serif';
-		ctx.fillText('Trap-gat · druk E · requests', 160, 70);
+		ctx.font = '15px system-ui,sans-serif';
+		ctx.fillText('groupies · E · mic · props', 160, 70);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
 		const sp = new THREE.Sprite(

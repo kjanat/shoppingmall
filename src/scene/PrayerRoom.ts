@@ -139,8 +139,8 @@ export class PrayerRoom {
 		ctx.font = 'bold 26px system-ui,sans-serif';
 		ctx.textAlign = 'center';
 		ctx.fillText('GEBEDSRUIMTE', 160, 40);
-		ctx.font = '16px system-ui';
-		ctx.fillText('stilte · respect', 160, 70);
+		ctx.font = '15px system-ui';
+		ctx.fillText('stilte · wudu & WC ernaast', 160, 70);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
 		const sign = new THREE.Mesh(

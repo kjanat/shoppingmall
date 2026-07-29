@@ -12,8 +12,11 @@ export default defineConfig(({ mode }) => {
 	const hasEleven =
 		!!(process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_API_KEY || process.env.VITE_ELEVENLABS_API_KEY);
 	const hasYt = !!(process.env.YOUTUBE_API_KEY || process.env.YT_API_KEY);
+	const hasOr = !!(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY);
 	console.log(
-		`[DJ Bartek] env: ELEVENLABS=${hasEleven ? 'yes' : 'NO'} · YOUTUBE_API=${hasYt ? 'yes' : 'NO'} · mode=${mode}`,
+		`[Mall] env: ELEVENLABS=${hasEleven ? 'yes' : 'NO'} · YOUTUBE=${hasYt ? 'yes' : 'NO'} · OPENROUTER=${
+			hasOr ? 'yes' : 'NO'
+		} · mode=${mode}`,
 	);
 
 	return {
