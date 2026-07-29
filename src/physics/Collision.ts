@@ -9,6 +9,19 @@ export type AABB = {
 	minY?: number;
 	maxY?: number;
 	label?: string;
+	/** Climbers (the player) walk ON this instead of into it — see `ramps`. */
+	climbable?: boolean;
+};
+
+/** A walkable incline running along Z (escalator / stairs). */
+export type Ramp = {
+	minX: number;
+	maxX: number;
+	zBottom: number;
+	zTop: number;
+	yBottom: number;
+	yTop: number;
+	label: string;
 };
 
 const FLOOR_H = 6;
@@ -21,6 +34,30 @@ const MALL_D = 48;
  */
 export class CollisionWorld {
 	readonly boxes: AABB[] = [];
+	/** Inclines the player can actually walk up — mirrors the built geometry. */
+	readonly ramps: Ramp[] = [
+		// ROLTRAP east: incline from (22, 0, 6) up to (22, 6, -4); landings are the
+		// flat pad either side of that (t is clamped, see groundHeightAt).
+		{
+			minX: 20.7,
+			maxX: 23.3,
+			zBottom: 6,
+			zTop: -4,
+			yBottom: 0,
+			yTop: 6,
+			label: 'escalator',
+		},
+		// TRAP west: incline from (-22, 0, -6) up to (-22, 6, -16)
+		{
+			minX: -23.4,
+			maxX: -20.6,
+			zBottom: -6,
+			zTop: -16,
+			yBottom: 0,
+			yTop: 6,
+			label: 'stairs',
+		},
+	];
 
 	constructor() {
 		this.buildMall();
@@ -31,7 +68,7 @@ export class CollisionWorld {
 		maxX: number,
 		minZ: number,
 		maxZ: number,
-		opts?: { minY?: number; maxY?: number; label?: string },
+		opts?: { minY?: number; maxY?: number; label?: string; climbable?: boolean },
 	): void {
 		this.boxes.push({
 			minX,
@@ -41,6 +78,7 @@ export class CollisionWorld {
 			minY: opts?.minY,
 			maxY: opts?.maxY,
 			label: opts?.label,
+			climbable: opts?.climbable,
 		});
 	}
 
@@ -71,12 +109,12 @@ export class CollisionWorld {
 			});
 		}
 
-		// Escalator volume (east) — solid so nobody walks through the incline
+		// Escalator volume (east) — solid for sims, walkable ramp for the player
 		// Bottom (22,0,6) → top (22,6,-4), width ~2
-		this.add(20.8, 23.2, -5.5, 7.2, { label: 'escalator' });
+		this.add(20.8, 23.2, -5.5, 7.2, { label: 'escalator', climbable: true });
 
 		// Stairs volume (west)
-		this.add(-23.5, -20.5, -17, -4.5, { label: 'stairs' });
+		this.add(-23.5, -20.5, -17, -4.5, { label: 'stairs', climbable: true });
 
 		// Atrium fountain / planter (floor 0)
 		this.add(-2.6, 2.6, -2.6, 2.6, { minY: -0.5, maxY: 3.5, label: 'fountain' });
@@ -106,8 +144,52 @@ export class CollisionWorld {
 	}
 
 	/**
+	 * Walkable surface height at (x,z) for a climber (the player).
+	 * Ramps are only mounted from a matching height, so you step onto the
+	 * escalator at a landing instead of dropping through the floor-1 slab.
+	 */
+	groundHeightAt(x: number, z: number, currentY: number): number {
+		const slab = currentY < 3.2 ? 0 : FLOOR_H;
+		let best = slab;
+		let bestDelta = Math.abs(slab - currentY);
+		const onSlab = bestDelta < 0.5;
+
+		for (const r of this.ramps) {
+			if (x < r.minX || x > r.maxX) continue;
+			const zLo = Math.min(r.zBottom, r.zTop) - 1.2;
+			const zHi = Math.max(r.zBottom, r.zTop) + 1.2;
+			if (z < zLo || z > zHi) continue;
+
+			const raw = (z - r.zBottom) / (r.zTop - r.zBottom);
+			const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
+			const h = r.yBottom + (r.yTop - r.yBottom) * t;
+			const delta = Math.abs(h - currentY);
+			// From a slab you may only board near a landing; once on the incline,
+			// keep following it.
+			if (delta > (onSlab ? 1.1 : 2.5)) continue;
+			if (delta < bestDelta) {
+				best = h;
+				bestDelta = delta;
+			}
+		}
+		return best;
+	}
+
+	/** True while the climber is standing on an incline rather than a slab. */
+	onRamp(x: number, z: number, y: number): boolean {
+		return y > 0.6 && y < FLOOR_H - 0.6
+			&& this.ramps.some(
+				(r) =>
+					x >= r.minX && x <= r.maxX
+					&& z >= Math.min(r.zBottom, r.zTop) - 1.2
+					&& z <= Math.max(r.zBottom, r.zTop) + 1.2,
+			);
+	}
+
+	/**
 	 * Resolve a circle (radius r) at (x,z) with optional y for floor-filtered boxes.
 	 * Returns corrected position. Multi-pass for corners.
+	 * `climb` skips the escalator/stairs volumes — the player walks up those.
 	 */
 	resolveCircle(
 		x: number,
@@ -115,11 +197,13 @@ export class CollisionWorld {
 		y: number,
 		radius: number,
 		iterations = 3,
+		climb = false,
 	): { x: number; z: number } {
 		let px = x;
 		let pz = z;
 		for (let iter = 0; iter < iterations; iter++) {
 			for (const b of this.boxes) {
+				if (climb && b.climbable) continue;
 				if (b.minY !== undefined && y + 0.3 < b.minY) continue;
 				if (b.maxY !== undefined && y > b.maxY) continue;
 

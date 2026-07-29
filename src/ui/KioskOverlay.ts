@@ -1,4 +1,51 @@
+import { EDGES, NODES } from '../data/graph';
 import { CATEGORY_LABELS, type StoreCategory, type StoreDef, STORES } from '../data/stores';
+
+/** One dot on the map — a sim, mostly. */
+export type MapBlip = { x: number; z: number; floor: number };
+
+export type MapState = {
+	x: number;
+	z: number;
+	yaw: number;
+	floor: 0 | 1;
+	path: { x: number; y: number; z: number }[];
+	blips: MapBlip[];
+	target: { x: number; z: number; floor: 0 | 1; name: string } | null;
+};
+
+const MALL_W = 72;
+const MALL_D = 48;
+const ZOOM_STEPS = [2.4, 3.4, 4.8, 6.6];
+
+const NODE_BY_ID = new Map(NODES.map((n) => [n.id, n]));
+
+/** Same-floor graph edges = the corridors worth drawing on the map. */
+const CORRIDORS = EDGES.flatMap((e) => {
+	const a = NODE_BY_ID.get(e.from);
+	const b = NODE_BY_ID.get(e.to);
+	if (!a || !b) return [];
+	const fa = a.y > 3 ? 1 : 0;
+	if (fa !== (b.y > 3 ? 1 : 0)) return [];
+	return [{ floor: fa as 0 | 1, ax: a.x, az: a.z, bx: b.x, bz: b.z }];
+});
+
+/** Escalator + stairs, so the map actually shows how to reach floor 1. */
+const VERTICALS = [
+	{ x: 22, z: 1, label: 'ROLTRAP', short: '⇅' },
+	{ x: -22, z: -11, label: 'TRAP', short: '⇅' },
+];
+
+function isTypingTarget(t: EventTarget | null): boolean {
+	const el = t as HTMLElement | null;
+	if (!el || !el.tagName) return false;
+	return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'
+		|| el.isContentEditable === true;
+}
+
+function shortName(store: StoreDef): string {
+	return store.name.replace('\n', ' ');
+}
 
 export type UICallbacks = {
 	onSelectStore: (store: StoreDef) => void;
@@ -27,11 +74,29 @@ export class KioskOverlay {
 	private elBoot!: HTMLElement;
 	private elArrive!: HTMLElement;
 	private elMinimap!: HTMLCanvasElement;
+	private elMapFloor!: HTMLElement;
+	private elMapFoot!: HTMLElement;
+	private elBigMap!: HTMLElement;
+	private elBigCanvas!: HTMLCanvasElement;
+	private elCrosshair!: HTMLElement;
 	private elSteps!: HTMLElement;
 	private elHud!: HTMLElement;
 	private elScore!: HTMLElement;
 	private elNearby!: HTMLElement;
 	private elPossessBanner!: HTMLElement;
+
+	private map: MapState = {
+		x: 0,
+		z: 10,
+		yaw: 0,
+		floor: 0,
+		path: [],
+		blips: [],
+		target: null,
+	};
+	private zoom = 2;
+	private bigOpen = false;
+	private bigFloor: 0 | 1 = 0;
 
 	constructor(root: HTMLElement, callbacks: UICallbacks) {
 		this.root = root;
@@ -68,7 +133,7 @@ export class KioskOverlay {
         <aside class="panel">
           <div class="panel-head">
             <h1>Waar wil je heen?</h1>
-            <p class="panel-sub"><b>WASD</b> lopen, sleep = kijken. Winkels zijn OPEN (verkopers!). Sim-gezichten = mood. <b>V</b> = RCT guest view.</p>
+            <p class="panel-sub"><b>Klik</b> het beeld = muis vangen (Esc = los). <b>WASD</b> lopen, <b>Shift</b> rennen, <b>Space</b> springen. Roltrap ⇅ naar V1. <b>M</b> = plattegrond, <b>V</b> = guest view.</p>
           </div>
           <div class="nearby-sim hidden" id="nearby-sim"></div>
 
@@ -110,13 +175,43 @@ export class KioskOverlay {
           <div class="steps hidden" id="steps"></div>
         </aside>
 
+        <div class="crosshair hidden" id="crosshair"><i></i></div>
+
         <div class="minimap-wrap">
-          <div class="minimap-label">Kaart</div>
-          <canvas id="minimap" width="180" height="140"></canvas>
+          <div class="minimap-head">
+            <span class="minimap-label" id="minimap-floor">V0 · BEGANE GROND</span>
+            <span class="minimap-zoom">
+              <button type="button" id="map-out" title="Uitzoomen (−)">−</button>
+              <button type="button" id="map-in" title="Inzoomen (+)">+</button>
+              <button type="button" id="map-big" title="Grote plattegrond (M)">⛶</button>
+            </span>
+          </div>
+          <canvas id="minimap"></canvas>
+          <div class="minimap-foot" id="minimap-foot"><b>M</b> = grote plattegrond</div>
         </div>
 
-        <div class="hint-bar" id="hint"><b>WASD</b> lopen · sleep kijken · <b>V</b> guest · <b>K</b> Kruidvat · <b>H</b> kiosk</div>
+        <div class="hint-bar" id="hint">
+          <b>Klik</b> = muis vangen · <b>WASD</b> lopen · <b>Shift</b> rennen · <b>Space</b> springen ·
+          <b>M</b> kaart · <b>V</b> guest · <b>K</b> Kruidvat · <b>H</b> kiosk
+        </div>
         <div class="possess-banner hidden" id="possess-banner">GUEST VIEW</div>
+      </div>
+
+      <div class="bigmap hidden" id="bigmap">
+        <div class="bigmap-card">
+          <header class="bigmap-head">
+            <div>
+              <h2>Plattegrond · Prairie Lakes</h2>
+              <p>Jij bent de pijl. Geel = route. <b>⇅</b> = roltrap/trap naar de andere verdieping.</p>
+            </div>
+            <div class="bigmap-tabs">
+              <button type="button" class="bigmap-tab" data-floor="0">Begane grond</button>
+              <button type="button" class="bigmap-tab" data-floor="1">Verdieping 1</button>
+              <button type="button" class="btn ghost" id="bigmap-close">Sluiten (M)</button>
+            </div>
+          </header>
+          <canvas id="bigmap-canvas"></canvas>
+        </div>
       </div>
 
       <div class="arrive hidden" id="arrive">
@@ -140,6 +235,11 @@ export class KioskOverlay {
 		this.elStatus = this.root.querySelector('#status')!;
 		this.elArrive = this.root.querySelector('#arrive')!;
 		this.elMinimap = this.root.querySelector('#minimap')!;
+		this.elMapFloor = this.root.querySelector('#minimap-floor')!;
+		this.elMapFoot = this.root.querySelector('#minimap-foot')!;
+		this.elBigMap = this.root.querySelector('#bigmap')!;
+		this.elBigCanvas = this.root.querySelector('#bigmap-canvas')!;
+		this.elCrosshair = this.root.querySelector('#crosshair')!;
 		this.elSteps = this.root.querySelector('#steps')!;
 		this.elScore = this.root.querySelector('#score')!;
 		this.elNearby = this.root.querySelector('#nearby-sim')!;
@@ -147,6 +247,7 @@ export class KioskOverlay {
 
 		this.renderCats();
 		this.renderList();
+		this.wireMap();
 
 		this.elSearch.addEventListener('input', () => {
 			this.filter = this.elSearch.value.trim().toLowerCase();
@@ -276,54 +377,428 @@ export class KioskOverlay {
 		this.setStatus('Bij de kiosk · kies een winkel in de lijst');
 	}
 
-	updateMinimap(
-		stores: StoreDef[],
-		path: { x: number; z: number }[],
-		cam: { x: number; z: number },
-	): void {
-		const ctx = this.elMinimap.getContext('2d')!;
-		const w = this.elMinimap.width;
-		const h = this.elMinimap.height;
-		ctx.clearRect(0, 0, w, h);
+	/** Crosshair only while the mouse is actually captured. */
+	setLocked(locked: boolean): void {
+		this.elCrosshair.classList.toggle('hidden', !locked);
+	}
 
-		ctx.fillStyle = '#e8eef4';
-		ctx.fillRect(0, 0, w, h);
+	/** Called every frame with the real player transform. */
+	updateMap(state: MapState): void {
+		this.map = state;
+		this.paintMiniMap();
+		this.paintMapChrome();
+		if (this.bigOpen) this.paintBigMap();
+	}
 
-		const scale = 2.1;
-		const ox = w / 2;
-		const oy = h / 2;
-		const tx = (x: number) => ox + x * scale;
-		const tz = (z: number) => oy + z * scale;
-
-		ctx.strokeStyle = 'rgba(30,64,175,0.2)';
-		ctx.strokeRect(tx(-8), tz(-6), 16 * scale, 12 * scale);
-
-		for (const s of stores) {
-			if (s.id === 'info') continue;
-			ctx.fillStyle = s.hero ? '#00a651' : 'rgba(15,23,42,0.2)';
-			ctx.fillRect(tx(s.x) - 1.5, tz(s.z) - 1.5, 3, 3);
+	toggleBigMap(force?: boolean): void {
+		const open = force === undefined ? !this.bigOpen : force;
+		this.bigOpen = open;
+		this.elBigMap.classList.toggle('hidden', !open);
+		if (open) {
+			this.bigFloor = this.map.floor;
+			this.renderBigTabs();
+			this.paintBigMap();
 		}
+	}
 
-		if (path.length > 1) {
-			ctx.strokeStyle = '#c9a227';
-			ctx.lineWidth = 2;
-			ctx.beginPath();
-			ctx.moveTo(tx(path[0].x), tz(path[0].z));
-			for (let i = 1; i < path.length; i++) {
-				ctx.lineTo(tx(path[i].x), tz(path[i].z));
+	private wireMap(): void {
+		const on = (sel: string, fn: () => void) => this.root.querySelector(sel)!.addEventListener('click', fn);
+
+		on('#map-in', () => this.setZoom(this.zoom + 1));
+		on('#map-out', () => this.setZoom(this.zoom - 1));
+		on('#map-big', () => this.toggleBigMap());
+		on('#bigmap-close', () => this.toggleBigMap(false));
+
+		this.elBigMap.addEventListener('click', (e) => {
+			if (e.target === this.elBigMap) this.toggleBigMap(false);
+		});
+
+		this.root.querySelectorAll('.bigmap-tab').forEach((btn) => {
+			btn.addEventListener('click', () => {
+				this.bigFloor = (btn as HTMLElement).dataset.floor === '1' ? 1 : 0;
+				this.renderBigTabs();
+				this.paintBigMap();
+			});
+		});
+
+		this.elMinimap.addEventListener(
+			'wheel',
+			(e) => {
+				e.preventDefault();
+				this.setZoom(this.zoom + (e.deltaY < 0 ? 1 : -1));
+			},
+			{ passive: false },
+		);
+
+		window.addEventListener('keydown', (e) => {
+			if (isTypingTarget(e.target)) return;
+			if (e.code === 'KeyM' || e.code === 'Tab') {
+				e.preventDefault();
+				this.toggleBigMap();
+			} else if (e.code === 'Escape' && this.bigOpen) {
+				this.toggleBigMap(false);
+			} else if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+				this.setZoom(this.zoom + 1);
+			} else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+				this.setZoom(this.zoom - 1);
 			}
-			ctx.stroke();
+		});
+
+		this.renderBigTabs();
+	}
+
+	private setZoom(step: number): void {
+		this.zoom = Math.max(0, Math.min(ZOOM_STEPS.length - 1, step));
+	}
+
+	private renderBigTabs(): void {
+		this.root.querySelectorAll('.bigmap-tab').forEach((btn) => {
+			const f = (btn as HTMLElement).dataset.floor === '1' ? 1 : 0;
+			btn.classList.toggle('active', f === this.bigFloor);
+		});
+	}
+
+	private prep(
+		canvas: HTMLCanvasElement,
+		cssW: number,
+		cssH: number,
+	): CanvasRenderingContext2D | null {
+		const dpr = Math.min(window.devicePixelRatio || 1, 2);
+		const w = Math.max(1, Math.round(cssW * dpr));
+		const h = Math.max(1, Math.round(cssH * dpr));
+		if (canvas.width !== w || canvas.height !== h) {
+			canvas.width = w;
+			canvas.height = h;
+			canvas.style.width = `${cssW}px`;
+			canvas.style.height = `${cssH}px`;
+		}
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return null;
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		ctx.clearRect(0, 0, cssW, cssH);
+		return ctx;
+	}
+
+	/** World → minimap screen (heading up, player centred). */
+	private project(x: number, z: number, cx: number, cy: number, scale: number) {
+		const dx = x - this.map.x;
+		const dz = z - this.map.z;
+		const c = Math.cos(this.map.yaw);
+		const s = Math.sin(this.map.yaw);
+		return {
+			sx: cx + (dx * c - dz * s) * scale,
+			sy: cy + (dx * s + dz * c) * scale,
+		};
+	}
+
+	private paintMiniMap(): void {
+		const size = 200;
+		const ctx = this.prep(this.elMinimap, size, size);
+		if (!ctx) return;
+
+		const cx = size / 2;
+		const cy = size / 2;
+		const r = size / 2 - 3;
+		const scale = ZOOM_STEPS[this.zoom];
+		const floor = this.map.floor;
+
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(cx, cy, r, 0, Math.PI * 2);
+		ctx.fillStyle = '#0a1020';
+		ctx.fill();
+		ctx.clip();
+
+		// World layer: rotated so the way you face is up
+		ctx.save();
+		ctx.translate(cx, cy);
+		ctx.rotate(this.map.yaw);
+		ctx.scale(scale, scale);
+		ctx.translate(-this.map.x, -this.map.z);
+		this.paintWorld(ctx, floor, scale);
+		ctx.restore();
+
+		// Upright labels for whatever is close by
+		ctx.font = '600 8px ui-monospace, monospace';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		const reach = (r - 8) / scale;
+		for (const s of STORES) {
+			if (s.id === 'info' || s.floor !== floor) continue;
+			if (Math.abs(s.x - this.map.x) > reach || Math.abs(s.z - this.map.z) > reach) continue;
+			const { sx, sy } = this.project(s.x, s.z, cx, cy, scale);
+			ctx.fillStyle = s.hero ? '#5eead4' : 'rgba(226,232,240,0.8)';
+			ctx.fillText(shortName(s).slice(0, 8), sx, sy);
+		}
+		for (const v of VERTICALS) {
+			const { sx, sy } = this.project(v.x, v.z, cx, cy, scale);
+			ctx.fillStyle = '#fbbf24';
+			ctx.font = '700 11px ui-monospace, monospace';
+			ctx.fillText(v.short, sx, sy);
 		}
 
-		ctx.fillStyle = '#dc2626';
+		// View cone — screen space, always pointing up
+		const cone = 44;
+		const half = 0.61; // ~70° fov
 		ctx.beginPath();
-		ctx.arc(tx(0), tz(10), 3, 0, Math.PI * 2);
+		ctx.moveTo(cx, cy);
+		ctx.arc(cx, cy, cone, -Math.PI / 2 - half, -Math.PI / 2 + half);
+		ctx.closePath();
+		const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cone);
+		grad.addColorStop(0, 'rgba(96,165,250,0.35)');
+		grad.addColorStop(1, 'rgba(96,165,250,0)');
+		ctx.fillStyle = grad;
 		ctx.fill();
 
-		ctx.fillStyle = '#1d4ed8';
+		ctx.restore(); // un-clip
+
+		// Dish ring
 		ctx.beginPath();
-		ctx.arc(tx(cam.x * 0.15), tz(cam.z * 0.15), 2.5, 0, Math.PI * 2);
+		ctx.arc(cx, cy, r, 0, Math.PI * 2);
+		ctx.strokeStyle = 'rgba(148,163,184,0.45)';
+		ctx.lineWidth = 2;
+		ctx.stroke();
+
+		// North marker (world −Z is the top of the mall)
+		const nx = cx + Math.sin(this.map.yaw) * (r - 11);
+		const ny = cy - Math.cos(this.map.yaw) * (r - 11);
+		ctx.fillStyle = '#f87171';
+		ctx.font = '700 9px ui-monospace, monospace';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText('N', nx, ny);
+
+		this.drawArrow(ctx, cx, cy, 0, 7);
+	}
+
+	/** Everything in world units. `scale` converts px → world for line widths. */
+	private paintWorld(
+		ctx: CanvasRenderingContext2D,
+		floor: 0 | 1,
+		scale: number,
+	): void {
+		const px = 1 / scale;
+		ctx.lineJoin = 'round';
+		ctx.lineCap = 'round';
+
+		// Shell
+		ctx.fillStyle = 'rgba(30,41,59,0.55)';
+		ctx.fillRect(-MALL_W / 2, -MALL_D / 2, MALL_W, MALL_D);
+		ctx.lineWidth = 2 * px;
+		ctx.strokeStyle = 'rgba(148,163,184,0.6)';
+		ctx.strokeRect(-MALL_W / 2, -MALL_D / 2, MALL_W, MALL_D);
+
+		// Walkable corridors, straight from the wayfinding graph
+		ctx.strokeStyle = 'rgba(226,232,240,0.14)';
+		ctx.lineWidth = 3.4 * px;
+		ctx.beginPath();
+		for (const c of CORRIDORS) {
+			if (c.floor !== floor) continue;
+			ctx.moveTo(c.ax, c.az);
+			ctx.lineTo(c.bx, c.bz);
+		}
+		ctx.stroke();
+
+		// Atrium: fountain downstairs, open void upstairs
+		if (floor === 0) {
+			ctx.beginPath();
+			ctx.arc(0, 0, 2.6, 0, Math.PI * 2);
+			ctx.fillStyle = 'rgba(56,189,248,0.35)';
+			ctx.fill();
+		} else {
+			ctx.fillStyle = 'rgba(8,11,20,0.9)';
+			ctx.fillRect(-8, -6, 16, 12);
+			ctx.setLineDash([1.2 * px * 3, 1.2 * px * 3]);
+			ctx.strokeStyle = 'rgba(248,113,113,0.7)';
+			ctx.lineWidth = 1.5 * px;
+			ctx.strokeRect(-8, -6, 16, 12);
+			ctx.setLineDash([]);
+		}
+
+		// Stores
+		for (const s of STORES) {
+			if (s.id === 'info' || s.floor !== floor) continue;
+			const x0 = s.x - s.width / 2;
+			const z0 = s.z - s.depth / 2;
+			ctx.fillStyle = s.hero ? 'rgba(0,166,81,0.55)' : 'rgba(148,163,184,0.28)';
+			ctx.fillRect(x0, z0, s.width, s.depth);
+			ctx.lineWidth = 1.4 * px;
+			ctx.strokeStyle = s.hero ? '#00e676' : 'rgba(226,232,240,0.45)';
+			ctx.strokeRect(x0, z0, s.width, s.depth);
+		}
+
+		// Escalator + stairs shafts
+		for (const v of VERTICALS) {
+			ctx.fillStyle = 'rgba(251,191,36,0.35)';
+			ctx.fillRect(v.x - 1.4, v.z - 5.6, 2.8, 11.2);
+			ctx.strokeStyle = '#fbbf24';
+			ctx.lineWidth = 1.4 * px;
+			ctx.strokeRect(v.x - 1.4, v.z - 5.6, 2.8, 11.2);
+		}
+
+		// Route — bright on this floor, ghosted on the other
+		const path = this.map.path;
+		if (path.length > 1) {
+			for (const pass of [0, 1]) {
+				ctx.beginPath();
+				let drawn = false;
+				for (let i = 1; i < path.length; i++) {
+					const a = path[i - 1];
+					const b = path[i];
+					const segFloor = (a.y + b.y) / 2 > 3 ? 1 : 0;
+					const here = segFloor === floor;
+					if ((pass === 0) === here) continue;
+					ctx.moveTo(a.x, a.z);
+					ctx.lineTo(b.x, b.z);
+					drawn = true;
+				}
+				if (!drawn) continue;
+				ctx.strokeStyle = pass === 0 ? 'rgba(234,179,8,0.25)' : '#fde047';
+				ctx.lineWidth = (pass === 0 ? 2 : 3.2) * px;
+				ctx.stroke();
+			}
+		}
+
+		// Kiosk
+		ctx.fillStyle = '#22d3ee';
+		ctx.beginPath();
+		ctx.arc(0, 10, 1.1, 0, Math.PI * 2);
 		ctx.fill();
+
+		// Sims
+		ctx.fillStyle = 'rgba(248,250,252,0.75)';
+		for (const b of this.map.blips) {
+			if ((b.floor > 3 ? 1 : b.floor) !== floor) continue;
+			ctx.beginPath();
+			ctx.arc(b.x, b.z, 0.55, 0, Math.PI * 2);
+			ctx.fill();
+		}
+
+		// Destination
+		const t = this.map.target;
+		if (t) {
+			ctx.strokeStyle = t.floor === floor ? '#f43f5e' : 'rgba(244,63,94,0.4)';
+			ctx.lineWidth = 2 * px;
+			ctx.beginPath();
+			ctx.arc(t.x, t.z, 2.4, 0, Math.PI * 2);
+			ctx.stroke();
+			ctx.beginPath();
+			ctx.arc(t.x, t.z, 0.8, 0, Math.PI * 2);
+			ctx.fillStyle = ctx.strokeStyle;
+			ctx.fill();
+		}
+	}
+
+	/** North-up labels for the big plan, in screen space so text stays crisp. */
+	private paintBigLabels(
+		ctx: CanvasRenderingContext2D,
+		cssW: number,
+		cssH: number,
+		scale: number,
+		floor: 0 | 1,
+	): void {
+		const sx = (x: number) => cssW / 2 + x * scale;
+		const sy = (z: number) => cssH / 2 + z * scale;
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+
+		for (const s of STORES) {
+			if (s.id === 'info' || s.floor !== floor) continue;
+			ctx.fillStyle = s.hero ? '#5eead4' : 'rgba(241,245,249,0.92)';
+			ctx.font = `${s.hero ? 700 : 600} 11px ui-monospace, monospace`;
+			ctx.fillText(shortName(s), sx(s.x), sy(s.z));
+		}
+
+		ctx.fillStyle = '#fbbf24';
+		ctx.font = '700 11px ui-monospace, monospace';
+		for (const v of VERTICALS) {
+			ctx.fillText(`${v.short} ${v.label}`, sx(v.x), sy(v.z + 7.6));
+		}
+
+		ctx.fillStyle = '#22d3ee';
+		ctx.font = '600 10px ui-monospace, monospace';
+		ctx.fillText('KIOSK · START', sx(0), sy(12.4));
+
+		ctx.fillStyle = 'rgba(148,163,184,0.8)';
+		ctx.font = '600 10px ui-monospace, monospace';
+		ctx.fillText('N ↑', sx(0), sy(-MALL_D / 2) - 12);
+	}
+
+	private paintBigMap(): void {
+		const host = this.elBigCanvas.parentElement;
+		const cssW = Math.max(320, (host?.clientWidth ?? 820) - 36);
+		const cssH = cssW * ((MALL_D + 12) / (MALL_W + 12));
+		const ctx = this.prep(this.elBigCanvas, cssW, cssH);
+		if (!ctx) return;
+
+		ctx.fillStyle = '#0a1020';
+		ctx.fillRect(0, 0, cssW, cssH);
+
+		const scale = Math.min(cssW / (MALL_W + 12), cssH / (MALL_D + 12));
+		ctx.save();
+		ctx.translate(cssW / 2, cssH / 2);
+		ctx.scale(scale, scale);
+		this.paintWorld(ctx, this.bigFloor, scale);
+		ctx.restore();
+		this.paintBigLabels(ctx, cssW, cssH, scale, this.bigFloor);
+
+		// You are here — only on the deck you're standing on
+		if (this.bigFloor === this.map.floor) {
+			const sx = cssW / 2 + this.map.x * scale;
+			const sy = cssH / 2 + this.map.z * scale;
+			this.drawArrow(ctx, sx, sy, -this.map.yaw, 9);
+		} else {
+			ctx.fillStyle = 'rgba(226,232,240,0.75)';
+			ctx.font = '600 12px ui-monospace, monospace';
+			ctx.textAlign = 'left';
+			ctx.fillText(
+				`Je staat op V${this.map.floor} — neem de roltrap (⇅) om hier te komen`,
+				14,
+				cssH - 14,
+			);
+		}
+	}
+
+	/** Player marker: triangle + dot, `rot` in radians (0 = up). */
+	private drawArrow(
+		ctx: CanvasRenderingContext2D,
+		x: number,
+		y: number,
+		rot: number,
+		size: number,
+	): void {
+		ctx.save();
+		ctx.translate(x, y);
+		ctx.rotate(rot);
+		ctx.beginPath();
+		ctx.moveTo(0, -size);
+		ctx.lineTo(size * 0.72, size * 0.8);
+		ctx.lineTo(0, size * 0.42);
+		ctx.lineTo(-size * 0.72, size * 0.8);
+		ctx.closePath();
+		ctx.fillStyle = '#38bdf8';
+		ctx.fill();
+		ctx.lineWidth = 1.4;
+		ctx.strokeStyle = '#0f172a';
+		ctx.stroke();
+		ctx.restore();
+	}
+
+	private paintMapChrome(): void {
+		const floorText = this.map.floor === 0 ? 'V0 · BEGANE GROND' : 'V1 · VERDIEPING 1';
+		if (this.elMapFloor.textContent !== floorText) {
+			this.elMapFloor.textContent = floorText;
+		}
+
+		const t = this.map.target;
+		let foot = '<b>M</b> = grote plattegrond';
+		if (t) {
+			const d = Math.round(Math.hypot(t.x - this.map.x, t.z - this.map.z));
+			foot = t.floor === this.map.floor
+				? `→ ${t.name} · ${d} m`
+				: `→ ${t.name} · ${d} m · <b>⇅ V${t.floor}</b>`;
+		}
+		if (this.elMapFoot.innerHTML !== foot) this.elMapFoot.innerHTML = foot;
 	}
 
 	private selectStore(store: StoreDef): void {

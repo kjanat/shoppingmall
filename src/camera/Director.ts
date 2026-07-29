@@ -1,67 +1,64 @@
 import gsap from 'gsap';
 import * as THREE from 'three';
-import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { GraphNode } from '../data/graph';
 
 export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
 
 /** Eye-height at the directory kiosk, looking into the mall. */
-export const HOME_POS = new THREE.Vector3(0, 1.65, 12.5);
-export const HOME_TARGET = new THREE.Vector3(0, 1.45, 2);
+export const HOME_POS = new THREE.Vector3(0, 1.68, 12.5);
+export const HOME_TARGET = new THREE.Vector3(0, 1.5, 2);
 
-const EYE = 1.65;
+const EYE = 1.68;
 
 /**
- * First-person mall navigator — you walk the route, not fly above the ceiling.
+ * Cinematic camera: intro, store focus and the guided walk.
+ *
+ * It owns a plain look-at target — deliberately NOT OrbitControls. An orbit rig
+ * re-seats the camera on a sphere around its target every frame, which is what
+ * used to drag the view back towards the middle of the mall while walking.
  */
 export class Director {
 	mode: DirectorMode = 'boot';
+	readonly target = new THREE.Vector3();
 	private camera: THREE.PerspectiveCamera;
-	private controls: OrbitControls;
 	private tourTween: gsap.core.Tween | null = null;
 	private moveTween: gsap.core.Tween | null = null;
 	private onArrive: (() => void) | null = null;
 
-	constructor(camera: THREE.PerspectiveCamera, controls: OrbitControls) {
+	constructor(camera: THREE.PerspectiveCamera) {
 		this.camera = camera;
-		this.controls = controls;
-		this.applyFpControlsLimits();
 		camera.position.copy(HOME_POS);
-		controls.target.copy(HOME_TARGET);
-		controls.update();
+		this.target.copy(HOME_TARGET);
+		this.applyLook();
+	}
+
+	/** True while a tween owns the camera — the player must stay hands-off. */
+	get busy(): boolean {
+		return this.tourTween !== null || this.moveTween !== null;
 	}
 
 	startIdle(): void {
 		this.mode = 'idle';
-		this.applyFpControlsLimits();
-		this.controls.enabled = true;
 	}
 
 	goHome(animated = true, onDone?: () => void): void {
 		this.killTour();
 		this.mode = 'idle';
-		this.controls.enabled = false;
-		this.applyFpControlsLimits();
 
 		if (!animated) {
 			this.camera.position.copy(HOME_POS);
-			this.controls.target.copy(HOME_TARGET);
-			this.controls.update();
-			this.controls.enabled = true;
+			this.target.copy(HOME_TARGET);
+			this.applyLook();
 			onDone?.();
 			return;
 		}
 
-		this.animateCamera(HOME_POS, HOME_TARGET, 1.2, () => {
-			this.controls.enabled = true;
-			onDone?.();
-		});
+		this.animateCamera(HOME_POS, HOME_TARGET, 1.2, onDone);
 	}
 
 	focusStore(pos: THREE.Vector3, onDone?: () => void): void {
 		this.killTour();
 		this.mode = 'selected';
-		this.controls.enabled = false;
 
 		const toCenter = new THREE.Vector3(-pos.x, 0, -pos.z);
 		if (toCenter.lengthSq() < 0.01) toCenter.set(0, 0, 1);
@@ -71,10 +68,7 @@ export class Director {
 		const target = pos.clone();
 		target.y = stand.y;
 
-		this.animateCamera(stand, target, 1.2, () => {
-			this.controls.enabled = true;
-			onDone?.();
-		});
+		this.animateCamera(stand, target, 1.2, onDone);
 	}
 
 	/** First-person walk along the yellow path. */
@@ -82,7 +76,6 @@ export class Director {
 		this.killTour();
 		this.mode = 'touring';
 		this.onArrive = onArrive;
-		this.controls.enabled = false;
 
 		if (nodes.length < 2) {
 			onArrive();
@@ -100,8 +93,8 @@ export class Director {
 		const start = curve.getPointAt(0);
 		const startLook = curve.getPointAt(0.02);
 		this.camera.position.copy(start);
-		this.controls.target.copy(startLook);
-		this.controls.update();
+		this.target.copy(startLook);
+		this.applyLook();
 
 		this.tourTween = gsap.to(progress, {
 			t: 1,
@@ -112,10 +105,11 @@ export class Director {
 				const p = curve.getPointAt(t);
 				const look = curve.getPointAt(Math.min(1, t + 0.04));
 				this.camera.position.lerp(p, 0.35);
-				this.controls.target.lerp(look, 0.35);
-				this.controls.update();
+				this.target.lerp(look, 0.35);
+				this.applyLook();
 			},
 			onComplete: () => {
+				this.tourTween = null;
 				const end = points[points.length - 1];
 				const prev = points[Math.max(0, points.length - 2)];
 				const dir = end.clone().sub(prev);
@@ -137,7 +131,6 @@ export class Director {
 
 				this.animateCamera(settle, target, 1.2, () => {
 					this.mode = 'arrived';
-					this.controls.enabled = true;
 					this.onArrive?.();
 				});
 			},
@@ -147,17 +140,15 @@ export class Director {
 	stopTour(): void {
 		this.killTour();
 		this.mode = 'idle';
-		this.controls.enabled = true;
 	}
 
 	playIntro(onDone: () => void): void {
 		this.mode = 'boot';
-		this.controls.enabled = false;
 
 		// First frame: human height looking into the mall
-		this.camera.position.set(0, 1.65, 16);
-		this.controls.target.set(0, 1.5, 4);
-		this.controls.update();
+		this.camera.position.set(0, EYE, 16);
+		this.target.set(0, 1.5, 4);
+		this.applyLook();
 
 		this.animateCamera(HOME_POS, HOME_TARGET, 2.0, () => {
 			this.startIdle();
@@ -165,18 +156,15 @@ export class Director {
 		});
 	}
 
+	/** Only touches the camera while a tween is running. */
 	update(_dt: number): void {
-		if (this.mode === 'idle' || this.mode === 'selected' || this.mode === 'arrived') {
-			this.controls.update();
-		}
+		if (this.busy) this.applyLook();
 	}
 
-	private applyFpControlsLimits(): void {
-		this.controls.minDistance = 0.5;
-		this.controls.maxDistance = 8;
-		this.controls.minPolarAngle = Math.PI * 0.25;
-		this.controls.maxPolarAngle = Math.PI * 0.58;
-		this.controls.enablePan = false;
+	private applyLook(): void {
+		this.camera.rotation.order = 'YXZ';
+		this.camera.up.set(0, 1, 0);
+		this.camera.lookAt(this.target);
 	}
 
 	private animateCamera(
@@ -187,7 +175,7 @@ export class Director {
 	): void {
 		this.moveTween?.kill();
 		const fromPos = this.camera.position.clone();
-		const fromTarget = this.controls.target.clone();
+		const fromTarget = this.target.clone();
 		const state = { t: 0 };
 
 		this.moveTween = gsap.to(state, {
@@ -197,10 +185,13 @@ export class Director {
 			onUpdate: () => {
 				const t = state.t;
 				this.camera.position.lerpVectors(fromPos, pos, t);
-				this.controls.target.lerpVectors(fromTarget, target, t);
-				this.controls.update();
+				this.target.lerpVectors(fromTarget, target, t);
+				this.applyLook();
 			},
-			onComplete,
+			onComplete: () => {
+				this.moveTween = null;
+				onComplete?.();
+			},
 		});
 	}
 

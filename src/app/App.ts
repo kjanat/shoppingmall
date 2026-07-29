@@ -1,9 +1,8 @@
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Director } from '../camera/Director';
 import type { GraphNode } from '../data/graph';
-import { getStore, type StoreDef, STORES } from '../data/stores';
+import { getStore, type StoreDef } from '../data/stores';
 import { Pathfinder } from '../path/Pathfinder';
 import { PathMesh } from '../path/PathMesh';
 import { CollisionWorld } from '../physics/Collision';
@@ -19,7 +18,7 @@ import { Spaceship } from '../scene/Spaceship';
 import { StockDisplay } from '../scene/StockDisplay';
 import { BakerThief } from '../scene/Thief';
 import { MovingWalkways } from '../scene/Walkways';
-import { KioskOverlay } from '../ui/KioskOverlay';
+import { KioskOverlay, type MapBlip } from '../ui/KioskOverlay';
 
 const PLAYER_RADIUS = 0.4;
 
@@ -27,7 +26,6 @@ export class App {
 	private renderer: THREE.WebGLRenderer;
 	private scene = new THREE.Scene();
 	private camera: THREE.PerspectiveCamera;
-	private controls: OrbitControls;
 	private composer: EffectComposer;
 	private director: Director;
 	private pathfinder = new Pathfinder();
@@ -52,6 +50,9 @@ export class App {
 	private score = 0;
 	private metSims = new Set<number>();
 	private nearHudT = 0;
+	/** reused every frame so the minimap doesn't allocate 20 objects per tick */
+	private mapBlips: MapBlip[] = [];
+	private unlockedAt = -1e4;
 	/** free walk after intro; disabled during cinematic tour */
 	private freeMove = false;
 	/** RCT-style: ride along as a guest */
@@ -95,17 +96,19 @@ export class App {
 		this.scene.add(this.thief.group);
 		this.scene.add(this.pathMesh.group);
 
-		this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-		this.controls.enableDamping = true;
-		this.controls.dampingFactor = 0.08;
-		this.controls.target.set(0, 1.45, 2);
-		this.controls.enablePan = false;
-		this.controls.enabled = false; // free WASD after intro
-
-		this.director = new Director(this.camera, this.controls);
+		this.director = new Director(this.camera);
 		this.composer = createComposer(this.renderer, this.scene, this.camera);
 		this.player = new PlayerControls(this.camera, this.renderer.domElement, this.world);
 		this.player.enabled = false;
+		this.player.onLockChange = (locked) => {
+			this.ui.setLocked(locked);
+			if (locked) {
+				this.ui.setStatus('Muis gevangen · WASD lopen · Shift rennen · Esc = los');
+			} else {
+				this.unlockedAt = performance.now();
+				this.ui.setStatus('Muis los · klik het beeld om weer te kijken');
+			}
+		};
 
 		this.atmosphere.americans.setTransactionCallback((count, pos, storeId) => {
 			this.score += 2;
@@ -152,8 +155,16 @@ export class App {
 				this.onStartRoute(getStore('kruidvat')!);
 			}
 			if (e.key === 'Escape') {
-				if (this.possessId !== null) this.togglePossess(false);
-				else this.onCancel();
+				// Esc while the mouse is captured just frees the mouse — it must not
+				// also cancel your route and teleport you back to the kiosk.
+				const justUnlocked = performance.now() - this.unlockedAt < 400;
+				if (this.player.locked || justUnlocked) {
+					this.player.releaseLook();
+				} else if (this.possessId !== null) {
+					this.togglePossess(false);
+				} else {
+					this.onCancel();
+				}
 			}
 			if (e.key === 'h' || e.key === 'H') this.onHome();
 			if (e.key === 'v' || e.key === 'V') this.togglePossess();
@@ -176,16 +187,39 @@ export class App {
 
 		this.director.playIntro(() => {
 			this.ui.hideBoot();
-			this.ui.setStatus('WASD lopen · sleep kijken · V = guest view');
+			this.ui.setStatus('Klik = muis vangen · WASD lopen · Shift rennen · M = kaart');
 			this.ui.setScore(this.score, this.metSims.size);
 			// Hand control to player
 			this.freeMove = true;
 			this.player.enabled = true;
 			this.player.syncFromCamera();
-			this.controls.enabled = false;
 		});
 
+		// Dev-only handle for poking at the sim from the console / smoke tests
+		if (import.meta.env.DEV) {
+			(window as unknown as { mallsim: App }).mallsim = this;
+		}
+
 		this.animate();
+	}
+
+	/** Dev helper: drop the player somewhere and re-seat the controller. */
+	teleport(x: number, y: number, z: number, yaw = 0): void {
+		this.camera.position.set(x, y, z);
+		this.camera.rotation.order = 'YXZ';
+		this.camera.rotation.set(0, yaw, 0);
+		this.player.syncFromCamera();
+	}
+
+	get debugState() {
+		return {
+			x: this.camera.position.x,
+			y: this.camera.position.y,
+			z: this.camera.position.z,
+			yaw: this.player.heading,
+			floor: this.player.floor,
+			freeMove: this.freeMove,
+		};
 	}
 
 	private onHome(): void {
@@ -197,13 +231,11 @@ export class App {
 		this.ui.hideArrive();
 		this.freeMove = false;
 		this.player.enabled = false;
-		this.controls.enabled = true;
 		this.director.goHome(true, () => {
 			this.ui.setStatus('WASD lopen · V = word een gast (RCT mode)');
 			this.freeMove = true;
 			this.player.enabled = true;
 			this.player.syncFromCamera();
-			this.controls.enabled = false;
 		});
 	}
 
@@ -221,10 +253,15 @@ export class App {
 		this.possessId = id;
 		this.atmosphere.americans.setSimVisible(id, false);
 		this.freeMove = false;
-		this.player.enabled = false;
-		this.controls.enabled = false;
+		this.player.enabled = false; // Snap camera into the head immediately (no lerp-from-ass start)
+		const eye = this.atmosphere.americans.getSimEye(id);
+		if (eye) {
+			this.camera.position.copy(eye.pos);
+			this.camera.rotation.order = 'YXZ';
+			this.camera.rotation.set(0, eye.yaw, 0);
+		}
 		const f = this.atmosphere.americans.roster.find((r) => r.id === id);
-		this.ui.setStatus(`GUEST VIEW · ${f?.name ?? 'sim'} · Esc/V = stop`);
+		this.ui.setStatus(`GUEST VIEW · uit de ogen van ${f?.name ?? 'sim'} · Esc/V = stop`);
 		this.ui.setPossessing(true, f?.name ?? 'Gast');
 	}
 
@@ -237,7 +274,6 @@ export class App {
 		this.freeMove = true;
 		this.player.enabled = true;
 		this.player.syncFromCamera();
-		this.controls.enabled = false;
 		this.ui.setStatus('WASD lopen · V guest · P disco · G geld · T dief');
 	}
 
@@ -317,7 +353,6 @@ export class App {
 		// Cinematic auto-walk — disable free move during tour
 		this.freeMove = false;
 		this.player.enabled = false;
-		this.controls.enabled = true;
 		this.director.tourPath(path, () => this.onArrive(store));
 	}
 
@@ -332,23 +367,25 @@ export class App {
 		const underShip = store.nodeId === 'spaceship' || store.id === 'kruidvat';
 		this.score += underShip ? 100 : 50;
 		this.ui.setScore(this.score, this.metSims.size);
+		// Back to free walk, facing whatever you came for
+		this.freeMove = true;
+		this.player.enabled = true;
+		this.player.syncFromCamera();
+
 		if (underShip) {
 			const stand = this.spaceship.getUnderStandPoint();
 			this.ui.showArrive(store);
 			this.spawnConfetti(stand.clone().add(new THREE.Vector3(0, 1.5, 0)));
-			this.controls.target.copy(this.spaceship.getShipLookPoint());
+			this.player.lookAtPoint(this.spaceship.getShipLookPoint());
 			this.ui.setStatus(`+100 · Kruidvat open · score ${this.score}`);
 		} else {
 			this.ui.showArrive(store);
 			this.spawnConfetti(new THREE.Vector3(store.x, store.floor * 6 + 2, store.z));
-			this.controls.target.set(store.x, store.floor * 6 + 1.5, store.z);
+			this.player.lookAtPoint(
+				new THREE.Vector3(store.x, store.floor * 6 + 1.5, store.z),
+			);
 			this.ui.setStatus(`+50 · ${store.name.replace('\n', ' ')} OPEN · score ${this.score}`);
 		}
-		// Back to free walk
-		this.freeMove = true;
-		this.player.enabled = true;
-		this.player.syncFromCamera();
-		this.controls.enabled = false;
 	}
 
 	private onCancel(): void {
@@ -362,13 +399,11 @@ export class App {
 		this.director.stopTour();
 		this.freeMove = false;
 		this.player.enabled = false;
-		this.controls.enabled = true;
 		this.director.goHome(true, () => {
 			this.ui.setStatus('WASD lopen · V = guest view');
 			this.freeMove = true;
 			this.player.enabled = true;
 			this.player.syncFromCamera();
-			this.controls.enabled = false;
 		});
 	}
 
@@ -469,34 +504,10 @@ export class App {
 		this.composer.setSize(w, h);
 	}
 
-	/** Keep first-person camera out of walls/stores; soft push from sims */
-	private resolvePlayerCollision(): void {
-		const cam = this.camera.position;
-		const y = cam.y;
-		const r = this.world.resolveCircle(cam.x, cam.z, y, PLAYER_RADIUS);
-		cam.x = r.x;
-		cam.z = r.z;
-
-		// Soft separate from nearby sims so you don't stand inside Brad
-		this.pushPlayerFromSims(0.9);
-
-		// Keep look-target in front so OrbitControls doesn't yank back into wall
-		const t = this.controls.target;
-		const look = this.world.resolveCircle(t.x, t.z, y, 0.2);
-		// only gently constrain target XZ relative to camera if far
-		const dx = t.x - cam.x;
-		const dz = t.z - cam.z;
-		const d = Math.hypot(dx, dz);
-		if (d > 0.01 && d < 12) {
-			// fine
-		} else if (d >= 12) {
-			t.x = cam.x + (dx / d) * 6;
-			t.z = cam.z + (dz / d) * 6;
-		}
-		void look;
-		this.controls.update();
-	}
-
+	/**
+	 * Walls are the controller's job now; this only stops you standing inside Brad.
+	 * `climb` keeps the escalator/stairs volumes walkable.
+	 */
 	private pushPlayerFromSims(minDist: number): void {
 		const cam = this.camera.position;
 		const playerFloor = cam.y < 4 ? 0 : 6;
@@ -515,7 +526,7 @@ export class App {
 			cam.x = sep.ax;
 			cam.z = sep.az;
 		}
-		const r = this.world.resolveCircle(cam.x, cam.z, cam.y, PLAYER_RADIUS);
+		const r = this.world.resolveCircle(cam.x, cam.z, cam.y, PLAYER_RADIUS, 3, true);
 		cam.x = r.x;
 		cam.z = r.z;
 	}
@@ -531,21 +542,24 @@ export class App {
 		if (this.possessId !== null) {
 			const eye = this.atmosphere.americans.getSimEye(this.possessId);
 			if (eye) {
-				this.camera.position.lerp(eye.pos, 0.35);
+				// Stick to eye sockets — hard follow, not float behind the butt
+				this.camera.position.copy(eye.pos);
 				this.camera.rotation.order = 'YXZ';
-				this.camera.rotation.y = THREE.MathUtils.lerp(
-					this.camera.rotation.y,
-					eye.yaw,
-					0.2,
-				);
-				this.camera.rotation.x = THREE.MathUtils.lerp(this.camera.rotation.x, 0, 0.1);
+				// Shortest-path yaw lerp so we never spin through the floor
+				let dy = eye.yaw - this.camera.rotation.y;
+				while (dy > Math.PI) dy -= Math.PI * 2;
+				while (dy < -Math.PI) dy += Math.PI * 2;
+				this.camera.rotation.y += dy * Math.min(1, dt * 10);
+				this.camera.rotation.x = THREE.MathUtils.lerp(this.camera.rotation.x, -0.05, 0.15);
+				this.camera.rotation.z = 0;
 			}
 		} else if (this.freeMove && this.player.enabled) {
 			this.player.update(dt);
-			this.resolvePlayerCollision();
+			// Soft separate from nearby sims so you don't stand inside Brad
+			this.pushPlayerFromSims(0.9);
 		} else {
+			// Cinematic: the tour walks the authored path, collision must not shove it
 			this.director.update(dt);
-			this.resolvePlayerCollision();
 		}
 
 		this.updateConfetti(dt);
@@ -571,21 +585,43 @@ export class App {
 			if (gained) this.ui.setScore(this.score, this.metSims.size);
 			if (near.length > 0) {
 				const top = near[0];
+				const heart = top.partnerName ? ` ❤️ ${top.partnerName.split(' ')[0]}` : '';
+				const why = top.lifeLine ? ` · ${top.lifeLine}` : '';
 				this.ui.setNearbySim(
-					`${top.name} → ${top.targetShop} · €${top.moneySpent} · ☹ ${Math.round(top.unhappiness)}% · thicc ${
-						Math.round(top.thicc * 100)
-					}%`,
+					`${top.name}${heart} → ${top.targetShop} · €${top.moneySpent} · ☹ ${Math.round(top.unhappiness)}%${why}`,
 				);
 			} else {
 				this.ui.setNearbySim(null);
 			}
 		}
 
-		this.ui.updateMinimap(
-			STORES,
-			this.currentPath.map((n) => ({ x: n.x, z: n.z })),
-			{ x: this.camera.position.x, z: this.camera.position.z },
-		);
+		const eul = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
+		const floor: 0 | 1 = this.camera.position.y > 3.5 ? 1 : 0;
+		const targetStore = this.currentStore;
+		this.mapBlips.length = 0;
+		for (const child of this.atmosphere.americans.group.children) {
+			this.mapBlips.push({
+				x: child.position.x,
+				z: child.position.z,
+				floor: child.position.y > 3.5 ? 1 : 0,
+			});
+		}
+		this.ui.updateMap({
+			x: this.camera.position.x,
+			z: this.camera.position.z,
+			yaw: eul.y,
+			floor,
+			path: this.currentPath.map((n) => ({ x: n.x, y: n.y, z: n.z })),
+			blips: this.mapBlips,
+			target: targetStore
+				? {
+					x: targetStore.x,
+					z: targetStore.z,
+					floor: targetStore.floor,
+					name: targetStore.name.replace('\n', ' '),
+				}
+				: null,
+		});
 
 		this.composer.render(dt);
 	};

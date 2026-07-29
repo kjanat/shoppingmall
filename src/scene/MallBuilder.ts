@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getOwner } from '../data/shopOwners';
 import { type StoreDef, STORES } from '../data/stores';
 
 const FLOOR_H = 6;
@@ -673,67 +674,84 @@ export class MallBuilder {
 	}
 
 	private makeShopkeeper(store: StoreDef): THREE.Group {
+		const owner = getOwner(store.id);
 		const g = new THREE.Group();
+		g.name = `keeper_${store.id}`;
+		g.userData.ownerName = owner?.name ?? 'Verkoper';
+		g.userData.ownerLines = owner?.lines ?? ['Thanks!'];
+		g.userData.ownerMeaning = owner?.meaning ?? 'Houdt de winkel draaiende';
+
+		const skinCol = owner?.skin ?? 0xe8c4a8;
+		const shirtCol = owner?.shirt ?? new THREE.Color(store.color).getHex();
+		const hairCol = owner?.hair ?? 0x2c1810;
 		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xe8c4a8, roughness: 0.85 }),
+			new THREE.MeshStandardMaterial({ color: skinCol, roughness: 0.85 }),
 		);
-		const uniCol = new THREE.Color(store.color);
-		uniCol.offsetHSL(0, 0, 0.1);
 		const uni = this.track(
 			new THREE.MeshStandardMaterial({
-				color: uniCol,
+				color: shirtCol,
 				roughness: 0.8,
 			}),
 		);
+		const hairMat = this.track(
+			new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 }),
+		);
+
 		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 4, 8), uni);
 		body.position.y = 1.05;
 		g.add(body);
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), skin);
+		const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), skin);
 		head.position.y = 1.55;
 		g.add(head);
-		// simple smile face
-		const faceC = document.createElement('canvas');
-		faceC.width = 64;
-		faceC.height = 64;
-		const fctx = faceC.getContext('2d')!;
-		fctx.fillStyle = '#f5d0b0';
-		fctx.fillRect(0, 0, 64, 64);
-		fctx.fillStyle = '#222';
-		fctx.beginPath();
-		fctx.arc(22, 28, 4, 0, Math.PI * 2);
-		fctx.arc(42, 28, 4, 0, Math.PI * 2);
-		fctx.fill();
-		fctx.strokeStyle = '#222';
-		fctx.lineWidth = 2;
-		fctx.beginPath();
-		fctx.arc(32, 38, 10, 0.15, Math.PI - 0.15);
-		fctx.stroke();
-		const faceTex = new THREE.CanvasTexture(faceC);
-		faceTex.colorSpace = THREE.SRGBColorSpace;
-		const face = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.28, 0.28),
-			this.track(new THREE.MeshBasicMaterial({ map: faceTex, toneMapped: false })),
-		);
-		face.position.set(0, 1.55, 0.18);
-		g.add(face);
-		// "VERKOPER" tiny plate
+		// Hair cap
+		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 10), hairMat);
+		hair.position.y = 1.68;
+		hair.scale.set(1, 0.55, 1);
+		g.add(hair);
+
+		// Simple black eyes + mouth (same language as guests)
+		const eyeMat = this.track(new THREE.MeshBasicMaterial({ color: 0x111111 }));
+		const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
+		const eyeR = eyeL.clone();
+		eyeL.position.set(-0.06, 1.58, 0.16);
+		eyeR.position.set(0.06, 1.58, 0.16);
+		g.add(eyeL, eyeR);
+		const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), eyeMat);
+		mouth.position.set(0, 1.48, 0.17);
+		mouth.scale.set(1.4, 0.45, 0.5);
+		g.add(mouth);
+
+		const name = owner?.name ?? 'Verkoper';
+		const title = owner?.title ?? 'Shop owner';
+		const meaning = owner?.meaning ?? '';
 		const pc = document.createElement('canvas');
-		pc.width = 128;
-		pc.height = 40;
+		pc.width = 320;
+		pc.height = 96;
 		const pctx = pc.getContext('2d')!;
-		pctx.fillStyle = '#15803d';
-		pctx.fillRect(0, 0, 128, 40);
-		pctx.fillStyle = '#fff';
-		pctx.font = 'bold 16px system-ui';
+		pctx.fillStyle = '#0f172a';
+		pctx.fillRect(0, 0, 320, 96);
+		// accent bar for named owners
+		pctx.fillStyle = owner ? '#4ade80' : '#64748b';
+		pctx.fillRect(0, 0, 6, 96);
+		pctx.fillStyle = '#f8fafc';
+		pctx.font = 'bold 20px system-ui,sans-serif';
 		pctx.textAlign = 'center';
-		pctx.fillText('VERKOPER', 64, 26);
+		pctx.fillText(name.slice(0, 20), 160, 28);
+		pctx.fillStyle = '#94a3b8';
+		pctx.font = '14px system-ui,sans-serif';
+		pctx.fillText(title.slice(0, 24), 160, 50);
+		if (meaning) {
+			pctx.fillStyle = '#a78bfa';
+			pctx.font = '12px system-ui,sans-serif';
+			pctx.fillText(meaning.slice(0, 36), 160, 74);
+		}
 		const ptex = new THREE.CanvasTexture(pc);
 		ptex.colorSpace = THREE.SRGBColorSpace;
 		const plate = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.7, 0.22),
+			new THREE.PlaneGeometry(1.35, 0.4),
 			this.track(new THREE.MeshBasicMaterial({ map: ptex, toneMapped: false })),
 		);
-		plate.position.set(0, 2.0, 0.1);
+		plate.position.set(0, 2.15, 0.12);
 		g.add(plate);
 		return g;
 	}

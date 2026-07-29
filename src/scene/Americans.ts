@@ -1,7 +1,17 @@
 import * as THREE from 'three';
+import { getOwner } from '../data/shopOwners';
 import { type StoreDef, STORES } from '../data/stores';
 import { Pathfinder } from '../path/Pathfinder';
 import type { CollisionWorld } from '../physics/Collision';
+
+export type LifeMeaning =
+	| 'love'
+	| 'family'
+	| 'health'
+	| 'joy'
+	| 'provide'
+	| 'belong'
+	| 'create';
 
 export type SimFactors = {
 	id: number;
@@ -13,6 +23,12 @@ export type SimFactors = {
 	restless: number;
 	windowShop: number;
 	mood: 'chill' | 'hangry' | 'hyped' | 'lost' | 'on_mission';
+	/** Why they get out of bed / walk this mall */
+	lifeMeaning: LifeMeaning;
+	lifeLine: string;
+	/** Partner sim id if in a couple */
+	partnerId: number | null;
+	partnerName: string | null;
 	/** Current destination shop display name */
 	targetShop: string;
 	targetShopId: string;
@@ -54,11 +70,15 @@ type Sim = {
 	speechTex: THREE.CanvasTexture;
 	speechCtx: CanvasRenderingContext2D;
 	speechLife: number;
-	faceMesh: THREE.Mesh;
-	faceCanvas: HTMLCanvasElement;
-	faceCtx: CanvasRenderingContext2D;
-	faceTex: THREE.CanvasTexture;
+	/** Simple face: black sphere eyes + oval mouth */
+	eyeL: THREE.Mesh;
+	eyeR: THREE.Mesh;
+	mouth: THREE.Mesh;
 	headY: number;
+	/** body.scale scalar — head world Y = headY * bodyScale */
+	bodyScale: number;
+	blinkT: number;
+	talkPhase: number;
 	pos: THREE.Vector3;
 	/** unit direction of travel — THE VECTOR */
 	velocity: THREE.Vector3;
@@ -73,6 +93,10 @@ type Sim = {
 	gibberCd: number;
 	stuckTime: number;
 	bubbleCd: number;
+	/** next squeak while speech bubble is open */
+	squeakT: number;
+	/** side offset when walking as couple (−1 / +1) */
+	coupleSide: number;
 };
 
 const FIRST = [
@@ -158,20 +182,22 @@ const SIM_RADIUS = 0.5;
 const SIM_SEPARATE = 1.55;
 
 const GIBBER = [
-	'blorp-skree navigare!',
-	'haplo-muntjes fwoop',
-	'kruid-vat-vat-vat',
-	'oeh shampoo expand',
-	'waar is de loopband',
-	'ik koop niks… oke alles',
-	'greeuwd mevrouw Kersch',
-	'prairie lakes forever',
-	'baard? nee, BEARD',
-	'sims energy max',
-	'ongelukkig maar open',
-	'juwelen? wacht even',
-	'navigare ad Kruidvatum',
-	'mamma rituals go brrr',
+	'Komunicare… humanos!',
+	'Komunis… squeak squeak',
+	'Ego sum shopperus maximus',
+	'Salve, amice mallus',
+	'Ubi est Kruidvatum?',
+	'Homo bleep bloop shop',
+	'Squeak? Squeak! SQUEAK!',
+	'Navigare ad food courtum',
+	'Pecunia non olet… squeak',
+	'Rituals pro mamma',
+	'Humanos need coffee',
+	'Komunicare via loopband',
+	'Beep boop vriendschap',
+	'Ave Maria, ave sale',
+	'Quid est pretium?!',
+	'Squeak ergo sum',
 ];
 
 export class Americans {
@@ -203,6 +229,47 @@ export class Americans {
 			this.roster.push(sim.f);
 			this.group.add(sim.root);
 		}
+		this.formCouples();
+	}
+
+	/** Pair shoppers into love/family couples — they walk life together */
+	private formCouples(): void {
+		// Brad + Miss, thicc power couple, parent+kid — meaning over mall chaos
+		// ids: 0=Brad, 1=Miss, kids when id%5===2 (2,7? no 7 is Miss override — kids 2,8,12,17)
+		const pairs: [number, number, LifeMeaning, string][] = [
+			[0, 1, 'love', 'Samen de vitamines van het leven'],
+			[4, 5, 'love', 'Hand in hand door elk pad'],
+			[6, 8, 'family', 'Ouder + kind: treat day'],
+		];
+		for (const [a, b, meaning, line] of pairs) {
+			const sa = this.sims.find((s) => s.f.id === a);
+			const sb = this.sims.find((s) => s.f.id === b);
+			if (!sa || !sb) continue;
+			// Don't pair two kids as a romantic couple
+			if (sa.f.isKid && sb.f.isKid) continue;
+			sa.f.partnerId = b;
+			sb.f.partnerId = a;
+			sa.f.partnerName = sb.f.name;
+			sb.f.partnerName = sa.f.name;
+			sa.f.lifeMeaning = meaning;
+			sb.f.lifeMeaning = meaning;
+			sa.f.lifeLine = line;
+			sb.f.lifeLine = line;
+			sa.coupleSide = -1;
+			sb.coupleSide = 1;
+			// Same start shop + shared path
+			sb.shopId = sa.shopId;
+			sb.pos.copy(sa.pos).add(new THREE.Vector3(0.9, 0, 0));
+			sb.root.position.copy(sb.pos);
+			this.assignNextShop(sa);
+			// copy path to partner
+			sb.path = sa.path.map((p) => p.clone());
+			sb.pathI = 0;
+			sb.f.targetShop = sa.f.targetShop;
+			sb.f.targetShopId = sa.f.targetShopId;
+			this.paintLabel(sa);
+			this.paintLabel(sb);
+		}
 	}
 
 	setTransactionCallback(
@@ -215,8 +282,8 @@ export class Americans {
 	nudgeAllMood(delta: number): void {
 		for (const s of this.sims) {
 			s.f.unhappiness = Math.max(0, Math.min(100, s.f.unhappiness + delta));
-			this.paintFace(s);
 			this.paintLabel(s);
+			this.applyFaceMood(s);
 		}
 	}
 
@@ -227,7 +294,7 @@ export class Americans {
 		if (on) {
 			for (const s of this.sims) {
 				s.f.unhappiness = Math.max(0, s.f.unhappiness - 10);
-				this.paintFace(s);
+				this.applyFaceMood(s);
 			}
 		}
 	}
@@ -251,13 +318,27 @@ export class Americans {
 		return best && bestD < 8 ? best.f.id : null;
 	}
 
-	/** Eye pose for RCT-style guest view */
+	/**
+	 * True first-person eye pose for guest view.
+	 * Eyes sit on the face (+Z in body space); camera must look along the
+	 * character's facing (Three cameras look down −Z → yaw = root.y + π).
+	 */
 	getSimEye(id: number): { pos: THREE.Vector3; yaw: number } | null {
 		const s = this.sims.find((x) => x.f.id === id);
 		if (!s) return null;
-		const eye = s.pos.clone();
-		eye.y += s.headY * (0.95 + s.f.thicc * 0.05) + 0.15;
-		return { pos: eye, yaw: s.root.rotation.y };
+		// Midpoint of actual eye meshes in world space (respects body scale + bounce)
+		const a = new THREE.Vector3();
+		const b = new THREE.Vector3();
+		s.eyeL.getWorldPosition(a);
+		s.eyeR.getWorldPosition(b);
+		const pos = a.add(b).multiplyScalar(0.5);
+		// Slightly forward of the face so we don't clip the head mesh if un-hidden
+		const yawFace = s.root.rotation.y;
+		const forward = new THREE.Vector3(Math.sin(yawFace), 0, Math.cos(yawFace));
+		pos.addScaledVector(forward, 0.12);
+		pos.y += 0.04; // brow / pupil height, not chin
+		// Camera looks −Z; character faces +Z → add π
+		return { pos, yaw: yawFace + Math.PI };
 	}
 
 	setSimVisible(id: number, visible: boolean): void {
@@ -275,14 +356,68 @@ export class Americans {
 
 	update(dt: number): void {
 		if (this.dancing) {
-			for (const s of this.sims) this.tickDance(s, dt);
+			for (const s of this.sims) {
+				this.tickDance(s, dt);
+				this.tickFace(s, dt);
+			}
 		} else {
-			for (const s of this.sims) this.tick(s, dt);
+			for (const s of this.sims) {
+				this.tick(s, dt);
+				this.tickFace(s, dt);
+			}
 			this.resolveAgents();
 		}
 		this.tickFarts(dt);
 		this.tickCoins(dt);
 		this.tickBubbles(dt);
+	}
+
+	/**
+	 * Eyes blink (scale Y) + mouth oval scales while talking.
+	 * Mood changes base mouth shape (happy open vs flat vs sad).
+	 */
+	private tickFace(sim: Sim, dt: number): void {
+		// Blink every few seconds
+		sim.blinkT -= dt;
+		let eyeY = 1;
+		if (sim.blinkT < 0.08) {
+			eyeY = Math.max(0.08, sim.blinkT / 0.08); // closing
+			if (sim.blinkT < 0) {
+				sim.blinkT = 1.8 + Math.random() * 3.5;
+			}
+		} else if (sim.blinkT < 0.12) {
+			eyeY = (0.12 - sim.blinkT) / 0.04; // opening
+			eyeY = Math.min(1, eyeY);
+		}
+		sim.eyeL.scale.set(1, eyeY, 1);
+		sim.eyeR.scale.set(1, eyeY, 1);
+
+		// Talk: mouth oval pumps while speech bubble is up
+		const u = sim.f.unhappiness / 100;
+		// Base mouth from mood: happy = wider flatter smile oval, sad = thinner
+		const baseX = u > 0.65 ? 1.0 : u > 0.4 ? 1.2 : 1.45;
+		const baseY = u > 0.65 ? 0.25 : u > 0.4 ? 0.35 : 0.5;
+		const baseZ = 0.55;
+
+		if (sim.speechLife > 0) {
+			sim.talkPhase += dt * 14;
+			const open = 0.55 + Math.abs(Math.sin(sim.talkPhase)) * 0.95;
+			sim.mouth.scale.set(baseX * 0.95, baseY * open, baseZ);
+			// One soft chirp now and then — not a bubble machine
+			sim.squeakT -= dt;
+			if (sim.squeakT <= 0) {
+				this.playSqueak(sim);
+				sim.squeakT = 0.55 + Math.random() * 0.7;
+			}
+		} else {
+			sim.mouth.scale.set(baseX, baseY, baseZ);
+			sim.squeakT = 0;
+		}
+	}
+
+	private applyFaceMood(sim: Sim): void {
+		// Instant mood snap without waiting for next tick
+		this.tickFace(sim, 0);
 	}
 
 	/** Freeze pathing — everyone boogies in place */
@@ -347,12 +482,15 @@ export class Americans {
 					const a = this.sims[i];
 					const b = this.sims[j];
 					if (Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
+					// Couples may walk closer (love/family meaning)
+					const couple = a.f.partnerId === b.f.id || b.f.partnerId === a.f.id;
+					const minD = couple ? 0.75 : SIM_SEPARATE;
 					const sep = this.world.separate(
 						a.pos.x,
 						a.pos.z,
 						b.pos.x,
 						b.pos.z,
-						SIM_SEPARATE,
+						minD,
 					);
 					a.pos.x = sep.ax;
 					a.pos.z = sep.az;
@@ -394,6 +532,32 @@ export class Americans {
 			: 'on_mission';
 
 		const startShop = SHOPABLE[Math.floor(rng() * SHOPABLE.length)];
+		const meanings: LifeMeaning[] = [
+			'love',
+			'family',
+			'health',
+			'joy',
+			'provide',
+			'belong',
+			'create',
+		];
+		const lifeMeaning: LifeMeaning = isBrad
+			? 'health'
+			: isKid
+			? 'joy'
+			: isMiss
+			? 'belong'
+			: meanings[Math.floor(rng() * meanings.length)];
+		const lifeLines: Record<LifeMeaning, string> = {
+			love: 'Zoekt iets moois voor iemand anders',
+			family: 'Houdt het gezin drijvende',
+			health: 'Wil gewoon een beetje beter voelen',
+			joy: 'Hier om te genieten — full stop',
+			provide: 'Brengt de boodschappen thuis',
+			belong: 'Wil gezien worden, niet alleen kopen',
+			create: 'Haalt inspiratie uit de drukte',
+		};
+
 		const f: SimFactors = {
 			id,
 			name: isBrad
@@ -408,6 +572,12 @@ export class Americans {
 			restless: 0.25 + rng() * 0.7,
 			windowShop: isMiss ? 0.8 : rng() * 0.65,
 			mood,
+			lifeMeaning,
+			lifeLine: isBrad
+				? 'Vitamines halen — voor zichzelf, eindelijk'
+				: lifeLines[lifeMeaning],
+			partnerId: null,
+			partnerName: null,
 			targetShop: '…',
 			targetShopId: '',
 			moneySpent: Math.floor(rng() * 40),
@@ -474,29 +644,37 @@ export class Americans {
 		body.add(armL, armR);
 
 		const headY = torsoY + bellyR * 1.4 + 0.28;
-		// Face lives ON the head sphere (UV), not a floating square plate
-		const faceCanvas = document.createElement('canvas');
-		faceCanvas.width = 256;
-		faceCanvas.height = 256;
-		const faceCtx = faceCanvas.getContext('2d')!;
-		const faceTex = new THREE.CanvasTexture(faceCanvas);
-		faceTex.colorSpace = THREE.SRGBColorSpace;
-		const headMat = this.track(
-			new THREE.MeshStandardMaterial({
-				map: faceTex,
-				roughness: 0.85,
-				metalness: 0,
-			}),
-		);
+		const headR = isKid ? 0.2 : isMiss ? 0.23 : 0.24;
+		// Plain skin head — no painted texture face
 		const head = new THREE.Mesh(
-			new THREE.SphereGeometry(isKid ? 0.2 : isMiss ? 0.23 : 0.24, 20, 20),
-			headMat,
+			new THREE.SphereGeometry(headR, 16, 16),
+			this.mat(f.skin, 0.85),
 		);
 		head.position.set(0, headY, 0);
-		// Face texture faces +Z after this rotate (was showing on the back)
-		head.rotation.y = Math.PI;
 		body.add(head);
-		const faceMesh = head;
+
+		// Eyes = black spheres on the front of the head (+Z)
+		const eyeMat = this.track(
+			new THREE.MeshBasicMaterial({ color: 0x111111 }),
+		);
+		const eyeGeo = new THREE.SphereGeometry(isKid ? 0.035 : 0.042, 10, 10);
+		const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+		const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+		const eyeY = headY + 0.02;
+		const eyeZ = headR * 0.82;
+		const eyeX = headR * 0.32;
+		eyeL.position.set(-eyeX, eyeY, eyeZ);
+		eyeR.position.set(eyeX, eyeY, eyeZ);
+		body.add(eyeL, eyeR);
+
+		// Mouth = black oval (scaled sphere) — scale Y/X for talk & mood
+		const mouth = new THREE.Mesh(
+			new THREE.SphereGeometry(isKid ? 0.04 : 0.05, 12, 10),
+			eyeMat,
+		);
+		mouth.position.set(0, headY - headR * 0.35, eyeZ * 0.95);
+		mouth.scale.set(1.35, 0.45, 0.55);
+		body.add(mouth);
 
 		if (f.isMiss) {
 			// Pageant hair volume
@@ -620,11 +798,13 @@ export class Americans {
 			speechTex,
 			speechCtx,
 			speechLife: 0,
-			faceMesh,
-			faceCanvas,
-			faceCtx,
-			faceTex,
+			eyeL,
+			eyeR,
+			mouth,
 			headY,
+			bodyScale: scale,
+			blinkT: 1 + rng() * 3,
+			talkPhase: 0,
 			pos: start.clone(),
 			velocity: new THREE.Vector3(),
 			path: [],
@@ -638,11 +818,13 @@ export class Americans {
 			gibberCd: 2 + rng() * 8,
 			stuckTime: 0,
 			bubbleCd: 1 + rng() * 4,
+			squeakT: 0,
+			coupleSide: 0,
 		};
 
 		this.assignNextShop(sim);
 		this.paintLabel(sim);
-		this.paintFace(sim);
+		this.applyFaceMood(sim);
 		return sim;
 	}
 
@@ -703,22 +885,29 @@ export class Americans {
 	}
 
 	private assignNextShop(sim: Sim): void {
-		let next = SHOPABLE[Math.floor(Math.random() * SHOPABLE.length)];
-		// don't pick same shop
+		// Partner follows lead (lower id is lead)
+		if (sim.f.partnerId !== null && sim.f.id > sim.f.partnerId) {
+			const lead = this.sims.find((s) => s.f.id === sim.f.partnerId);
+			if (lead && lead.f.targetShopId) {
+				sim.f.targetShop = lead.f.targetShop;
+				sim.f.targetShopId = lead.f.targetShopId;
+				sim.path = lead.path.map((p) => p.clone());
+				sim.pathI = Math.min(lead.pathI, Math.max(0, lead.path.length - 1));
+				sim.shopId = lead.shopId;
+				return;
+			}
+		}
+
+		let next = this.pickShopForMeaning(sim);
 		let guard = 0;
 		while (next.id === sim.shopId && guard++ < 12) {
-			next = SHOPABLE[Math.floor(Math.random() * SHOPABLE.length)];
-		}
-		// Brad bias toward Kruidvat
-		if (sim.f.isBrad && Math.random() < 0.55) {
-			next = SHOPABLE.find((s) => s.id === 'kruidvat') ?? next;
+			next = this.pickShopForMeaning(sim);
 		}
 
 		sim.f.targetShop = next.name.replace('\n', ' ');
 		sim.f.targetShopId = next.id;
 
 		const fromNode = STORES.find((s) => s.id === sim.shopId)?.nodeId ?? 'f0_c';
-		// Use shop entrance nodes for graph; spaceship for kruidvat is ok
 		const toNode = next.nodeId === 'spaceship' ? 's_kruidvat' : next.nodeId;
 		const fromStoreNode = fromNode === 'spaceship' ? 's_kruidvat' : fromNode;
 
@@ -728,7 +917,6 @@ export class Americans {
 				const y = n.y < 3 ? 0 : 6;
 				return new THREE.Vector3(n.x, y, n.z);
 			});
-			// Avoid atrium void on floor 1 mid-path
 			sim.path = sim.path.map((p) => {
 				if (p.y > 3 && Math.abs(p.x) < 8 && Math.abs(p.z) < 6) {
 					return new THREE.Vector3(p.x >= 0 ? 10 : -10, 6, p.z);
@@ -741,6 +929,42 @@ export class Americans {
 		}
 		sim.pathI = 0;
 		sim.shopId = next.id;
+
+		// Sync partner destination
+		if (sim.f.partnerId !== null && sim.f.id < sim.f.partnerId) {
+			const partner = this.sims.find((s) => s.f.id === sim.f.partnerId);
+			if (partner) {
+				partner.f.targetShop = sim.f.targetShop;
+				partner.f.targetShopId = sim.f.targetShopId;
+				partner.path = sim.path.map((p) => p.clone());
+				partner.pathI = 0;
+				partner.shopId = sim.shopId;
+				this.paintLabel(partner);
+			}
+		}
+	}
+
+	/** Life meaning steers where they shop — not pure random */
+	private pickShopForMeaning(sim: Sim): (typeof SHOPABLE)[0] {
+		const m = sim.f.lifeMeaning;
+		const prefer: Record<LifeMeaning, string[]> = {
+			love: ['rituals', 'douglas', 'sephora', 'zara'],
+			family: ['primark', 'ikea', 'action', 'starbucks'],
+			health: ['kruidvat', 'decathlon', 'rituals'],
+			joy: ['gamesman', 'starbucks', 'nike', 'primark'],
+			provide: ['ikea', 'action', 'coolblue', 'kruidvat'],
+			belong: ['zara', 'uniqlo', 'sephora', 'hm'],
+			create: ['apple', 'mediaworld', 'uniqlo', 'coolblue'],
+		};
+		if (sim.f.isBrad && Math.random() < 0.6) {
+			return SHOPABLE.find((s) => s.id === 'kruidvat') ?? SHOPABLE[0];
+		}
+		const list = prefer[m];
+		if (Math.random() < 0.72) {
+			const id = list[Math.floor(Math.random() * list.length)];
+			return SHOPABLE.find((s) => s.id === id) ?? SHOPABLE[0];
+		}
+		return SHOPABLE[Math.floor(Math.random() * SHOPABLE.length)];
 	}
 
 	private tick(sim: Sim, dt: number): void {
@@ -752,7 +976,6 @@ export class Americans {
 			this.doFart(sim);
 			f.fartCd = 8 + Math.random() * 22;
 			f.unhappiness = Math.min(100, f.unhappiness + 2);
-			this.paintFace(sim);
 		}
 
 		// Gibberish chatter
@@ -773,7 +996,6 @@ export class Americans {
 			// slowly more unhappy while waiting (mall fatigue) — less if shops open
 			f.unhappiness = Math.min(100, f.unhappiness + dt * 0.35);
 			this.paintLabel(sim);
-			this.paintFace(sim);
 			return;
 		}
 
@@ -797,7 +1019,6 @@ export class Americans {
 			sim.wait = 1.2 + f.windowShop * 3.5 + (f.mood === 'lost' ? 2 : 0);
 			this.assignNextShop(sim);
 			this.paintLabel(sim);
-			this.paintFace(sim);
 			this.animateLegs(sim, 0, dt);
 			sim.root.position.copy(sim.pos);
 			return;
@@ -856,12 +1077,38 @@ export class Americans {
 			sim.stuckTime = 0;
 		}
 
-		// Kids leave soap-bubble trail (NOT weird particles — family mall)
+		// Kids: rare quiet soap pop (was a constant bubble storm — no more)
 		if (f.isKid) {
 			sim.bubbleCd -= dt;
 			if (sim.bubbleCd <= 0) {
-				this.spawnBubbles(sim.pos.clone().add(new THREE.Vector3(0, 0.9, 0)));
-				sim.bubbleCd = 0.8 + Math.random() * 1.5;
+				if (Math.random() < 0.25) {
+					this.spawnBubbles(sim.pos.clone().add(new THREE.Vector3(0, 0.9, 0)));
+				}
+				sim.bubbleCd = 6 + Math.random() * 10;
+			}
+		}
+
+		// Couple walks side-by-side (meaning: love / family — not alone)
+		if (f.partnerId !== null && sim.coupleSide !== 0) {
+			const partner = this.sims.find((s) => s.f.id === f.partnerId);
+			if (partner) {
+				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(
+					sim.coupleSide * 0.55,
+				);
+				// Soft pull toward parallel lane next to partner lead path
+				if (f.id > f.partnerId) {
+					const ideal = partner.pos.clone().add(side);
+					sim.pos.x = THREE.MathUtils.lerp(sim.pos.x, ideal.x, 0.12);
+					sim.pos.z = THREE.MathUtils.lerp(sim.pos.z, ideal.z, 0.12);
+					const fix = this.world.resolveCircle(
+						sim.pos.x,
+						sim.pos.z,
+						sim.pos.y,
+						SIM_RADIUS,
+					);
+					sim.pos.x = fix.x;
+					sim.pos.z = fix.z;
+				}
 			}
 		}
 
@@ -949,147 +1196,26 @@ export class Americans {
 		ctx.stroke();
 
 		ctx.fillStyle = '#fff';
-		ctx.font = 'bold 22px system-ui,sans-serif';
+		ctx.font = 'bold 20px system-ui,sans-serif';
 		ctx.textAlign = 'left';
-		ctx.fillText(f.name.slice(0, 18), 16, 32);
+		const name = f.partnerName !== null ? `${f.name.slice(0, 10)} ❤️` : f.name.slice(0, 16);
+		ctx.fillText(name, 16, 26);
 
-		ctx.font = '600 18px system-ui,sans-serif';
+		ctx.font = '600 15px system-ui,sans-serif';
+		ctx.fillStyle = '#c4b5fd';
+		ctx.fillText(f.lifeLine.slice(0, 28), 16, 48);
+
 		ctx.fillStyle = '#93c5fd';
-		ctx.fillText(`→ ${f.targetShop.slice(0, 16)}`, 16, 58);
+		ctx.fillText(`→ ${f.targetShop.slice(0, 14)}`, 16, 70);
 
 		ctx.fillStyle = '#fbbf24';
-		ctx.fillText(`€${f.moneySpent} uitgegeven`, 16, 82);
+		ctx.fillText(`€${f.moneySpent}`, 16, 92);
 
 		const face = f.unhappiness > 70 ? '😭' : f.unhappiness > 40 ? '😕' : '😊';
 		ctx.fillStyle = f.unhappiness > 70 ? '#fca5a5' : '#e2e8f0';
-		ctx.fillText(`${face} ${Math.round(f.unhappiness)}% ongelukkig`, 16, 104);
+		ctx.fillText(`${face}${Math.round(f.unhappiness)}%`, 100, 92);
 
 		sim.labelTex.needsUpdate = true;
-		this.paintFace(sim);
-	}
-
-	/**
-	 * Normal human face on sphere UV (head.rotation.y = PI so front faces walk dir).
-	 * Smile / neutral / sad / cry from unhappiness.
-	 */
-	private paintFace(sim: Sim): void {
-		const u = sim.f.unhappiness / 100;
-		const ctx = sim.faceCtx;
-		const W = 256;
-		const H = 256;
-		const skin = `#${sim.f.skin.toString(16).padStart(6, '0')}`;
-		const hair = `#${sim.f.hair.toString(16).padStart(6, '0')}`;
-
-		// Soft skin fill (no weird UV seams of pure blocks)
-		ctx.fillStyle = skin;
-		ctx.fillRect(0, 0, W, H);
-		// Hair top + sides
-		ctx.fillStyle = hair;
-		ctx.beginPath();
-		ctx.ellipse(W / 2, H * 0.18, W * 0.48, H * 0.22, 0, 0, Math.PI * 2);
-		ctx.fill();
-		ctx.fillRect(0, 0, W, H * 0.22);
-
-		// Face oval highlight
-		const cx = W * 0.5;
-		const cy = H * 0.55;
-		const grd = ctx.createRadialGradient(cx, cy, 10, cx, cy, 90);
-		grd.addColorStop(0, skin);
-		grd.addColorStop(1, 'rgba(0,0,0,0.06)');
-		ctx.fillStyle = grd;
-		ctx.beginPath();
-		ctx.ellipse(cx, cy, 78, 88, 0, 0, Math.PI * 2);
-		ctx.fill();
-
-		// Eyes (white + iris + pupil)
-		const eyeY = cy - 16 + u * 6;
-		const drawEye = (ex: number) => {
-			ctx.fillStyle = '#fff';
-			ctx.beginPath();
-			ctx.ellipse(ex, eyeY, 14, sim.f.isKid ? 12 : 11, 0, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.fillStyle = sim.f.isMiss ? '#4a7c59' : '#3d5a80';
-			ctx.beginPath();
-			ctx.arc(ex, eyeY + 1, 7, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.fillStyle = '#111';
-			ctx.beginPath();
-			ctx.arc(ex, eyeY + 1, 3.5, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.fillStyle = '#fff';
-			ctx.beginPath();
-			ctx.arc(ex + 2, eyeY - 2, 2, 0, Math.PI * 2);
-			ctx.fill();
-		};
-		drawEye(cx - 28);
-		drawEye(cx + 28);
-
-		// Brows
-		ctx.strokeStyle = hair;
-		ctx.lineWidth = 4;
-		ctx.lineCap = 'round';
-		ctx.beginPath();
-		if (u > 0.65) {
-			ctx.moveTo(cx - 44, eyeY - 16);
-			ctx.lineTo(cx - 14, eyeY - 6);
-			ctx.moveTo(cx + 44, eyeY - 16);
-			ctx.lineTo(cx + 14, eyeY - 6);
-		} else {
-			ctx.moveTo(cx - 44, eyeY - 14);
-			ctx.quadraticCurveTo(cx - 28, eyeY - 22, cx - 12, eyeY - 12);
-			ctx.moveTo(cx + 12, eyeY - 12);
-			ctx.quadraticCurveTo(cx + 28, eyeY - 22, cx + 44, eyeY - 14);
-		}
-		ctx.stroke();
-
-		// Nose hint
-		ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-		ctx.lineWidth = 2;
-		ctx.beginPath();
-		ctx.moveTo(cx, cy - 4);
-		ctx.lineTo(cx - 3, cy + 14);
-		ctx.lineTo(cx + 6, cy + 14);
-		ctx.stroke();
-
-		// Mouth
-		ctx.strokeStyle = u > 0.7 ? '#8b2942' : '#c45c6a';
-		ctx.lineWidth = 5;
-		ctx.beginPath();
-		if (u < 0.28) {
-			ctx.arc(cx, cy + 18, 26, 0.12, Math.PI - 0.12);
-			ctx.stroke();
-			// teeth hint
-			ctx.fillStyle = '#fff';
-			ctx.fillRect(cx - 12, cy + 20, 24, 5);
-		} else if (u < 0.5) {
-			ctx.arc(cx, cy + 22, 20, 0.2, Math.PI - 0.2);
-			ctx.stroke();
-		} else if (u < 0.7) {
-			ctx.moveTo(cx - 20, cy + 30);
-			ctx.lineTo(cx + 20, cy + 30);
-			ctx.stroke();
-		} else if (u < 0.85) {
-			ctx.arc(cx, cy + 48, 20, Math.PI + 0.25, -0.25);
-			ctx.stroke();
-		} else {
-			ctx.arc(cx, cy + 50, 22, Math.PI + 0.2, -0.2);
-			ctx.stroke();
-			ctx.fillStyle = '#5eb8e8';
-			ctx.beginPath();
-			ctx.ellipse(cx - 30, cy + 6, 4, 12, 0.2, 0, Math.PI * 2);
-			ctx.ellipse(cx + 30, cy + 6, 4, 12, -0.2, 0, Math.PI * 2);
-			ctx.fill();
-		}
-
-		if (u < 0.35 || sim.f.isMiss) {
-			ctx.fillStyle = 'rgba(255,140,160,0.35)';
-			ctx.beginPath();
-			ctx.ellipse(cx - 50, cy + 10, 14, 8, 0, 0, Math.PI * 2);
-			ctx.ellipse(cx + 50, cy + 10, 14, 8, 0, 0, Math.PI * 2);
-			ctx.fill();
-		}
-
-		sim.faceTex.needsUpdate = true;
 	}
 
 	/** Player tips nearest sim — muntjes + happiness */
@@ -1109,7 +1235,7 @@ export class Americans {
 		this.spawnCoins(best.pos.clone().add(new THREE.Vector3(0, 1.3, 0)), amount);
 		this.sayGibberish(best, true);
 		this.paintLabel(best);
-		this.paintFace(best);
+		this.applyFaceMood(best);
 		return best.f;
 	}
 
@@ -1140,28 +1266,82 @@ export class Americans {
 	}
 
 	private sayGibberish(sim: Sim, checkout = false): void {
-		const line = checkout
-			? GIBBER[Math.floor(Math.random() * 3) + 2]
-			: GIBBER[Math.floor(Math.random() * GIBBER.length)];
+		let line: string;
+		if (checkout) {
+			// Shop owner greets at the register — meaning for both guest & keeper
+			const owner = getOwner(sim.f.targetShopId || sim.shopId);
+			if (owner && owner.lines.length > 0 && Math.random() < 0.85) {
+				line = `${owner.name.split(' ')[0]}: ${owner.lines[Math.floor(Math.random() * owner.lines.length)]}`;
+			} else if (sim.f.partnerName) {
+				line = [
+					`Voor ${sim.f.partnerName.split(' ')[0]} ❤️`,
+					'Wij samen, yallah!',
+					'Pecunia accepta, amore!',
+				][Math.floor(Math.random() * 3)];
+			} else {
+				line = ['Pecunia accepta! Squeak!', 'Gratias, humanos!', 'Komunicare complete ✓'][
+					Math.floor(Math.random() * 3)
+				];
+			}
+		} else if (sim.f.partnerName && Math.random() < 0.35) {
+			const p = sim.f.partnerName.split(' ')[0];
+			line = [
+				`${p}… squeak ❤️`,
+				'Handje? Handje.',
+				`Voor ons, ${p}.`,
+				sim.f.lifeLine.slice(0, 26),
+			][Math.floor(Math.random() * 4)];
+		} else {
+			line = GIBBER[Math.floor(Math.random() * GIBBER.length)];
+		}
 		const ctx = sim.speechCtx;
 		ctx.clearRect(0, 0, 280, 72);
 		ctx.fillStyle = 'rgba(255,255,255,0.95)';
 		roundRect(ctx, 4, 4, 272, 64, 14);
 		ctx.fill();
-		ctx.strokeStyle = '#334155';
+		ctx.strokeStyle = checkout ? '#16a34a' : '#334155';
 		ctx.lineWidth = 2;
 		roundRect(ctx, 4, 4, 272, 64, 14);
 		ctx.stroke();
 		ctx.fillStyle = '#0f172a';
-		ctx.font = '600 18px system-ui,sans-serif';
+		ctx.font = '600 15px system-ui,sans-serif';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText(line, 140, 36);
+		ctx.fillText(line.slice(0, 34), 140, 36);
 		sim.speechTex.needsUpdate = true;
 		sim.speech.visible = true;
 		(sim.speech.material as THREE.SpriteMaterial).visible = true;
-		sim.speechLife = 2.8;
-		this.playTalkBlip();
+		sim.speechLife = 2.6 + Math.random() * 1.2;
+		// Single soft open-chirp (no triple bubble burst)
+		sim.squeakT = 0.4;
+		this.playSqueak(sim, 0);
+	}
+
+	/** Soft short chirp when someone talks — not a soap-bubble machine */
+	private playSqueak(sim: Sim, delay = 0): void {
+		if (!this.audio) return;
+		const ctx = this.audio;
+		const t0 = ctx.currentTime + delay;
+		// Lower, shorter, quieter — was 480–900 Hz sine spam (= bubbels)
+		const base = sim.f.isKid ? 380 : sim.f.isMiss ? 280 : 180;
+		const pitch = base + Math.random() * 60 + (sim.f.id % 5) * 12;
+		const o = ctx.createOscillator();
+		const g = ctx.createGain();
+		const f = ctx.createBiquadFilter();
+		o.type = 'triangle';
+		o.frequency.setValueAtTime(pitch, t0);
+		o.frequency.exponentialRampToValueAtTime(pitch * 0.85, t0 + 0.06);
+		f.type = 'lowpass';
+		f.frequency.value = pitch * 2.2;
+		f.Q.value = 0.7;
+		g.gain.setValueAtTime(0.0001, t0);
+		g.gain.exponentialRampToValueAtTime(0.018, t0 + 0.01);
+		g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.08);
+		o.connect(f);
+		f.connect(g);
+		g.connect(ctx.destination);
+		o.start(t0);
+		o.stop(t0 + 0.09);
 	}
 
 	private spawnCoins(origin: THREE.Vector3, amount: number): void {
@@ -1213,24 +1393,6 @@ export class Americans {
 				this.coinBursts.splice(i, 1);
 			}
 		}
-	}
-
-	private playTalkBlip(): void {
-		if (!this.audio) return;
-		const ctx = this.audio;
-		const t0 = ctx.currentTime;
-		const o = ctx.createOscillator();
-		const g = ctx.createGain();
-		o.type = 'triangle';
-		o.frequency.setValueAtTime(280 + Math.random() * 220, t0);
-		o.frequency.linearRampToValueAtTime(180 + Math.random() * 100, t0 + 0.08);
-		g.gain.setValueAtTime(0.0001, t0);
-		g.gain.exponentialRampToValueAtTime(0.06, t0 + 0.01);
-		g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
-		o.connect(g);
-		g.connect(ctx.destination);
-		o.start(t0);
-		o.stop(t0 + 0.14);
 	}
 
 	private playCoinSound(): void {
