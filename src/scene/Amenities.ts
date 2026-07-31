@@ -97,9 +97,7 @@ export class Amenities {
 		ctx.fillText('FONTEIN', 128, 40);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(
-			this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })),
-		);
+		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
 		sp.position.set(0, 3.2, 0);
 		sp.scale.set(2, 0.5, 1);
 		this.group.add(sp);
@@ -210,9 +208,7 @@ export class Amenities {
 		ctx.fillText('🐵 aap', 64, 26);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(
-			this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })),
-		);
+		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
 		sp.scale.set(1.0, 0.32, 1);
 		sp.position.y = 0.85;
 		m.add(sp);
@@ -257,14 +253,14 @@ export class Amenities {
 		resetY: number,
 		maxY: number,
 	): void {
-		const pos = pts.geometry.attributes.position as THREE.BufferAttribute;
+		const pos = pts.geometry.getAttribute('position');
 		const arr = pos.array as Float32Array;
-		for (let i = 0; i < arr.length; i += 3) {
-			arr[i] += vel[i] * dt;
-			arr[i + 1] += vel[i + 1] * dt;
-			arr[i + 2] += vel[i + 2] * dt;
-			vel[i + 1] -= 6 * dt;
-			if (arr[i + 1] < resetY - 0.5 || arr[i + 1] > maxY + 2) {
+		for (let i = 0; i + 2 < arr.length; i += 3) {
+			arr[i] = (arr[i] ?? 0) + (vel[i] ?? 0) * dt;
+			arr[i + 1] = (arr[i + 1] ?? 0) + (vel[i + 1] ?? 0) * dt;
+			arr[i + 2] = (arr[i + 2] ?? 0) + (vel[i + 2] ?? 0) * dt;
+			vel[i + 1] = (vel[i + 1] ?? 0) - 6 * dt;
+			if ((arr[i + 1] ?? 0) < resetY - 0.5 || (arr[i + 1] ?? 0) > maxY + 2) {
 				arr[i] = (Math.random() - 0.5) * 0.35;
 				arr[i + 1] = resetY;
 				arr[i + 2] = (Math.random() - 0.5) * 0.35;

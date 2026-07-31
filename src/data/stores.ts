@@ -1,12 +1,4 @@
-export type StoreCategory =
-	| 'beauty'
-	| 'fashion'
-	| 'food'
-	| 'tech'
-	| 'home'
-	| 'sport'
-	| 'services'
-	| 'utility';
+export type StoreCategory = 'beauty' | 'fashion' | 'food' | 'tech' | 'home' | 'sport' | 'services' | 'utility';
 
 export interface StoreDef {
 	id: string;

@@ -48,9 +48,7 @@ export class Helipad {
 				roughness: 0.45,
 			}),
 		);
-		const tread = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x78909c, roughness: 0.55, metalness: 0.3 }),
-		);
+		const tread = this.track(new THREE.MeshStandardMaterial({ color: 0x78909c, roughness: 0.55, metalness: 0.3 }));
 
 		// Service door facade on floor 1
 		const door = new THREE.Mesh(
@@ -96,9 +94,7 @@ export class Helipad {
 		}
 
 		// Side rails
-		const rail = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xffc107, metalness: 0.6, roughness: 0.35 }),
-		);
+		const rail = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, metalness: 0.6, roughness: 0.35 }));
 		for (const sx of [x - 1.2, x + 1.2]) {
 			for (let i = 0; i < steps; i += 2) {
 				const z = z0 + (i + 0.5) * stepD;
@@ -110,10 +106,7 @@ export class Helipad {
 		}
 
 		// Hatch / top opening frame on roof
-		const hatch = new THREE.Mesh(
-			new THREE.BoxGeometry(3.0, 0.15, 2.4),
-			metal,
-		);
+		const hatch = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.15, 2.4), metal);
 		hatch.position.set(x, y1 + 0.08, z1 - 0.2);
 		g.add(hatch);
 
@@ -160,9 +153,7 @@ export class Helipad {
 		this.group.add(deck);
 
 		// Low safety wall on outer edges (not over stairs hatch)
-		const wallM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x546e7a, metalness: 0.4, roughness: 0.5 }),
-		);
+		const wallM = this.track(new THREE.MeshStandardMaterial({ color: 0x546e7a, metalness: 0.4, roughness: 0.5 }));
 		const wall = (w: number, d: number, x: number, z: number) => {
 			const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, d), wallM);
 			m.position.set(x, ROOF_Y + 0.5, z);
@@ -238,17 +229,11 @@ export class Helipad {
 
 	private buildLights(): void {
 		// Perimeter landing lights
-		const lit = this.track(
-			new THREE.MeshBasicMaterial({ color: 0x00e676, toneMapped: false }),
-		);
+		const lit = this.track(new THREE.MeshBasicMaterial({ color: 0x00e676, toneMapped: false }));
 		for (let i = 0; i < 8; i++) {
 			const a = (i / 8) * Math.PI * 2;
 			const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), lit);
-			bulb.position.set(
-				this.padCenter.x + Math.cos(a) * 5.3,
-				ROOF_Y + 0.2,
-				this.padCenter.z + Math.sin(a) * 5.3,
-			);
+			bulb.position.set(this.padCenter.x + Math.cos(a) * 5.3, ROOF_Y + 0.2, this.padCenter.z + Math.sin(a) * 5.3);
 			this.group.add(bulb);
 		}
 		const pl = new THREE.PointLight(0xfff4e0, 14, 30, 1.8);
@@ -277,9 +262,7 @@ export class Helipad {
 		tex.colorSpace = THREE.SRGBColorSpace;
 		// depthTest AAN: met false prikte het bord door de plafondplaat en hing
 		// het als spook-signage boven verdieping 1
-		const sp = new THREE.Sprite(
-			this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })),
-		);
+		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
 		sp.scale.set(6, 1.5, 1);
 		sp.position.set(this.padCenter.x, ROOF_Y + 3.2, this.padCenter.z);
 		this.group.add(sp);

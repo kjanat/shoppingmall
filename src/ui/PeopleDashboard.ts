@@ -1,4 +1,4 @@
-import type { PersonRow } from '../scene/Americans';
+import type { PersonRow } from '@/scene/Americans';
 
 /** Non-shopper rows: dief, aap, DJ, catwalk-dame — the mall's fixed cast. */
 export type CastRow = {
@@ -62,11 +62,14 @@ export class PeopleDashboard {
 		this.summaryEl.textContent = `${rows.length} shoppers · €${Math.round(spent)} uitgegeven · ${grumpy} chagrijnig`;
 
 		this.listEl.innerHTML = rows
-			.map((r) => `
+			.map(
+				(r) => `
       <div class="pd-row" data-id="${r.id}">
         <span class="pd-mood">${moodFace(r.unhappiness)}</span>
         <span class="pd-main">
-          <b>${esc(r.name)}${r.isKid ? ' 🧒' : ''}${r.partnerName ? ` ❤️ ${esc(r.partnerName.split(' ')[0])}` : ''}</b>
+          <b>${esc(r.name)}${r.isKid ? ' 🧒' : ''}${
+						r.partnerName ? ` ❤️ ${esc(r.partnerName.split(' ')[0] ?? r.partnerName)}` : ''
+					}</b>
           <small>${esc(r.doing)}</small>
         </span>
         <span class="pd-meta">
@@ -75,22 +78,25 @@ export class PeopleDashboard {
           <span>${Math.round(r.dist)} m</span>
         </span>
         <button type="button" class="pd-follow" data-id="${r.id}" title="Guest view">👁</button>
-      </div>`)
+      </div>`,
+			)
 			.join('');
 
 		this.castEl.innerHTML = cast
-			.map((c) => `
+			.map(
+				(c) => `
       <div class="pd-row pd-cast">
         <span class="pd-mood">${c.icon}</span>
         <span class="pd-main"><b>${esc(c.name)}</b><small>${esc(c.doing)}</small></span>
         <span class="pd-meta"><span class="pd-floor">${esc(c.floor)}</span></span>
-      </div>`)
+      </div>`,
+			)
 			.join('');
 
-		this.listEl.querySelectorAll('.pd-follow').forEach((btn) => {
+		this.listEl.querySelectorAll<HTMLElement>('.pd-follow').forEach((btn) => {
 			btn.addEventListener('click', (e) => {
 				e.stopPropagation();
-				const id = Number((btn as HTMLElement).dataset.id);
+				const id = Number(btn.dataset['id']);
 				this.toggle(false);
 				this.onFollow(id);
 			});

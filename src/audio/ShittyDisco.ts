@@ -77,7 +77,7 @@ export class ShittyDiscoMusic {
 			0,
 			784.0,
 		];
-		const f = yodel[s];
+		const f = yodel[s] ?? 0;
 		if (f > 0) {
 			this.yodelNote(t, f, 0.16);
 		}
@@ -214,13 +214,7 @@ export class ShittyDiscoMusic {
 		noise.stop(t + dur + 0.01);
 	}
 
-	private beep(
-		t: number,
-		freq: number,
-		dur: number,
-		type: OscillatorType,
-		vol: number,
-	): void {
+	private beep(t: number, freq: number, dur: number, type: OscillatorType, vol: number): void {
 		const ctx = this.ctx!;
 		const o = ctx.createOscillator();
 		const g = ctx.createGain();

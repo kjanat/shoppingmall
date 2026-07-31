@@ -1,7 +1,7 @@
 /**
- * DJ Bartek + mall sim brain. Web-standard `Request → Response`, so Bun.serve
- * calls it directly in production and the vite plugin adapts it for connect
- * in dev (vite runs on node, so nothing here may be Bun-only).
+ * DJ Bartek + mall sim brain. Web-standard `Request → Response`, mounted by
+ * Bun.serve in server/main.ts. Bun-native I/O throughout: nothing here may
+ * block the event loop while a track streams.
  * - POST /api/tts          → ElevenLabs
  * - POST /api/sim/chat     → OpenRouter SDK (sims talk; Broadcast user/session/trace)
  * - GET  /api/dj/playlist  → list public/dj-music/*
@@ -11,35 +11,83 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 import { OpenRouter } from '@openrouter/sdk';
-import { spawn } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
-import { Readable } from 'node:stream';
 
-const MUSIC_DIR = join(process.cwd(), 'public', 'dj-music');
+/** Crate library: public/ sits one level above this module, built or not. */
+const MUSIC_DIR = join(import.meta.dir, '../public/dj-music');
 const AUDIO_EXT = new Set(['.mp3', '.m4a', '.ogg', '.webm', '.wav', '.opus']);
 
-export function ensureMusicDir(): void {
-	if (!existsSync(MUSIC_DIR)) mkdirSync(MUSIC_DIR, { recursive: true });
+export async function ensureMusicDir(): Promise<void> {
+	await mkdir(MUSIC_DIR, { recursive: true });
 }
 
-function listPlaylist(): { file: string; title: string; url: string; bytes: number }[] {
-	ensureMusicDir();
-	return readdirSync(MUSIC_DIR)
-		.filter((f) => AUDIO_EXT.has(extname(f).toLowerCase()))
-		.map((f) => {
-			const full = join(MUSIC_DIR, f);
-			const st = statSync(full);
-			return {
-				file: f,
-				title: basename(f, extname(f)).replace(/[_-]+/g, ' '),
-				// Stream via the API, not `./dj-music/…`: static serving reads the dist/ copy in preview,
-				// which doesn't contain tracks downloaded after the build — the API always reads live from public/.
-				url: `/api/dj/file/${encodeURIComponent(f)}`,
-				bytes: st.size,
-			};
-		})
-		.sort((a, b) => a.title.localeCompare(b.title));
+export type TrackMeta = {
+	file: string;
+	title: string;
+	url: string;
+	bytes: number;
+	/** From the yt-dlp sidecar, when the track came in through a request. */
+	artist?: string;
+	seconds?: number;
+	videoId?: string;
+	sourceUrl?: string;
+};
+
+/**
+ * yt-dlp's `--write-info-json` sidecar. The filename mangles the title
+ * (slashes and quotes get replaced), so the real one lives here.
+ */
+async function readInfoJson(audioFile: string): Promise<Partial<TrackMeta>> {
+	const sidecar = Bun.file(join(MUSIC_DIR, `${basename(audioFile, extname(audioFile))}.info.json`));
+	try {
+		if (!(await sidecar.exists())) return {};
+		const info = (await sidecar.json()) as {
+			title?: string;
+			track?: string;
+			artist?: string;
+			uploader?: string;
+			duration?: number;
+			id?: string;
+			webpage_url?: string;
+		};
+		return {
+			title: info.track ?? info.title,
+			artist: info.artist ?? info.uploader,
+			seconds: typeof info.duration === 'number' ? Math.round(info.duration) : undefined,
+			videoId: info.id,
+			sourceUrl: info.webpage_url,
+		};
+	} catch {
+		return {};
+	}
+}
+
+async function listPlaylist(): Promise<TrackMeta[]> {
+	await ensureMusicDir();
+	const names: string[] = [];
+	for await (const name of new Bun.Glob('*').scan({ cwd: MUSIC_DIR, onlyFiles: true })) {
+		if (AUDIO_EXT.has(extname(name).toLowerCase())) names.push(name);
+	}
+	return (
+		await Promise.all(
+			names.map(async (f) => {
+				const [meta, stat] = await Promise.all([readInfoJson(f), Bun.file(join(MUSIC_DIR, f)).stat()]);
+				return {
+					file: f,
+					title: meta.title ?? basename(f, extname(f)).replace(/[_-]+/g, ' '),
+					// Stream via the API, not `./dj-music/…`: static serving reads the dist/ copy in preview,
+					// which doesn't contain tracks downloaded after the build — the API always reads live from public/.
+					url: `/api/dj/file/${encodeURIComponent(f)}`,
+					bytes: stat.size,
+					...(meta.artist ? { artist: meta.artist } : {}),
+					...(meta.seconds ? { seconds: meta.seconds } : {}),
+					...(meta.videoId ? { videoId: meta.videoId } : {}),
+					...(meta.sourceUrl ? { sourceUrl: meta.sourceUrl } : {}),
+				};
+			}),
+		)
+	).sort((a, b) => a.title.localeCompare(b.title));
 }
 
 const AUDIO_MIME: Record<string, string> = {
@@ -94,23 +142,11 @@ async function readJson<T>(req: Request): Promise<T> {
 	}
 	const raw = await req.text();
 	if (raw.length > BODY_LIMIT) throw new Error('body_too_large');
-	return JSON.parse(raw || '{}') as T;
+	return JSON.parse(raw || '{}');
 }
 
 function json(code: number, data: unknown): Response {
 	return Response.json(data, { status: code });
-}
-
-function findYtDlp(): string {
-	const candidates = [
-		join(process.env.HOME ?? '', '.local/bin/yt-dlp'),
-		'yt-dlp',
-		'yt-dlp.exe',
-	];
-	for (const c of candidates) {
-		if (c.includes('/') && existsSync(c)) return c;
-	}
-	return 'yt-dlp';
 }
 
 /**
@@ -128,17 +164,14 @@ type TtsResult = {
 let ttsCharacters = 0;
 let elevenClient: ElevenLabsClient | null = null;
 
-async function elevenLabsTts(
-	text: string,
-	voiceId?: string,
-	lang?: string,
-): Promise<TtsResult | null> {
+async function elevenLabsTts(text: string, voiceId?: string, lang?: string): Promise<TtsResult | null> {
 	if (!process.env.ELEVENLABS_API_KEY) return null;
 
-	const voice = voiceId
-		|| process.env.ELEVENLABS_VOICE_ID?.trim()
+	const voice =
+		voiceId ||
+		process.env.ELEVENLABS_VOICE_ID?.trim() ||
 		// Charlie — energetic (good default DJ energy)
-		|| 'IKne3meq5aSn9XLyUdCD';
+		'IKne3meq5aSn9XLyUdCD';
 
 	// The SDK reads ELEVENLABS_API_KEY itself
 	if (!elevenClient) elevenClient = new ElevenLabsClient();
@@ -167,9 +200,9 @@ async function elevenLabsTts(
 	// retry bare only for that, not for auth/quota (would double-spend).
 	const out = await (lang
 		? convert({ ...request, languageCode: lang }).catch((e: { statusCode?: number }) => {
-			if (e?.statusCode !== 400) throw e;
-			return convert(request);
-		})
+				if (e?.statusCode !== 400) throw e;
+				return convert(request);
+			})
 		: convert(request));
 
 	const headers = out.rawResponse.headers;
@@ -197,19 +230,16 @@ function openRouterAppMeta(): {
 	appCategories: string;
 } {
 	const httpReferer = (
-		process.env.OPENROUTER_HTTP_REFERER
-		|| process.env.OPENROUTER_SITE_URL
-		|| 'https://prairie-lakes-mall.local'
+		process.env.OPENROUTER_HTTP_REFERER ||
+		process.env.OPENROUTER_SITE_URL ||
+		'https://prairie-lakes-mall.local'
 	).trim();
 	const appTitle = (
-		process.env.OPENROUTER_APP_TITLE
-		|| process.env.OPENROUTER_TITLE
-		|| 'Prairie Lakes Mall SIM'
+		process.env.OPENROUTER_APP_TITLE ||
+		process.env.OPENROUTER_TITLE ||
+		'Prairie Lakes Mall SIM'
 	).trim();
-	const appCategories = (
-		process.env.OPENROUTER_APP_CATEGORIES
-		|| 'game,roleplay'
-	)
+	const appCategories = (process.env.OPENROUTER_APP_CATEGORIES || 'game,roleplay')
 		.trim()
 		.toLowerCase()
 		.replace(/\s+/g, '');
@@ -240,13 +270,19 @@ function getOpenRouter(): OpenRouter | null {
  */
 function sanitizeUserId(raw: unknown): string | undefined {
 	if (typeof raw !== 'string') return undefined;
-	const cleaned = raw.trim().replace(/[^\w.:\-@/]/g, '').slice(0, 128);
+	const cleaned = raw
+		.trim()
+		.replace(/[^\w.:\-@/]/g, '')
+		.slice(0, 128);
 	return cleaned.length >= 4 ? cleaned : undefined;
 }
 
 function sanitizeSessionId(raw: unknown): string | undefined {
 	if (typeof raw !== 'string') return undefined;
-	const cleaned = raw.trim().replace(/[^\w.:\-@/]/g, '').slice(0, 256);
+	const cleaned = raw
+		.trim()
+		.replace(/[^\w.:\-@/]/g, '')
+		.slice(0, 256);
 	return cleaned.length >= 4 ? cleaned : undefined;
 }
 
@@ -373,14 +409,12 @@ Context: ${context ?? 'corridor botsing'}
 			typeof content === 'string'
 				? content
 				: Array.isArray(content)
-				? content
-					.map((p) =>
-						typeof p === 'object' && p && 'text' in p
-							? String((p as { text?: string }).text ?? '')
-							: ''
-					)
-					.join('')
-				: ''
+					? content
+							.map((p) =>
+								typeof p === 'object' && p && 'text' in p ? String((p as { text?: string }).text ?? '') : '',
+							)
+							.join('')
+					: ''
 		).trim();
 
 		try {
@@ -398,9 +432,7 @@ Context: ${context ?? 'corridor botsing'}
 }
 
 /** Official YouTube Data API search — more reliable than yt-dlp ytsearch */
-async function youtubeSearch(
-	query: string,
-): Promise<{ videoId: string; title: string } | { error: string }> {
+async function youtubeSearch(query: string): Promise<{ videoId: string; title: string } | { error: string }> {
 	const key = process.env.YOUTUBE_API_KEY;
 	if (!key) return { error: 'no_youtube_api_key' };
 
@@ -431,25 +463,22 @@ async function youtubeSearch(
 	};
 }
 
-function newestMusicFile(beforeMs: number): string | undefined {
-	const list = listPlaylist()
-		.map((t) => ({
-			...t,
-			mtime: statSync(join(MUSIC_DIR, t.file)).mtimeMs,
-		}))
-		.filter((t) => t.mtime >= beforeMs - 500)
-		.sort((a, b) => b.mtime - a.mtime);
-	return list[0]?.file;
+async function newestMusicFile(beforeMs: number): Promise<string | undefined> {
+	const tracks = await listPlaylist();
+	const stamped = await Promise.all(
+		tracks.map(async (t) => ({
+			file: t.file,
+			mtime: Bun.file(join(MUSIC_DIR, t.file)).lastModified,
+		})),
+	);
+	return stamped.filter((t) => t.mtime >= beforeMs - 500).sort((a, b) => b.mtime - a.mtime)[0]?.file;
 }
 
-function runYtDlpUrl(
-	watchUrl: string,
-): Promise<{ ok: boolean; log: string; file?: string }> {
-	return new Promise((resolve) => {
-		ensureMusicDir();
-		const bin = findYtDlp();
-		const before = Date.now();
-		const outTpl = join(MUSIC_DIR, '%(title).80s.%(ext)s');
+async function runYtDlpUrl(watchUrl: string): Promise<{ ok: boolean; log: string; file?: string }> {
+	await ensureMusicDir();
+	const before = Date.now();
+	const outTpl = join(MUSIC_DIR, '%(title).80s.%(ext)s');
+	{
 		// Direct URL — no ytsearch. Audio-only from the start: `-f bestaudio`
 		// stops yt-dlp from ever pulling a video stream just to strip it again,
 		// which is most of the download time and bandwidth.
@@ -480,42 +509,51 @@ function runYtDlpUrl(
 			'15',
 			'-o',
 			outTpl,
+			// Sidecar with the real title, uploader and duration — the filename
+			// mangles all three (slashes, quotes, 80-char cap). One track, so no
+			// playlist metafiles; --clean-info-json is on by default.
+			'--write-info-json',
+			'--no-write-playlist-metafiles',
 			// Prefer clients that still get media (ytsearch was the flaky bit)
 			'--extractor-args',
 			'youtube:player_client=android,web',
 			watchUrl,
 		];
-		const child = spawn(bin, args, {
-			cwd: process.cwd(),
-			env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
-		});
-		let log = '';
-		child.stdout.on('data', (d) => {
-			log += d.toString();
-		});
-		child.stderr.on('data', (d) => {
-			log += d.toString();
-		});
-		child.on('error', (e) => resolve({ ok: false, log: String(e) }));
-		child.on('close', (code) => {
-			const file = newestMusicFile(before);
-			resolve({
-				ok: (code === 0 || code === 101) && !!file,
-				log: log.slice(-2500),
-				file,
+		try {
+			const proc = Bun.spawn(['yt-dlp', ...args], {
+				cwd: process.cwd(),
+				stdout: 'pipe',
+				stderr: 'pipe',
 			});
-		});
-	});
+			const [out, err, code] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+				proc.exited,
+			]);
+			const file = await newestMusicFile(before);
+			return {
+				// 101 = --match-filter rejected it; still not a crash
+				ok: (code === 0 || code === 101) && !!file,
+				log: `${out}${err}`.slice(-2500),
+				file,
+			};
+		} catch (e) {
+			return { ok: false, log: String(e) };
+		}
+	}
 }
 
 /** Search (YouTube API) → download (yt-dlp by URL). Fallback: ytsearch. */
 async function requestTrack(
 	query: string,
 ): Promise<{ ok: boolean; log: string; file?: string; title?: string; videoId?: string }> {
-	const clean = query.replace(/[^\w\s\-'.!&()áéíóúäëïöüàèìòùñç]/gi, ' ').trim().slice(0, 100);
+	const clean = query
+		.replace(/[^\w\s\-'.!&()áéíóúäëïöüàèìòùñç]/gi, ' ')
+		.trim()
+		.slice(0, 100);
 	if (!clean) return { ok: false, log: 'empty query' };
 
-	ensureMusicDir();
+	await ensureMusicDir();
 	let watchUrl = '';
 	let title: string | undefined;
 	let videoId: string | undefined;
@@ -552,14 +590,6 @@ async function requestTrack(
 	};
 }
 
-/** Streams a byte range as a web body, without buffering the file. */
-function fileBody(full: string, start?: number, end?: number): ReadableStream {
-	const stream = start === undefined
-		? createReadStream(full)
-		: createReadStream(full, { start, end });
-	return Readable.toWeb(stream) as unknown as ReadableStream;
-}
-
 /** Returns null when the request is not an API route (caller serves static). */
 export async function handleApi(req: Request, ip: string): Promise<Response | null> {
 	const url = new URL(req.url).pathname;
@@ -584,7 +614,7 @@ export async function handleApi(req: Request, ip: string): Promise<Response | nu
 				openrouterReferer: openRouterAppMeta().httpReferer,
 				/** Broadcast optional fields sent on /api/sim/chat */
 				openrouterBroadcast: ['user', 'session_id', 'trace'],
-				tracks: listPlaylist().length,
+				tracks: (await listPlaylist()).length,
 				ttsCharacters,
 				booth: 'DJ Bartek · Trap-gat · Prairie Lakes',
 				voice: process.env.ELEVENLABS_VOICE_ID?.trim() || 'pNInz6obpgDQGcFmaJgB',
@@ -609,13 +639,7 @@ export async function handleApi(req: Request, ip: string): Promise<Response | nu
 			}
 			const sessionId = sanitizeSessionId(body.sessionId ?? body.session_id);
 			const userId = sanitizeUserId(body.user ?? body.userId ?? body.user_id);
-			const result = await simChatExchange(
-				body.a,
-				body.b,
-				body.context,
-				sessionId,
-				userId,
-			);
+			const result = await simChatExchange(body.a, body.b, body.context, sessionId, userId);
 			if ('error' in result) {
 				return json(502, { ok: false, error: result.error });
 			}
@@ -628,7 +652,7 @@ export async function handleApi(req: Request, ip: string): Promise<Response | nu
 		}
 
 		if (url === '/api/dj/playlist' && req.method === 'GET') {
-			return json(200, { tracks: listPlaylist() });
+			return json(200, { tracks: await listPlaylist() });
 		}
 
 		if (url === '/api/dj/request' && req.method === 'POST') {
@@ -641,7 +665,7 @@ export async function handleApi(req: Request, ip: string): Promise<Response | nu
 				file: result.file,
 				title: result.title,
 				videoId: result.videoId,
-				tracks: listPlaylist(),
+				tracks: await listPlaylist(),
 				log: result.log.slice(-800),
 				error: result.ok ? undefined : 'download_failed',
 			});
@@ -686,10 +710,10 @@ export async function handleApi(req: Request, ip: string): Promise<Response | nu
 		if (url.startsWith('/api/dj/file/') && req.method === 'GET') {
 			const name = decodeURIComponent(url.replace('/api/dj/file/', ''));
 			const safe = basename(name);
-			const full = join(MUSIC_DIR, safe);
-			if (!existsSync(full)) return json(404, { error: 'not found' });
+			const track = Bun.file(join(MUSIC_DIR, safe));
+			if (!(await track.exists())) return json(404, { error: 'not found' });
 
-			const size = statSync(full).size;
+			const size = track.size;
 			const base = {
 				'Content-Type': AUDIO_MIME[extname(safe).toLowerCase()] ?? 'audio/mpeg',
 				'Accept-Ranges': 'bytes',
@@ -709,7 +733,7 @@ export async function handleApi(req: Request, ip: string): Promise<Response | nu
 						headers: { ...base, 'Content-Range': `bytes */${size}` },
 					});
 				}
-				return new Response(fileBody(full, start, end), {
+				return new Response(track.slice(start, end + 1), {
 					status: 206,
 					headers: {
 						...base,
@@ -719,7 +743,7 @@ export async function handleApi(req: Request, ip: string): Promise<Response | nu
 				});
 			}
 
-			return new Response(fileBody(full), {
+			return new Response(track, {
 				headers: { ...base, 'Content-Length': String(size) },
 			});
 		}

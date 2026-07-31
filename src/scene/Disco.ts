@@ -1,5 +1,6 @@
+import { ShittyDiscoMusic } from '@/audio/ShittyDisco';
+import { at } from '@/util/rand';
 import * as THREE from 'three';
-import { ShittyDiscoMusic } from '../audio/ShittyDisco';
 
 /**
  * Dance party: arcade neon comeback + disco balls + shitty funny music.
@@ -42,9 +43,8 @@ export class DiscoParty {
 
 		const colors = [0xff0088, 0x00ffcc, 0xffee00, 0x8800ff, 0x00aaff, 0xff4400];
 
-		for (let i = 0; i < spots.length; i++) {
-			const [x, y, z] = spots[i];
-			const col = colors[i % colors.length];
+		spots.forEach(([x, y, z], i) => {
+			const col = at(colors, i);
 			const light = new THREE.PointLight(col, 0, 32, 1.5);
 			light.position.set(x, y, z);
 			this.group.add(light);
@@ -82,7 +82,7 @@ export class DiscoParty {
 			glow.position.set(x, y > 7 ? 6.05 : 0.05, z);
 			this.group.add(glow);
 			this.floorGlow.push(glow);
-		}
+		});
 
 		// Arcade neon edge strips
 		const edges: [number, number, number, number, number, number][] = [
@@ -177,28 +177,27 @@ export class DiscoParty {
 		this.t += dt;
 		// Pulse with the boom-bam-bam-boom (~118bpm)
 		const beat = Math.pow(Math.max(0, Math.sin(this.t * Math.PI * (118 / 60) * 2)), 4);
-		for (let i = 0; i < this.lights.length; i++) {
-			const l = this.lights[i];
+		this.lights.forEach((l, i) => {
 			// Dim base + soft beat flash — not a nuclear flashbang
 			l.intensity = 2.8 + beat * 3.2 + Math.sin(this.t * 2 + i) * 0.6;
 			const c = new THREE.Color().setHSL((this.t * 0.18 + i * 0.11) % 1, 0.95, 0.48);
 			l.color.copy(c);
-			const ball = this.balls[i];
+			const ball = at(this.balls, i);
 			ball.rotation.y += dt * (1.8 + i * 0.1);
 			ball.rotation.x += dt * 0.9;
 			const mat = ball.material as THREE.MeshStandardMaterial;
 			mat.emissive.copy(c);
 			mat.emissiveIntensity = 0.35 + beat * 0.45;
-			const glow = this.floorGlow[i];
+			const glow = at(this.floorGlow, i);
 			(glow.material as THREE.MeshBasicMaterial).color.copy(c);
 			(glow.material as THREE.MeshBasicMaterial).opacity = 0.1 + beat * 0.14;
-		}
-		for (let i = 0; i < this.neonStrips.length; i++) {
-			const m = this.neonStrips[i].material as THREE.MeshStandardMaterial;
+		});
+		this.neonStrips.forEach((strip, i) => {
+			const m = strip.material as THREE.MeshStandardMaterial;
 			const c = new THREE.Color().setHSL((this.t * 0.25 + i * 0.18) % 1, 1, 0.5);
 			m.color.copy(c);
 			m.emissive.copy(c);
 			m.emissiveIntensity = 0.7 + beat * 0.9;
-		}
+		});
 	}
 }

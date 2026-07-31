@@ -112,18 +112,18 @@ export class DJBartek {
 		// Bob to imaginary beat
 		const pulse = musicOn ? 1 : 0.35;
 		for (const p of this.bobParts) {
-			p.position.y = (p.userData.baseY as number)
-				+ Math.sin(t * (musicOn ? 8 : 2) + p.userData.phase) * 0.04 * pulse;
+			const baseY = p.userData['baseY'] ?? 0;
+			const phase = p.userData['phase'] ?? 0;
+			p.position.y = baseY + Math.sin(t * (musicOn ? 8 : 2) + phase) * 0.04 * pulse;
 		}
 		this.decks.rotation.y = Math.sin(t * 0.5) * 0.05;
 		this.glow.intensity = 3 + Math.sin(t * (musicOn ? 10 : 2)) * 1.5 * pulse;
 		this.nameSprite.material.rotation = Math.sin(t * 1.5) * 0.02;
 
 		// Groupies bounce & cheer harder when music is on
-		for (let i = 0; i < this.groupies.length; i++) {
-			const g = this.groupies[i];
-			const base = g.userData.baseY as number;
-			const phase = g.userData.phase as number;
+		for (const g of this.groupies) {
+			const base = g.userData['baseY'] ?? 0;
+			const phase = g.userData['phase'] ?? 0;
 			const amp = musicOn ? 0.14 : 0.05;
 			g.position.y = base + Math.abs(Math.sin(t * (musicOn ? 9 : 3) + phase)) * amp;
 			g.rotation.y = Math.sin(t * 1.2 + phase) * 0.25;
@@ -152,21 +152,12 @@ export class DJBartek {
 			{ shirt: 0x00e5ff, hair: 0x2c1810, x: 1.55, z: 1.75 },
 			{ shirt: 0xffd700, hair: 0xd35400, x: 0.15, z: 2.1 },
 		];
-		for (let i = 0; i < looks.length; i++) {
-			const L = looks[i];
+		looks.forEach((L, i) => {
 			const g = new THREE.Group();
-			const skin = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xf5c9a8, roughness: 0.8 }),
-			);
-			const top = this.track(
-				new THREE.MeshStandardMaterial({ color: L.shirt, roughness: 0.55 }),
-			);
-			const legs = this.track(
-				new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7 }),
-			);
-			const hairM = this.track(
-				new THREE.MeshStandardMaterial({ color: L.hair, roughness: 0.85 }),
-			);
+			const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xf5c9a8, roughness: 0.8 }));
+			const top = this.track(new THREE.MeshStandardMaterial({ color: L.shirt, roughness: 0.55 }));
+			const legs = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7 }));
+			const hairM = this.track(new THREE.MeshStandardMaterial({ color: L.hair, roughness: 0.85 }));
 
 			const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.55, 4, 6), legs);
 			leg.position.y = 0.5;
@@ -187,10 +178,7 @@ export class DJBartek {
 			const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), skin);
 			head.position.y = 1.85;
 			g.add(head);
-			const hair = new THREE.Mesh(
-				new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6),
-				hairM,
-			);
+			const hair = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), hairM);
 			hair.position.set(0, 1.95, -0.02);
 			g.add(hair);
 			// phone / hand in air
@@ -223,11 +211,11 @@ export class DJBartek {
 			g.add(fan);
 
 			g.position.set(L.x, 0, L.z);
-			g.userData.baseY = 0;
-			g.userData.phase = i * 1.7;
+			g.userData['baseY'] = 0;
+			g.userData['phase'] = i * 1.7;
 			this.groupies.push(g);
 			this.group.add(g);
-		}
+		});
 	}
 
 	private buildBooth(): void {
@@ -272,13 +260,7 @@ export class DJBartek {
 		}
 
 		// Back banner
-		const banner = this.makeCanvasPlane(
-			['DJ BARTEK', 'BARTEK BARTEK', 'REQUESTS · E'],
-			1.8,
-			0.7,
-			'#0f172a',
-			'#f472b6',
-		);
+		const banner = this.makeCanvasPlane(['DJ BARTEK', 'BARTEK BARTEK', 'REQUESTS · E'], 1.8, 0.7, '#0f172a', '#f472b6');
 		banner.position.set(0, 2.35, -0.9);
 		this.group.add(banner);
 	}
@@ -297,8 +279,8 @@ export class DJBartek {
 				this.track(new THREE.MeshBasicMaterial({ color: 0xa855f7 })),
 			);
 			disc.position.set(dx, 0.04, 0);
-			disc.userData.baseY = 0.04;
-			disc.userData.phase = dx;
+			disc.userData['baseY'] = 0.04;
+			disc.userData['phase'] = dx;
 			this.bobParts.push(disc);
 			g.add(deck, disc);
 		}
@@ -326,15 +308,15 @@ export class DJBartek {
 
 		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.45, 4, 8), shirt);
 		torso.position.y = 1.25;
-		torso.userData.baseY = 1.25;
-		torso.userData.phase = 0.3;
+		torso.userData['baseY'] = 1.25;
+		torso.userData['phase'] = 0.3;
 		this.bobParts.push(torso);
 		body.add(torso);
 
 		const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), skin);
 		head.position.y = 1.78;
-		head.userData.baseY = 1.78;
-		head.userData.phase = 1.1;
+		head.userData['baseY'] = 1.78;
+		head.userData['phase'] = 1.1;
 		this.bobParts.push(head);
 		body.add(head);
 
@@ -412,13 +394,7 @@ export class DJBartek {
 		return sp;
 	}
 
-	private makeCanvasPlane(
-		lines: string[],
-		w: number,
-		h: number,
-		bg: string,
-		fg: string,
-	): THREE.Mesh {
+	private makeCanvasPlane(lines: string[], w: number, h: number, bg: string, fg: string): THREE.Mesh {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 256;
@@ -469,22 +445,10 @@ export const BARTEK_LINES = {
 		'Prairie Lakes, Bartek in the building.',
 		'Ik hoor jullie niet. LUIDER. Bartek wil drama!',
 	],
-	crowdReact: [
-		'BARTEK! BARTEK!',
-		'Squeak… drop… squeak!',
-		'Komunicare: banger detected',
-		'Thicc and thriving!',
-	],
+	crowdReact: ['BARTEK! BARTEK!', 'Squeak… drop… squeak!', 'Komunicare: banger detected', 'Thicc and thriving!'],
 };
 
-function roundRect(
-	ctx: CanvasRenderingContext2D,
-	x: number,
-	y: number,
-	w: number,
-	h: number,
-	r: number,
-): void {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
 	ctx.beginPath();
 	ctx.moveTo(x + r, y);
 	ctx.arcTo(x + w, y, x + w, y + h, r);

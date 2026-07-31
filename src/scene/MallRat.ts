@@ -1,5 +1,6 @@
+import type { CollisionWorld } from '@/physics/Collision';
+import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
-import type { CollisionWorld } from '../physics/Collision';
 
 /**
  * Mall rat — scurries like the baard-dief, but smaller & more often.
@@ -51,8 +52,8 @@ export class MallRat {
 				new THREE.Vector3(18, 0.05, 8),
 			],
 		];
-		this.path = routes[Math.floor(Math.random() * routes.length)];
-		this.mesh.position.copy(this.path[0]);
+		this.path = pick(routes);
+		this.mesh.position.copy(at(this.path, 0));
 	}
 
 	update(dt: number): void {
@@ -67,8 +68,8 @@ export class MallRat {
 			this.mesh.visible = false;
 			return;
 		}
-		const a = this.path[this.i];
-		const b = this.path[this.i + 1];
+		const a = at(this.path, this.i);
+		const b = at(this.path, this.i + 1);
 		this.t += dt * 1.35; // faster than thief
 		if (this.t >= 1) {
 			this.t = 0;

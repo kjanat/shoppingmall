@@ -1,5 +1,6 @@
+import { speakLine } from '@/audio/ElevenVoice';
+import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
-import { speakLine } from '../audio/ElevenVoice';
 
 /** Parking garage deck */
 const FLOOR_B = -6.0;
@@ -23,26 +24,14 @@ const HANS_GREET = [
 	'Stap in. Garage, winkels of dak — Hans regelt het.',
 ];
 const HANS_LINES: Record<0 | 1 | 2 | 3, string[]> = {
-	0: [
-		"Parkeergarage. Let op auto's.",
-		'P1 garage. Ticket bij de kiosk.',
-		'Ondergronds. Lift terug is hier.',
-	],
-	1: [
-		'Begane grond. Let op de stap.',
-		'Begane grond. Deuren open.',
-		'Begane grond. Prettige dag verder.',
-	],
+	0: ["Parkeergarage. Let op auto's.", 'P1 garage. Ticket bij de kiosk.', 'Ondergronds. Lift terug is hier.'],
+	1: ['Begane grond. Let op de stap.', 'Begane grond. Deuren open.', 'Begane grond. Prettige dag verder.'],
 	2: [
 		'Verdieping één. Kruidvat is links.',
 		'Eerste verdieping. Deuren open.',
 		'Verdieping één. Food court op het balkon.',
 	],
-	3: [
-		'Dak. Helipad en frisse lucht.',
-		'Dak. Niet van de rand vallen.',
-		'Dakterras. Helikopter is die kant op.',
-	],
+	3: ['Dak. Helipad en frisse lucht.', 'Dak. Niet van de rand vallen.', 'Dakterras. Helikopter is die kant op.'],
 };
 
 /**
@@ -124,13 +113,14 @@ export class GlassElevator {
 	 * @returns false if already there or invalid
 	 */
 	requestFloor(stopIdx: number): boolean {
-		if (stopIdx < 0 || stopIdx >= STOPS.length) return false;
-		if (Math.abs(STOPS[stopIdx] - this.cabinY) < 0.2) {
+		const stopY = STOPS[stopIdx];
+		if (stopY === undefined) return false;
+		if (Math.abs(stopY - this.cabinY) < 0.2) {
 			this.hansSay('Je bent er al, baas.', true);
 			return false;
 		}
 		this.stopIdx = stopIdx;
-		this.targetY = STOPS[stopIdx];
+		this.targetY = stopY;
 		this.holdForCall = false;
 		this.waitT = 0;
 		this.moving = true;
@@ -159,9 +149,7 @@ export class GlassElevator {
 	contains(x: number, z: number, margin = 0.15): boolean {
 		const hx = CABIN_W * 0.5 - margin;
 		const hz = CABIN_D * 0.5 - margin;
-		return (
-			Math.abs(x - this.pos.x) <= hx && Math.abs(z - this.pos.z) <= hz
-		);
+		return Math.abs(x - this.pos.x) <= hx && Math.abs(z - this.pos.z) <= hz;
 	}
 
 	/** Result of looking at elevator controls (FPS reticle). */
@@ -175,9 +163,9 @@ export class GlassElevator {
 		for (const h of hits) {
 			let o: THREE.Object3D | null = h.object;
 			while (o) {
-				const k = o.userData.elevInteract as string | undefined;
+				const k = o.userData['elevInteract'];
 				if (k === 'call') {
-					return { kind: 'call', floorIdx: o.userData.elevFloor as number };
+					return { kind: 'call', floorIdx: o.userData['elevFloor'] };
 				}
 				if (k === 'hans') return { kind: 'hans' };
 				if (k === 'panel') return { kind: 'panel' };
@@ -212,16 +200,17 @@ export class GlassElevator {
 	 * Does not open the destination menu — just brings Hans here.
 	 */
 	callToFloor(stopIdx: number): boolean {
-		if (stopIdx < 0 || stopIdx >= STOPS.length) return false;
+		const stopY = STOPS[stopIdx];
+		if (stopY === undefined) return false;
 		// Already here and idle → open doors
-		if (!this.moving && Math.abs(STOPS[stopIdx] - this.cabinY) < 0.25) {
+		if (!this.moving && Math.abs(stopY - this.cabinY) < 0.25) {
 			this.waitT = Math.max(this.waitT, 3);
 			this.holdForCall = false;
 			this.hansSay(pick(HANS_LINES[stopIdx as 0 | 1 | 2 | 3]), true);
 			return true;
 		}
 		this.stopIdx = stopIdx;
-		this.targetY = STOPS[stopIdx];
+		this.targetY = stopY;
 		this.holdForCall = false;
 		this.waitT = 0;
 		this.moving = true;
@@ -231,11 +220,11 @@ export class GlassElevator {
 	}
 
 	private tagInteract(obj: THREE.Object3D, kind: string, floorIdx?: number): void {
-		obj.userData.elevInteract = kind;
-		if (floorIdx !== undefined) obj.userData.elevFloor = floorIdx;
+		obj.userData['elevInteract'] = kind;
+		if (floorIdx !== undefined) obj.userData['elevFloor'] = floorIdx;
 		obj.traverse((c) => {
-			c.userData.elevInteract = kind;
-			if (floorIdx !== undefined) c.userData.elevFloor = floorIdx;
+			c.userData['elevInteract'] = kind;
+			if (floorIdx !== undefined) c.userData['elevFloor'] = floorIdx;
 		});
 		this.interactables.push(obj);
 	}
@@ -292,12 +281,12 @@ export class GlassElevator {
 			btn.scale.setScalar(scale);
 		}
 
-		const inside = !!playerPos
-			&& this.contains(playerPos.x, playerPos.z)
-			&& Math.abs(playerPos.y - (this.cabinY + 1.6)) < 2.2;
-		const near = !!playerPos
-			&& Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z) < 5.5
-			&& Math.abs(playerPos.y - (this.cabinY + 1.6)) < 3.5;
+		const inside =
+			!!playerPos && this.contains(playerPos.x, playerPos.z) && Math.abs(playerPos.y - (this.cabinY + 1.6)) < 2.2;
+		const near =
+			!!playerPos &&
+			Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z) < 5.5 &&
+			Math.abs(playerPos.y - (this.cabinY + 1.6)) < 3.5;
 
 		// Board: soft greet, hold still — NO menu / focus steal (E opens menu)
 		if (inside && !this.wasInside) {
@@ -329,12 +318,8 @@ export class GlassElevator {
 					const next = this.stopIdx + this.travelDir;
 					if (next >= STOPS.length - 1) this.travelDir = -1;
 					if (next <= 0) this.travelDir = 1;
-					this.stopIdx = THREE.MathUtils.clamp(
-						this.stopIdx + this.travelDir,
-						0,
-						STOPS.length - 1,
-					);
-					this.targetY = STOPS[this.stopIdx];
+					this.stopIdx = THREE.MathUtils.clamp(this.stopIdx + this.travelDir, 0, STOPS.length - 1);
+					this.targetY = at(STOPS, this.stopIdx);
 					this.moving = true;
 				}
 			}
@@ -345,10 +330,7 @@ export class GlassElevator {
 			const dir = Math.sign(this.targetY - this.cabinY);
 			if (dir !== 0) {
 				this.cabinY += dir * SPEED * dt;
-				if (
-					(dir > 0 && this.cabinY >= this.targetY)
-					|| (dir < 0 && this.cabinY <= this.targetY)
-				) {
+				if ((dir > 0 && this.cabinY >= this.targetY) || (dir < 0 && this.cabinY <= this.targetY)) {
 					this.cabinY = this.targetY;
 					this.moving = false;
 					this.waitT = 3.2 + Math.random() * 1.5;
@@ -379,26 +361,20 @@ export class GlassElevator {
 		}
 
 		// Floor indicator
-		const fl = this.cabinY < -2
-			? 'P1'
-			: this.cabinY > 10
-			? 'DAK'
-			: this.cabinY > 3
-			? 'V1'
-			: 'V0';
+		const fl = this.cabinY < -2 ? 'P1' : this.cabinY > 10 ? 'DAK' : this.cabinY > 3 ? 'V1' : 'V0';
 		this.paintSign(fl, this.waitT > 0 ? 'OPEN' : '▲▼');
 	}
 
 	private nearestStopIdx(y: number): number {
 		let best = 0;
 		let bestD = Infinity;
-		for (let i = 0; i < STOPS.length; i++) {
-			const d = Math.abs(STOPS[i] - y);
+		STOPS.forEach((stopY, i) => {
+			const d = Math.abs(stopY - y);
 			if (d < bestD) {
 				bestD = d;
 				best = i;
 			}
-		}
+		});
 		return best;
 	}
 
@@ -488,36 +464,30 @@ export class GlassElevator {
 		const postTop = FLOOR2 + 3.0;
 		const postH = postTop - postBottom;
 		const postMid = (postTop + postBottom) / 2;
-		for (
-			const [sx, sz] of [
-				[-1.1, -1.1],
-				[1.1, -1.1],
-				[-1.1, 1.1],
-				[1.1, 1.1],
-			] as const
-		) {
+		for (const [sx, sz] of [
+			[-1.1, -1.1],
+			[1.1, -1.1],
+			[-1.1, 1.1],
+			[1.1, 1.1],
+		] as const) {
 			const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, postH, 0.12), chrome);
 			post.position.set(sx, postMid, sz);
 			this.group.add(post);
 		}
 
 		// Glass shaft panels (N, W, E) — open south for boarding all floors
-		for (
-			const [x, z, w, d] of [
-				[0, -1.12, 2.15, 0.04],
-				[-1.12, 0, 0.04, 2.15],
-				[1.12, 0, 0.04, 2.15],
-			] as const
-		) {
+		for (const [x, z, w, d] of [
+			[0, -1.12, 2.15, 0.04],
+			[-1.12, 0, 0.04, 2.15],
+			[1.12, 0, 0.04, 2.15],
+		] as const) {
 			const panel = new THREE.Mesh(new THREE.BoxGeometry(w, postH - 0.4, d), glass);
 			panel.position.set(x, postMid, z);
 			this.group.add(panel);
 		}
 
 		// Floor plates at landings P1 / V0 / V1 / dak
-		const padMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.4, roughness: 0.5 }),
-		);
+		const padMat = this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.4, roughness: 0.5 }));
 		const roofPadMat = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0x546e7a,
@@ -525,13 +495,10 @@ export class GlassElevator {
 				roughness: 0.45,
 			}),
 		);
-		const garagePadMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.85 }),
-		);
+		const garagePadMat = this.track(new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.85 }));
 		const stopYs = [FLOOR_B, FLOOR0, FLOOR1, FLOOR2];
 		const codes = ['P1', 'V0', 'V1', 'DAK'];
-		for (let floorIdx = 0; floorIdx < stopYs.length; floorIdx++) {
-			const y = stopYs[floorIdx];
+		stopYs.forEach((y, floorIdx) => {
 			const isRoof = y > 10;
 			const isGarage = y < -1;
 			const pad = new THREE.Mesh(
@@ -562,12 +529,12 @@ export class GlassElevator {
 				btn.position.set(1.4, y + 1.25, 1.2);
 				this.group.add(btn);
 				this.tagInteract(btn, 'call', floorIdx);
-				const label = this.makeCallSign(codes[floorIdx], 1.1, 0.55);
+				const label = this.makeCallSign(at(codes, floorIdx), 1.1, 0.55);
 				label.position.set(1.4, y + 1.75, 1.28);
 				this.group.add(label);
 				this.tagInteract(label, 'call', floorIdx);
 			}
-		}
+		});
 
 		// Soft light in shaft
 		const light = new THREE.PointLight(0xe3f2fd, 2.2, 14, 2);
@@ -608,12 +575,7 @@ export class GlassElevator {
 	 * Tall green call pedestal on the dak.
 	 * @param localX/localZ relative to shaft center (group origin)
 	 */
-	private buildRoofCallStation(
-		floorIdx: number,
-		localX: number,
-		localZ: number,
-		primary: boolean,
-	): void {
+	private buildRoofCallStation(floorIdx: number, localX: number, localZ: number, primary: boolean): void {
 		const station = new THREE.Group();
 		station.position.set(localX, FLOOR2, localZ);
 
@@ -815,10 +777,7 @@ export class GlassElevator {
 		mkWall(0.04, CABIN_D - 0.15, CABIN_W / 2 - 0.05, 0);
 
 		// Sliding glass doors (south = boarding)
-		this.doorL = new THREE.Mesh(
-			new THREE.BoxGeometry(0.9, wallH - 0.1, 0.05),
-			glass,
-		);
+		this.doorL = new THREE.Mesh(new THREE.BoxGeometry(0.9, wallH - 0.1, 0.05), glass);
 		this.doorL.position.set(-0.42, wallH / 2 + 0.1, CABIN_D / 2 - 0.04);
 		this.cabin.add(this.doorL);
 		this.doorR = this.doorL.clone();
@@ -826,10 +785,7 @@ export class GlassElevator {
 		this.cabin.add(this.doorR);
 
 		// Handrail
-		const rail = new THREE.Mesh(
-			new THREE.TorusGeometry(0.35, 0.025, 6, 16, Math.PI),
-			chrome,
-		);
+		const rail = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.025, 6, 16, Math.PI), chrome);
 		rail.rotation.x = Math.PI / 2;
 		rail.position.set(0, 1.1, -0.75);
 		this.cabin.add(rail);
@@ -837,9 +793,7 @@ export class GlassElevator {
 		// Control panel (look + E)
 		const panel = new THREE.Mesh(
 			new THREE.BoxGeometry(0.32, 0.6, 0.1),
-			this.track(
-				new THREE.MeshStandardMaterial({ color: 0x263238, metalness: 0.5, roughness: 0.4 }),
-			),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x263238, metalness: 0.5, roughness: 0.4 })),
 		);
 		panel.position.set(0.75, 1.25, -0.85);
 		this.cabin.add(panel);
@@ -868,15 +822,9 @@ export class GlassElevator {
 		g.position.set(-0.62, 0.02, -0.62);
 		g.rotation.y = Math.PI * 0.75;
 
-		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }),
-		);
-		const uni = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.7 }),
-		);
-		const pants = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x0d1545, roughness: 0.8 }),
-		);
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }));
+		const uni = this.track(new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.7 }));
+		const pants = this.track(new THREE.MeshStandardMaterial({ color: 0x0d1545, roughness: 0.8 }));
 		const gold = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0xffd700,
@@ -884,9 +832,7 @@ export class GlassElevator {
 				roughness: 0.3,
 			}),
 		);
-		const hairM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
-		);
+		const hairM = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }));
 
 		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.42, 3, 6), pants);
 		const legR = legL.clone();
@@ -908,18 +854,12 @@ export class GlassElevator {
 		const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), skin);
 		head.position.y = 1.5;
 		g.add(head);
-		const hair = new THREE.Mesh(
-			new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
-			hairM,
-		);
+		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
 		hair.position.set(0, 1.56, -0.01);
 		g.add(hair);
 
 		// Cap
-		const cap = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.16, 0.17, 0.1, 12),
-			uni,
-		);
+		const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.1, 12), uni);
 		cap.position.set(0, 1.68, 0);
 		g.add(cap);
 		const brim = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.12), uni);
@@ -952,9 +892,7 @@ export class GlassElevator {
 		ctx.fillText('Glazen lift · V0 ↔ V1', 128, 50);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 		sp.scale.set(1.2, 0.3, 1);
 		sp.position.set(0, 2.05, 0);
 		g.add(sp);
@@ -1040,8 +978,4 @@ export class GlassElevator {
 		ctx.fillText(state, 180, 58);
 		this.signTex.needsUpdate = true;
 	}
-}
-
-function pick(arr: string[]): string {
-	return arr[Math.floor(Math.random() * arr.length)];
 }

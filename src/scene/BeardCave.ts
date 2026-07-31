@@ -116,24 +116,19 @@ export class BeardCave {
 		pR.position.set(0.55, 1.25, 1.15);
 		this.group.add(pL, pR);
 
-		const arch = new THREE.Mesh(
-			new THREE.TorusGeometry(1.25, 0.28, 8, 16, Math.PI),
-			rock,
-		);
+		const arch = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.28, 8, 16, Math.PI), rock);
 		arch.rotation.z = Math.PI / 2;
 		arch.rotation.y = Math.PI / 2;
 		arch.position.set(0.55, 2.15, 0);
 		this.group.add(arch);
 
 		// Rocky boulders framing the entrance
-		for (
-			const [x, y, z, s] of [
-				[0.9, 0.35, -1.7, 0.55],
-				[1.0, 0.28, 1.65, 0.48],
-				[-0.3, 0.4, -2.0, 0.42],
-				[-0.2, 0.32, 2.05, 0.5],
-			] as const
-		) {
+		for (const [x, y, z, s] of [
+			[0.9, 0.35, -1.7, 0.55],
+			[1.0, 0.28, 1.65, 0.48],
+			[-0.3, 0.4, -2.0, 0.42],
+			[-0.2, 0.32, 2.05, 0.5],
+		] as const) {
 			const b = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rock);
 			b.position.set(x, y, z);
 			b.rotation.set(Math.random(), Math.random(), Math.random());
@@ -203,9 +198,7 @@ export class BeardCave {
 				roughness: 0.28,
 			}),
 		);
-		const wood = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.9 }),
-		);
+		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.9 }));
 
 		// Treasure chest
 		const chest = new THREE.Group();
@@ -227,17 +220,10 @@ export class BeardCave {
 
 		// Overflowing coin pile on chest
 		for (let i = 0; i < 28; i++) {
-			const coin = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.08, 0.08, 0.03, 10),
-				i % 3 === 0 ? goldSoft : gold,
-			);
+			const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.03, 10), i % 3 === 0 ? goldSoft : gold);
 			const a = Math.random() * Math.PI * 2;
 			const r = Math.random() * 0.38;
-			coin.position.set(
-				-1.35 + Math.cos(a) * r,
-				0.72 + Math.random() * 0.35,
-				0.1 + Math.sin(a) * r * 0.7,
-			);
+			coin.position.set(-1.35 + Math.cos(a) * r, 0.72 + Math.random() * 0.35, 0.1 + Math.sin(a) * r * 0.7);
 			coin.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.4;
 			coin.rotation.z = Math.random() * Math.PI;
 			this.lootGroup.add(coin);
@@ -262,13 +248,11 @@ export class BeardCave {
 		}
 
 		// Goblets
-		for (
-			const [x, z] of [
-				[-0.55, 1.1],
-				[-1.9, 1.0],
-				[-0.7, -1.2],
-			] as const
-		) {
+		for (const [x, z] of [
+			[-0.55, 1.1],
+			[-1.9, 1.0],
+			[-0.7, -1.2],
+		] as const) {
 			const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.07, 0.22, 8), gold);
 			cup.position.set(x, 0.28, z);
 			this.lootGroup.add(cup);
@@ -298,11 +282,7 @@ export class BeardCave {
 				new THREE.TorusGeometry(0.14 + Math.random() * 0.06, 0.022, 6, 14),
 				i % 2 ? gold : silver,
 			);
-			chain.position.set(
-				-1.2 + (Math.random() - 0.5) * 1.2,
-				0.25 + Math.random() * 0.5,
-				(Math.random() - 0.5) * 2.2,
-			);
+			chain.position.set(-1.2 + (Math.random() - 0.5) * 1.2, 0.25 + Math.random() * 0.5, (Math.random() - 0.5) * 2.2);
 			chain.rotation.set(Math.random(), Math.random(), Math.random());
 			this.lootGroup.add(chain);
 		}
@@ -322,11 +302,7 @@ export class BeardCave {
 		// Stacked ingots
 		for (let i = 0; i < 8; i++) {
 			const bar = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 0.14), goldSoft);
-			bar.position.set(
-				-0.4 + (i % 3) * 0.12,
-				0.2 + Math.floor(i / 3) * 0.09,
-				-1.55 + (i % 2) * 0.08,
-			);
+			bar.position.set(-0.4 + (i % 3) * 0.12, 0.2 + Math.floor(i / 3) * 0.09, -1.55 + (i % 2) * 0.08);
 			bar.rotation.y = (Math.random() - 0.5) * 0.3;
 			this.lootGroup.add(bar);
 		}
@@ -400,20 +376,12 @@ export class BeardCave {
 			});
 			const tex = new THREE.CanvasTexture(c);
 			tex.colorSpace = THREE.SRGBColorSpace;
-			return this.track(
-				new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
-			);
+			return this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
 		};
 
 		const doorSign = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.8, 0.9),
-			makePlate(
-				["BEARD-MAN'S CAVE", 'JUWELEN · GOUD', 'baard-dief only 💀'],
-				512,
-				256,
-				'#1a1208',
-				'#ffd700',
-			),
+			makePlate(["BEARD-MAN'S CAVE", 'JUWELEN · GOUD', 'baard-dief only 💀'], 512, 256, '#1a1208', '#ffd700'),
 		);
 		doorSign.position.set(0.75, 2.55, 0);
 		doorSign.rotation.y = Math.PI / 2;

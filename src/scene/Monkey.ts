@@ -1,5 +1,6 @@
+import type { CollisionWorld } from '@/physics/Collision';
+import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
-import type { CollisionWorld } from '../physics/Collision';
 
 const GRAVITY = 18;
 /** seconds of flight the monkey aims for — a proper lob, not a bullet */
@@ -198,7 +199,7 @@ export class Monkey {
 
 	private sit(index: number): void {
 		this.perch = index % PERCHES.length;
-		const [x, y, z] = PERCHES[this.perch];
+		const [x, y, z] = at(PERCHES, this.perch);
 		this.group.position.set(x, y, z);
 	}
 
@@ -266,21 +267,17 @@ export class Monkey {
 			{ y: 0.17, r: 0.085, s: 0.95 },
 			{ y: 0.24, r: 0.055, s: 0.85 },
 		];
-		for (let i = 0; i < layers.length; i++) {
-			const L = layers[i];
-			const mat = this.poopMats[i % this.poopMats.length];
+		layers.forEach((L, i) => {
+			const mat = at(this.poopMats, i);
 			const blob = new THREE.Mesh(new THREE.SphereGeometry(L.r, 10, 8), mat);
 			blob.position.y = L.y;
 			blob.scale.set(L.s, 0.75 + Math.random() * 0.15, L.s * 0.95);
 			blob.rotation.y = Math.random() * Math.PI;
 			blob.castShadow = true;
 			g.add(blob);
-		}
+		});
 		// Pointy tip curl
-		const tip = new THREE.Mesh(
-			new THREE.ConeGeometry(0.04, 0.08, 6),
-			this.poopMats[0],
-		);
+		const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.08, 6), this.poopMats[0]);
 		tip.position.set(0.02, 0.3, 0);
 		tip.rotation.z = -0.4;
 		g.add(tip);
@@ -368,7 +365,7 @@ export class Monkey {
 		this.addSplat(at, what);
 		let yell: string | undefined;
 		if (what === 'player') {
-			yell = FACE_YELLS[Math.floor(Math.random() * FACE_YELLS.length)];
+			yell = pick(FACE_YELLS);
 			this.splatFace(yell);
 		}
 		this.onHit?.({ what, x: at.x, y: at.y, z: at.z, yell });
@@ -581,12 +578,8 @@ export class Monkey {
 	}
 
 	private build(): void {
-		const fur = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x6d4c33, roughness: 0.9 }),
-		);
-		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xc79a7a, roughness: 0.8 }),
-		);
+		const fur = this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c33, roughness: 0.9 }));
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc79a7a, roughness: 0.8 }));
 		const eye = this.track(new THREE.MeshStandardMaterial({ color: 0x141414 }));
 
 		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.22, 4, 8), fur);
@@ -641,10 +634,7 @@ export class Monkey {
 		this.body.add(this.tail);
 		let parent: THREE.Object3D = this.tail;
 		for (let i = 0; i < 4; i++) {
-			const seg = new THREE.Mesh(
-				new THREE.CapsuleGeometry(0.032 - i * 0.004, 0.14, 4, 6),
-				fur,
-			);
+			const seg = new THREE.Mesh(new THREE.CapsuleGeometry(0.032 - i * 0.004, 0.14, 4, 6), fur);
 			seg.position.y = -0.1;
 			seg.rotation.x = 0.25;
 			parent.add(seg);

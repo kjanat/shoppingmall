@@ -1,6 +1,7 @@
+import { spatial } from '@/audio/SpatialAudio';
+import type { CollisionWorld } from '@/physics/Collision';
+import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
-import { spatial } from '../audio/SpatialAudio';
-import type { CollisionWorld } from '../physics/Collision';
 
 type GuardState = 'patrol' | 'alert' | 'firing';
 
@@ -124,9 +125,9 @@ export class SecurityGuards {
 				new THREE.Vector3(4, 6.15, 10),
 			],
 		];
-		for (let i = 0; i < routes.length; i++) {
-			this.guards.push(this.spawnGuard(NAMES[i] ?? `Officer ${i + 1}`, routes[i]));
-		}
+		routes.forEach((route, i) => {
+			this.guards.push(this.spawnGuard(NAMES[i] ?? `Officer ${i + 1}`, route));
+		});
 	}
 
 	setOpenFireCallback(cb: (msg: string) => void): void {
@@ -145,11 +146,7 @@ export class SecurityGuards {
 	get roster(): { name: string; state: string; kills: number; floor: string }[] {
 		return this.guards.map((g) => ({
 			name: g.name,
-			state: g.state === 'firing'
-				? '🔫 OPENT VUUR'
-				: g.state === 'alert'
-				? '⚠ hyperalert'
-				: 'patrol',
+			state: g.state === 'firing' ? '🔫 OPENT VUUR' : g.state === 'alert' ? '⚠ hyperalert' : 'patrol',
 			kills: g.kills,
 			floor: g.root.position.y > 3 ? 'V1' : 'V0',
 		}));
@@ -217,9 +214,7 @@ export class SecurityGuards {
 			g.fireCd = 0;
 			g.kills += 1;
 			this.say(g, pick(YELLS));
-			this.onOpenFire?.(
-				`🚔 ${shortName(g.name)}: ${pick(YELLS)} — opent vuur!`,
-			);
+			this.onOpenFire?.(`🚔 ${shortName(g.name)}: ${pick(YELLS)} — opent vuur!`);
 			// Instant crowd panic at muzzle
 			this.onSimPanic?.(g.root.position.clone().setY(g.root.position.y + 1.2), 12);
 		}
@@ -282,8 +277,8 @@ export class SecurityGuards {
 	}
 
 	private patrolStep(g: Guard, dt: number): void {
-		const a = g.patrol[g.patrolI];
-		const b = g.patrol[(g.patrolI + 1) % g.patrol.length];
+		const a = at(g.patrol, g.patrolI);
+		const b = at(g.patrol, g.patrolI + 1);
 		const dist = Math.hypot(b.x - a.x, b.z - a.z) || 1;
 		const speed = 1.35; // m/s — mall cop power walk
 		g.segT += (dt * speed) / dist;
@@ -366,10 +361,7 @@ export class SecurityGuards {
 			),
 		);
 		streak.position.copy(origin);
-		streak.quaternion.setFromUnitVectors(
-			new THREE.Vector3(0, 1, 0),
-			this.tmp.clone().normalize(),
-		);
+		streak.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.tmp.clone().normalize());
 		this.group.add(streak);
 		// reuse bullet life for streak cleanup via same list entry? separate quick kill:
 		window.setTimeout(() => {
@@ -382,6 +374,7 @@ export class SecurityGuards {
 	private tickBullets(dt: number, playerPos: THREE.Vector3): void {
 		for (let i = this.bullets.length - 1; i >= 0; i--) {
 			const b = this.bullets[i];
+			if (!b) continue;
 			b.life -= dt;
 			b.mesh.position.x += b.vx * dt;
 			b.mesh.position.y += b.vy * dt;
@@ -426,12 +419,16 @@ export class SecurityGuards {
 				const env = Math.exp(-t * 38) * (1 - t * 0.3);
 				d[i] = (Math.random() * 2 - 1) * env;
 			}
-			void spatial.playAt(buf, { x, y, z }, {
-				volume: 0.55,
-				k: 0.04,
-				maxDistance: 40,
-				refDistance: 2,
-			});
+			void spatial.playAt(
+				buf,
+				{ x, y, z },
+				{
+					volume: 0.55,
+					k: 0.04,
+					maxDistance: 40,
+					refDistance: 2,
+				},
+			);
 		} catch {
 			/* audio locked */
 		}
@@ -460,21 +457,13 @@ export class SecurityGuards {
 
 	private spawnGuard(name: string, patrol: THREE.Vector3[]): Guard {
 		const root = new THREE.Group();
-		const start = patrol[0].clone();
+		const start = at(patrol, 0).clone();
 		root.position.copy(start);
 
-		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xe0a878, roughness: 0.88 }),
-		);
-		const navy = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.75 }),
-		);
-		const vest = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.15 }),
-		);
-		const black = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.3 }),
-		);
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xe0a878, roughness: 0.88 }));
+		const navy = this.track(new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.75 }));
+		const vest = this.track(new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.15 }));
+		const black = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.3 }));
 		const gold = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0xffd54f,
@@ -637,9 +626,7 @@ export class SecurityGuards {
 		ctx.fillText(text, 160, 32);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
@@ -648,26 +635,15 @@ export class SecurityGuards {
 	}
 }
 
-function pick<T>(arr: T[]): T {
-	return arr[Math.floor(Math.random() * arr.length)]!;
-}
-
 function shortName(full: string): string {
 	// "Officer Brad \"Trigger\" Kowalski" → "Trigger" or first meaningful token
-	const q = full.match(/"([^"]+)"/);
-	if (q) return q[1];
+	const nickname = full.match(/"([^"]+)"/)?.[1];
+	if (nickname) return nickname;
 	const parts = full.split(/\s+/);
 	return parts[parts.length - 1] ?? full;
 }
 
-function roundRect(
-	ctx: CanvasRenderingContext2D,
-	x: number,
-	y: number,
-	w: number,
-	h: number,
-	r: number,
-): void {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
 	ctx.beginPath();
 	ctx.moveTo(x + r, y);
 	ctx.arcTo(x + w, y, x + w, y + h, r);

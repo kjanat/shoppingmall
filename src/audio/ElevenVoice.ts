@@ -29,11 +29,9 @@ function stopCurrent(): void {
 function isMp3(buf: ArrayBuffer): boolean {
 	if (buf.byteLength < 4) return false;
 	const u = new Uint8Array(buf);
+	const [b0 = 0, b1 = 0, b2 = 0] = u;
 	// ID3 tag or MPEG frame sync
-	return (
-		(u[0] === 0x49 && u[1] === 0x44 && u[2] === 0x33)
-		|| (u[0] === 0xff && (u[1] & 0xe0) === 0xe0)
-	);
+	return (b0 === 0x49 && b1 === 0x44 && b2 === 0x33) || (b0 === 0xff && (b1 & 0xe0) === 0xe0);
 }
 
 function playElement(el: HTMLAudioElement, volume: number): Promise<number> {
@@ -63,10 +61,7 @@ function playElement(el: HTMLAudioElement, volume: number): Promise<number> {
 }
 
 /** Local mp3 under /dj-music/ */
-export async function playBoothFile(
-	file: string,
-	volume = 0.95,
-): Promise<SpeakResult> {
+export async function playBoothFile(file: string, volume = 0.95): Promise<SpeakResult> {
 	stopCurrent();
 	audioEl = new Audio(`/dj-music/${encodeURIComponent(file)}`);
 	const ms = await playElement(audioEl, volume);
@@ -193,9 +188,10 @@ function speakBrowser(text: string, volume: number): boolean {
 	u.rate = 1.05;
 	u.pitch = 0.95;
 	const voices = window.speechSynthesis.getVoices();
-	const pick = voices.find((v) => /dutch|nl-NL|nederlands/i.test(v.lang + v.name))
-		|| voices.find((v) => /^en/i.test(v.lang))
-		|| voices[0];
+	const pick =
+		voices.find((v) => /dutch|nl-NL|nederlands/i.test(v.lang + v.name)) ||
+		voices.find((v) => /^en/i.test(v.lang)) ||
+		voices[0];
 	if (pick) u.voice = pick;
 	window.speechSynthesis.speak(u);
 	return true;

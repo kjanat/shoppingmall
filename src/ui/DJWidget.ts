@@ -1,4 +1,4 @@
-import type { DJPlayer } from '../audio/DJPlayer';
+import type { DJPlayer } from '@/audio/DJPlayer';
 
 /**
  * Permanente mini-player, altijd in beeld: play/pauze, volgende, volume en een

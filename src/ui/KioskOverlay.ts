@@ -1,6 +1,7 @@
-import { EDGES, NODES } from '../data/graph';
-import { getInventory } from '../data/inventory';
-import { CATEGORY_LABELS, FLOOR_LABELS, type StoreCategory, type StoreDef, STORES } from '../data/stores';
+import { EDGES, NODES } from '@/data/graph';
+import { getInventory } from '@/data/inventory';
+import { CATEGORY_LABELS, FLOOR_LABELS, type StoreCategory, type StoreDef, STORES } from '@/data/stores';
+import { at } from '@/util/rand';
 
 /** One dot on the map — a sim, mostly. */
 export type MapBlip = { x: number; z: number; floor: number };
@@ -17,7 +18,7 @@ export type MapState = {
 
 const MALL_W = 72;
 const MALL_D = 48;
-const ZOOM_STEPS = [2.4, 3.4, 4.8, 6.6];
+const ZOOM_STEPS = [2.4, 3.4, 4.8, 6.6] as const;
 
 const NODE_BY_ID = new Map(NODES.map((n) => [n.id, n]));
 
@@ -49,8 +50,7 @@ const LANDMARKS: { x: number; z: number; floor: 0 | 1 | 2; short: string; label:
 function isTypingTarget(t: EventTarget | null): boolean {
 	const el = t as HTMLElement | null;
 	if (!el || !el.tagName) return false;
-	return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'
-		|| el.isContentEditable === true;
+	return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
 }
 
 function shortName(store: StoreDef): string {
@@ -440,9 +440,9 @@ export class KioskOverlay {
 			if (e.target === this.elBigMap) this.toggleBigMap(false);
 		});
 
-		this.root.querySelectorAll('.bigmap-tab').forEach((btn) => {
+		this.root.querySelectorAll<HTMLElement>('.bigmap-tab').forEach((btn) => {
 			btn.addEventListener('click', () => {
-				const f = Number((btn as HTMLElement).dataset.floor ?? 0);
+				const f = Number(btn.dataset['floor'] ?? 0);
 				this.bigFloor = f === 2 ? 2 : f === 1 ? 1 : 0;
 				this.renderBigTabs();
 				this.paintBigMap();
@@ -480,17 +480,13 @@ export class KioskOverlay {
 	}
 
 	private renderBigTabs(): void {
-		this.root.querySelectorAll('.bigmap-tab').forEach((btn) => {
-			const f = Number((btn as HTMLElement).dataset.floor ?? 0);
+		this.root.querySelectorAll<HTMLElement>('.bigmap-tab').forEach((btn) => {
+			const f = Number(btn.dataset['floor'] ?? 0);
 			btn.classList.toggle('active', f === this.bigFloor);
 		});
 	}
 
-	private prep(
-		canvas: HTMLCanvasElement,
-		cssW: number,
-		cssH: number,
-	): CanvasRenderingContext2D | null {
+	private prep(canvas: HTMLCanvasElement, cssW: number, cssH: number): CanvasRenderingContext2D | null {
 		const dpr = Math.min(window.devicePixelRatio || 1, 2);
 		const w = Math.max(1, Math.round(cssW * dpr));
 		const h = Math.max(1, Math.round(cssH * dpr));
@@ -527,7 +523,7 @@ export class KioskOverlay {
 		const cx = size / 2;
 		const cy = size / 2;
 		const r = size / 2 - 3;
-		const scale = ZOOM_STEPS[this.zoom];
+		const scale = at(ZOOM_STEPS, this.zoom);
 		const floor = this.map.floor;
 
 		ctx.save();
@@ -651,11 +647,7 @@ export class KioskOverlay {
 		ctx.fillRect(-29.4, -10.9, 1.8, 1.8); // glijbaantoren
 	}
 
-	private paintWorld(
-		ctx: CanvasRenderingContext2D,
-		floor: 0 | 1 | 2,
-		scale: number,
-	): void {
+	private paintWorld(ctx: CanvasRenderingContext2D, floor: 0 | 1 | 2, scale: number): void {
 		const px = 1 / scale;
 		ctx.lineJoin = 'round';
 		ctx.lineCap = 'round';
@@ -730,6 +722,7 @@ export class KioskOverlay {
 				for (let i = 1; i < path.length; i++) {
 					const a = path[i - 1];
 					const b = path[i];
+					if (!a || !b) continue;
 					const segFloor = (a.y + b.y) / 2 > 3 ? 1 : 0;
 					const here = segFloor === floor;
 					if ((pass === 0) === here) continue;
@@ -846,22 +839,12 @@ export class KioskOverlay {
 			ctx.fillStyle = 'rgba(226,232,240,0.75)';
 			ctx.font = '600 12px ui-monospace, monospace';
 			ctx.textAlign = 'left';
-			ctx.fillText(
-				`Je staat op V${this.map.floor} — neem de roltrap (⇅) om hier te komen`,
-				14,
-				cssH - 14,
-			);
+			ctx.fillText(`Je staat op V${this.map.floor} — neem de roltrap (⇅) om hier te komen`, 14, cssH - 14);
 		}
 	}
 
 	/** Player marker: triangle + dot, `rot` in radians (0 = up). */
-	private drawArrow(
-		ctx: CanvasRenderingContext2D,
-		x: number,
-		y: number,
-		rot: number,
-		size: number,
-	): void {
+	private drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, rot: number, size: number): void {
 		ctx.save();
 		ctx.translate(x, y);
 		ctx.rotate(rot);
@@ -880,11 +863,12 @@ export class KioskOverlay {
 	}
 
 	private paintMapChrome(): void {
-		const floorText = this.map.floor === 2
-			? 'DAK · HELIPAD & ISLAND'
-			: this.map.floor === 0
-			? 'V0 · BEGANE GROND'
-			: 'V1 · VERDIEPING 1';
+		const floorText =
+			this.map.floor === 2
+				? 'DAK · HELIPAD & ISLAND'
+				: this.map.floor === 0
+					? 'V0 · BEGANE GROND'
+					: 'V1 · VERDIEPING 1';
 		if (this.elMapFloor.textContent !== floorText) {
 			this.elMapFloor.textContent = floorText;
 		}
@@ -893,9 +877,7 @@ export class KioskOverlay {
 		let foot = '<b>M</b> = grote plattegrond';
 		if (t) {
 			const d = Math.round(Math.hypot(t.x - this.map.x, t.z - this.map.z));
-			foot = t.floor === this.map.floor
-				? `→ ${t.name} · ${d} m`
-				: `→ ${t.name} · ${d} m · <b>⇅ V${t.floor}</b>`;
+			foot = t.floor === this.map.floor ? `→ ${t.name} · ${d} m` : `→ ${t.name} · ${d} m · <b>⇅ V${t.floor}</b>`;
 		}
 		if (this.elMapFoot.innerHTML !== foot) this.elMapFoot.innerHTML = foot;
 	}
@@ -908,17 +890,9 @@ export class KioskOverlay {
 	}
 
 	private renderCats(): void {
-		const el = this.root.querySelector('#cats')!;
-		const cats: Array<StoreCategory | 'all'> = [
-			'all',
-			'beauty',
-			'fashion',
-			'tech',
-			'food',
-			'sport',
-			'home',
-			'utility',
-		];
+		const el = this.root.querySelector('#cats');
+		if (!el) return;
+		const cats = ['all', 'beauty', 'fashion', 'tech', 'food', 'sport', 'home', 'utility'] as const;
 		el.innerHTML = cats
 			.map(
 				(c) =>
@@ -927,9 +901,13 @@ export class KioskOverlay {
 					}</button>`,
 			)
 			.join('');
-		el.querySelectorAll('.cat').forEach((btn) => {
+		// The value came from `cats` two statements up; look it back up there
+		// instead of asserting a dataset string into the union.
+		el.querySelectorAll<HTMLElement>('.cat').forEach((btn) => {
 			btn.addEventListener('click', () => {
-				this.category = (btn as HTMLElement).dataset.cat as StoreCategory | 'all';
+				const picked = cats.find((c) => c === btn.dataset['cat']);
+				if (!picked) return;
+				this.category = picked;
 				this.renderCats();
 				this.renderList();
 			});
@@ -953,24 +931,23 @@ export class KioskOverlay {
 			.map(
 				(s) => `
       <button type="button" class="store-item ${this.selected?.id === s.id ? 'active' : ''} ${s.hero ? 'hero' : ''} ${
-					s.utility ? 'utility' : ''
-				}" data-id="${s.id}">
+				s.utility ? 'utility' : ''
+			}" data-id="${s.id}">
         <span class="store-dot" style="background:${s.accent}"></span>
         <span class="store-meta">
           <strong>${s.name.replace('\n', ' ')}</strong>
           <small>V${s.floor} · ${CATEGORY_LABELS[s.category]}${s.utility ? ' · util' : ''}${
-					s.id === 'rituals' ? ' · ❤️ mama' : ''
-				}${s.id === 'helipad' ? ' · 🚁' : ''}</small>
+						s.id === 'rituals' ? ' · ❤️ mama' : ''
+					}${s.id === 'helipad' ? ' · 🚁' : ''}</small>
         </span>
       </button>`,
 			)
 			.join('');
 
-		this.elList.querySelectorAll('.store-item').forEach((btn) => {
+		this.elList.querySelectorAll<HTMLElement>('.store-item').forEach((btn) => {
 			btn.addEventListener('click', () => {
-				const id = (btn as HTMLElement).dataset.id!;
-				const store = STORES.find((s) => s.id === id)!;
-				this.selectStore(store);
+				const store = STORES.find((s) => s.id === btn.dataset['id']);
+				if (store) this.selectStore(store);
 			});
 		});
 	}
@@ -978,21 +955,18 @@ export class KioskOverlay {
 	private renderDetail(store: StoreDef): void {
 		this.elDetail.classList.remove('hidden', 'touring');
 		const inv = getInventory(store.id);
-		const stock = inv && inv.items.length
-			? `<ul class="detail-stock">${
-				inv.items
-					.slice(0, 8)
-					.map(
-						(i) => `<li>${i.name}${i.price > 0 ? ` · €${i.price}` : ''}</li>`,
-					)
-					.join('')
-			}</ul>`
-			: '';
+		const stock =
+			inv && inv.items.length
+				? `<ul class="detail-stock">${inv.items
+						.slice(0, 8)
+						.map((i) => `<li>${i.name}${i.price > 0 ? ` · €${i.price}` : ''}</li>`)
+						.join('')}</ul>`
+				: '';
 		const blurb = store.blurb
 			? `<p class="detail-blurb">${store.blurb}</p>`
 			: inv?.slogan
-			? `<p class="detail-blurb">${inv.slogan}</p>`
-			: '';
+				? `<p class="detail-blurb">${inv.slogan}</p>`
+				: '';
 		this.elDetail.innerHTML = `
       <div class="detail-top">
         <div class="detail-swatch" style="background:${store.color};border-color:${store.accent}"></div>

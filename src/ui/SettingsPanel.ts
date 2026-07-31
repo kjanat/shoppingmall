@@ -1,4 +1,4 @@
-import { type ControlSettings, DEFAULT_SETTINGS } from '../player/Controls';
+import { type ControlSettings, DEFAULT_SETTINGS } from '@/player/Controls';
 
 const STORE_KEY = 'mallsim.controls.v1';
 const QUALITY_KEY = 'mallsim.quality.v1';
@@ -252,10 +252,7 @@ export class SettingsPanel {
 		const bin = this.host.querySelector<HTMLInputElement>('#set-binaural');
 		if (bin) bin.checked = this.binaural;
 		// Sensitivity is meaningless without mouse look
-		q('#set-sens').closest('.settings-row')?.classList.toggle(
-			'settings-off',
-			!this.settings.mouseLook,
-		);
+		q('#set-sens').closest('.settings-row')?.classList.toggle('settings-off', !this.settings.mouseLook);
 	}
 
 	private commit(): void {

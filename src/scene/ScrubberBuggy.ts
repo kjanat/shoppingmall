@@ -59,11 +59,7 @@ export class ScrubberBuggy {
 		// Sit slightly above seat, looking forward
 		const fx = Math.sin(this.yaw);
 		const fz = Math.cos(this.yaw);
-		return new THREE.Vector3(
-			this.pos.x - fx * 0.05,
-			this.pos.y + 1.35,
-			this.pos.z - fz * 0.05,
-		);
+		return new THREE.Vector3(this.pos.x - fx * 0.05, this.pos.y + 1.35, this.pos.z - fz * 0.05);
 	}
 
 	get heading(): number {
@@ -94,11 +90,7 @@ export class ScrubberBuggy {
 		// Step out to the left of the buggy
 		const leftX = Math.cos(this.yaw);
 		const leftZ = -Math.sin(this.yaw);
-		const exit = new THREE.Vector3(
-			this.pos.x + leftX * 1.4,
-			0,
-			this.pos.z + leftZ * 1.4,
-		);
+		const exit = new THREE.Vector3(this.pos.x + leftX * 1.4, 0, this.pos.z + leftZ * 1.4);
 		const fixed = this.world.resolveCircle(exit.x, exit.z, 0.5, 0.4, 3, true);
 		exit.x = fixed.x;
 		exit.z = fixed.z;
@@ -130,9 +122,9 @@ export class ScrubberBuggy {
 		// Arcade accel / brake
 		if (Math.abs(throttle) > 0.05) {
 			const want = throttle * maxSp;
-			const rate = (Math.sign(throttle) === Math.sign(this.speed) || Math.abs(this.speed) < 0.5
-				? ACCEL
-				: BRAKE) * (boost ? 1.25 : 1);
+			const rate =
+				(Math.sign(throttle) === Math.sign(this.speed) || Math.abs(this.speed) < 0.5 ? ACCEL : BRAKE) *
+				(boost ? 1.25 : 1);
 			if (this.speed < want) this.speed = Math.min(want, this.speed + rate * dt);
 			else this.speed = Math.max(want, this.speed - rate * dt);
 		} else {
@@ -215,21 +207,11 @@ export class ScrubberBuggy {
 	private build(): THREE.Group {
 		const g = new THREE.Group();
 
-		const yellow = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.55, metalness: 0.2 }),
-		);
-		const blue = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x0d47a1, roughness: 0.65 }),
-		);
-		const dark = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.3 }),
-		);
-		const grey = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.4, roughness: 0.45 }),
-		);
-		const rubber = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
-		);
+		const yellow = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.55, metalness: 0.2 }));
+		const blue = this.track(new THREE.MeshStandardMaterial({ color: 0x0d47a1, roughness: 0.65 }));
+		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.3 }));
+		const grey = this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.4, roughness: 0.45 }));
+		const rubber = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }));
 		const green = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0x00e676,
@@ -374,13 +356,7 @@ export class ScrubberBuggy {
 		return g;
 	}
 
-	private makePlate(
-		text: string,
-		bg: string,
-		fg: string,
-		w: number,
-		h: number,
-	): THREE.CanvasTexture {
+	private makePlate(text: string, bg: string, fg: string, w: number, h: number): THREE.CanvasTexture {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
@@ -402,8 +378,6 @@ export class ScrubberBuggy {
 
 	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
 		const tex = this.makePlate(text, bg, '#fff', w, h);
-		return new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 	}
 }

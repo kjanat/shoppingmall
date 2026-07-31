@@ -1,14 +1,9 @@
+import { spatial } from '@/audio/SpatialAudio';
+import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
-import { spatial } from '../audio/SpatialAudio';
 
 /** Chant lines shown above everyone in the room */
-const CHANTS = [
-	'Allahu Akbar!',
-	'Allahu Akbar!!',
-	'الله أكبر',
-	'Allahu Trapbar!',
-	'ALLAHU AKBAR',
-];
+const CHANTS = ['Allahu Akbar!', 'Allahu Akbar!!', 'الله أكبر', 'Allahu Trapbar!', 'ALLAHU AKBAR'];
 
 /** Allahu Trapbar clean instrumental (same track family as YT XoX5cxsN5-U) */
 const TRAPBAR_URL = '/prayer-music/allahu_trapbar.mp3';
@@ -163,7 +158,7 @@ export class PrayerRoom {
 		// Low bins ≈ kick / 808
 		let s = 0;
 		const n = Math.min(8, this.trapFreq.length);
-		for (let i = 0; i < n; i++) s += this.trapFreq[i];
+		for (let i = 0; i < n; i++) s += this.trapFreq[i] ?? 0;
 		return Math.min(1, (s / n / 255) * 1.4);
 	}
 
@@ -173,8 +168,7 @@ export class PrayerRoom {
 	 * personOffsetBeats keeps them on-grid but staggered by half-bars.
 	 */
 	private poseBlendFor(beat: number, personOffsetBeats: number, bass: number): number {
-		const phrase = ((beat + personOffsetBeats) % POSE_PHRASE_BEATS + POSE_PHRASE_BEATS)
-			% POSE_PHRASE_BEATS;
+		const phrase = (((beat + personOffsetBeats) % POSE_PHRASE_BEATS) + POSE_PHRASE_BEATS) % POSE_PHRASE_BEATS;
 		let base: number;
 		if (phrase < 6) {
 			base = 0; // bars 1–1.5: sit
@@ -203,7 +197,7 @@ export class PrayerRoom {
 			idx = (idx + 1) % GOAT_SCREAMS.length;
 		}
 		this.lastScreamIdx = idx;
-		const url = GOAT_SCREAMS[idx];
+		const url = at(GOAT_SCREAMS, idx);
 		this.screaming = true;
 
 		const gx = this.pos.x + (this.goat?.position.x ?? 0);
@@ -211,12 +205,16 @@ export class PrayerRoom {
 		const gz = this.pos.z + (this.goat?.position.z ?? 1.55);
 
 		void spatial
-			.playAt(url, { x: gx, y: gy, z: gz }, {
-				volume: 0.95,
-				k: 0.028,
-				maxDistance: 32,
-				refDistance: 2,
-			})
+			.playAt(
+				url,
+				{ x: gx, y: gy, z: gz },
+				{
+					volume: 0.95,
+					k: 0.028,
+					maxDistance: 32,
+					refDistance: 2,
+				},
+			)
 			.finally(() => {
 				// full original is ~6s; shorter cuts free earlier via max
 				const unlockMs = url.includes('original') ? 6500 : 2000;
@@ -251,69 +249,64 @@ export class PrayerRoom {
 					.map((_, i) => i)
 					.sort(() => Math.random() - 0.5)
 					.slice(0, n);
-				for (let k = 0; k < order.length; k++) {
-					const a = this.ayatollahs[order[k]];
-					const line = onDrop
-						? 'Allahu Trapbar!'
-						: CHANTS[Math.floor(Math.random() * CHANTS.length)];
+				order.forEach((ayatollahIndex, k) => {
+					const a = this.ayatollahs[ayatollahIndex];
+					if (!a) return;
+					const line = onDrop ? 'Allahu Trapbar!' : pick(CHANTS);
 					// 16th-note cascade within the bar
 					window.setTimeout(() => this.showBubble(a, line), k * (TRAP_BEAT * 250));
-				}
+				});
 			}
 			// Goat on phrase start / drop
 			if (
-				this.goat
-				&& this.bleatCd <= 0
-				&& (beatIdx % POSE_PHRASE_BEATS === 0 || beatIdx % POSE_PHRASE_BEATS === 8)
-				&& Math.random() < 0.55
+				this.goat &&
+				this.bleatCd <= 0 &&
+				(beatIdx % POSE_PHRASE_BEATS === 0 || beatIdx % POSE_PHRASE_BEATS === 8) &&
+				Math.random() < 0.55
 			) {
 				this.bleatCd = TRAP_BEAT * 12;
-				const lines = ['MEEEH!!!', '🐐 on beat', 'Allahu… mèèh', 'Trapbar!!'];
-				this.showBubble(
-					this.goat,
-					lines[Math.floor(Math.random() * lines.length)],
-				);
+				this.showBubble(this.goat, pick(['MEEEH!!!', '🐐 on beat', 'Allahu… mèèh', 'Trapbar!!']));
 				if (this.audioStarted) this.playGoatScream();
 			}
 		}
 
-		for (let i = 0; i < this.ayatollahs.length; i++) {
-			const a = this.ayatollahs[i];
-			const phase = (a.userData.phase as number) ?? i;
+		this.ayatollahs.forEach((a, i) => {
+			const phase = a.userData['phase'] ?? i;
 			// Half-bar offsets so the row ripples but stays on the grid
 			const offsetBeats = (i % 4) * 2 + (phase % 1) * 0.15;
 			const blend = this.poseBlendFor(beat, offsetBeats, bass);
 			this.applyPrayerPose(a, blend);
 
-			const baseY = (a.userData.baseY as number) ?? 0.12;
+			const baseY = a.userData['baseY'] ?? 0.12;
 			// Kick-dip hips on the beat while doggy
 			const beatFrac = ((beat % 1) + 1) % 1;
 			const kickDip = blend * Math.exp(-beatFrac * 9) * 0.05;
 			a.position.y = baseY + Math.sin(this.t * 1.1 + phase) * 0.006 - blend * 0.06 - kickDip;
 			// Bubble lifetime
-			const life = a.userData.speechLife as number;
+			const life = a.userData['speechLife'] ?? 0;
 			if (life > 0) {
-				a.userData.speechLife = life - dt;
-				if (a.userData.speechLife <= 0) {
-					const sp = a.userData.speech as THREE.Sprite | undefined;
+				a.userData['speechLife'] = life - dt;
+				if (life - dt <= 0) {
+					const sp = a.userData['speech'] as THREE.Sprite | undefined;
 					if (sp) sp.visible = false;
 				}
 			}
-		}
+		});
 
 		// Goat idle: head bob + occasional bleat bubble
 		if (this.goat) {
-			const head = this.goat.userData.head as THREE.Object3D | undefined;
+			const goat = this.goat;
+			const head = goat.userData['head'] as THREE.Object3D | undefined;
 			if (head) {
 				head.rotation.x = Math.sin(this.t * 2.4) * 0.12;
 				head.rotation.y = Math.sin(this.t * 0.7) * 0.18;
 			}
-			this.goat.position.y = (this.goat.userData.baseY as number) + Math.sin(this.t * 3.2) * 0.01;
-			const life = this.goat.userData.speechLife as number;
+			goat.position.y = (goat.userData['baseY'] ?? 0) + Math.sin(this.t * 3.2) * 0.01;
+			const life = goat.userData['speechLife'] ?? 0;
 			if (life > 0) {
-				this.goat.userData.speechLife = life - dt;
-				if (this.goat.userData.speechLife <= 0) {
-					const sp = this.goat.userData.speech as THREE.Sprite | undefined;
+				goat.userData['speechLife'] = life - dt;
+				if (life - dt <= 0) {
+					const sp = goat.userData['speech'] as THREE.Sprite | undefined;
 					if (sp) sp.visible = false;
 				}
 			}
@@ -326,9 +319,9 @@ export class PrayerRoom {
 	}
 
 	private showBubble(fig: THREE.Group, text: string): void {
-		const sp = fig.userData.speech as THREE.Sprite | undefined;
-		const ctx = fig.userData.speechCtx as CanvasRenderingContext2D | undefined;
-		const tex = fig.userData.speechTex as THREE.CanvasTexture | undefined;
+		const sp = fig.userData['speech'] as THREE.Sprite | undefined;
+		const ctx = fig.userData['speechCtx'] as CanvasRenderingContext2D | undefined;
+		const tex = fig.userData['speechTex'] as THREE.CanvasTexture | undefined;
 		if (!sp || !ctx || !tex) return;
 		const w = 320;
 		const h = 80;
@@ -354,7 +347,7 @@ export class PrayerRoom {
 		ctx.fillText(text, w / 2, h / 2 - 6);
 		tex.needsUpdate = true;
 		sp.visible = true;
-		fig.userData.speechLife = 2.2 + Math.random() * 0.9;
+		fig.userData['speechLife'] = 2.2 + Math.random() * 0.9;
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
@@ -364,9 +357,7 @@ export class PrayerRoom {
 
 	private build(): void {
 		// Small quiet room shell
-		const wall = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xe8e4d9, roughness: 0.9 }),
-		);
+		const wall = this.track(new THREE.MeshStandardMaterial({ color: 0xe8e4d9, roughness: 0.9 }));
 		const floor = new THREE.Mesh(
 			new THREE.BoxGeometry(5.5, 0.08, 4.2),
 			this.track(new THREE.MeshStandardMaterial({ color: 0xc4a574, roughness: 0.85 })),
@@ -448,12 +439,8 @@ export class PrayerRoom {
 		// McD bag
 		const makeBag = (seed: number): THREE.Group => {
 			const g = new THREE.Group();
-			const red = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xda291c, roughness: 0.85 }),
-			);
-			const yellow = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xffc72c, roughness: 0.7 }),
-			);
+			const red = this.track(new THREE.MeshStandardMaterial({ color: 0xda291c, roughness: 0.85 }));
+			const yellow = this.track(new THREE.MeshStandardMaterial({ color: 0xffc72c, roughness: 0.7 }));
 			const bag = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.12), red);
 			bag.position.y = 0.14;
 			g.add(bag);
@@ -464,33 +451,21 @@ export class PrayerRoom {
 			const m2 = m1.clone();
 			m2.position.x = 0.03;
 			g.add(m1, m2);
-			g.rotation.set(
-				(rng(seed) - 0.5) * 0.4,
-				rng(seed + 1) * Math.PI * 2,
-				(rng(seed + 2) - 0.5) * 0.5,
-			);
+			g.rotation.set((rng(seed) - 0.5) * 0.4, rng(seed + 1) * Math.PI * 2, (rng(seed + 2) - 0.5) * 0.5);
 			return g;
 		};
 
 		// Fries carton
 		const makeFries = (seed: number): THREE.Group => {
 			const g = new THREE.Group();
-			const red = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.8 }),
-			);
-			const fryM = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.75 }),
-			);
+			const red = this.track(new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.8 }));
+			const fryM = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.75 }));
 			const box = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.1), red);
 			box.position.y = 0.07;
 			g.add(box);
 			for (let i = 0; i < 5; i++) {
 				const f = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.12, 0.018), fryM);
-				f.position.set(
-					(rng(seed + i * 3) - 0.5) * 0.08,
-					0.16 + rng(seed + i) * 0.04,
-					(rng(seed + i * 5) - 0.5) * 0.06,
-				);
+				f.position.set((rng(seed + i * 3) - 0.5) * 0.08, 0.16 + rng(seed + i) * 0.04, (rng(seed + i * 5) - 0.5) * 0.06);
 				f.rotation.z = (rng(seed + i * 7) - 0.5) * 0.4;
 				g.add(f);
 			}
@@ -502,19 +477,10 @@ export class PrayerRoom {
 		// Soft drink cup + straw
 		const makeCup = (seed: number): THREE.Group => {
 			const g = new THREE.Group();
-			const red = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xb71c1c, roughness: 0.75 }),
-			);
-			const lidM = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6 }),
-			);
-			const strawM = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 }),
-			);
-			const cup = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.045, 0.055, 0.16, 10),
-				red,
-			);
+			const red = this.track(new THREE.MeshStandardMaterial({ color: 0xb71c1c, roughness: 0.75 }));
+			const lidM = this.track(new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6 }));
+			const strawM = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 }));
+			const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.16, 10), red);
 			cup.position.y = 0.08;
 			g.add(cup);
 			const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 10), lidM);
@@ -630,15 +596,14 @@ export class PrayerRoom {
 
 		const kinds: CanKind[] = ['redbull', 'redbull', 'monster', 'cola', 'fanta', 'generic', 'redbull'];
 
-		for (let i = 0; i < spots.length; i++) {
-			const { x, z } = spots[i];
+		spots.forEach(({ x, z }, i) => {
 			const roll = rng(i * 11.3);
 			let item: THREE.Object3D;
 			if (roll < 0.22) item = makeBag(i);
 			else if (roll < 0.4) item = makeFries(i + 50);
 			else if (roll < 0.55) item = makeCup(i + 90);
 			else if (roll < 0.68) item = makeWrapper(i + 130);
-			else item = makeCan(i + 170, kinds[i % kinds.length]);
+			else item = makeCan(i + 170, at(kinds, i));
 
 			item.position.x += x;
 			item.position.z += z;
@@ -648,7 +613,7 @@ export class PrayerRoom {
 			// Slight sink into mat look
 			item.position.y += rng(i + 200) * 0.02;
 			this.group.add(item);
-		}
+		});
 
 		// Dedicated Red Bull pyramid near back wall
 		for (let row = 0; row < 3; row++) {
@@ -668,13 +633,7 @@ export class PrayerRoom {
 	 */
 	private buildQiblaAndPostits(): void {
 		// Qibla board on back wall (toward “Mecca” — SE-ish in our joke map)
-		const qibla = this.makePostIt(
-			['🕋 QIBLA', '→ MEKKA', 'zuidoost', '(ongeveer)'],
-			'#fffde7',
-			'#b71c1c',
-			1.1,
-			0.95,
-		);
+		const qibla = this.makePostIt(['🕋 QIBLA', '→ MEKKA', 'zuidoost', '(ongeveer)'], '#fffde7', '#b71c1c', 1.1, 0.95);
 		qibla.position.set(-0.9, 2.15, -1.91);
 		this.group.add(qibla);
 
@@ -871,13 +830,7 @@ export class PrayerRoom {
 	}
 
 	/** Classic sticky note: paper color + sharpie text + slight curl shadow */
-	private makePostIt(
-		lines: string[],
-		bg: string,
-		fg: string,
-		worldW: number,
-		worldH: number,
-	): THREE.Mesh {
+	private makePostIt(lines: string[], bg: string, fg: string, worldW: number, worldH: number): THREE.Mesh {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 256;
@@ -1017,28 +970,23 @@ export class PrayerRoom {
 			this.group.add(mat);
 		}
 
-		for (let i = 0; i < roster.length; i++) {
-			const r = roster[i];
+		roster.forEach((r, i) => {
 			const fig = this.makeAyatollah(r.name, r.title, r.turban);
 			fig.position.set(r.x, 0.12, r.z);
 			fig.rotation.y = r.yaw;
-			fig.userData.baseY = 0.12;
-			fig.userData.phase = i * 1.3;
-			fig.userData.bow = r.bow;
+			fig.userData['baseY'] = 0.12;
+			fig.userData['phase'] = i * 1.3;
+			fig.userData['bow'] = r.bow;
 			this.group.add(fig);
 			this.ayatollahs.push(fig);
-		}
+		});
 	}
 
 	/** Low-poly goat standing in front of the ayatollah row */
 	private buildGoat(): void {
 		const g = new THREE.Group();
-		const fur = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xd7ccc8, roughness: 0.92 }),
-		);
-		const dark = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.85 }),
-		);
+		const fur = this.track(new THREE.MeshStandardMaterial({ color: 0xd7ccc8, roughness: 0.92 }));
+		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.85 }));
 		const hornM = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0xefebe9,
@@ -1061,14 +1009,12 @@ export class PrayerRoom {
 		g.add(chest);
 
 		// Legs
-		for (
-			const [lx, lz] of [
-				[0.16, 0.1],
-				[0.16, -0.1],
-				[-0.16, 0.1],
-				[-0.16, -0.1],
-			] as const
-		) {
+		for (const [lx, lz] of [
+			[0.16, 0.1],
+			[0.16, -0.1],
+			[-0.16, 0.1],
+			[-0.16, -0.1],
+		] as const) {
 			const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.34, 6), dark);
 			leg.position.set(lx, 0.17, lz);
 			g.add(leg);
@@ -1120,7 +1066,7 @@ export class PrayerRoom {
 		beard.rotation.x = Math.PI;
 		head.add(beard);
 		g.add(head);
-		g.userData.head = head;
+		g.userData['head'] = head;
 
 		// Short tail
 		const tail = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), fur);
@@ -1130,17 +1076,13 @@ export class PrayerRoom {
 		// Rope / stake so it "belongs" to the room
 		const stake = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.02, 0.025, 0.55, 6),
-			this.track(
-				new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.8 }),
-			),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.8 })),
 		);
 		stake.position.set(-0.55, 0.28, 0.25);
 		g.add(stake);
 		const rope = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.008, 0.008, 0.7, 4),
-			this.track(
-				new THREE.MeshStandardMaterial({ color: 0xa1887f, roughness: 0.9 }),
-			),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xa1887f, roughness: 0.9 })),
 		);
 		rope.position.set(-0.22, 0.38, 0.12);
 		rope.rotation.z = Math.PI / 2.4;
@@ -1171,15 +1113,15 @@ export class PrayerRoom {
 		speech.position.set(0, 1.25, 0);
 		speech.visible = false;
 		g.add(speech);
-		g.userData.speech = speech;
-		g.userData.speechCtx = speechCtx;
-		g.userData.speechTex = speechTex;
-		g.userData.speechLife = 0;
+		g.userData['speech'] = speech;
+		g.userData['speechCtx'] = speechCtx;
+		g.userData['speechTex'] = speechTex;
+		g.userData['speechLife'] = 0;
 
 		// In front of front row (ayatollahs at z≈−0.4, congregants at z≈0.9)
 		g.position.set(0.1, 0.12, 1.55);
 		g.rotation.y = Math.PI; // face the ayatollahs
-		g.userData.baseY = 0.12;
+		g.userData['baseY'] = 0.12;
 		this.group.add(g);
 		this.goat = g;
 	}
@@ -1189,21 +1131,21 @@ export class PrayerRoom {
 	 * Uses rig parts stored on userData.
 	 */
 	private applyPrayerPose(fig: THREE.Group, blend: number): void {
-		const rig = fig.userData.rig as
+		const rig = fig.userData['rig'] as
 			| {
-				hips: THREE.Object3D;
-				torso: THREE.Object3D;
-				headG: THREE.Object3D;
-				lap: THREE.Object3D;
-				armL: THREE.Object3D;
-				armR: THREE.Object3D;
-				legL: THREE.Object3D;
-				legR: THREE.Object3D;
-				handL: THREE.Object3D;
-				handR: THREE.Object3D;
-				plate: THREE.Object3D;
-				speech: THREE.Object3D;
-			}
+					hips: THREE.Object3D;
+					torso: THREE.Object3D;
+					headG: THREE.Object3D;
+					lap: THREE.Object3D;
+					armL: THREE.Object3D;
+					armR: THREE.Object3D;
+					legL: THREE.Object3D;
+					legR: THREE.Object3D;
+					handL: THREE.Object3D;
+					handR: THREE.Object3D;
+					plate: THREE.Object3D;
+					speech: THREE.Object3D;
+			  }
 			| undefined;
 		if (!rig) return;
 		const t = THREE.MathUtils.clamp(blend, 0, 1);
@@ -1253,18 +1195,10 @@ export class PrayerRoom {
 
 	private makeAyatollah(name: string, title: string, turbanColor: number): THREE.Group {
 		const g = new THREE.Group();
-		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.88 }),
-		);
-		const robe = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.92 }),
-		);
-		const beardM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.95 }),
-		);
-		const turbanM = this.track(
-			new THREE.MeshStandardMaterial({ color: turbanColor, roughness: 0.85 }),
-		);
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.88 }));
+		const robe = this.track(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.92 }));
+		const beardM = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.95 }));
+		const turbanM = this.track(new THREE.MeshStandardMaterial({ color: turbanColor, roughness: 0.85 }));
 
 		// Hips
 		const hips = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), robe);
@@ -1363,11 +1297,11 @@ export class PrayerRoom {
 		speech.position.set(0, 2.05, 0.1);
 		speech.visible = false;
 		g.add(speech);
-		g.userData.speech = speech;
-		g.userData.speechCtx = speechCtx;
-		g.userData.speechTex = speechTex;
-		g.userData.speechLife = 0;
-		g.userData.rig = {
+		g.userData['speech'] = speech;
+		g.userData['speechCtx'] = speechCtx;
+		g.userData['speechTex'] = speechTex;
+		g.userData['speechLife'] = 0;
+		g.userData['rig'] = {
 			hips,
 			torso,
 			headG,
@@ -1404,20 +1338,11 @@ export class PrayerRoom {
 		ctx.fillText(title, 160, 56);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 	}
 }
 
-function roundRect(
-	ctx: CanvasRenderingContext2D,
-	x: number,
-	y: number,
-	w: number,
-	h: number,
-	r: number,
-): void {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
 	ctx.beginPath();
 	ctx.moveTo(x + r, y);
 	ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -1431,20 +1356,12 @@ function roundRect(
  * Multi-voice "Allahu Akbar" formant-ish chant loop.
  * Syllables: Al-la-hu · Ak-bar  (crowd layer stacks slightly detuned).
  */
-function startAllahuLoop(
-	ctx: AudioContext,
-	dest: AudioNode,
-): { stop: () => void } {
+function startAllahuLoop(ctx: AudioContext, dest: AudioNode): { stop: () => void } {
 	let alive = true;
 	let timer: number | null = null;
 
 	/** One syllabic "voice" with formant filters */
-	const voice = (
-		t0: number,
-		basePitch: number,
-		vol: number,
-		detuneCents: number,
-	) => {
+	const voice = (t0: number, basePitch: number, vol: number, detuneCents: number) => {
 		// Syllable plan: [pitch mult, formant F1, formant F2, duration]
 		// Al- la- hu  Ak- bar
 		const syl: [number, number, number, number][] = [

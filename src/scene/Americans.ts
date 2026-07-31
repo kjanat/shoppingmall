@@ -1,3 +1,4 @@
+import { at, pick, pickWith } from '@/util/rand';
 import * as THREE from 'three';
 import { getOwner } from '../data/shopOwners';
 import { type StoreDef, STORES } from '../data/stores';
@@ -5,14 +6,7 @@ import { Pathfinder } from '../path/Pathfinder';
 import type { CollisionWorld } from '../physics/Collision';
 import { fetchSimChat, type SimPersona } from '../sim/SimChat';
 
-export type LifeMeaning =
-	| 'love'
-	| 'family'
-	| 'health'
-	| 'joy'
-	| 'provide'
-	| 'belong'
-	| 'create';
+export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
 
 export type SimFactors = {
 	id: number;
@@ -80,18 +74,8 @@ const SKULL_OUT = new THREE.Vector3(0, 0, 1);
  * out of the surface. `sink` < 1 pushes it slightly into the skull so flattened
  * features sit flush instead of floating.
  */
-function placeOnSkull(
-	obj: THREE.Object3D,
-	headR: number,
-	yaw: number,
-	pitch: number,
-	sink: number,
-): void {
-	const n = new THREE.Vector3(
-		Math.sin(yaw) * Math.cos(pitch),
-		Math.sin(pitch),
-		Math.cos(yaw) * Math.cos(pitch),
-	);
+function placeOnSkull(obj: THREE.Object3D, headR: number, yaw: number, pitch: number, sink: number): void {
+	const n = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
 	obj.position.copy(n).multiplyScalar(headR * sink);
 	obj.quaternion.setFromUnitVectors(SKULL_OUT, n);
 }
@@ -164,13 +148,7 @@ const FIRST = [
 	'Wayne',
 	'Butch',
 ];
-const MISS_NAMES = [
-	'Miss Dakota',
-	'Miss Texas',
-	'Miss California',
-	'Eva G.',
-	'Miss Florida',
-];
+const MISS_NAMES = ['Miss Dakota', 'Miss Texas', 'Miss California', 'Eva G.', 'Miss Florida'];
 // Hotter palette — neon pink, cherry, gold, violet, icy blue
 const MISS_OUTFITS = [0xff1493, 0xe040fb, 0xffd700, 0xff2d55, 0x00e5ff];
 const LAST = [
@@ -196,12 +174,10 @@ const PANTS = [0x2c3e50, 0x34495e, 0x5d4e37, 0x1a1a2e, 0x4a5568, 0x1e3a5f];
 const HAIR = [0x2c1810, 0x5c4033, 0xc4a35a, 0x888888, 0x1a1a1a, 0xd35400, 0xf5f5f5];
 
 // Sims can shop stores + food court (utility places like WC/helipad are out)
-const SHOPABLE = STORES.filter(
-	(s) => s.id !== 'info' && (!s.utility || s.id === 'foodcourt'),
-);
+const SHOPABLE = STORES.filter((s) => s.id !== 'info' && (!s.utility || s.id === 'foodcourt'));
 
 function mulberry32(a: number) {
-	return function() {
+	return function () {
 		let t = (a += 0x6d2b79f5);
 		t = Math.imul(t ^ (t >>> 15), t | 1);
 		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
@@ -327,9 +303,7 @@ export class Americans {
 		}
 	}
 
-	setTransactionCallback(
-		cb: (count: number, pos: THREE.Vector3, storeId: string) => void,
-	): void {
+	setTransactionCallback(cb: (count: number, pos: THREE.Vector3, storeId: string) => void): void {
 		this.onTransaction = cb;
 	}
 
@@ -345,10 +319,7 @@ export class Americans {
 	dancing = false;
 
 	/** One dashboard row per shopper — where they are and what they're up to. */
-	getPeopleSnapshot(
-		playerPos: THREE.Vector3,
-		out: PersonRow[] = [],
-	): PersonRow[] {
+	getPeopleSnapshot(playerPos: THREE.Vector3, out: PersonRow[] = []): PersonRow[] {
 		out.length = 0;
 		for (const s of this.sims) {
 			const f = s.f;
@@ -376,13 +347,9 @@ export class Americans {
 	}
 
 	/** Wired from App: world-space belt drift at a position, or null. */
-	private beltProvider:
-		| ((x: number, y: number, z: number) => { x: number; z: number } | null)
-		| null = null;
+	private beltProvider: ((x: number, y: number, z: number) => { x: number; z: number } | null) | null = null;
 
-	setBeltProvider(
-		fn: (x: number, y: number, z: number) => { x: number; z: number } | null,
-	): void {
+	setBeltProvider(fn: (x: number, y: number, z: number) => { x: number; z: number } | null): void {
 		this.beltProvider = fn;
 	}
 
@@ -397,9 +364,7 @@ export class Americans {
 	}
 
 	getSimsNear(worldPos: THREE.Vector3, radius: number): SimFactors[] {
-		return this.sims
-			.filter((s) => s.pos.distanceTo(worldPos) < radius)
-			.map((s) => s.f);
+		return this.sims.filter((s) => s.pos.distanceTo(worldPos) < radius).map((s) => s.f);
 	}
 
 	/** Fat Americans for UFO probe (prefer thicc / hangry) */
@@ -410,7 +375,7 @@ export class Americans {
 			.slice(0, max);
 		// Cluster: pick around a random thicc seed
 		if (!ranked.length) return [];
-		const seed = ranked[Math.floor(Math.random() * Math.min(4, ranked.length))];
+		const seed = pick(ranked.slice(0, 4));
 		return this.sims
 			.filter((s) => s.pos.distanceTo(seed.pos) < 9 && !s.f.isKid)
 			.slice(0, max)
@@ -435,10 +400,7 @@ export class Americans {
 	 * Mall cop open fire — panic nearby shoppers: scream, freeze, then flee path.
 	 * @returns names of sims that flinched (for status line)
 	 */
-	panicFromGunfire(
-		origin: THREE.Vector3,
-		radius = 10,
-	): { id: number; name: string }[] {
+	panicFromGunfire(origin: THREE.Vector3, radius = 10): { id: number; name: string }[] {
 		const hit: { id: number; name: string }[] = [];
 		const screams = [
 			'AAAAH!!',
@@ -470,7 +432,7 @@ export class Americans {
 			// Clear path so they re-route next tick
 			s.path = [];
 			s.pathI = 0;
-			const line = screams[Math.floor(Math.random() * screams.length)];
+			const line = pick(screams);
 			const ctx = s.speechCtx;
 			ctx.clearRect(0, 0, 280, 72);
 			ctx.fillStyle = 'rgba(255,240,240,0.96)';
@@ -523,7 +485,7 @@ export class Americans {
 			s.f.unhappiness = Math.max(0, s.f.unhappiness - 8);
 			s.f.mood = Math.random() > 0.4 ? 'hyped' : s.f.mood;
 			s.wait = Math.max(s.wait, 0.8 + Math.random());
-			const line = cheers[Math.floor(Math.random() * cheers.length)];
+			const line = pick(cheers);
 			const ctx = s.speechCtx;
 			ctx.clearRect(0, 0, 280, 72);
 			ctx.fillStyle = 'rgba(255,255,255,0.96)';
@@ -664,20 +626,15 @@ export class Americans {
 		const mean = best.f.unhappiness >= 50;
 		const lines = mean
 			? [
-				'Kijk uit, lul — dit is geen racebaan.',
-				'Hé! Loop niet door me heen, basic.',
-				'Yo, personal space. Leer het.',
-				'Man, jij botst met alles. Typisch.',
-				'Schuif op, ik shop hier.',
-				'Watch it — ik ben al hangry.',
-			]
-			: [
-				'Oh sorry — of jij was het.',
-				'Even doorlopen, ja?',
-				'Yo, bijna botsing.',
-				'Chill in de gang, oké?',
-			];
-		const line = lines[Math.floor(Math.random() * lines.length)];
+					'Kijk uit, lul — dit is geen racebaan.',
+					'Hé! Loop niet door me heen, basic.',
+					'Yo, personal space. Leer het.',
+					'Man, jij botst met alles. Typisch.',
+					'Schuif op, ik shop hier.',
+					'Watch it — ik ben al hangry.',
+				]
+			: ['Oh sorry — of jij was het.', 'Even doorlopen, ja?', 'Yo, bijna botsing.', 'Chill in de gang, oké?'];
+		const line = pick(lines);
 		this.sayLine(best, line, false);
 		return `${best.f.name}: ${line}`;
 	}
@@ -702,12 +659,14 @@ export class Americans {
 		const range2 = range * range;
 		for (let i = 0; i < this.sims.length; i++) {
 			const a = this.sims[i];
+			if (!a) continue;
 			if (Math.abs(a.pos.y - L.y) > 2.2) continue;
 			const adx = a.pos.x - L.x;
 			const adz = a.pos.z - L.z;
 			if (adx * adx + adz * adz > range2) continue;
 			for (let j = i + 1; j < this.sims.length; j++) {
 				const b = this.sims[j];
+				if (!b) continue;
 				if (Math.abs(a.pos.y - b.pos.y) > 2.2) continue;
 				if (Math.abs(b.pos.y - L.y) > 2.2) continue;
 				const bdx = b.pos.x - L.x;
@@ -743,11 +702,12 @@ export class Americans {
 			isBrad: s.f.isBrad,
 			isMiss: s.f.isMiss,
 		});
-		const ctx = sa.f.partnerId === sb.f.id
-			? 'koppel loopt hand in hand'
-			: bestD < 1.8
-			? 'bijna botsing in de gang'
-			: 'passeren in de mall (dicht bij speler)';
+		const ctx =
+			sa.f.partnerId === sb.f.id
+				? 'koppel loopt hand in hand'
+				: bestD < 1.8
+					? 'bijna botsing in de gang'
+					: 'passeren in de mall (dicht bij speler)';
 		void fetchSimChat(persona(sa), persona(sb), ctx)
 			.then((ex) => {
 				// Re-check visibility — player may have left the floor mid-request
@@ -846,13 +806,15 @@ export class Americans {
 	private tickBubbles(dt: number): void {
 		for (let i = this.bubbles.length - 1; i >= 0; i--) {
 			const c = this.bubbles[i];
+			if (!c) continue;
 			c.life -= dt;
-			const pos = c.mesh.geometry.attributes.position as THREE.BufferAttribute;
+			const pos = c.mesh.geometry.getAttribute('position');
 			const arr = pos.array as Float32Array;
-			for (let j = 0; j < arr.length; j += 3) {
-				arr[j] += c.vel[j] * dt;
-				arr[j + 1] += c.vel[j + 1] * dt;
-				arr[j + 2] += c.vel[j + 2] * dt;
+			const vel = c.vel;
+			for (let j = 0; j + 2 < arr.length; j += 3) {
+				arr[j] = (arr[j] ?? 0) + (vel[j] ?? 0) * dt;
+				arr[j + 1] = (arr[j + 1] ?? 0) + (vel[j + 1] ?? 0) * dt;
+				arr[j + 2] = (arr[j + 2] ?? 0) + (vel[j + 2] ?? 0) * dt;
 			}
 			pos.needsUpdate = true;
 			const mat = c.mesh.material as THREE.PointsMaterial;
@@ -880,6 +842,7 @@ export class Americans {
 				for (let j = i + 1; j < this.sims.length; j++) {
 					const a = this.sims[i];
 					const b = this.sims[j];
+					if (!a || !b) continue;
 					if (Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
 					const couple = a.f.partnerId === b.f.id || b.f.partnerId === a.f.id;
 					// Couples still need space — not merge into one mesh
@@ -909,46 +872,26 @@ export class Americans {
 		const isMiss = !isBrad && !isKid && (id === 1 || id === 3 || id === 7 || id === 11);
 		const missIdx = Math.floor(id / 2) % MISS_NAMES.length;
 		// Americans are HUNGRY — thicc by default (Miss stays slim)
-		const thicc = isMiss
-			? 0.1 + rng() * 0.08
-			: isKid
-			? 0.22 + rng() * 0.15
-			: isBrad
-			? 0.95
-			: 0.55 + rng() * 0.42;
+		const thicc = isMiss ? 0.1 + rng() * 0.08 : isKid ? 0.22 + rng() * 0.15 : isBrad ? 0.95 : 0.55 + rng() * 0.42;
 		const moodRoll = rng();
 		// More hangry energy in the mall
 		const mood: SimFactors['mood'] = isBrad
 			? 'on_mission'
 			: isMiss
-			? 'hyped'
-			: moodRoll < 0.38
-			? 'hangry'
-			: moodRoll < 0.55
-			? 'lost'
-			: moodRoll < 0.68
-			? 'hyped'
-			: moodRoll < 0.85
-			? 'chill'
-			: 'on_mission';
+				? 'hyped'
+				: moodRoll < 0.38
+					? 'hangry'
+					: moodRoll < 0.55
+						? 'lost'
+						: moodRoll < 0.68
+							? 'hyped'
+							: moodRoll < 0.85
+								? 'chill'
+								: 'on_mission';
 
-		const startShop = SHOPABLE[Math.floor(rng() * SHOPABLE.length)];
-		const meanings: LifeMeaning[] = [
-			'love',
-			'family',
-			'health',
-			'joy',
-			'provide',
-			'belong',
-			'create',
-		];
-		const lifeMeaning: LifeMeaning = isBrad
-			? 'health'
-			: isKid
-			? 'joy'
-			: isMiss
-			? 'belong'
-			: meanings[Math.floor(rng() * meanings.length)];
+		const startShop = pickWith(SHOPABLE, rng);
+		const meanings: LifeMeaning[] = ['love', 'family', 'health', 'joy', 'provide', 'belong', 'create'];
+		const lifeMeaning: LifeMeaning = isBrad ? 'health' : isKid ? 'joy' : isMiss ? 'belong' : pickWith(meanings, rng);
 		const lifeLines: Record<LifeMeaning, string> = {
 			love: 'Zoekt iets moois voor iemand anders',
 			family: 'Houdt het gezin drijvende',
@@ -964,8 +907,8 @@ export class Americans {
 			name: isBrad
 				? 'Brad Miller'
 				: isMiss
-				? MISS_NAMES[missIdx]
-				: `${FIRST[Math.floor(rng() * FIRST.length)]} ${LAST[Math.floor(rng() * LAST.length)]}`,
+					? at(MISS_NAMES, missIdx)
+					: `${pickWith(FIRST, rng)} ${pickWith(LAST, rng)}`,
 			thicc,
 			speed: isBrad ? 1.35 : isMiss ? 1.1 : 0.7 + rng() * 1.0,
 			stride: isMiss ? 1.05 : 0.85 + rng() * 0.5,
@@ -977,8 +920,8 @@ export class Americans {
 			lifeLine: isBrad
 				? 'Vitamines halen — voor zichzelf, eindelijk'
 				: mood === 'hangry'
-				? 'Mag ik al eten? Nu. Nu. NU.'
-				: lifeLines[lifeMeaning],
+					? 'Mag ik al eten? Nu. Nu. NU.'
+					: lifeLines[lifeMeaning],
 			partnerId: null,
 			partnerName: null,
 			targetShop: '…',
@@ -986,20 +929,12 @@ export class Americans {
 			moneySpent: Math.floor(rng() * 40),
 			unhappiness: isMiss
 				? Math.floor(8 + rng() * 30)
-				: Math.floor(
-					28 + rng() * 45 + (mood === 'hangry' ? 30 : 0) + thicc * 12,
-				),
+				: Math.floor(28 + rng() * 45 + (mood === 'hangry' ? 30 : 0) + thicc * 12),
 			bag: isBrad ? 'KRUIDVAT' : isMiss ? 'Sash' : rng() > 0.45 ? 'bag' : null,
-			shirt: isBrad
-				? 0xe30613
-				: isMiss
-				? MISS_OUTFITS[missIdx]
-				: SHIRTS[Math.floor(rng() * SHIRTS.length)],
-			pants: isMiss ? MISS_OUTFITS[missIdx] : PANTS[Math.floor(rng() * PANTS.length)],
-			skin: isMiss ? 0xf5c9a8 : SKIN[Math.floor(rng() * SKIN.length)],
-			hair: isMiss
-				? [0xc4a35a, 0x2c1810, 0xd35400, 0x5c4033, 0x1a1a1a][missIdx]
-				: HAIR[Math.floor(rng() * HAIR.length)],
+			shirt: isBrad ? 0xe30613 : isMiss ? at(MISS_OUTFITS, missIdx) : pickWith(SHIRTS, rng),
+			pants: isMiss ? at(MISS_OUTFITS, missIdx) : pickWith(PANTS, rng),
+			skin: isMiss ? 0xf5c9a8 : pickWith(SKIN, rng),
+			hair: isMiss ? at([0xc4a35a, 0x2c1810, 0xd35400, 0x5c4033, 0x1a1a1a], missIdx) : pickWith(HAIR, rng),
 			hasCap: false,
 			isBrad,
 			isKid,
@@ -1021,10 +956,7 @@ export class Americans {
 		body.add(legL.group, legR.group);
 
 		const torsoY = legLen + 0.08;
-		const belly = new THREE.Mesh(
-			new THREE.SphereGeometry(bellyR, 12, 10),
-			this.mat(f.shirt, 0.9),
-		);
+		const belly = new THREE.Mesh(new THREE.SphereGeometry(bellyR, 12, 10), this.mat(f.shirt, 0.9));
 		if (isMiss) {
 			// tight waist
 			belly.scale.set(0.72, 1.0, 0.62);
@@ -1046,10 +978,7 @@ export class Americans {
 
 		// Miss: hip flare + heels
 		if (isMiss) {
-			const hips = new THREE.Mesh(
-				new THREE.SphereGeometry(0.22, 10, 8),
-				this.mat(f.pants, 0.85),
-			);
+			const hips = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), this.mat(f.pants, 0.85));
 			hips.scale.set(1.45, 0.55, 0.85);
 			hips.position.set(0, torsoY - 0.08, 0.02);
 			body.add(hips);
@@ -1079,10 +1008,7 @@ export class Americans {
 			const limb = new THREE.Mesh(armGeo, this.mat(f.shirt));
 			limb.position.y = -(armLen / 2 + 0.09);
 			pivot.add(limb);
-			const hand = new THREE.Mesh(
-				new THREE.SphereGeometry(0.075, 8, 6),
-				this.mat(f.skin, 0.8),
-			);
+			const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), this.mat(f.skin, 0.8));
 			hand.position.y = -(armLen + 0.13);
 			pivot.add(hand);
 			return pivot;
@@ -1094,10 +1020,7 @@ export class Americans {
 		const headY = torsoY + bellyR * 1.4 + 0.28;
 		const headR = isKid ? 0.2 : isMiss ? 0.23 : 0.24;
 		// Plain skin head — no painted texture face
-		const head = new THREE.Mesh(
-			new THREE.SphereGeometry(headR, 16, 16),
-			this.mat(f.skin, 0.85),
-		);
+		const head = new THREE.Mesh(new THREE.SphereGeometry(headR, 16, 16), this.mat(f.skin, 0.85));
 		head.position.set(0, headY, 0);
 		body.add(head);
 
@@ -1134,13 +1057,7 @@ export class Americans {
 		// anchor group that owns the orientation.
 		const mouthAnchor = new THREE.Group();
 		placeOnSkull(mouthAnchor, headR, 0, -0.42, 0.95);
-		const mouthGeo = new THREE.TorusGeometry(
-			headR * 0.3,
-			headR * 0.055,
-			5,
-			14,
-			Math.PI,
-		);
+		const mouthGeo = new THREE.TorusGeometry(headR * 0.3, headR * 0.055, 5, 14, Math.PI);
 		const mouth = new THREE.Mesh(mouthGeo, darkMat);
 		mouthAnchor.add(mouth);
 		head.add(mouthAnchor);
@@ -1160,15 +1077,7 @@ export class Americans {
 			// Pageant hair volume — open at the front (phi gap) so the wig frames
 			// the face instead of engulfing the eyes.
 			const hair = new THREE.Mesh(
-				new THREE.SphereGeometry(
-					0.28,
-					14,
-					10,
-					Math.PI * 0.22,
-					Math.PI * 1.56,
-					0,
-					Math.PI * 0.68,
-				),
+				new THREE.SphereGeometry(0.28, 14, 10, Math.PI * 0.22, Math.PI * 1.56, 0, Math.PI * 0.68),
 				this.mat(f.hair),
 			);
 			hair.position.set(0, headY + 0.06, -0.02);
@@ -1190,9 +1099,7 @@ export class Americans {
 			// Sash
 			const sash = new THREE.Mesh(
 				new THREE.BoxGeometry(0.12, 0.9, 0.02),
-				this.track(
-					new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }),
-				),
+				this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 })),
 			);
 			sash.position.set(0.18, torsoY + 0.5, 0.2);
 			sash.rotation.z = -0.35;
@@ -1211,15 +1118,7 @@ export class Americans {
 		} else {
 			// Same trick: leave the forehead clear of the hair shell
 			const hair = new THREE.Mesh(
-				new THREE.SphereGeometry(
-					0.25,
-					12,
-					8,
-					Math.PI * 0.2,
-					Math.PI * 1.6,
-					0,
-					Math.PI * 0.58,
-				),
+				new THREE.SphereGeometry(0.25, 12, 8, Math.PI * 0.2, Math.PI * 1.6, 0, Math.PI * 0.58),
 				this.mat(f.hair),
 			);
 			hair.position.set(0, headY + 0.04, 0);
@@ -1227,10 +1126,7 @@ export class Americans {
 		}
 
 		if (f.bag && !f.isMiss) {
-			const bag = new THREE.Mesh(
-				new THREE.BoxGeometry(0.28, 0.34, 0.12),
-				this.mat(f.isBrad ? 0xe30613 : 0x333333),
-			);
+			const bag = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.12), this.mat(f.isBrad ? 0xe30613 : 0x333333));
 			bag.position.set(bellyR * 1.25, torsoY * 0.5, 0.15);
 			body.add(bag);
 		}
@@ -1330,9 +1226,7 @@ export class Americans {
 	}
 
 	private mat(color: number, rough = 0.85): THREE.MeshStandardMaterial {
-		return this.track(
-			new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.05 }),
-		);
+		return this.track(new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.05 }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
@@ -1348,35 +1242,23 @@ export class Americans {
 		const hip = new THREE.Group();
 		hip.position.set(0, legLen, 0);
 
-		const thigh = new THREE.Mesh(
-			new THREE.CapsuleGeometry(0.11, legLen * 0.42, 3, 6),
-			this.mat(pants),
-		);
+		const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, legLen * 0.42, 3, 6), this.mat(pants));
 		thigh.position.y = -legLen * 0.28;
 		hip.add(thigh);
 
 		const knee = new THREE.Group();
 		knee.position.y = -legLen * 0.5;
 
-		const shin = new THREE.Mesh(
-			new THREE.CapsuleGeometry(0.09, legLen * 0.35, 3, 6),
-			this.mat(pants),
-		);
+		const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, legLen * 0.35, 3, 6), this.mat(pants));
 		shin.position.y = -legLen * 0.2;
 		knee.add(shin);
 
 		// BIG visible foot (pootje)
-		const foot = new THREE.Mesh(
-			new THREE.BoxGeometry(0.16, 0.09, 0.34),
-			this.mat(0xf5f5f5, 0.65),
-		);
+		const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.34), this.mat(0xf5f5f5, 0.65));
 		foot.position.set(0, -legLen * 0.42, 0.1);
 		knee.add(foot);
 
-		const sole = new THREE.Mesh(
-			new THREE.BoxGeometry(0.17, 0.04, 0.36),
-			this.mat(0x1a1a1a),
-		);
+		const sole = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.04, 0.36), this.mat(0x1a1a1a));
 		sole.position.set(0, -legLen * 0.47, 0.1);
 		knee.add(sole);
 
@@ -1459,21 +1341,21 @@ export class Americans {
 		};
 		// Hangry → food court first, always
 		if (sim.f.mood === 'hangry' && Math.random() < 0.72) {
-			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? SHOPABLE[0];
+			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? pick(SHOPABLE);
 		}
 		if (sim.f.isBrad && Math.random() < 0.55) {
-			return SHOPABLE.find((s) => s.id === 'kruidvat') ?? SHOPABLE[0];
+			return SHOPABLE.find((s) => s.id === 'kruidvat') ?? pick(SHOPABLE);
 		}
 		// Extra thicc people also drift toward grease
 		if (sim.f.thicc > 0.7 && Math.random() < 0.35) {
-			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? SHOPABLE[0];
+			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? pick(SHOPABLE);
 		}
 		const list = prefer[m];
 		if (Math.random() < 0.72) {
-			const id = list[Math.floor(Math.random() * list.length)];
-			return SHOPABLE.find((s) => s.id === id) ?? SHOPABLE[0];
+			const id = pick(list);
+			return SHOPABLE.find((s) => s.id === id) ?? pick(SHOPABLE);
 		}
-		return SHOPABLE[Math.floor(Math.random() * SHOPABLE.length)];
+		return pick(SHOPABLE);
 	}
 
 	private tick(sim: Sim, dt: number): void {
@@ -1566,6 +1448,11 @@ export class Americans {
 		}
 
 		const target = sim.path[sim.pathI];
+		if (!target) {
+			sim.path = [];
+			sim.pathI = 0;
+			return;
+		}
 		const to = target.clone().sub(sim.pos);
 		to.y = 0;
 		const dist = to.length();
@@ -1573,16 +1460,14 @@ export class Americans {
 		if (dist < 0.4) {
 			sim.pathI++;
 			// snap Y when changing floors via escalator/stairs nodes
-			if (sim.pathI < sim.path.length) {
-				sim.pos.y = sim.path[sim.pathI].y;
-			}
+			const nextNode = sim.path[sim.pathI];
+			if (nextNode) sim.pos.y = nextNode.y;
 			return;
 		}
 
 		// ── THE VECTOR ──────────────────────────────────────
 		const dir = to.normalize();
-		const spd = f.speed
-			* (f.mood === 'hyped' ? 1.3 : f.mood === 'hangry' ? 1.2 : f.mood === 'chill' ? 0.8 : 1);
+		const spd = f.speed * (f.mood === 'hyped' ? 1.3 : f.mood === 'hangry' ? 1.2 : f.mood === 'chill' ? 0.8 : 1);
 
 		sim.velocity.copy(dir).multiplyScalar(spd);
 		const prevX = sim.pos.x;
@@ -1649,20 +1534,13 @@ export class Americans {
 		if (f.partnerId !== null && sim.coupleSide !== 0) {
 			const partner = this.sims.find((s) => s.f.id === f.partnerId);
 			if (partner) {
-				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(
-					sim.coupleSide * 0.55,
-				);
+				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(sim.coupleSide * 0.55);
 				// Soft pull toward parallel lane next to partner lead path
 				if (f.id > f.partnerId) {
 					const ideal = partner.pos.clone().add(side);
 					sim.pos.x = THREE.MathUtils.lerp(sim.pos.x, ideal.x, 0.12);
 					sim.pos.z = THREE.MathUtils.lerp(sim.pos.z, ideal.z, 0.12);
-					const fix = this.world.resolveCircle(
-						sim.pos.x,
-						sim.pos.z,
-						sim.pos.y,
-						SIM_RADIUS,
-					);
+					const fix = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, SIM_RADIUS);
 					sim.pos.x = fix.x;
 					sim.pos.z = fix.z;
 				}
@@ -1882,28 +1760,21 @@ export class Americans {
 		if (checkout) {
 			const owner = getOwner(sim.f.targetShopId || sim.shopId);
 			if (owner && owner.lines.length > 0 && Math.random() < 0.85) {
-				line = `${owner.name.split(' ')[0]}: ${owner.lines[Math.floor(Math.random() * owner.lines.length)]}`;
+				line = `${owner.name.split(' ')[0]}: ${pick(owner.lines)}`;
 			} else if (sim.f.partnerName) {
-				line = [
-					`Voor ${sim.f.partnerName.split(' ')[0]} ❤️`,
+				line = pick([
+					`Voor ${sim.f.partnerName.split(' ')[0] ?? sim.f.partnerName} ❤️`,
 					'Wij samen, yallah!',
 					'Pecunia accepta, amore!',
-				][Math.floor(Math.random() * 3)];
+				]);
 			} else {
-				line = ['Pecunia accepta!', 'Dankjewel, next!', 'Kassa done ✓'][
-					Math.floor(Math.random() * 3)
-				];
+				line = pick(['Pecunia accepta!', 'Dankjewel, next!', 'Kassa done ✓']);
 			}
 		} else if (sim.f.partnerName && Math.random() < 0.35) {
-			const p = sim.f.partnerName.split(' ')[0];
-			line = [
-				`${p}… even wachten ❤️`,
-				'Handje? Handje.',
-				`Voor ons, ${p}.`,
-				sim.f.lifeLine.slice(0, 26),
-			][Math.floor(Math.random() * 4)];
+			const p = sim.f.partnerName.split(' ')[0] ?? sim.f.partnerName;
+			line = pick([`${p}… even wachten ❤️`, 'Handje? Handje.', `Voor ons, ${p}.`, sim.f.lifeLine.slice(0, 26)]);
 		} else {
-			line = GIBBER[Math.floor(Math.random() * GIBBER.length)];
+			line = pick(GIBBER);
 		}
 		this.sayLine(sim, line, checkout);
 	}
@@ -1965,14 +1836,16 @@ export class Americans {
 	private tickCoins(dt: number): void {
 		for (let i = this.coinBursts.length - 1; i >= 0; i--) {
 			const c = this.coinBursts[i];
+			if (!c) continue;
 			c.life -= dt;
-			const pos = c.mesh.geometry.attributes.position as THREE.BufferAttribute;
+			const pos = c.mesh.geometry.getAttribute('position');
 			const arr = pos.array as Float32Array;
-			for (let j = 0; j < arr.length; j += 3) {
-				arr[j] += c.vel[j] * dt;
-				arr[j + 1] += c.vel[j + 1] * dt;
-				arr[j + 2] += c.vel[j + 2] * dt;
-				c.vel[j + 1] -= 9 * dt;
+			const vel = c.vel;
+			for (let j = 0; j + 2 < arr.length; j += 3) {
+				arr[j] = (arr[j] ?? 0) + (vel[j] ?? 0) * dt;
+				arr[j + 1] = (arr[j + 1] ?? 0) + (vel[j + 1] ?? 0) * dt;
+				arr[j + 2] = (arr[j + 2] ?? 0) + (vel[j + 2] ?? 0) * dt;
+				vel[j + 1] = (vel[j + 1] ?? 0) - 9 * dt;
 			}
 			pos.needsUpdate = true;
 			const mat = c.mesh.material as THREE.PointsMaterial;
@@ -2039,14 +1912,16 @@ export class Americans {
 	private tickFarts(dt: number): void {
 		for (let i = this.fartClouds.length - 1; i >= 0; i--) {
 			const c = this.fartClouds[i];
+			if (!c) continue;
 			c.life -= dt;
-			const pos = c.mesh.geometry.attributes.position as THREE.BufferAttribute;
+			const pos = c.mesh.geometry.getAttribute('position');
 			const arr = pos.array as Float32Array;
-			for (let j = 0; j < arr.length; j += 3) {
-				arr[j] += c.vel[j] * dt;
-				arr[j + 1] += c.vel[j + 1] * dt;
-				arr[j + 2] += c.vel[j + 2] * dt;
-				c.vel[j + 1] -= 0.4 * dt;
+			const vel = c.vel;
+			for (let j = 0; j + 2 < arr.length; j += 3) {
+				arr[j] = (arr[j] ?? 0) + (vel[j] ?? 0) * dt;
+				arr[j + 1] = (arr[j + 1] ?? 0) + (vel[j + 1] ?? 0) * dt;
+				arr[j + 2] = (arr[j + 2] ?? 0) + (vel[j + 2] ?? 0) * dt;
+				vel[j + 1] = (vel[j + 1] ?? 0) - 0.4 * dt;
 			}
 			pos.needsUpdate = true;
 			const mat = c.mesh.material as THREE.PointsMaterial;
@@ -2102,14 +1977,7 @@ export class Americans {
 	}
 }
 
-function roundRect(
-	ctx: CanvasRenderingContext2D,
-	x: number,
-	y: number,
-	w: number,
-	h: number,
-	r: number,
-): void {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
 	ctx.beginPath();
 	ctx.moveTo(x + r, y);
 	ctx.arcTo(x + w, y, x + w, y + h, r);

@@ -46,8 +46,7 @@ export class Helicopter {
 
 	/** Instappen kan alleen als hij (bijna) stilstaat op het pad. */
 	get boardable(): boolean {
-		return !this.occupied
-			&& (this.state === 'parked' || this.state === 'spindown' || this.state === 'spinup');
+		return !this.occupied && (this.state === 'parked' || this.state === 'spindown' || this.state === 'spinup');
 	}
 
 	board(): void {
@@ -101,11 +100,7 @@ export class Helicopter {
 		// camera zit in het cockpitglas: 1.0 naar voren, 0.85 boven de romp-origin
 		const fx = Math.cos(yaw);
 		const fz = -Math.sin(yaw);
-		this.body.position.set(
-			cam.position.x - fx * 1.0,
-			cam.position.y - 0.85,
-			cam.position.z - fz * 1.0,
-		);
+		this.body.position.set(cam.position.x - fx * 1.0, cam.position.y - 0.85, cam.position.z - fz * 1.0);
 		this.pos.copy(this.body.position);
 		this.mainRotor.rotation.y += 30 * dt;
 		this.tailRotor.rotation.x += 120 * dt;
@@ -158,11 +153,7 @@ export class Helicopter {
 			case 'cruise': {
 				this.rotorSpeed = 26;
 				this.cruiseA += CRUISE_SPEED * dt;
-				const r = THREE.MathUtils.lerp(
-					Math.hypot(this.pos.x, this.pos.z),
-					CRUISE_R,
-					dt * 0.8,
-				);
+				const r = THREE.MathUtils.lerp(Math.hypot(this.pos.x, this.pos.z), CRUISE_R, dt * 0.8);
 				this.pos.x = Math.cos(this.cruiseA) * r;
 				this.pos.z = Math.sin(this.cruiseA) * r;
 				this.pos.y = CRUISE_Y + Math.sin(this.stateT * 0.7) * 0.6;
@@ -242,10 +233,7 @@ export class Helicopter {
 		this.body.add(fuselage);
 
 		// Cockpitglas
-		const glass = new THREE.Mesh(
-			new THREE.SphereGeometry(0.82, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
-			glassMat,
-		);
+		const glass = new THREE.Mesh(new THREE.SphereGeometry(0.82, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), glassMat);
 		glass.rotation.z = -Math.PI / 2;
 		glass.position.set(1.05, 1.35, 0);
 		this.body.add(glass);
@@ -336,15 +324,7 @@ export class Helicopter {
 		this.materials.push(stickerMat);
 
 		// Patch rond phi=π/2 kijkt +Z; radius 1.07 zweeft ~2 cm boven de huid
-		const patchGeo = new THREE.SphereGeometry(
-			1.07,
-			16,
-			10,
-			Math.PI / 2 - 0.42,
-			0.84,
-			Math.PI / 2 - 0.3,
-			0.6,
-		);
+		const patchGeo = new THREE.SphereGeometry(1.07, 16, 10, Math.PI / 2 - 0.42, 0.84, Math.PI / 2 - 0.3, 0.6);
 		for (const side of [-1, 1] as const) {
 			const decal = new THREE.Mesh(patchGeo, stickerMat);
 			// spiegelzijde: draai het segment naar −Z, tekst blijft leesbaar

@@ -1,4 +1,4 @@
-import { EDGES, type GraphNode, NODES } from '../data/graph';
+import { EDGES, type GraphNode, NODES } from '@/data/graph';
 
 interface Link {
 	to: string;
@@ -74,6 +74,7 @@ export class Pathfinder {
 		for (let i = 1; i < path.length; i++) {
 			const a = path[i - 1];
 			const b = path[i];
+			if (!a || !b) continue;
 			d += Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 		}
 		return d;

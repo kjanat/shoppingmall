@@ -1,5 +1,6 @@
+import type { GraphNode } from '@/data/graph';
+import { at } from '@/util/rand';
 import * as THREE from 'three';
-import type { GraphNode } from '../data/graph';
 
 /**
  * Solid mall-directory floor path — yellow tape style.
@@ -32,7 +33,7 @@ export class PathMesh {
 
 	clear(): void {
 		while (this.group.children.length) {
-			const c = this.group.children[0];
+			const c = at(this.group.children, 0);
 			this.group.remove(c);
 			if (c instanceof THREE.Mesh) {
 				c.geometry.dispose();
@@ -63,10 +64,17 @@ export class PathMesh {
 		const up = new THREE.Vector3(0, 1, 0);
 
 		for (let i = 0; i < samples.length; i++) {
-			const p = samples[i];
-			const tangent = i < samples.length - 1
-				? samples[i + 1].clone().sub(p).normalize()
-				: p.clone().sub(samples[i - 1]).normalize();
+			const p = at(samples, i);
+			const tangent =
+				i < samples.length - 1
+					? at(samples, i + 1)
+							.clone()
+							.sub(p)
+							.normalize()
+					: p
+							.clone()
+							.sub(at(samples, i - 1))
+							.normalize();
 			const side = new THREE.Vector3().crossVectors(up, tangent).normalize();
 			if (side.lengthSq() < 0.001) side.set(1, 0, 0);
 

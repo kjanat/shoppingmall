@@ -56,15 +56,9 @@ export class FoodCourt {
 	}
 
 	private buildTables(): void {
-		const wood = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.75 }),
-		);
-		const metal = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.5, roughness: 0.4 }),
-		);
-		const trayMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 }),
-		);
+		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.75 }));
+		const metal = this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.5, roughness: 0.4 }));
+		const trayMat = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 }));
 
 		const spots: [number, number][] = [
 			[-4, -0.8],
@@ -90,16 +84,10 @@ export class FoodCourt {
 			// 3 stools
 			for (let i = 0; i < 3; i++) {
 				const a = (i / 3) * Math.PI * 2 + 0.4;
-				const stool = new THREE.Mesh(
-					new THREE.CylinderGeometry(0.18, 0.16, 0.08, 10),
-					wood,
-				);
+				const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.08, 10), wood);
 				stool.position.set(Math.cos(a) * 0.75, 0.48, Math.sin(a) * 0.75);
 				g.add(stool);
-				const leg = new THREE.Mesh(
-					new THREE.CylinderGeometry(0.03, 0.03, 0.45, 6),
-					metal,
-				);
+				const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.45, 6), metal);
 				leg.position.set(Math.cos(a) * 0.75, 0.22, Math.sin(a) * 0.75);
 				g.add(leg);
 			}
@@ -217,9 +205,7 @@ export class FoodCourt {
 
 			// Staanders: de achterwand begint op 1.1 m — zonder poten leek het
 			// vanaf de noordkant een rij zwevende planken
-			const postMat = this.track(
-				new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.6, roughness: 0.4 }),
-			);
+			const postMat = this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.6, roughness: 0.4 }));
 			for (const sx of [-1.32, 1.32]) {
 				const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.7, 8), postMat);
 				post.position.set(sx, 1.35, -0.55);
@@ -236,12 +222,8 @@ export class FoodCourt {
 			g.add(lamp);
 
 			// Vendor blob
-			const skin = this.track(
-				new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.85 }),
-			);
-			const uni = this.track(
-				new THREE.MeshStandardMaterial({ color: s.accent, roughness: 0.7 }),
-			);
+			const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.85 }));
+			const uni = this.track(new THREE.MeshStandardMaterial({ color: s.accent, roughness: 0.7 }));
 			const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.4, 4, 6), uni);
 			body.position.set(0, 1.55, -0.15);
 			g.add(body);
@@ -253,12 +235,7 @@ export class FoodCourt {
 		}
 	}
 
-	private makeSign(
-		title: string,
-		sub: string,
-		bg: number,
-		fg: number,
-	): THREE.Mesh {
+	private makeSign(title: string, sub: string, bg: number, fg: number): THREE.Mesh {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 100;
@@ -296,11 +273,7 @@ export class FoodCourt {
 		ctx.fillText('hangry zone · open late · no diet zone', 256, 88);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(
-			this.track(
-				new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }),
-			),
-		);
+		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
 		sp.scale.set(5.5, 1.4, 1);
 		sp.position.set(0, 3.6, 0);
 		this.group.add(sp);

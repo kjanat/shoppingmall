@@ -63,13 +63,7 @@ export class StoreLabels {
 		return sprite;
 	}
 
-	private makeFloorBadge(
-		text: string,
-		x: number,
-		y: number,
-		z: number,
-		color: string,
-	): THREE.Sprite {
+	private makeFloorBadge(text: string, x: number, y: number, z: number, color: string): THREE.Sprite {
 		const canvas = document.createElement('canvas');
 		canvas.width = 512;
 		canvas.height = 80;
@@ -102,14 +96,7 @@ export class StoreLabels {
 	}
 }
 
-function roundRect(
-	ctx: CanvasRenderingContext2D,
-	x: number,
-	y: number,
-	w: number,
-	h: number,
-	r: number,
-): void {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
 	ctx.beginPath();
 	ctx.moveTo(x + r, y);
 	ctx.arcTo(x + w, y, x + w, y + h, r);

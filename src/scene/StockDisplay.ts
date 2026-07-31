@@ -1,6 +1,7 @@
+import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
+import { type StoreDef, STORES } from '@/data/stores';
+import { at } from '@/util/rand';
 import * as THREE from 'three';
-import { getInventory, type StockItem, type StockKind } from '../data/inventory';
-import { type StoreDef, STORES } from '../data/stores';
 
 const FLOOR_H = 6;
 
@@ -26,14 +27,14 @@ export class StockDisplay {
 	flashSale(storeId: string): void {
 		const reg = this.registers.get(storeId);
 		if (!reg) return;
-		const light = reg.userData.saleLight as THREE.PointLight | undefined;
+		const light = reg.userData['saleLight'] as THREE.PointLight | undefined;
 		if (light) {
 			light.intensity = 10;
 			setTimeout(() => {
 				light.intensity = 0.6;
 			}, 500);
 		}
-		const coins = reg.userData.coinMesh as THREE.Mesh | undefined;
+		const coins = reg.userData['coinMesh'] as THREE.Mesh | undefined;
 		if (coins) {
 			coins.visible = true;
 			setTimeout(() => {
@@ -60,12 +61,8 @@ export class StockDisplay {
 		const backShelfZ = -roomDepth + 0.55;
 		const midZ = -roomDepth * 0.35;
 
-		const shelfMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x6d5c45, roughness: 0.7 }),
-		);
-		const chrome = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.75, roughness: 0.3 }),
-		);
+		const shelfMat = this.track(new THREE.MeshStandardMaterial({ color: 0x6d5c45, roughness: 0.7 }));
+		const chrome = this.track(new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.75, roughness: 0.3 }));
 
 		// Back shelving (IN FRONT of back wall — fully visible)
 		const unitW = w * 0.82;
@@ -81,7 +78,7 @@ export class StockDisplay {
 			const y = 0.62 + row * 0.72;
 			const cols = 6;
 			for (let c = 0; c < cols; c++) {
-				const item = items[idx % items.length];
+				const item = at(items, idx);
 				idx++;
 				const t = c / (cols - 1);
 				const mesh = this.makeProduct(item);
@@ -105,7 +102,7 @@ export class StockDisplay {
 			rail.position.set(rx, 1.5, rz);
 			g.add(rail);
 			for (let h = 0; h < 5; h++) {
-				const item = items[(r * 5 + h) % items.length];
+				const item = at(items, r * 5 + h);
 				const mesh = this.makeProduct(item);
 				mesh.scale.multiplyScalar(1.2);
 				mesh.position.set(rx - 0.38 + h * 0.19, 1.15, rz + 0.05);
@@ -120,19 +117,17 @@ export class StockDisplay {
 			table.position.set(tx, 0.7, -0.85);
 			g.add(table);
 			const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.7, 0.07), chrome);
-			for (
-				const [lx, lz] of [
-					[-0.25, -0.18],
-					[0.25, -0.18],
-					[-0.25, 0.18],
-					[0.25, 0.18],
-				]
-			) {
+			for (const [lx, lz] of [
+				[-0.25, -0.18],
+				[0.25, -0.18],
+				[-0.25, 0.18],
+				[0.25, 0.18],
+			] as const) {
 				const l = leg.clone();
 				l.position.set(tx + lx, 0.35, -0.85 + lz);
 				g.add(l);
 			}
-			const item = items[i % items.length];
+			const item = at(items, i);
 			const p = this.makeProduct(item);
 			p.scale.multiplyScalar(1.4);
 			p.position.set(tx, 0.9, -0.85);
@@ -167,17 +162,15 @@ export class StockDisplay {
 		const saleLight = new THREE.PointLight(0xffd700, 0.6, 5, 2);
 		saleLight.position.set(0, 0.4, 0.3);
 		reg.add(saleLight);
-		reg.userData.saleLight = saleLight;
+		reg.userData['saleLight'] = saleLight;
 		const coin = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12),
-			this.track(
-				new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.25 }),
-			),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.25 })),
 		);
 		coin.position.set(-0.2, 0.18, 0.2);
 		coin.visible = false;
 		reg.add(coin);
-		reg.userData.coinMesh = coin;
+		reg.userData['coinMesh'] = coin;
 		g.add(reg);
 		this.registers.set(store.id, reg);
 

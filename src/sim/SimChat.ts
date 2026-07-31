@@ -6,6 +6,7 @@
  *   - user       — stable per-browser end-user id (localStorage, ≤128)
  *   - session_id — per-tab session for sticky routing + session grouping (≤256)
  */
+import { pick } from '@/util/rand';
 
 export type SimPersona = {
 	name: string;
@@ -28,9 +29,10 @@ const SESSION_STORAGE_KEY = 'mallsim.openrouter.session';
 const USER_STORAGE_KEY = 'mallsim.openrouter.user';
 
 function newId(prefix: string): string {
-	const uuid = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-		? crypto.randomUUID()
-		: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+	const uuid =
+		typeof crypto !== 'undefined' && 'randomUUID' in crypto
+			? crypto.randomUUID()
+			: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 	return `${prefix}-${uuid}`;
 }
 
@@ -106,23 +108,17 @@ export function localBanter(a: SimPersona, b: SimPersona): ChatExchange {
 	const poolB = mean ? roastB : chillB;
 	if (a.isKid) {
 		return {
-			a: ['Mag ik ijs?', 'Mama zei nee…', 'Ik wil NIET lopen!'][Math.floor(Math.random() * 3)],
-			b: b.isKid
-				? 'Ik ook! Race!'
-				: ['Later, kiddo.', 'Geen ijs. Loop.', 'Okee okee, rustig.'][Math.floor(Math.random() * 3)],
+			a: pick(['Mag ik ijs?', 'Mama zei nee…', 'Ik wil NIET lopen!']),
+			b: b.isKid ? 'Ik ook! Race!' : pick(['Later, kiddo.', 'Geen ijs. Loop.', 'Okee okee, rustig.']),
 		};
 	}
 	return {
-		a: poolA[Math.floor(Math.random() * poolA.length)].slice(0, 48),
-		b: poolB[Math.floor(Math.random() * poolB.length)].slice(0, 48),
+		a: pick(poolA).slice(0, 48),
+		b: pick(poolB).slice(0, 48),
 	};
 }
 
-export async function fetchSimChat(
-	a: SimPersona,
-	b: SimPersona,
-	context?: string,
-): Promise<ChatExchange> {
+export async function fetchSimChat(a: SimPersona, b: SimPersona, context?: string): Promise<ChatExchange> {
 	if (inflight >= MAX_INFLIGHT) return localBanter(a, b);
 	inflight++;
 	const sessionId = getMallSessionId();

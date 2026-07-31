@@ -1,5 +1,6 @@
+import type { CollisionWorld } from '@/physics/Collision';
+import { pick } from '@/util/rand';
 import * as THREE from 'three';
-import type { CollisionWorld } from '../physics/Collision';
 
 type Penguin = {
 	root: THREE.Group;
@@ -36,16 +37,7 @@ const NAMES = [
 	'Opus',
 ];
 
-const CHIRPS = [
-	'Noot noot!',
-	'🐟?',
-	'Waddle waddle',
-	'Cold in the mall?',
-	'Where ice?',
-	'Honk',
-	'🐧',
-	'Fish please',
-];
+const CHIRPS = ['Noot noot!', '🐟?', 'Waddle waddle', 'Cold in the mall?', 'Where ice?', 'Honk', '🐧', 'Fish please'];
 
 /**
  * Colony of low-poly penguins waddling the mall floor —
@@ -83,8 +75,7 @@ export class Penguins {
 		this.t += dt;
 		this.chirpCd -= dt;
 
-		for (let i = 0; i < this.birds.length; i++) {
-			const p = this.birds[i];
+		for (const p of this.birds) {
 			const dx = p.tx - p.root.position.x;
 			const dz = p.tz - p.root.position.z;
 			const dist = Math.hypot(dx, dz);
@@ -137,8 +128,8 @@ export class Penguins {
 			this.chirpCd = 1.8 + Math.random() * 3.5;
 			const n = 1 + Math.floor(Math.random() * 3);
 			for (let k = 0; k < n; k++) {
-				const p = this.birds[Math.floor(Math.random() * this.birds.length)];
-				this.say(p, CHIRPS[Math.floor(Math.random() * CHIRPS.length)]);
+				if (!this.birds.length) break;
+				this.say(pick(this.birds), pick(CHIRPS));
 			}
 		}
 	}
@@ -192,18 +183,10 @@ export class Penguins {
 		const root = new THREE.Group();
 		const name = NAMES[i % NAMES.length] + (i >= NAMES.length ? ` ${i}` : '');
 
-		const black = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.75 }),
-		);
-		const white = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.85 }),
-		);
-		const orange = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xff8f00, roughness: 0.55 }),
-		);
-		const beakM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.5 }),
-		);
+		const black = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.75 }));
+		const white = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.85 }));
+		const orange = this.track(new THREE.MeshStandardMaterial({ color: 0xff8f00, roughness: 0.55 }));
+		const beakM = this.track(new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.5 }));
 
 		const body = new THREE.Group();
 		// Torso egg
@@ -333,9 +316,7 @@ export class Penguins {
 		ctx.fillText(text, 128, 32);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {

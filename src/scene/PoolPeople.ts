@@ -1,3 +1,4 @@
+import { at } from '@/util/rand';
 import * as THREE from 'three';
 
 /**
@@ -68,8 +69,7 @@ export class PoolPeople {
 	update(dt: number, t: number): void {
 		// Dobberen: sinus op y, plus een tergend langzame draai (dt-gedreven,
 		// zodat de rotatie framerate-onafhankelijk blijft).
-		for (let i = 0; i < this.swimmers.length; i++) {
-			const s = this.swimmers[i];
+		for (const s of this.swimmers) {
 			s.root.position.y = s.baseY + Math.sin(t * s.speed + s.phase) * 0.055;
 			s.root.rotation.y += s.spin * dt;
 		}
@@ -78,8 +78,8 @@ export class PoolPeople {
 		// vier mannen die het collectief ergens mee eens zijn.
 		const c = t % NOD_PERIOD;
 		const nod = c < NOD_TIME ? Math.sin((c / NOD_TIME) * Math.PI * 2) * 0.16 : 0;
-		for (let i = 0; i < this.crewHeads.length; i++) {
-			this.crewHeads[i].rotation.x = 0.04 + nod;
+		for (const head of this.crewHeads) {
+			head.rotation.x = 0.04 + nod;
 		}
 
 		// De insmeerdame wrijft de oliefles over haar arm. Al twintig minuten.
@@ -139,9 +139,7 @@ export class PoolPeople {
 			neck: this.geo(new THREE.CylinderGeometry(0.045, 0.05, 0.12, 8)),
 			lips: this.geo(new THREE.SphereGeometry(0.03, 10, 8)),
 			hairLong: this.geo(new THREE.CapsuleGeometry(0.115, 0.34, 6, 12)),
-			fringe: this.geo(
-				new THREE.SphereGeometry(0.132, 12, 8, Math.PI * 0.22, Math.PI * 1.56, 0, Math.PI * 0.55),
-			),
+			fringe: this.geo(new THREE.SphereGeometry(0.132, 12, 8, Math.PI * 0.22, Math.PI * 1.56, 0, Math.PI * 0.55)),
 			bun: this.geo(new THREE.SphereGeometry(0.078, 10, 8)),
 			capHair: this.geo(new THREE.SphereGeometry(0.128, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45)),
 			// Sportzonnebril: één brede lens plus zwart bandje rond de kop.
@@ -249,12 +247,7 @@ export class PoolPeople {
 		head.add(band);
 	}
 
-	private buildWoman(
-		skinColor: number,
-		kitColor: number,
-		hairColor: number,
-		hairStyle: 'long' | 'bun',
-	): Rig {
+	private buildWoman(skinColor: number, kitColor: number, hairColor: number, hairStyle: 'long' | 'bun'): Rig {
 		const skin = this.mat(skinColor, 0.72);
 		const kit = this.mat(kitColor, 0.45, 0.1);
 		const rig = this.buildRig(this.s.torsoF, skin, skin, kit);
@@ -353,10 +346,11 @@ export class PoolPeople {
 			[0x5c3a21, 0xffea00, 0x1a1a1a, 'bun'],
 		];
 
-		for (let i = 0; i < 3; i++) {
+		looks.forEach(([skin, kit, hair, style], i) => {
+			const x = at(loungerX, i);
 			// Ligstoel: twee sledes, ligvlak, schuine rugleuning, handdoek erop.
 			const lounger = new THREE.Group();
-			lounger.position.set(loungerX[i], DECK_Y, -9.8);
+			lounger.position.set(x, DECK_Y, -9.8);
 			for (const side of [-1, 1] as const) {
 				const leg = new THREE.Mesh(this.s.loungerLeg, frameMat);
 				leg.position.set(side * 0.3, 0.16, 0);
@@ -369,18 +363,17 @@ export class PoolPeople {
 			back.position.set(0, 0.55, -0.78);
 			back.rotation.x = 1.0;
 			lounger.add(back);
-			const towel = new THREE.Mesh(this.s.towel, this.mat(towelColors[i], 0.9));
+			const towel = new THREE.Mesh(this.s.towel, this.mat(at(towelColors, i), 0.9));
 			towel.position.y = 0.39;
 			lounger.add(towel);
 			this.group.add(lounger);
 
-			const [skin, kit, hair, style] = looks[i];
 			const rig = this.buildWoman(skin, kit, hair, style);
-			rig.root.position.set(loungerX[i], DECK_Y + 0.41 - 0.9, -9.95);
+			rig.root.position.set(x, DECK_Y + 0.41 - 0.9, -9.95);
 			this.poseLying(rig);
 			// Nummer twee heeft een arm achter het hoofd. Maximale ontspanning.
 			if (i === 1) rig.armR.rotation.set(-0.5, 0, -2.7);
-		}
+		});
 
 		// Twee dames op de badrand: één zuid (kijkt noord), één oost (kijkt west).
 		const rimA = this.buildWoman(0x6b4423, 0x76ff03, 0x2b1b12, 'long');
@@ -435,8 +428,7 @@ export class PoolPeople {
 			{ x: POOL_X + 2.4, z: POOL_Z - 2.3, man: false, skin: 0xd9a377, kit: 0xffea00, ring: true },
 		];
 
-		for (let i = 0; i < casts.length; i++) {
-			const c = casts[i];
+		casts.forEach((c, i) => {
 			const rig = c.man
 				? this.buildMan(c.skin, this.mat(c.skin, 0.72), c.kit)
 				: this.buildWoman(c.skin, c.kit, i % 2 === 0 ? 0x111111 : 0x8d4a2f, 'bun');
@@ -472,7 +464,7 @@ export class PoolPeople {
 				speed: 1.1 + i * 0.17,
 				spin: (i % 2 === 0 ? 1 : -1) * (0.1 + i * 0.04),
 			});
-		}
+		});
 	}
 
 	// ── AL ZUT CREW ────────────────────────────────────────
@@ -484,8 +476,8 @@ export class PoolPeople {
 		const gold = this.mat(0xd4af37, 0.25, 0.9);
 		const skins = [0xe8bd97, 0x8d5524, 0xd9a377, 0x5c3a21];
 
-		for (let i = 0; i < 4; i++) {
-			const rig = this.buildMan(skins[i], polo, 0x1c2a4a);
+		skins.forEach((skin, i) => {
+			const rig = this.buildMan(skin, polo, 0x1c2a4a);
 			rig.root.position.set(-12.9 + i * 1.4, DECK_Y, 15.2);
 			rig.root.rotation.y = (i - 1.5) * 0.12; // losjes naar de bar gedraaid
 
@@ -502,7 +494,7 @@ export class PoolPeople {
 			rig.armL.rotation.set(-0.1, 0, 0.18);
 			rig.armR.rotation.set(-0.1, 0, -0.18);
 			this.crewHeads.push(rig.head);
-		}
+		});
 	}
 
 	/** Parasolpaal naast de crew, met het clubvaandel. Retourneert het vaandel. */

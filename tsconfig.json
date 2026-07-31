@@ -1,24 +1,39 @@
 {
 	"compilerOptions": {
-		"target": "es2023",
-		"module": "esnext",
-		"lib": ["ES2023", "DOM"],
-		"types": ["vite/client"],
+		"lib": ["ESNext", "DOM"],
+		"target": "ESNext",
+		"module": "Preserve",
+		"moduleDetection": "force",
+		"jsx": "react-jsx",
+		"allowJs": true,
 		"allowArbitraryExtensions": true,
-		"skipLibCheck": true,
+		"types": ["*"],
 
 		/* Bundler mode */
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
 		"verbatimModuleSyntax": true,
-		"moduleDetection": "force",
 		"noEmit": true,
+
+		/* Best practices */
+		"strict": true,
+		"skipLibCheck": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
 
 		/* Linting */
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
+		"noPropertyAccessFromIndexSignature": true,
 		"erasableSyntaxOnly": true,
-		"noFallthroughCasesInSwitch": true
+
+		/* Aliases */
+		"paths": {
+			"@/*": ["./src/*"],
+			"$/*": ["./*"]
+		}
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"exclude": ["dist", "node_modules"]
 }

@@ -3,7 +3,7 @@
  * sessionStorage = survives tab reload / HMR, dies when the tab closes.
  */
 
-import type { GraphNode } from '../data/graph';
+import type { GraphNode } from '@/data/graph';
 
 const KEY = 'mallsim.game.v2';
 
@@ -34,7 +34,7 @@ export function loadGame(): PersistedGame | null {
 	try {
 		const raw = sessionStorage.getItem(KEY);
 		if (!raw) return null;
-		const data = JSON.parse(raw) as PersistedGame;
+		const data = JSON.parse(raw);
 		if (data.v !== 2) return null;
 		// Drop ancient sessions (> 8h) so you don't wake up mid-void
 		if (Date.now() - data.savedAt > 8 * 3600 * 1000) {

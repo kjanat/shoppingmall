@@ -47,16 +47,8 @@ export class AlienProbe {
 		this.t += dt;
 		const u = Math.min(1, this.t / this.duration);
 		// Hover over target cluster
-		this.saucer.position.x = THREE.MathUtils.lerp(
-			this.saucer.position.x,
-			this.targetPos.x,
-			dt * 2,
-		);
-		this.saucer.position.z = THREE.MathUtils.lerp(
-			this.saucer.position.z,
-			this.targetPos.z,
-			dt * 2,
-		);
+		this.saucer.position.x = THREE.MathUtils.lerp(this.saucer.position.x, this.targetPos.x, dt * 2);
+		this.saucer.position.z = THREE.MathUtils.lerp(this.saucer.position.z, this.targetPos.z, dt * 2);
 		this.saucer.position.y = 7 + Math.sin(this.t * 3) * 0.35;
 		this.saucer.rotation.y += dt * 1.8;
 		this.beam.position.set(this.saucer.position.x, 3.5, this.saucer.position.z);

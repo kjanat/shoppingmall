@@ -1,66 +1,67 @@
+import { BartekChat } from '@/audio/BartekChat';
+import { DJPlayer } from '@/audio/DJPlayer';
+import { fetchDjStatus, playBoothFile, speakLine } from '@/audio/ElevenVoice';
+import { spatial } from '@/audio/SpatialAudio';
+import { Director } from '@/camera/Director';
+import type { GraphNode } from '@/data/graph';
+import { getStore, type StoreDef } from '@/data/stores';
+import { Pathfinder } from '@/path/Pathfinder';
+import { PathMesh } from '@/path/PathMesh';
+import { CollisionWorld } from '@/physics/Collision';
+import { PlayerControls } from '@/player/Controls';
+import { createComposer } from '@/post/Composer';
+import { AlienProbe } from '@/scene/AlienProbe';
+import { Amenities } from '@/scene/Amenities';
+import type { PersonRow } from '@/scene/Americans';
+import { Atmosphere } from '@/scene/Atmosphere';
+import { BeardCave } from '@/scene/BeardCave';
+import { Catwalk } from '@/scene/Catwalk';
+import { CityBirds } from '@/scene/city/CityBirds';
+import { CityBuildings } from '@/scene/city/CityBuildings';
+import { CityGarage } from '@/scene/city/CityGarage';
+import { CityPark } from '@/scene/city/CityPark';
+import { CityRoads } from '@/scene/city/CityRoads';
+import { CitySky } from '@/scene/city/CitySky';
+import { CityTheatre } from '@/scene/city/CityTheatre';
+import { CityTraffic } from '@/scene/city/CityTraffic';
+import { CleaningCart } from '@/scene/CleaningCart';
+import { DiscoParty } from '@/scene/Disco';
+import { BARTEK_LINES, DJBartek } from '@/scene/DJBartek';
+import { DriveableCars } from '@/scene/DriveableCars';
+import { Drone } from '@/scene/Drone';
+import { FoodCourt } from '@/scene/FoodCourt';
+import { GlassElevator } from '@/scene/GlassElevator';
+import { Helicopter } from '@/scene/Helicopter';
+import { Helipad } from '@/scene/Helipad';
+import { setupLighting } from '@/scene/Lighting';
+import { MallBuilder } from '@/scene/MallBuilder';
+import { MallRat } from '@/scene/MallRat';
+import { Monkey } from '@/scene/Monkey';
+import { PalmForest } from '@/scene/Palms';
+import { ParkingGarage } from '@/scene/ParkingGarage';
+import { Penguins } from '@/scene/Penguins';
+import { PoolPeople } from '@/scene/PoolPeople';
+import { PrayerRoom } from '@/scene/PrayerRoom';
+import { ProtestGroupies } from '@/scene/ProtestGroupies';
+import { Restrooms } from '@/scene/Restrooms';
+import { RoofIsland } from '@/scene/RoofIsland';
+import { ScrubberBuggy } from '@/scene/ScrubberBuggy';
+import { SecurityGuards } from '@/scene/SecurityGuards';
+import { ShopVoice } from '@/scene/ShopVoice';
+import { Spaceship } from '@/scene/Spaceship';
+import { StockDisplay } from '@/scene/StockDisplay';
+import { BakerThief } from '@/scene/Thief';
+import { TravelAgency } from '@/scene/TravelAgency';
+import { MovingWalkways } from '@/scene/Walkways';
+import { DJOverlay } from '@/ui/DJOverlay';
+import { DJWidget } from '@/ui/DJWidget';
+import { ElevatorPanel } from '@/ui/ElevatorPanel';
+import { KioskOverlay, type MapBlip } from '@/ui/KioskOverlay';
+import { type CastRow, PeopleDashboard } from '@/ui/PeopleDashboard';
+import { SettingsPanel } from '@/ui/SettingsPanel';
+import { at, pick } from '@/util/rand';
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
-import { BartekChat } from '../audio/BartekChat';
-import { DJPlayer } from '../audio/DJPlayer';
-import { fetchDjStatus, playBoothFile, speakLine } from '../audio/ElevenVoice';
-import { spatial } from '../audio/SpatialAudio';
-import { Director } from '../camera/Director';
-import type { GraphNode } from '../data/graph';
-import { getStore, type StoreDef } from '../data/stores';
-import { Pathfinder } from '../path/Pathfinder';
-import { PathMesh } from '../path/PathMesh';
-import { CollisionWorld } from '../physics/Collision';
-import { PlayerControls } from '../player/Controls';
-import { createComposer } from '../post/Composer';
-import { AlienProbe } from '../scene/AlienProbe';
-import { Amenities } from '../scene/Amenities';
-import type { PersonRow } from '../scene/Americans';
-import { Atmosphere } from '../scene/Atmosphere';
-import { BeardCave } from '../scene/BeardCave';
-import { Catwalk } from '../scene/Catwalk';
-import { CityBirds } from '../scene/city/CityBirds';
-import { CityBuildings } from '../scene/city/CityBuildings';
-import { CityGarage } from '../scene/city/CityGarage';
-import { CityPark } from '../scene/city/CityPark';
-import { CityRoads } from '../scene/city/CityRoads';
-import { CitySky } from '../scene/city/CitySky';
-import { CityTheatre } from '../scene/city/CityTheatre';
-import { CityTraffic } from '../scene/city/CityTraffic';
-import { CleaningCart } from '../scene/CleaningCart';
-import { DiscoParty } from '../scene/Disco';
-import { BARTEK_LINES, DJBartek } from '../scene/DJBartek';
-import { DriveableCars } from '../scene/DriveableCars';
-import { Drone } from '../scene/Drone';
-import { FoodCourt } from '../scene/FoodCourt';
-import { GlassElevator } from '../scene/GlassElevator';
-import { Helicopter } from '../scene/Helicopter';
-import { Helipad } from '../scene/Helipad';
-import { setupLighting } from '../scene/Lighting';
-import { MallBuilder } from '../scene/MallBuilder';
-import { MallRat } from '../scene/MallRat';
-import { Monkey } from '../scene/Monkey';
-import { PalmForest } from '../scene/Palms';
-import { ParkingGarage } from '../scene/ParkingGarage';
-import { Penguins } from '../scene/Penguins';
-import { PoolPeople } from '../scene/PoolPeople';
-import { PrayerRoom } from '../scene/PrayerRoom';
-import { ProtestGroupies } from '../scene/ProtestGroupies';
-import { Restrooms } from '../scene/Restrooms';
-import { RoofIsland } from '../scene/RoofIsland';
-import { ScrubberBuggy } from '../scene/ScrubberBuggy';
-import { SecurityGuards } from '../scene/SecurityGuards';
-import { ShopVoice } from '../scene/ShopVoice';
-import { Spaceship } from '../scene/Spaceship';
-import { StockDisplay } from '../scene/StockDisplay';
-import { BakerThief } from '../scene/Thief';
-import { TravelAgency } from '../scene/TravelAgency';
-import { MovingWalkways } from '../scene/Walkways';
-import { DJOverlay } from '../ui/DJOverlay';
-import { DJWidget } from '../ui/DJWidget';
-import { ElevatorPanel } from '../ui/ElevatorPanel';
-import { KioskOverlay, type MapBlip } from '../ui/KioskOverlay';
-import { type CastRow, PeopleDashboard } from '../ui/PeopleDashboard';
-import { SettingsPanel } from '../ui/SettingsPanel';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
 
 const PLAYER_RADIUS = 0.4;
@@ -200,12 +201,7 @@ export class App {
 		canvasParent.appendChild(this.renderer.domElement);
 
 		// Wider FOV feels more first-person / walking through a mall
-		this.camera = new THREE.PerspectiveCamera(
-			70,
-			window.innerWidth / window.innerHeight,
-			0.15,
-			200,
-		);
+		this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.15, 200);
 
 		setupLighting(this.scene);
 		this.disco.bindScene(this.scene);
@@ -259,14 +255,12 @@ export class App {
 		this.scene.add(this.cityTheatre.group);
 		this.scene.add(this.cityBirds.group);
 		// WC + gebedsruimte + cave + travel desk walls
-		for (
-			const c of [
-				...this.restrooms.getColliders(),
-				...this.prayer.getColliders(),
-				...this.beardCave.getColliders(),
-				...this.travel.getColliders(),
-			]
-		) {
+		for (const c of [
+			...this.restrooms.getColliders(),
+			...this.prayer.getColliders(),
+			...this.beardCave.getColliders(),
+			...this.travel.getColliders(),
+		]) {
 			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
 				minY: -0.5,
 				maxY: 3.2,
@@ -315,9 +309,7 @@ export class App {
 				this.atmosphere.americans.nudgeAllMood(4);
 				this.ui.setStatus('🐒💩 De aap raakte een shopper — publiek is niet blij');
 			} else if (hit.what === 'prayer') {
-				this.ui.setStatus(
-					'🐒💩 Aap gooit kak op de GEBEDSRUIMTE — je stond te ver weg',
-				);
+				this.ui.setStatus('🐒💩 Aap gooit kak op de GEBEDSRUIMTE — je stond te ver weg');
 			}
 		});
 
@@ -335,9 +327,7 @@ export class App {
 			this.securityHitCd = 0.6;
 			this.score = Math.max(0, this.score - dmg);
 			this.ui.setScore(this.score, this.metSims.size);
-			this.ui.setStatus(
-				`🚔💥 ${who} schoot je — "I felt threatened" (−${dmg})`,
-			);
+			this.ui.setStatus(`🚔💥 ${who} schoot je — "I felt threatened" (−${dmg})`);
 		});
 
 		this.director = new Director(this.camera);
@@ -363,17 +353,13 @@ export class App {
 				// Owner SPEAKS (Youssef especially) — not silent text on a guest
 				void this.shopVoice.onCheckout(storeId);
 			}
-			const ownerHint = storeId === 'kruidvat' ? 'Youssef Benali' : storeId ?? '?';
-			this.ui.setStatus(
-				`Kassa ${ownerHint} · checkout #${count} · muntjes → verkoper 💰`,
-			);
+			const ownerHint = storeId === 'kruidvat' ? 'Youssef Benali' : (storeId ?? '?');
+			this.ui.setStatus(`Kassa ${ownerHint} · checkout #${count} · muntjes → verkoper 💰`);
 			// Every 5 checkouts → baard-dief (slow heist → cave)
 			if (count > 0 && count % 5 === 0 && count !== this.thiefFiredAt) {
 				this.thiefFiredAt = count;
 				this.thief.trigger();
-				this.ui.setStatus(
-					`🧔 BAARD-DIEF pakt juwelen → Beard-man's Cave! (txn ${count})`,
-				);
+				this.ui.setStatus(`🧔 BAARD-DIEF pakt juwelen → Beard-man's Cave! (txn ${count})`);
 				this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 2, 0)));
 			}
 		});
@@ -450,8 +436,8 @@ export class App {
 			this.ui.setStatus(
 				s.mouseLook
 					? `Besturing: muis kijken${s.lookButton === 2 ? ' (rechtsklik)' : ''}${
-						s.turnWithKeys ? ' + A/D draaien' : ''
-					}`
+							s.turnWithKeys ? ' + A/D draaien' : ''
+						}`
 					: 'Besturing: geen muis · A/D draaien · R/F kijken',
 			);
 		});
@@ -527,46 +513,38 @@ export class App {
 			// J = provoke the atrium monkey
 			if (e.key === 'j' || e.key === 'J') {
 				this.ui.setStatus(
-					this.monkey.provoke()
-						? '🐒 De aap pakt een handvol kak… duiken!'
-						: '🐒 De aap heeft even niks bij de hand',
+					this.monkey.provoke() ? '🐒 De aap pakt een handvol kak… duiken!' : '🐒 De aap heeft even niks bij de hand',
 				);
 			}
 			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper
 			if (e.key === 'e' || e.key === 'E') {
 				// Voertuigen eerst: uitstappen als je vliegt/rijdt
-				if (
-					this.player.flying
-					|| this.vehicle === 'scrubber'
-					|| this.vehicle === 'car'
-				) {
+				if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car') {
 					this.exitVehicle();
 				} else if (this.tryOpenElevatorMenu()) {
 					// Hans floor picker — frees mouse without Esc
-				} else if (
-					!this.possessId && this.freeMove
-					&& this.driveCars.nearestCar(this.camera.position, 4.5)
-				) {
+				} else if (!this.possessId && this.freeMove && this.driveCars.nearestCar(this.camera.position, 4.5)) {
 					this.boardCar();
 				} else if (
-					!this.possessId && this.freeMove
-					&& this.scrubber.distanceTo(this.camera.position) < 3.5
-					&& this.camera.position.y < 4.5
+					!this.possessId &&
+					this.freeMove &&
+					this.scrubber.distanceTo(this.camera.position) < 3.5 &&
+					this.camera.position.y < 4.5
 				) {
 					this.boardScrubber();
-				} else if (
-					!this.possessId && this.freeMove
-					&& this.drone.distanceTo(this.camera.position) < 3.2
-				) {
+				} else if (!this.possessId && this.freeMove && this.drone.distanceTo(this.camera.position) < 3.2) {
 					this.boardDrone();
 				} else if (
-					!this.possessId && this.freeMove && this.heli.boardable
-					&& this.heli.distanceTo(this.camera.position) < 4.5
+					!this.possessId &&
+					this.freeMove &&
+					this.heli.boardable &&
+					this.heli.distanceTo(this.camera.position) < 4.5
 				) {
 					this.boardHeli();
 				} else if (
-					this.slideT < 0 && this.player.feetHeight > 17
-					&& Math.hypot(this.camera.position.x + 28.5, this.camera.position.z + 10) < 2.2
+					this.slideT < 0 &&
+					this.player.feetHeight > 17 &&
+					Math.hypot(this.camera.position.x + 28.5, this.camera.position.z + 10) < 2.2
 				) {
 					// Bovenop de glijbaantoren: E = WHEEE
 					this.startSlide();
@@ -581,10 +559,7 @@ export class App {
 				this.peopleUi.toggle();
 				if (this.peopleUi.isOpen) {
 					// Force immediate fill so you don't stare at empty for 0.5s
-					this.atmosphere.americans.getPeopleSnapshot(
-						this.camera.position,
-						this.peopleRows,
-					);
+					this.atmosphere.americans.getPeopleSnapshot(this.camera.position, this.peopleRows);
 					this.peopleUi.update(this.peopleRows, this.buildCastRows());
 					this.ui.setStatus('📋 Bewoners-dashboard · B sluiten · 👁 = guest view');
 				} else {
@@ -612,16 +587,14 @@ export class App {
 				if (!resumed && !this.djPlayer.playing) {
 					const tracks = await this.djPlayer.refreshPlaylist();
 					const music = tracks.filter((t) => !/intro_voice|voice/i.test(t.file));
-					const list = music.length ? music : tracks;
-					if (list.length) {
-						const idx = this.djPlayer.tracks.findIndex((t) => t.file === list[0].file);
+					const first = (music.length ? music : tracks)[0];
+					if (first) {
+						const idx = this.djPlayer.tracks.findIndex((t) => t.file === first.file);
 						await this.djPlayer.playIndex(idx >= 0 ? idx : 0);
 					}
 				}
 				if (!this.restoredFromSave) {
-					this.ui.setStatus(
-						'♪ Muziek AAN · DJ-booth + gebedsruimte Trapbar · koptelefoon = binaural',
-					);
+					this.ui.setStatus('♪ Muziek AAN · DJ-booth + gebedsruimte Trapbar · koptelefoon = binaural');
 				}
 			})();
 			window.removeEventListener('pointerdown', unlock);
@@ -654,8 +627,8 @@ export class App {
 		}
 
 		// Dev-only handle for poking at the sim from the console / smoke tests
-		if (import.meta.env.DEV) {
-			(window as unknown as { mallsim: App }).mallsim = this;
+		if (process.env.NODE_ENV !== 'production') {
+			window.mallsim = this;
 		}
 
 		// Page Visibility: avoid huge dt spikes after tab switch
@@ -695,15 +668,12 @@ export class App {
 			if (store) {
 				this.currentStore = store;
 				if (saved.path?.length) {
-					this.currentPath = saved.path.map(
-						(p) =>
-							({
-								id: p.id ?? '',
-								x: p.x,
-								y: p.y,
-								z: p.z,
-							}) as GraphNode,
-					);
+					this.currentPath = saved.path.map((p) => ({
+						id: p.id ?? '',
+						x: p.x,
+						y: p.y,
+						z: p.z,
+					}));
 					this.pathMesh.setPath(this.currentPath);
 				}
 			}
@@ -779,9 +749,11 @@ export class App {
 			icon: '👗',
 			name: stage ? stage.name : 'Catwalk',
 			doing: stage
-				? (stage.phase === 'pose'
-					? (this.catwalk.partyMode ? 'poseert voor de fotografen' : 'poseert + Aperol-spray 🍹')
-					: 'werkt de runway')
+				? stage.phase === 'pose'
+					? this.catwalk.partyMode
+						? 'poseert voor de fotografen'
+						: 'poseert + Aperol-spray 🍹'
+					: 'werkt de runway'
 				: 'wacht op de volgende show',
 			floor: 'V0 · west',
 		});
@@ -838,13 +810,9 @@ export class App {
 
 		rows.push({
 			icon: '🚗',
-			name: this.driveCars.activeName !== '—'
-				? this.driveCars.activeName
-				: "Huurauto's (P1)",
+			name: this.driveCars.activeName !== '—' ? this.driveCars.activeName : "Huurauto's (P1)",
 			doing: this.driveCars.statusLine,
-			floor: this.driveCars.ridden
-				? (this.camera.position.y < -2 ? 'P1 garage' : 'stad')
-				: 'P1 · west exit → ring',
+			floor: this.driveCars.ridden ? (this.camera.position.y < -2 ? 'P1 garage' : 'stad') : 'P1 · west exit → ring',
 		});
 
 		rows.push({
@@ -877,9 +845,7 @@ export class App {
 		this.camera.position.copy(seat);
 		this.heli.board();
 		this.player.syncFromCamera();
-		this.ui.setStatus(
-			'🚁 PRAIRIE 1 · Space = collective omhoog · Shift = dalen · WASD vliegen · E = uitstappen',
-		);
+		this.ui.setStatus('🚁 PRAIRIE 1 · Space = collective omhoog · Shift = dalen · WASD vliegen · E = uitstappen');
 	}
 
 	/** E naast de drone: instappen → fly-mode. */
@@ -890,11 +856,7 @@ export class App {
 		this.player.flightProfile = 'drone';
 		this.player.flying = true;
 		// camera in het stoeltje
-		this.camera.position.set(
-			this.drone.parkPos.x,
-			this.drone.parkPos.y + 1.1,
-			this.drone.parkPos.z,
-		);
+		this.camera.position.set(this.drone.parkPos.x, this.drone.parkPos.y + 1.1, this.drone.parkPos.z);
 		this.player.syncFromCamera();
 		this.ui.setStatus(
 			'🛸 DRONE · Space = stijgen · Shift = dalen · WASD vliegen · door het atrium-gat de stad in · E = uitstappen',
@@ -915,9 +877,7 @@ export class App {
 		// syncFromCamera clears driving? no - only feet/yaw. re-set driving
 		this.player.driving = true;
 		this.player.setHeading(this.scrubber.heading);
-		this.ui.setStatus(
-			'🧽 SCHOONMAAK BUGGY · WASD rijden · Shift = turbo · E = uitstappen · wet floor racing!',
-		);
+		this.ui.setStatus('🧽 SCHOONMAAK BUGGY · WASD rijden · Shift = turbo · E = uitstappen · wet floor racing!');
 	}
 
 	/** E naast huurauto in P1 (of geparkeerd in de stad). */
@@ -934,9 +894,7 @@ export class App {
 		this.player.syncFromCamera();
 		this.player.driving = true;
 		this.player.setHeading(this.driveCars.heading);
-		this.ui.setStatus(
-			`🚗 ${this.driveCars.activeName} · WASD rijden · Shift = turbo · E = uit · west-exit → STAD`,
-		);
+		this.ui.setStatus(`🚗 ${this.driveCars.activeName} · WASD rijden · Shift = turbo · E = uit · west-exit → STAD`);
 	}
 
 	/** E bovenop de glijbaantoren: WHEEE — camera volgt de buis het zwembad in. */
@@ -1013,9 +971,10 @@ export class App {
 			return;
 		}
 
-		const ground = Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5
-			? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3)
-			: 0;
+		const ground =
+			Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5
+				? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3)
+				: 0;
 		this.drone.parkAt(new THREE.Vector3(p.x, ground, p.z));
 		// speler stapt er net naast uit
 		p.x += 1.2;
@@ -1075,9 +1034,7 @@ export class App {
 		// Party aan = spuit dicht; party uit = Aperol over het publiek
 		this.catwalk.partyMode = on;
 		this.ui.setStatus(
-			on
-				? '🕺 HARDCORE MALL SET — 150BPM · boom-bam-bam-boom · mate ya'
-				: 'Disco uit · sims shoppen weer',
+			on ? '🕺 HARDCORE MALL SET — 150BPM · boom-bam-bam-boom · mate ya' : 'Disco uit · sims shoppen weer',
 		);
 	}
 
@@ -1098,9 +1055,7 @@ export class App {
 	private nudgeGuestMood(delta: number): void {
 		this.atmosphere.americans.nudgeAllMood(delta);
 		this.ui.setStatus(
-			delta < 0
-				? `😊 Guest mood UP (−${Math.abs(delta)} ongelukkig)`
-				: `😭 Guest mood DOWN (+${delta} ongelukkig)`,
+			delta < 0 ? `😊 Guest mood UP (−${Math.abs(delta)} ongelukkig)` : `😭 Guest mood DOWN (+${delta} ongelukkig)`,
 		);
 	}
 
@@ -1133,24 +1088,19 @@ export class App {
 		this.djUi.onMicEnd = () => this.bartekChat.stopListening();
 		this.bartekChat.onUpdate = (lines, status) => {
 			this.djUi.setChat(lines, status);
-			if (lines.length) {
-				const last = lines[lines.length - 1];
-				if (last.who === 'bartek') this.djBartek.say(last.text, 5);
-			}
+			const last = lines[lines.length - 1];
+			if (last?.who === 'bartek') this.djBartek.say(last.text, 5);
 		};
 		this.djUi.onClose = () => {
 			this.bartekChat.stopListening();
 			this.player.enabled = this.freeMove && this.possessId === null;
 		};
 		// Play track by index from list click
-		(
-			document.getElementById('dj-overlay') as HTMLElement | null
-		)?.addEventListener(
-			'dj-play-index',
-			((e: CustomEvent<number>) => {
-				void this.djPlayer.playIndex(e.detail);
-			}) as EventListener,
-		);
+		// CustomEvent detail isn't in the DOM listener signature; narrow on arrival
+		document.getElementById('dj-overlay')?.addEventListener('dj-play-index', (e) => {
+			const idx = (e as CustomEvent<number>).detail;
+			if (typeof idx === 'number') void this.djPlayer.playIndex(idx);
+		});
 	}
 
 	/** E near a counter — Youssef / any named keeper speaks aloud */
@@ -1197,14 +1147,13 @@ export class App {
 				await this.bartekSpeak(BARTEK_LINES.noKey);
 			}
 		} else {
-			const line = BARTEK_LINES.idle[Math.floor(Math.random() * BARTEK_LINES.idle.length)];
-			await this.bartekSpeak(line);
+			await this.bartekSpeak(pick(BARTEK_LINES.idle));
 		}
 		// Prefer real music; resume after HMR/reload if we had a track
-		const music = tracks.filter((t) => !/intro_voice|voice/i.test(t.file));
+		const firstMusic = tracks.filter((t) => !/intro_voice|voice/i.test(t.file))[0];
 		const resumed = await this.djPlayer.restoreIfNeeded();
-		if (!resumed && music.length && !this.djPlayer.playing) {
-			const idx = tracks.findIndex((t) => t.file === music[0].file);
+		if (!resumed && firstMusic && !this.djPlayer.playing) {
+			const idx = tracks.findIndex((t) => t.file === firstMusic.file);
 			if (idx >= 0) void this.djPlayer.playIndex(idx);
 		}
 		// Crowd reacts to the booth opening
@@ -1253,15 +1202,14 @@ export class App {
 		const dz = this.camera.position.z - this.djBartek.pos.z;
 		const dist = Math.hypot(dx, dz);
 		if (
-			dist < 18
-			&& this.camera.position.y < 4
-			&& this.djBartek.dramaCd <= 0
-			&& !this.bartekSpeaking
-			&& !this.djUi.isOpen()
+			dist < 18 &&
+			this.camera.position.y < 4 &&
+			this.djBartek.dramaCd <= 0 &&
+			!this.bartekSpeaking &&
+			!this.djUi.isOpen()
 		) {
 			this.djBartek.dramaCd = 18 + Math.random() * 22;
-			const line = BARTEK_LINES.drama[Math.floor(Math.random() * BARTEK_LINES.drama.length)];
-			void this.bartekSpeak(line);
+			void this.bartekSpeak(pick(BARTEK_LINES.drama));
 		}
 
 		// First approach without opening booth: short teaser shout
@@ -1271,9 +1219,7 @@ export class App {
 	}
 
 	private async djRequest(query: string): Promise<void> {
-		await this.bartekSpeak(
-			`Request binnen: ${query}. Bartek downloadt met yt-dlp. Even geduld jongen.`,
-		);
+		await this.bartekSpeak(`Request binnen: ${query}. Bartek downloadt met yt-dlp. Even geduld jongen.`);
 		const res = await this.djPlayer.requestSong(query);
 		const tracks = await this.djPlayer.refreshPlaylist();
 		this.djUi.setTracks(tracks.filter((t) => !/intro_voice|voice/i.test(t.file)));
@@ -1448,7 +1394,7 @@ export class App {
 			positions[i * 3] = origin.x;
 			positions[i * 3 + 1] = origin.y;
 			positions[i * 3 + 2] = origin.z;
-			const c = palette[i % palette.length];
+			const c = at(palette, i);
 			colors[i * 3] = c.r;
 			colors[i * 3 + 1] = c.g;
 			colors[i * 3 + 2] = c.b;
@@ -1476,7 +1422,10 @@ export class App {
 		if (this.confetti) {
 			this.scene.remove(this.confetti);
 			this.confetti.geometry.dispose();
-			(this.confetti.material as THREE.Material).dispose();
+			const mat = this.confetti.material;
+			if (Array.isArray(mat)) {
+				for (const m of mat) m.dispose();
+			} else mat.dispose();
 			this.confetti = null;
 			this.confettiVel = null;
 		}
@@ -1484,13 +1433,14 @@ export class App {
 
 	private updateConfetti(dt: number): void {
 		if (!this.confetti || !this.confettiVel) return;
-		const pos = this.confetti.geometry.attributes.position as THREE.BufferAttribute;
+		const pos = this.confetti.geometry.getAttribute('position');
 		const arr = pos.array as Float32Array;
-		for (let i = 0; i < arr.length; i += 3) {
-			arr[i] += this.confettiVel[i] * dt;
-			arr[i + 1] += this.confettiVel[i + 1] * dt;
-			arr[i + 2] += this.confettiVel[i + 2] * dt;
-			this.confettiVel[i + 1] -= 9 * dt;
+		const vel = this.confettiVel;
+		for (let i = 0; i + 2 < arr.length; i += 3) {
+			arr[i] = (arr[i] ?? 0) + (vel[i] ?? 0) * dt;
+			arr[i + 1] = (arr[i + 1] ?? 0) + (vel[i + 1] ?? 0) * dt;
+			arr[i + 2] = (arr[i + 2] ?? 0) + (vel[i + 2] ?? 0) * dt;
+			vel[i + 1] = (vel[i + 1] ?? 0) - 9 * dt;
 		}
 		pos.needsUpdate = true;
 	}
@@ -1521,11 +1471,7 @@ export class App {
 			this.elevator.holdForPassenger(false);
 			return;
 		}
-		const inXZ = this.elevator.contains(
-			this.camera.position.x,
-			this.camera.position.z,
-			0.05,
-		);
+		const inXZ = this.elevator.contains(this.camera.position.x, this.camera.position.z, 0.05);
 		const cabinY = this.elevator.cabinFloorY;
 		const dy = Math.abs(this.player.feetHeight - cabinY);
 
@@ -1570,11 +1516,7 @@ export class App {
 	private tryOpenElevatorMenu(): boolean {
 		if (!this.freeMove || this.possessId !== null || this.player.flying) return false;
 		const hit = this.elevator.getLookHit(this.camera, 10);
-		const inCab = this.elevator.contains(
-			this.camera.position.x,
-			this.camera.position.z,
-			0.2,
-		);
+		const inCab = this.elevator.contains(this.camera.position.x, this.camera.position.z, 0.2);
 		const names = ['P1 garage', 'begane grond', 'V1', 'dak'];
 
 		const distXZ = Math.hypot(
@@ -1601,9 +1543,7 @@ export class App {
 
 		// Outside call button OR proximity on landing
 		if (hit?.kind === 'call' || (nearShaft && !inCab && floorHere !== null)) {
-			const floorIdx = hit?.kind === 'call' && hit.floorIdx !== undefined
-				? hit.floorIdx
-				: floorHere!;
+			const floorIdx = hit?.kind === 'call' && hit.floorIdx !== undefined ? hit.floorIdx : floorHere!;
 			const floorName = names[floorIdx] ?? '…';
 			this.elevator.callToFloor(floorIdx);
 			this.ui.setStatus(`🛗 Hans komt naar ${floorName} — even wachten`);
@@ -1630,13 +1570,7 @@ export class App {
 			if (!(child instanceof THREE.Object3D)) continue;
 			const sy = child.position.y;
 			if (Math.abs(sy - playerFloor) > 2.5) continue;
-			const sep = this.world.separate(
-				cam.x,
-				cam.z,
-				child.position.x,
-				child.position.z,
-				minDist,
-			);
+			const sep = this.world.separate(cam.x, cam.z, child.position.x, child.position.z, minDist);
 			cam.x = sep.ax;
 			cam.z = sep.az;
 		}
@@ -1654,15 +1588,7 @@ export class App {
 		}
 		// Pass airborne so we don't void-eject mid-balcony-jump
 		const airborne = !this.player.isGrounded;
-		const r = this.world.resolveCircle(
-			cam.x,
-			cam.z,
-			this.player.feetHeight,
-			PLAYER_RADIUS,
-			3,
-			true,
-			airborne,
-		);
+		const r = this.world.resolveCircle(cam.x, cam.z, this.player.feetHeight, PLAYER_RADIUS, 3, true, airborne);
 		cam.x = r.x;
 		cam.z = r.z;
 	}
@@ -1707,9 +1633,7 @@ export class App {
 		this.cleaner.update(
 			dt,
 			// Don't let Wei hunt you while you're racing a vehicle
-			this.vehicle === 'scrubber' || this.vehicle === 'car'
-				? undefined
-				: this.camera.position,
+			this.vehicle === 'scrubber' || this.vehicle === 'car' ? undefined : this.camera.position,
 		);
 		// Binaural listener: camera position + look/up for HRTF
 		{
@@ -1739,7 +1663,7 @@ export class App {
 			this.simPositions.length = 0;
 			for (const child of this.atmosphere.americans.group.children) {
 				if (!(child instanceof THREE.Object3D)) continue;
-				this.simPositions.push(child.position as THREE.Vector3);
+				this.simPositions.push(child.position);
 				threats.push({
 					x: child.position.x,
 					y: child.position.y + 1.4,
@@ -1856,7 +1780,7 @@ export class App {
 		// Feed the monkey its victim list, then let it aim
 		this.simPositions.length = 0;
 		for (const child of this.atmosphere.americans.group.children) {
-			this.simPositions.push(child.position as THREE.Vector3);
+			this.simPositions.push(child.position);
 		}
 		this.monkey.setSimPositions(this.simPositions);
 		this.monkey.update(dt);
@@ -1873,8 +1797,8 @@ export class App {
 		this.cityBirds.update(dt, elapsed);
 
 		// E-hint als je naast de geparkeerde drone staat
-		const nearDrone = !this.player.flying && !this.player.driving && this.freeMove
-			&& this.drone.distanceTo(this.camera.position) < 3.2;
+		const nearDrone =
+			!this.player.flying && !this.player.driving && this.freeMove && this.drone.distanceTo(this.camera.position) < 3.2;
 		if (nearDrone && !this.nearDroneHint) {
 			this.nearDroneHint = true;
 			this.ui.setStatus('🛸 Passagiersdrone — druk E om in te stappen');
@@ -1883,9 +1807,12 @@ export class App {
 		}
 
 		// Empty scrubber rental
-		const nearScrub = !this.player.flying && !this.player.driving && this.freeMove
-			&& this.scrubber.distanceTo(this.camera.position) < 3.8
-			&& this.camera.position.y < 4.5;
+		const nearScrub =
+			!this.player.flying &&
+			!this.player.driving &&
+			this.freeMove &&
+			this.scrubber.distanceTo(this.camera.position) < 3.8 &&
+			this.camera.position.y < 4.5;
 		if (nearScrub && !this.nearScrubberHint) {
 			this.nearScrubberHint = true;
 			this.ui.setStatus('🧽 SCHOONMAAK BUGGY #88 — leeg · E = instappen & racen (Shift = turbo)');
@@ -1894,13 +1821,14 @@ export class App {
 		}
 
 		// Driveable cars (P1 garage / parked outside)
-		const nearCar = !this.player.flying && !this.player.driving && this.freeMove
-			&& !!this.driveCars.nearestCar(this.camera.position, 4.2);
+		const nearCar =
+			!this.player.flying &&
+			!this.player.driving &&
+			this.freeMove &&
+			!!this.driveCars.nearestCar(this.camera.position, 4.2);
 		if (nearCar && !this.nearCarHint) {
 			this.nearCarHint = true;
-			this.ui.setStatus(
-				'🚗 HUURAUTO · E = instappen · Shift = turbo · west-exit ramp → STAD',
-			);
+			this.ui.setStatus('🚗 HUURAUTO · E = instappen · Shift = turbo · west-exit ramp → STAD');
 		} else if (!nearCar && this.nearCarHint) {
 			this.nearCarHint = false;
 		}
@@ -1948,9 +1876,9 @@ export class App {
 				}
 			}
 			if (gained) this.ui.setScore(this.score, this.metSims.size);
-			if (near.length > 0) {
-				const top = near[0];
-				const heart = top.partnerName ? ` ❤️ ${top.partnerName.split(' ')[0]}` : '';
+			const top = near[0];
+			if (top) {
+				const heart = top.partnerName ? ` ❤️ ${top.partnerName.split(' ')[0] ?? top.partnerName}` : '';
 				const why = top.lifeLine ? ` · ${top.lifeLine}` : '';
 				this.ui.setNearbySim(
 					`${top.name}${heart} → ${top.targetShop} · €${top.moneySpent} · ☹ ${Math.round(top.unhappiness)}%${why}`,
@@ -1972,9 +1900,7 @@ export class App {
 			const dProt = this.camera.position.distanceTo(this.protest.pos);
 			if (dProt < 7 && !this.nearProtestHint) {
 				this.nearProtestHint = true;
-				this.ui.setStatus(
-					'📢 PROTEST STEMPELT · 28 multi-voice chants · Wir schaffen das · Mutti lead',
-				);
+				this.ui.setStatus('📢 PROTEST STEMPELT · 28 multi-voice chants · Wir schaffen das · Mutti lead');
 			} else if (dProt >= 9) {
 				this.nearProtestHint = false;
 			}
@@ -1983,9 +1909,7 @@ export class App {
 			const dTravel = this.camera.position.distanceTo(this.travel.pos);
 			if (dTravel < 6 && !this.nearTravelHint) {
 				this.nearTravelHint = true;
-				this.ui.setStatus(
-					'🌴 ISLAND HOP · Epstein Island charters · flights suspended · NDA desk',
-				);
+				this.ui.setStatus('🌴 ISLAND HOP · Epstein Island charters · flights suspended · NDA desk');
 			} else if (dTravel >= 8) {
 				this.nearTravelHint = false;
 			}
@@ -1997,9 +1921,7 @@ export class App {
 			);
 			if (dPrayer < 12 && this.camera.position.y < 4 && !this.nearPrayerHint) {
 				this.nearPrayerHint = true;
-				this.ui.setStatus(
-					'🕌 GEBEDSRUIMTE · Allahu Trapbar ♪ (vol) · poses op de beat · geit',
-				);
+				this.ui.setStatus('🕌 GEBEDSRUIMTE · Allahu Trapbar ♪ (vol) · poses op de beat · geit');
 			} else if (dPrayer >= 16) {
 				this.nearPrayerHint = false;
 			}
@@ -2014,9 +1936,7 @@ export class App {
 				const dAtrium = Math.hypot(this.camera.position.x, this.camera.position.z);
 				if (dAtrium < 18 && this.freeMove) {
 					this.nearSecurityHint = true;
-					this.ui.setStatus(
-						'🚔 MALL SECURITY · hypersensitief · adem te hard = open vuur',
-					);
+					this.ui.setStatus('🚔 MALL SECURITY · hypersensitief · adem te hard = open vuur');
 				}
 			}
 
@@ -2028,18 +1948,15 @@ export class App {
 			const onRoofHint = this.player.feetHeight >= 10;
 			const elevHintR = onRoofHint ? 16 : 5;
 			const elevHintLeave = onRoofHint ? 20 : 7;
-			const inElev = this.elevator.contains(
-				this.camera.position.x,
-				this.camera.position.z,
-			);
+			const inElev = this.elevator.contains(this.camera.position.x, this.camera.position.z);
 			if ((dElevXZ < elevHintR || inElev) && !this.nearElevHint) {
 				this.nearElevHint = true;
 				this.ui.setStatus(
 					inElev
 						? '🛗 GLAZEN LIFT · kijk Hans · E = kies verdieping'
 						: onRoofHint
-						? '🟢 GROENE KNOP / gele streep · E = roep Hans naar het dak'
-						: '🛗 GLAZEN LIFT · gele/blauwe knop of E naast schacht = roep lift',
+							? '🟢 GROENE KNOP / gele streep · E = roep Hans naar het dak'
+							: '🛗 GLAZEN LIFT · gele/blauwe knop of E naast schacht = roep lift',
 				);
 			} else if (dElevXZ >= elevHintLeave && !inElev) {
 				this.nearElevHint = false;
@@ -2066,11 +1983,11 @@ export class App {
 			blips: this.mapBlips,
 			target: targetStore
 				? {
-					x: targetStore.x,
-					z: targetStore.z,
-					floor: targetStore.floor,
-					name: targetStore.name.replace('\n', ' '),
-				}
+						x: targetStore.x,
+						z: targetStore.z,
+						floor: targetStore.floor,
+						name: targetStore.name.replace('\n', ' '),
+					}
 				: null,
 		});
 

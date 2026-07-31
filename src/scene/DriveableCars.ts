@@ -107,11 +107,7 @@ export class DriveableCars {
 	getSeatPosition(): THREE.Vector3 {
 		const fx = Math.sin(this.yaw);
 		const fz = Math.cos(this.yaw);
-		return new THREE.Vector3(
-			this.pos.x - fx * 0.15,
-			this.pos.y + 1.15,
-			this.pos.z - fz * 0.15,
-		);
+		return new THREE.Vector3(this.pos.x - fx * 0.15, this.pos.y + 1.15, this.pos.z - fz * 0.15);
 	}
 
 	board(car?: CarSlot): boolean {
@@ -145,11 +141,7 @@ export class DriveableCars {
 		}
 		const leftX = Math.cos(this.yaw);
 		const leftZ = -Math.sin(this.yaw);
-		const exit = new THREE.Vector3(
-			this.pos.x + leftX * 2.2,
-			this.pos.y,
-			this.pos.z + leftZ * 2.2,
-		);
+		const exit = new THREE.Vector3(this.pos.x + leftX * 2.2, this.pos.y, this.pos.z + leftZ * 2.2);
 		const gY = this.world.groundHeightAt(exit.x, exit.z, this.pos.y + 0.5, 3);
 		exit.y = gY;
 		const fixed = this.world.resolveCircle(exit.x, exit.z, gY + 1, 0.45, 3, true);
@@ -173,9 +165,9 @@ export class DriveableCars {
 
 		if (Math.abs(throttle) > 0.05) {
 			const want = throttle * maxSp;
-			const rate = (Math.sign(throttle) === Math.sign(this.speed) || Math.abs(this.speed) < 0.4
-				? ACCEL
-				: BRAKE) * (boost ? 1.2 : 1);
+			const rate =
+				(Math.sign(throttle) === Math.sign(this.speed) || Math.abs(this.speed) < 0.4 ? ACCEL : BRAKE) *
+				(boost ? 1.2 : 1);
 			if (this.speed < want) this.speed = Math.min(want, this.speed + rate * dt);
 			else this.speed = Math.max(want, this.speed - rate * dt);
 		} else {
@@ -238,20 +230,14 @@ export class DriveableCars {
 		return fallback;
 	}
 
-	private spawn(s: {
-		x: number;
-		z: number;
-		yaw: number;
-		color: number;
-		name: string;
-	}): CarSlot {
+	private spawn(s: { x: number; z: number; yaw: number; color: number; name: string }): CarSlot {
 		const mesh = this.makeCar(s.color);
 		const park = new THREE.Vector3(s.x, GARAGE_Y + 0.12, s.z);
 		mesh.position.copy(park);
 		mesh.rotation.y = s.yaw;
 		const wheels: THREE.Object3D[] = [];
 		mesh.traverse((o) => {
-			if (o.userData.isWheel) wheels.push(o);
+			if (o.userData['isWheel']) wheels.push(o);
 		});
 		const label = this.makeLabel(`${s.name} · E`, '#0d47a1');
 		label.position.set(0, 1.85, 0);
@@ -309,21 +295,15 @@ export class DriveableCars {
 		ctx.fillText(text, 160, 32);
 		const tex = new THREE.CanvasTexture(canvas);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 		sp.scale.set(2.4, 0.5, 1);
 		return sp;
 	}
 
 	private makeCar(color: number): THREE.Group {
 		const g = new THREE.Group();
-		const bodyM = this.track(
-			new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.4 }),
-		);
-		const dark = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.4 }),
-		);
+		const bodyM = this.track(new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.4 }));
+		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
 		const glass = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0x90caf9,
@@ -352,27 +332,23 @@ export class DriveableCars {
 		stripe.position.set(0, 0.45, 2.1);
 		g.add(stripe);
 		// Headlights
-		const lampM = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xfff59d, toneMapped: false }),
-		);
+		const lampM = this.track(new THREE.MeshBasicMaterial({ color: 0xfff59d, toneMapped: false }));
 		for (const lz of [-0.55, 0.55]) {
 			const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), lampM);
 			lamp.position.set(lz, 0.5, 2.05);
 			g.add(lamp);
 		}
 		// Wheels
-		for (
-			const [wx, wz] of [
-				[-0.9, 1.25],
-				[0.9, 1.25],
-				[-0.9, -1.25],
-				[0.9, -1.25],
-			] as const
-		) {
+		for (const [wx, wz] of [
+			[-0.9, 1.25],
+			[0.9, 1.25],
+			[-0.9, -1.25],
+			[0.9, -1.25],
+		] as const) {
 			const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.24, 12), dark);
 			w.rotation.z = Math.PI / 2;
 			w.position.set(wx, 0.32, wz);
-			w.userData.isWheel = true;
+			w.userData['isWheel'] = true;
 			g.add(w);
 		}
 		return g;

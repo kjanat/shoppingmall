@@ -151,11 +151,7 @@ export class ShopVoice {
 	 * Speak as shop owner — bubble + ElevenLabs.
 	 * Throttled per store so checkouts don't spam the API.
 	 */
-	async speak(
-		storeId: string,
-		text?: string,
-		opts: { force?: boolean; minGapMs?: number } = {},
-	): Promise<void> {
+	async speak(storeId: string, text?: string, opts: { force?: boolean; minGapMs?: number } = {}): Promise<void> {
 		const owner = getOwner(storeId);
 		if (!owner) return;
 		const now = performance.now();
@@ -164,9 +160,7 @@ export class ShopVoice {
 		if (!opts.force && now - last < gap) return;
 		if (this.speaking && !opts.force) return;
 
-		const line = text
-			?? owner.lines[Math.floor(Math.random() * owner.lines.length)]
-			?? 'Welkom!';
+		const line = text ?? owner.lines[Math.floor(Math.random() * owner.lines.length)] ?? 'Welkom!';
 
 		this.lastSpeakAt.set(storeId, now);
 		this.speaking = true;
@@ -185,11 +179,7 @@ export class ShopVoice {
 	}
 
 	/** First-time walk-up greeting (once per store visit session) */
-	async greetIfNear(
-		storeId: string,
-		player: THREE.Vector3,
-		radius = 5.5,
-	): Promise<boolean> {
+	async greetIfNear(storeId: string, player: THREE.Vector3, radius = 5.5): Promise<boolean> {
 		if (this.greeted.has(storeId)) return false;
 		if (this.distanceTo(storeId, player) > radius) return false;
 		// Floor check: kruidvat is floor 1
@@ -247,11 +237,7 @@ export class ShopVoice {
 				'Vitamines in de tas? Perfect. Tot de volgende.',
 				'Marhaba nogmaals, en let op de roltrap he.',
 			];
-			await this.speak(
-				storeId,
-				lines[Math.floor(Math.random() * lines.length)],
-				{ minGapMs: 8000 },
-			);
+			await this.speak(storeId, lines[Math.floor(Math.random() * lines.length)], { minGapMs: 8000 });
 		} else {
 			await this.speak(storeId, undefined, { minGapMs: 10000 });
 		}

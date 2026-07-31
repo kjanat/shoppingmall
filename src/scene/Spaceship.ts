@@ -71,14 +71,10 @@ export class Spaceship {
 	 * a lit frame around the void on floor 1 and the H mark on the ground floor.
 	 */
 	private buildLandingPad(): void {
-		const hMat = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }),
-		);
+		const hMat = this.track(new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }));
 
 		// Hazard frame hugging the floor-1 void edge (hole is 16 × 12)
-		const edge = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }),
-		);
+		const edge = this.track(new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }));
 		const railLong = new THREE.BoxGeometry(16.8, 0.05, 0.35);
 		const railShort = new THREE.BoxGeometry(0.35, 0.05, 12.8);
 		for (const z of [-6.2, 6.2]) {
@@ -298,23 +294,14 @@ export class Spaceship {
 		ctx.fillText('einde van de route', 256, 88);
 		const tex = new THREE.CanvasTexture(canvas);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sprite = new THREE.Sprite(
-			this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })),
-		);
+		const sprite = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
 		sprite.position.set(0, 12.4, 0);
 		sprite.scale.set(8, 2, 1);
 		return sprite;
 	}
 }
 
-function roundRect(
-	ctx: CanvasRenderingContext2D,
-	x: number,
-	y: number,
-	w: number,
-	h: number,
-	r: number,
-): void {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
 	ctx.beginPath();
 	ctx.moveTo(x + r, y);
 	ctx.arcTo(x + w, y, x + w, y + h, r);

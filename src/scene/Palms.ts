@@ -90,9 +90,7 @@ export class PalmForest {
 		g.add(dirt);
 
 		// Trunk segments (slight curve)
-		const trunkMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 }),
-		);
+		const trunkMat = this.track(new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 }));
 		const trunkH = 2.6;
 		const segs = 5;
 		for (let i = 0; i < segs; i++) {
@@ -101,11 +99,7 @@ export class PalmForest {
 				new THREE.CylinderGeometry(0.1 - t * 0.03, 0.14 - t * 0.03, trunkH / segs, 6),
 				trunkMat,
 			);
-			seg.position.set(
-				Math.sin(t * 0.8) * 0.08,
-				0.55 + (i + 0.5) * (trunkH / segs),
-				0,
-			);
+			seg.position.set(Math.sin(t * 0.8) * 0.08, 0.55 + (i + 0.5) * (trunkH / segs), 0);
 			seg.rotation.z = Math.sin(t) * 0.05;
 			g.add(seg);
 		}
@@ -145,9 +139,7 @@ export class PalmForest {
 		}
 
 		// coconut cluster
-		const cocoMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 }),
-		);
+		const cocoMat = this.track(new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 }));
 		for (let i = 0; i < 3; i++) {
 			const c = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), cocoMat);
 			const a = (i / 3) * Math.PI * 2;

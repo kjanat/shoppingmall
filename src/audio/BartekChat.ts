@@ -2,10 +2,25 @@
  * Live mic conversation with DJ Bartek:
  * browser SpeechRecognition → intent reply → ElevenLabs voice.
  */
+import { pick } from '@/util/rand';
 import { speakLine } from './ElevenVoice';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Recog = any;
+/** The slice of the Web Speech API we drive — it isn't in every lib.dom. */
+export type Recog = {
+	lang: string;
+	interimResults: boolean;
+	continuous: boolean;
+	maxAlternatives: number;
+	onresult: ((ev: { results: SpeechRecognitionResultList }) => void) | null;
+	onerror: (() => void) | null;
+	onend: (() => void) | null;
+	start(): void;
+	stop(): void;
+};
+
+function speechCtor(): (new () => Recog) | undefined {
+	return window.SpeechRecognition ?? window.webkitSpeechRecognition;
+}
 
 export type ChatLine = { who: 'you' | 'bartek'; text: string };
 
@@ -23,18 +38,13 @@ export class BartekChat {
 	}
 
 	canListen(): boolean {
-		return !!(
-			(window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
-				.SpeechRecognition
-			|| (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition
-		);
+		return !!speechCtor();
 	}
 
 	/** Push-to-talk start */
 	startListening(): void {
 		if (this.busy || this.listening) return;
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+		const SR = speechCtor();
 		if (!SR) {
 			this.emit('Geen SpeechRecognition in deze browser — gebruik Chrome.');
 			return;
@@ -50,6 +60,7 @@ export class BartekChat {
 
 		r.onresult = (ev: { results: SpeechRecognitionResultList }) => {
 			const last = ev.results[ev.results.length - 1];
+			if (!last) return;
 			const text = last[0]?.transcript?.trim() ?? '';
 			if (!text) return;
 			if (last.isFinal) {
@@ -148,5 +159,5 @@ function craftBartekReply(input: string): string {
 		`Received, mens. Bartek zegt: ${short.slice(0, 40)}… en dan de drop. Yallah!`,
 		`Mic check perfect. Jij zei iets over ${short.split(' ').slice(0, 4).join(' ')}. Ik draai door.`,
 	];
-	return riffs[Math.floor(Math.random() * riffs.length)];
+	return pick(riffs);
 }

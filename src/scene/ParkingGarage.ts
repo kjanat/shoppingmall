@@ -1,3 +1,4 @@
+import { at } from '@/util/rand';
 import * as THREE from 'three';
 
 /** World Y of the parking deck (one storey under V0) */
@@ -30,12 +31,8 @@ export class ParkingGarage {
 	}
 
 	private buildShell(): void {
-		const concrete = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.95 }),
-		);
-		const dark = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.9 }),
-		);
+		const concrete = this.track(new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.95 }));
+		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.9 }));
 		// Deck floor
 		const floor = new THREE.Mesh(new THREE.BoxGeometry(64, 0.25, 42), concrete);
 		floor.position.y = 0;
@@ -72,10 +69,7 @@ export class ParkingGarage {
 	}
 
 	/** Ramp from P1 deck up to street level, heading west out of the mall */
-	private buildExitRamp(
-		concrete: THREE.Material,
-		dark: THREE.Material,
-	): void {
+	private buildExitRamp(concrete: THREE.Material, dark: THREE.Material): void {
 		// Long rising slab: local x -30 → -46, y 0 → 6 (world -6 → 0)
 		const segs = 10;
 		for (let i = 0; i < segs; i++) {
@@ -103,9 +97,7 @@ export class ParkingGarage {
 			}
 		}
 		// Yellow EXIT arrows on first segments
-		const yellow = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }),
-		);
+		const yellow = this.track(new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }));
 		for (let i = 0; i < 4; i++) {
 			const t = (i + 0.5) / 8;
 			const x = -30 - t * 16;
@@ -149,12 +141,8 @@ export class ParkingGarage {
 	}
 
 	private buildBays(): void {
-		const line = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
-		);
-		const yellow = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }),
-		);
+		const line = this.track(new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+		const yellow = this.track(new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }));
 		// Rows of parking bays N and S of center drive aisle
 		for (const rowZ of [-14, 14] as const) {
 			for (let i = -5; i <= 5; i++) {
@@ -193,23 +181,18 @@ export class ParkingGarage {
 			[0, 14, Math.PI],
 			[-20.8, 14, Math.PI - 0.05],
 		];
-		for (let i = 0; i < spots.length; i++) {
-			const [x, z, rot] = spots[i];
-			const car = this.makeCar(colors[i % colors.length]);
+		spots.forEach(([x, z, rot], i) => {
+			const car = this.makeCar(at(colors, i));
 			car.position.set(x, 0.12, z);
 			car.rotation.y = rot;
 			this.group.add(car);
-		}
+		});
 	}
 
 	private makeCar(color: number): THREE.Group {
 		const g = new THREE.Group();
-		const bodyM = this.track(
-			new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.35 }),
-		);
-		const dark = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.4 }),
-		);
+		const bodyM = this.track(new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.35 }));
+		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
 		const glass = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0x90caf9,
@@ -225,14 +208,12 @@ export class ParkingGarage {
 		cabin.position.set(0, 0.85, -0.15);
 		g.add(cabin);
 		// wheels
-		for (
-			const [wx, wz] of [
-				[-0.85, 1.2],
-				[0.85, 1.2],
-				[-0.85, -1.2],
-				[0.85, -1.2],
-			] as const
-		) {
+		for (const [wx, wz] of [
+			[-0.85, 1.2],
+			[0.85, 1.2],
+			[-0.85, -1.2],
+			[0.85, -1.2],
+		] as const) {
 			const w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.22, 10), dark);
 			w.rotation.z = Math.PI / 2;
 			w.position.set(wx, 0.28, wz);
@@ -244,9 +225,7 @@ export class ParkingGarage {
 	private buildBooth(): void {
 		const booth = new THREE.Group();
 		booth.position.set(22, 0, -4);
-		const wood = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.7 }),
-		);
+		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.7 }));
 		const box = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.4, 2.0), wood);
 		box.position.y = 1.2;
 		booth.add(box);
@@ -307,13 +286,7 @@ export class ParkingGarage {
 		this.group.add(elevL);
 	}
 
-	private makeTextPlane(
-		text: string,
-		w: number,
-		h: number,
-		bg = '#1565c0',
-		fg = '#ffffff',
-	): THREE.Mesh {
+	private makeTextPlane(text: string, w: number, h: number, bg = '#1565c0', fg = '#ffffff'): THREE.Mesh {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 128;

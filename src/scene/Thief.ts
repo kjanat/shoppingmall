@@ -1,5 +1,6 @@
+import type { CollisionWorld } from '@/physics/Collision';
+import { at } from '@/util/rand';
 import * as THREE from 'three';
-import type { CollisionWorld } from '../physics/Collision';
 import { BeardCave } from './BeardCave';
 
 /**
@@ -58,7 +59,7 @@ export class BakerThief {
 			new THREE.Vector3(-28, 0, 14),
 			this.caveHome.clone(),
 		];
-		this.mesh.position.copy(this.path[0]);
+		this.mesh.position.copy(at(this.path, 0));
 		this.mesh.visible = true;
 		this.active = true;
 	}
@@ -81,8 +82,8 @@ export class BakerThief {
 			return;
 		}
 
-		const a = this.path[this.i];
-		const b = this.path[this.i + 1];
+		const a = at(this.path, this.i);
+		const b = at(this.path, this.i + 1);
 		this.t += dt * 0.5; // slow heist — you can actually see it
 		if (this.t >= 1) {
 			this.t = 0;
@@ -155,9 +156,7 @@ export class BakerThief {
 		ctx.fillText('BAARD-DIEF 💀', 128, 40);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true }),
-		);
+		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
 		sp.scale.set(2.2, 0.55, 1);
 		sp.position.y = 2.4;
 		g.add(sp);

@@ -1,3 +1,4 @@
+import { at } from '@/util/rand';
 import * as THREE from 'three';
 
 /**
@@ -83,7 +84,7 @@ export class Catwalk {
 
 		LOOKS.forEach((look, i) => this.models.push(this.buildModel(look, i)));
 		// First girl walks immediately, the rest wait their turn
-		this.models[0].phase = 'out';
+		at(this.models, 0).phase = 'out';
 
 		this.buildSpritz();
 	}
@@ -108,15 +109,9 @@ export class Catwalk {
 		this.group.add(this.spritz);
 
 		this.bottle = new THREE.Group();
-		const glass = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.035, 0.045, 0.16, 8),
-			this.mat(0xff7a2d, 0.25, 0.1),
-		);
+		const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.16, 8), this.mat(0xff7a2d, 0.25, 0.1));
 		this.bottle.add(glass);
-		const neck = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.014, 0.02, 0.07, 8),
-			this.mat(0x2a5c2a, 0.4),
-		);
+		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.02, 0.07, 8), this.mat(0x2a5c2a, 0.4));
 		neck.position.y = 0.11;
 		this.bottle.add(neck);
 		this.bottle.visible = false;
@@ -144,16 +139,12 @@ export class Catwalk {
 		// Spotlight rides the girl who is currently working
 		const active = this.models.find((m) => m.phase !== 'wait');
 		if (active) {
-			this.spotTarget.position.set(
-				RUNWAY_X + Math.sin(t * 0.6) * 0.5,
-				DECK_Y + 0.9,
-				active.z,
-			);
+			this.spotTarget.position.set(RUNWAY_X + Math.sin(t * 0.6) * 0.5, DECK_Y + 0.9, active.z);
 		}
 
 		const posing = active?.phase === 'pose';
 		this.tickFlashes(dt, posing);
-		this.tickSpritz(dt, posing && !this.partyMode ? active ?? null : null);
+		this.tickSpritz(dt, posing && !this.partyMode ? (active ?? null) : null);
 	}
 
 	/** Geen party? Dan Aperol. The posing girl sprays the front row. */
@@ -170,7 +161,7 @@ export class Catwalk {
 			this.bottle.getWorldPosition(this.handPos);
 
 			// A few drops per frame, lobbed toward the audience side
-			const pos = this.spritz.geometry.attributes.position as THREE.BufferAttribute;
+			const pos = this.spritz.geometry.getAttribute('position');
 			const arr = pos.array as Float32Array;
 			for (let n = 0; n < 3; n++) {
 				const i = this.spritzNext;
@@ -187,19 +178,22 @@ export class Catwalk {
 		}
 
 		// Integrate the pool (cheap: fixed size, no allocation)
-		const pos = this.spritz.geometry.attributes.position as THREE.BufferAttribute;
+		const pos = this.spritz.geometry.getAttribute('position');
 		const arr = pos.array as Float32Array;
+		const life = this.spritzLife;
+		const vel = this.spritzVel;
 		let alive = false;
 		for (let i = 0; i < SPRITZ_COUNT; i++) {
-			if (this.spritzLife[i] <= 0) continue;
-			this.spritzLife[i] -= dt;
-			this.spritzVel[i * 3 + 1] -= SPRITZ_GRAVITY * dt;
-			arr[i * 3] += this.spritzVel[i * 3] * dt;
-			arr[i * 3 + 1] += this.spritzVel[i * 3 + 1] * dt;
-			arr[i * 3 + 2] += this.spritzVel[i * 3 + 2] * dt;
-			if (this.spritzLife[i] <= 0 || arr[i * 3 + 1] < 0.05) {
-				arr[i * 3 + 1] = -100;
-				this.spritzLife[i] = 0;
+			if ((life[i] ?? 0) <= 0) continue;
+			life[i] = (life[i] ?? 0) - dt;
+			const o = i * 3;
+			vel[o + 1] = (vel[o + 1] ?? 0) - SPRITZ_GRAVITY * dt;
+			arr[o] = (arr[o] ?? 0) + (vel[o] ?? 0) * dt;
+			arr[o + 1] = (arr[o + 1] ?? 0) + (vel[o + 1] ?? 0) * dt;
+			arr[o + 2] = (arr[o + 2] ?? 0) + (vel[o + 2] ?? 0) * dt;
+			if ((life[i] ?? 0) <= 0 || (arr[o + 1] ?? 0) < 0.05) {
+				arr[o + 1] = -100;
+				life[i] = 0;
 			} else {
 				alive = true;
 			}
@@ -316,10 +310,7 @@ export class Catwalk {
 		m.hair.rotation.z = 0;
 	}
 
-	private buildModel(
-		look: { gown: number; hair: number; skin: number; name: string },
-		index: number,
-	): Model {
+	private buildModel(look: { gown: number; hair: number; skin: number; name: string }, index: number): Model {
 		const skin = this.mat(look.skin, 0.72);
 		const gown = this.mat(look.gown, 0.42, 0.15);
 		const hairMat = this.mat(look.hair, 0.78);
@@ -397,10 +388,7 @@ export class Catwalk {
 		body.add(bust);
 
 		// Gown skirt with a high slit: open arc, one thigh shows while she walks
-		const skirt = new THREE.Mesh(
-			new THREE.ConeGeometry(0.34, 0.72, 18, 1, true, Math.PI * 0.14, Math.PI * 1.72),
-			gown,
-		);
+		const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.72, 18, 1, true, Math.PI * 0.14, Math.PI * 1.72), gown);
 		skirt.position.y = -0.42;
 		body.add(skirt);
 
@@ -456,26 +444,17 @@ export class Catwalk {
 			brow.rotation.z = side * -0.18;
 			head.add(brow);
 			// Gold hoop
-			const hoop = new THREE.Mesh(
-				new THREE.TorusGeometry(0.022, 0.004, 6, 12),
-				this.mat(0xd4af37, 0.25, 0.9),
-			);
+			const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.004, 6, 12), this.mat(0xd4af37, 0.25, 0.9));
 			hoop.position.set(side * 0.12, -0.045, 0);
 			head.add(hoop);
 		}
-		const lips = new THREE.Mesh(
-			new THREE.SphereGeometry(0.03, 10, 8),
-			this.mat(0xc2185b, 0.35),
-		);
+		const lips = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), this.mat(0xc2185b, 0.35));
 		lips.scale.set(1.4, 0.65, 0.5);
 		lips.position.set(0, -0.052, 0.114);
 		head.add(lips);
 
 		// Long hair, swings with the walk
-		const hair = new THREE.Mesh(
-			new THREE.CapsuleGeometry(0.115, 0.34, 6, 12),
-			hairMat,
-		);
+		const hair = new THREE.Mesh(new THREE.CapsuleGeometry(0.115, 0.34, 6, 12), hairMat);
 		hair.position.set(0, -0.08, -0.06);
 		head.add(hair);
 		const fringe = new THREE.Mesh(
@@ -497,7 +476,7 @@ export class Catwalk {
 			armR,
 			head,
 			hair,
-			name: LOOKS[index].name,
+			name: at(LOOKS, index).name,
 			phase: 'wait',
 			z: START_Z,
 			phaseT: 0,
@@ -518,22 +497,14 @@ export class Catwalk {
 		this.group.add(deck);
 
 		// LED strips along both edges
-		const strip = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xff4fa3, toneMapped: false }),
-		);
+		const strip = this.track(new THREE.MeshBasicMaterial({ color: 0xff4fa3, toneMapped: false }));
 		for (const side of [-1, 1] as const) {
-			const led = new THREE.Mesh(
-				new THREE.BoxGeometry(0.08, 0.06, TIP_Z - START_Z + 2.4),
-				strip,
-			);
+			const led = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, TIP_Z - START_Z + 2.4), strip);
 			led.position.set(RUNWAY_X + side * (HALF_W - 0.02), DECK_Y - 0.03, (START_Z + TIP_Z) / 2);
 			this.group.add(led);
 		}
 		// Rounded tip
-		const tip = new THREE.Mesh(
-			new THREE.CylinderGeometry(HALF_W, HALF_W, DECK_Y, 20),
-			this.mat(0xf7f5f2, 0.25, 0.15),
-		);
+		const tip = new THREE.Mesh(new THREE.CylinderGeometry(HALF_W, HALF_W, DECK_Y, 20), this.mat(0xf7f5f2, 0.25, 0.15));
 		tip.position.set(RUNWAY_X, DECK_Y / 2, TIP_Z + 1.2);
 		this.group.add(tip);
 	}
@@ -576,10 +547,7 @@ export class Catwalk {
 
 	private buildBackdrop(): void {
 		const frame = this.mat(0x14141a, 0.7);
-		const wall = new THREE.Mesh(
-			new THREE.BoxGeometry(5.4, 4.2, 0.18),
-			frame,
-		);
+		const wall = new THREE.Mesh(new THREE.BoxGeometry(5.4, 4.2, 0.18), frame);
 		wall.position.set(RUNWAY_X, 2.1, START_Z - 1.6);
 		this.group.add(wall);
 
@@ -612,19 +580,14 @@ export class Catwalk {
 		// Truss with lamps over the runway
 		const truss = this.mat(0x40454f, 0.5, 0.6);
 		for (const side of [-1, 1] as const) {
-			const post = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.07, 0.07, 4.6, 8),
-				truss,
-			);
+			const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 4.6, 8), truss);
 			post.position.set(RUNWAY_X + side * 2.6, 2.3, TIP_Z - 3);
 			this.group.add(post);
 		}
 		const beam = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.14, 0.14), truss);
 		beam.position.set(RUNWAY_X, 4.5, TIP_Z - 3);
 		this.group.add(beam);
-		const lampMat = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xfff4d6, toneMapped: false }),
-		);
+		const lampMat = this.track(new THREE.MeshBasicMaterial({ color: 0xfff4d6, toneMapped: false }));
 		for (let i = 0; i < 5; i++) {
 			const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), lampMat);
 			lamp.position.set(RUNWAY_X - 2 + i, 4.34, TIP_Z - 3);
@@ -675,9 +638,7 @@ export class Catwalk {
 	}
 
 	private mat(color: number, roughness = 0.8, metalness = 0.05) {
-		return this.track(
-			new THREE.MeshStandardMaterial({ color, roughness, metalness }),
-		);
+		return this.track(new THREE.MeshStandardMaterial({ color, roughness, metalness }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {

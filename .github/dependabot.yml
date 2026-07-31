@@ -4,8 +4,24 @@
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
+
+multi-ecosystem-groups:
+  all: { schedule: { interval: weekly } }
+
 updates:
-  - package-ecosystem: "npm" # See documentation for possible values
-    directory: "/" # Location of package manifests
-    schedule:
-      interval: "weekly"
+  - package-ecosystem: bun
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: all
+  - package-ecosystem: github-actions
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: all
+  - package-ecosystem: docker
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: all
+  - package-ecosystem: docker-compose
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: all

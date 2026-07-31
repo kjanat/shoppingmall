@@ -1,5 +1,5 @@
+import type { CollisionWorld } from '@/physics/Collision';
 import * as THREE from 'three';
-import type { CollisionWorld } from '../physics/Collision';
 
 export const EYE = 1.68;
 
@@ -15,7 +15,7 @@ const RADIUS = 0.4;
 const PITCH_MAX = 1.45;
 /** rad per pixel */
 const LOCK_SENS = 0.0022;
-const DRAG_SENS = 0.0030;
+const DRAG_SENS = 0.003;
 const TOUCH_SENS = 0.0045;
 const STICK_MAX = 64;
 /** keyboard turning, rad/s */
@@ -92,11 +92,7 @@ export class PlayerControls {
 	private axisY = 0;
 	private jumpQueued = false;
 
-	constructor(
-		camera: THREE.PerspectiveCamera,
-		dom: HTMLElement,
-		world: CollisionWorld,
-	) {
+	constructor(camera: THREE.PerspectiveCamera, dom: HTMLElement, world: CollisionWorld) {
 		this.cam = camera;
 		this.dom = dom;
 		this.world = world;
@@ -196,15 +192,7 @@ export class PlayerControls {
 	/** External displacement (moving walkway) — applied through collision. */
 	nudge(dx: number, dz: number): void {
 		const p = this.cam.position;
-		const solved = this.world.resolveCircle(
-			p.x + dx,
-			p.z + dz,
-			this.feetY,
-			RADIUS,
-			2,
-			true,
-			!this.grounded,
-		);
+		const solved = this.world.resolveCircle(p.x + dx, p.z + dz, this.feetY, RADIUS, 2, true, !this.grounded);
 		p.x = solved.x;
 		p.z = solved.z;
 	}
@@ -214,11 +202,7 @@ export class PlayerControls {
 		const e = new THREE.Euler().setFromQuaternion(this.cam.quaternion, 'YXZ');
 		this.yaw = e.y;
 		this.pitch = THREE.MathUtils.clamp(e.x, -PITCH_MAX, PITCH_MAX);
-		this.feetY = this.world.groundHeightAt(
-			this.cam.position.x,
-			this.cam.position.z,
-			this.cam.position.y - EYE,
-		);
+		this.feetY = this.world.groundHeightAt(this.cam.position.x, this.cam.position.z, this.cam.position.y - EYE);
 		this.vel.set(0, 0, 0);
 		this.vy = 0;
 		this.grounded = true;
@@ -236,11 +220,7 @@ export class PlayerControls {
 		if (dx * dx + dz * dz > 1e-4) this.yaw = Math.atan2(-dx, -dz);
 		const dy = p.y - this.cam.position.y;
 		const flat = Math.hypot(dx, dz);
-		this.pitch = THREE.MathUtils.clamp(
-			Math.atan2(dy, Math.max(0.001, flat)),
-			-PITCH_MAX,
-			PITCH_MAX,
-		);
+		this.pitch = THREE.MathUtils.clamp(Math.atan2(dy, Math.max(0.001, flat)), -PITCH_MAX, PITCH_MAX);
 	}
 
 	releaseLook(): void {
@@ -289,11 +269,7 @@ export class PlayerControls {
 		if (this.keys.has('KeyR')) tilt += 1;
 		if (this.keys.has('KeyF')) tilt -= 1;
 		if (tilt !== 0) {
-			this.pitch = THREE.MathUtils.clamp(
-				this.pitch + tilt * PITCH_SPEED * dt,
-				-PITCH_MAX * 0.7,
-				PITCH_MAX * 0.55,
-			);
+			this.pitch = THREE.MathUtils.clamp(this.pitch + tilt * PITCH_SPEED * dt, -PITCH_MAX * 0.7, PITCH_MAX * 0.55);
 		}
 		// Mouse look still adjusts pitch via pointermove (yaw ignored while driving)
 		this.cam.rotation.order = 'YXZ';
@@ -348,11 +324,7 @@ export class PlayerControls {
 		if (this.keys.has('KeyR')) tilt += 1;
 		if (this.keys.has('KeyF')) tilt -= 1;
 		if (tilt !== 0) {
-			this.pitch = THREE.MathUtils.clamp(
-				this.pitch + tilt * PITCH_SPEED * dt,
-				-PITCH_MAX,
-				PITCH_MAX,
-			);
+			this.pitch = THREE.MathUtils.clamp(this.pitch + tilt * PITCH_SPEED * dt, -PITCH_MAX, PITCH_MAX);
 		}
 
 		const sin = Math.sin(this.yaw);
@@ -429,19 +401,12 @@ export class PlayerControls {
 		} else {
 			// Airborne gets a looser step so hopping on the escalator doesn't snap you
 			// onto the deck above.
-			const ground = this.world.groundHeightAt(
-				p.x,
-				p.z,
-				this.feetY,
-				this.grounded ? 0.5 : 2.5,
-			);
+			const ground = this.world.groundHeightAt(p.x, p.z, this.feetY, this.grounded ? 0.5 : 2.5);
 
 			if (this.grounded) {
 				// Follow the surface: snappy on ramps, instant on flat ground
 				const near = Math.abs(ground - this.feetY);
-				this.feetY = near < 0.02
-					? ground
-					: THREE.MathUtils.lerp(this.feetY, ground, Math.min(1, 22 * dt));
+				this.feetY = near < 0.02 ? ground : THREE.MathUtils.lerp(this.feetY, ground, Math.min(1, 22 * dt));
 				if (this.feetY - ground > 0.9) {
 					this.grounded = false;
 					this.vy = 0;
@@ -663,9 +628,7 @@ export class PlayerControls {
 		const insideMall = Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5;
 		const overVoid = Math.abs(p.x) < 7.4 && Math.abs(p.z) < 5.4;
 		const ceiling = insideMall && !overVoid && this.feetY < 13.4 ? 12.6 : 55;
-		const floor = insideMall
-			? this.world.groundHeightAt(p.x, p.z, this.feetY, 2.5) + 0.45
-			: 0.45;
+		const floor = insideMall ? this.world.groundHeightAt(p.x, p.z, this.feetY, 2.5) + 0.45 : 0.45;
 		this.feetY = THREE.MathUtils.clamp(this.feetY, floor, ceiling);
 
 		p.y = this.feetY + 0.55; // ooghoogte in het stoeltje

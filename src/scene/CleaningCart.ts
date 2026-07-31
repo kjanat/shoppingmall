@@ -1,6 +1,7 @@
+import { spatial } from '@/audio/SpatialAudio';
+import type { CollisionWorld } from '@/physics/Collision';
+import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
-import { spatial } from '../audio/SpatialAudio';
-import type { CollisionWorld } from '../physics/Collision';
 
 /** Pre-generated ElevenLabs Chinese scolds (public/voices/wei/) */
 export const WEI_YELLS: { file: string; text: string; label: string }[] = [
@@ -59,8 +60,9 @@ export class CleaningCart {
 		this.group.add(this.mesh);
 		this.group.name = 'cleaningCart';
 		this.resetPath();
-		this.mesh.position.copy(this.path[0]);
-		this.pos.copy(this.path[0]);
+		const start = at(this.path, 0);
+		this.mesh.position.copy(start);
+		this.pos.copy(start);
 		// Warm browser cache so first scold isn't silent
 		this.preloadClips();
 	}
@@ -96,8 +98,8 @@ export class CleaningCart {
 			}
 		}
 
-		const next = this.path[this.i + this.pathDir] ?? this.path[this.i];
-		const cur = this.path[this.i];
+		const cur = at(this.path, this.i);
+		const next = this.path[this.i + this.pathDir] ?? cur;
 		const p = cur.clone().lerp(next, this.t);
 		// Ground-floor scrubber only
 		p.y = 0;
@@ -130,13 +132,7 @@ export class CleaningCart {
 		this.blockedThisFrame = false;
 		// Don't drive through the player — bounce the cart back a bit
 		if (playerPos && playerPos.y < 5) {
-			const sep = this.world.separate(
-				p.x,
-				p.z,
-				playerPos.x,
-				playerPos.z,
-				this.radius + 0.45,
-			);
+			const sep = this.world.separate(p.x, p.z, playerPos.x, playerPos.z, this.radius + 0.45);
 			const pushX = (sep.ax - p.x) * 0.9;
 			const pushZ = (sep.az - p.z) * 0.9;
 			if (pushX * pushX + pushZ * pushZ > 1e-8) {
@@ -199,25 +195,9 @@ export class CleaningCart {
 		}
 
 		// Quiet ambient mutter (bubble only) when nobody in the way
-		if (
-			!this.speaking
-			&& this.speechLife <= 0
-			&& this.chatCd <= 0
-			&& this.yellCd <= 0
-			&& this.nearT <= 0
-		) {
+		if (!this.speaking && this.speechLife <= 0 && this.chatCd <= 0 && this.yellCd <= 0 && this.nearT <= 0) {
 			this.chatCd = 12 + Math.random() * 16;
-			this.say(
-				[
-					'小心！地滑…',
-					'慢慢走…',
-					'又有炸鸡屑…',
-					'我在工作!',
-					'不好意思，借光',
-					'地滑 地滑',
-				][Math.floor(Math.random() * 6)],
-				false,
-			);
+			this.say(pick(['小心！地滑…', '慢慢走…', '又有炸鸡屑…', '我在工作!', '不好意思，借光', '地滑 地滑']), false);
 		}
 	}
 
@@ -263,7 +243,7 @@ export class CleaningCart {
 			idx = (idx + 1 + Math.floor(Math.random() * (WEI_YELLS.length - 1))) % WEI_YELLS.length;
 		}
 		this.lastYellIdx = idx;
-		const line = WEI_YELLS[idx];
+		const line = at(WEI_YELLS, idx);
 		this.say(line.label, true);
 		this.onYell?.(line.label);
 
@@ -357,19 +337,19 @@ export class CleaningCart {
 				new THREE.Vector3(-20, 0, 2),
 			],
 		];
-		const next = routes[Math.floor(Math.random() * routes.length)];
+		const next = pick(routes);
 		if (keepPos && this.path.length) {
 			// Start new route from nearest waypoint
 			let best = 0;
 			let bestD = Infinity;
 			const p = this.mesh.position;
-			for (let i = 0; i < next.length; i++) {
-				const d = p.distanceToSquared(next[i]);
+			next.forEach((wp, i) => {
+				const d = p.distanceToSquared(wp);
 				if (d < bestD) {
 					bestD = d;
 					best = i;
 				}
-			}
+			});
 			this.i = best;
 			this.pathDir = best >= next.length - 1 ? -1 : 1;
 		} else {
@@ -388,30 +368,14 @@ export class CleaningCart {
 	private build(): THREE.Group {
 		const g = new THREE.Group();
 
-		const yellow = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.55, metalness: 0.2 }),
-		);
-		const blue = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1565c0, roughness: 0.65 }),
-		);
-		const dark = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.3 }),
-		);
-		const grey = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.4, roughness: 0.45 }),
-		);
-		const rubber = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
-		);
-		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }),
-		);
-		const hairM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }),
-		);
-		const uni = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x00695c, roughness: 0.75 }),
-		);
+		const yellow = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.55, metalness: 0.2 }));
+		const blue = this.track(new THREE.MeshStandardMaterial({ color: 0x1565c0, roughness: 0.65 }));
+		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.3 }));
+		const grey = this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.4, roughness: 0.45 }));
+		const rubber = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }));
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }));
+		const hairM = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }));
+		const uni = this.track(new THREE.MeshStandardMaterial({ color: 0x00695c, roughness: 0.75 }));
 
 		// ── Ride-on scrubber chassis ──
 		const body = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.38, 1.35), yellow);
@@ -446,9 +410,7 @@ export class CleaningCart {
 		g.add(deck);
 		this.brush = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.34, 0.34, 0.06, 16),
-			this.track(
-				new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.85 }),
-			),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.85 })),
 		);
 		this.brush.position.set(0, 0.06, 0.55);
 		g.add(this.brush);
@@ -468,10 +430,7 @@ export class CleaningCart {
 		const tank = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.4), blue);
 		tank.position.set(0, 0.7, -0.55);
 		g.add(tank);
-		const cap = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8),
-			grey,
-		);
+		const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8), grey);
 		cap.position.set(0, 0.96, -0.55);
 		g.add(cap);
 
@@ -541,10 +500,7 @@ export class CleaningCart {
 		person.add(head);
 
 		// Short black hair
-		const hair = new THREE.Mesh(
-			new THREE.SphereGeometry(0.145, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
-			hairM,
-		);
+		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.145, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
 		hair.position.set(0, 1.0, -0.01);
 		person.add(hair);
 
@@ -611,10 +567,7 @@ export class CleaningCart {
 		// Trailing wet-floor A-sign (hinged behind cart)
 		this.wetSign = new THREE.Group();
 		this.wetSign.position.set(0, 0.35, -1.05);
-		const signPole = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.02, 0.02, 0.15, 5),
-			grey,
-		);
+		const signPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.15, 5), grey);
 		signPole.position.y = -0.1;
 		this.wetSign.add(signPole);
 		const wetTex = this.makePlate('⚠ WET FLOOR\n小心地滑', '#ffeb3b', '#111', 256, 160);
@@ -659,13 +612,7 @@ export class CleaningCart {
 		return g;
 	}
 
-	private makePlate(
-		text: string,
-		bg: string,
-		fg: string,
-		w: number,
-		h: number,
-	): THREE.CanvasTexture {
+	private makePlate(text: string, bg: string, fg: string, w: number, h: number): THREE.CanvasTexture {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
@@ -704,8 +651,6 @@ export class CleaningCart {
 		ctx.fillText(text, w / 2, h / 2);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 	}
 }

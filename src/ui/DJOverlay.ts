@@ -1,4 +1,4 @@
-import type { Track } from '../audio/DJPlayer';
+import type { Track } from '@/audio/DJPlayer';
 
 /**
  * Request desk UI for DJ Bartek.
@@ -130,9 +130,9 @@ export class DJOverlay {
 		this.chat.innerHTML = lines
 			.map(
 				(l) =>
-					`<div class="dj-chat-line ${l.who}"><b>${l.who === 'you' ? 'Jij' : 'Bartek'}:</b> ${
-						escapeHtml(l.text)
-					}</div>`,
+					`<div class="dj-chat-line ${l.who}"><b>${l.who === 'you' ? 'Jij' : 'Bartek'}:</b> ${escapeHtml(
+						l.text,
+					)}</div>`,
 			)
 			.join('');
 		this.chat.scrollTop = this.chat.scrollHeight;
@@ -149,9 +149,7 @@ export class DJOverlay {
 			return;
 		}
 		this.list.innerHTML = tracks
-			.map(
-				(t, i) => `<li data-i="${i}"><button type="button" class="dj-track">${escapeHtml(t.title)}</button></li>`,
-			)
+			.map((t, i) => `<li data-i="${i}"><button type="button" class="dj-track">${escapeHtml(t.title)}</button></li>`)
 			.join('');
 		this.list.querySelectorAll('.dj-track').forEach((btn, i) => {
 			btn.addEventListener('click', () => {
@@ -173,9 +171,5 @@ export class DJOverlay {
 }
 
 function escapeHtml(s: string): string {
-	return s
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
+	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

@@ -6,7 +6,24 @@
 
 import { spatial, type SpatialElement } from './SpatialAudio';
 
-export type Track = { file: string; title: string; url: string; bytes: number };
+export type Track = {
+	file: string;
+	title: string;
+	url: string;
+	bytes: number;
+	/** From yt-dlp's info.json sidecar — absent for hand-dropped files. */
+	artist?: string;
+	seconds?: number;
+	videoId?: string;
+	sourceUrl?: string;
+};
+
+/** 263 → "4:23" */
+function clock(seconds: number): string {
+	const m = Math.floor(seconds / 60);
+	const s = Math.floor(seconds % 60);
+	return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 const PERSIST_KEY = 'mallsim.dj.v1';
 
@@ -23,7 +40,7 @@ function loadPersist(): PersistState | null {
 	try {
 		const raw = sessionStorage.getItem(PERSIST_KEY);
 		if (!raw) return null;
-		return JSON.parse(raw) as PersistState;
+		return JSON.parse(raw);
 	} catch {
 		return null;
 	}
@@ -46,15 +63,26 @@ export class DJPlayer {
 	onChange: ((info: { title: string; playing: boolean; index: number }) => void) | null = null;
 	private persistTimer: number | null = null;
 	private restored = false;
+	/** Consecutive load failures — breaks the error→next→error spiral */
+	private failStreak = 0;
 	/** Binaural booth bus (null until first user gesture attaches it) */
 	private spatialEl: SpatialElement | null = null;
 
 	constructor() {
 		this.audio.volume = 0.55;
 		this.audio.preload = 'auto';
-		this.audio.addEventListener('ended', () => this.next());
+		this.audio.addEventListener('ended', () => {
+			this.failStreak = 0;
+			this.next();
+		});
+		// Skip a dud track, but never spin the whole crate: a broken source
+		// fires error → next → error… faster than the ear can follow.
 		this.audio.addEventListener('error', () => {
-			if (this.playlist.length > 1) this.next();
+			if (this.playlist.length > 1 && ++this.failStreak < 3) this.next();
+			else this.playing = false;
+		});
+		this.audio.addEventListener('playing', () => {
+			this.failStreak = 0;
 		});
 		// Keep position fresh for HMR / reload
 		this.audio.addEventListener('timeupdate', () => this.checkpoint());
@@ -96,9 +124,10 @@ export class DJPlayer {
 		const list = music.length ? music : this.playlist;
 		let idx = list.findIndex((t) => t.file === p.file);
 		if (idx < 0) idx = 0;
-		if (!list.length) return false;
+		const stored = list[idx];
+		if (!stored) return false;
 		// Map back to full playlist index
-		const fullIdx = this.playlist.findIndex((t) => t.file === list[idx].file);
+		const fullIdx = this.playlist.findIndex((t) => t.file === stored.file);
 		this.setVolume(Math.max(0.05, Math.min(1, p.volume ?? 0.55)));
 		await this.playIndex(fullIdx >= 0 ? fullIdx : 0, p.time ?? 0, p.playing !== false);
 		return true;
@@ -125,8 +154,14 @@ export class DJPlayer {
 		if (!this.playlist.length) return;
 		this.index = ((i % this.playlist.length) + this.playlist.length) % this.playlist.length;
 		const t = this.playlist[this.index];
-		this.audio.src = `/dj-music/${encodeURIComponent(t.file)}`;
-		this.nowPlaying = t.title;
+		if (!t) return;
+		// The URL the API handed us — it streams live from public/dj-music and
+		// speaks Range, so tracks added after startup play and seek fine.
+		this.audio.src = t.url || `/dj-music/${encodeURIComponent(t.file)}`;
+		// Sidecar metadata when the crate has it: "Uploader — Title · 4:23"
+		this.nowPlaying = [t.artist ? `${t.artist} — ${t.title}` : t.title, t.seconds ? ` · ${clock(t.seconds)}` : ''].join(
+			'',
+		);
 		this.playing = autoplay;
 		const onMeta = () => {
 			if (seekTo > 0 && Number.isFinite(this.audio.duration)) {

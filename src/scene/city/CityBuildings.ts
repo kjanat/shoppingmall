@@ -1,3 +1,4 @@
+import { pickWith } from '@/util/rand';
 import * as THREE from 'three';
 
 /**
@@ -70,8 +71,7 @@ export class CityBuildings {
 		// Luchtvaartlampjes: hard aan, zacht uit. De ease loopt op dt zodat het
 		// knipperen niet meeknippert met de framerate van de Pi.
 		const k = Math.min(1, dt * 10);
-		for (let i = 0; i < this.beacons.length; i++) {
-			const b = this.beacons[i];
+		for (const b of this.beacons) {
 			const target = Math.sin(t * 1.7 + b.phase) > 0.4 ? 1 : 0.05;
 			b.level += (target - b.level) * k;
 			b.mat.color.setRGB(b.level * 1.6, b.level * 0.12, b.level * 0.1);
@@ -107,10 +107,7 @@ export class CityBuildings {
 			[-94, -52, -74, -36], // stadspark (NW)
 		];
 		const opKavel = (x: number, z: number, w: number, d: number) =>
-			reserved.some(([x0, x1, z0, z1]) =>
-				x + w * 0.5 > x0 && x - w * 0.5 < x1
-				&& z + d * 0.5 > z0 && z - d * 0.5 < z1
-			);
+			reserved.some(([x0, x1, z0, z1]) => x + w * 0.5 > x0 && x - w * 0.5 < x1 && z + d * 0.5 > z0 && z - d * 0.5 < z1);
 
 		for (const [count, pick] of bands) {
 			for (let i = 0; i < count; i++) {
@@ -122,11 +119,9 @@ export class CityBuildings {
 					const h = rand() < 0.22 ? 30 + 16 * rand() : 10 + 20 * rand();
 					// Niet op elkaars tenen (de hoeken van de banden overlappen),
 					// en niet op een gereserveerd kavel
-					const vrij = !opKavel(x, z, w, d) && specs.every(
-						(s) =>
-							Math.abs(s.x - x) > (s.w + w) * 0.5 + 1.5
-							|| Math.abs(s.z - z) > (s.d + d) * 0.5 + 1.5,
-					);
+					const vrij =
+						!opKavel(x, z, w, d) &&
+						specs.every((s) => Math.abs(s.x - x) > (s.w + w) * 0.5 + 1.5 || Math.abs(s.z - z) > (s.d + d) * 0.5 + 1.5);
 					if (vrij) {
 						// Ietsje scheef van het grid — net genoeg om te verontrusten
 						specs.push({ x, z, w, d, h, rot: (rand() - 0.5) * 0.12 });
@@ -156,11 +151,7 @@ export class CityBuildings {
 
 		// BoxGeometry-groups: +x,-x,+y,-y,+z,-z → dak en bodem zónder raampjes,
 		// anders kijkt de drone op verlichte plafonds neer.
-		const mesh = new THREE.InstancedMesh(
-			this.unitBox,
-			[facade, facade, roof, roof, facade, facade],
-			specs.length,
-		);
+		const mesh = new THREE.InstancedMesh(this.unitBox, [facade, facade, roof, roof, facade, facade], specs.length);
 		mesh.name = 'city_towers';
 
 		const tint = new THREE.Color();
@@ -302,7 +293,7 @@ export class CityBuildings {
 				if (col === redCol && r === redRow) {
 					ctx.fillStyle = '#87201d'; // dat éne raam. Niet naar kijken.
 				} else if (rand() < 0.3) {
-					ctx.fillStyle = lit[Math.floor(rand() * lit.length)];
+					ctx.fillStyle = pickWith(lit, rand);
 				} else {
 					ctx.fillStyle = '#181d2c'; // donker raam, nét lichter dan de gevel
 				}

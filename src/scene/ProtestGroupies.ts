@@ -1,6 +1,7 @@
+import { spatial } from '@/audio/SpatialAudio';
+import type { CollisionWorld } from '@/physics/Collision';
+import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
-import { spatial } from '../audio/SpatialAudio';
-import type { CollisionWorld } from '../physics/Collision';
 
 /** Prebaked multi-voice chants (public/voices/protest/) — different speaker each clip */
 export type ProtestClip = {
@@ -337,26 +338,35 @@ export class ProtestGroupies {
 				let timer: number | null = null;
 				const phrase = () => {
 					if (!alive) return;
-					const notes = [196, 220, 247, 262, 247, 220, 196, 175];
-					const durs = [0.22, 0.22, 0.28, 0.4, 0.22, 0.22, 0.28, 0.45];
+					// [frequency, duration] so the two never drift apart
+					const phraseNotes: ReadonlyArray<readonly [number, number]> = [
+						[196, 0.22],
+						[220, 0.22],
+						[247, 0.28],
+						[262, 0.4],
+						[247, 0.22],
+						[220, 0.22],
+						[196, 0.28],
+						[175, 0.45],
+					];
 					let t0 = ctx.currentTime + 0.02;
-					for (let i = 0; i < notes.length; i++) {
+					for (const [note, dur] of phraseNotes) {
 						const o = ctx.createOscillator();
 						const g = ctx.createGain();
 						const f = ctx.createBiquadFilter();
 						o.type = 'triangle';
-						o.frequency.setValueAtTime(notes[i], t0);
+						o.frequency.setValueAtTime(note, t0);
 						f.type = 'lowpass';
 						f.frequency.value = 1400;
 						g.gain.setValueAtTime(0.0001, t0);
 						g.gain.exponentialRampToValueAtTime(0.04, t0 + 0.03);
-						g.gain.exponentialRampToValueAtTime(0.0001, t0 + durs[i]);
+						g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
 						o.connect(f);
 						f.connect(g);
 						g.connect(dest);
 						o.start(t0);
-						o.stop(t0 + durs[i] + 0.02);
-						t0 += durs[i] * 0.95;
+						o.stop(t0 + dur + 0.02);
+						t0 += dur * 0.95;
 					}
 					timer = window.setTimeout(phrase, 5200 + Math.random() * 2200);
 				};
@@ -407,10 +417,11 @@ export class ProtestGroupies {
 			.map((_, i) => i)
 			.sort(() => Math.random() - 0.5)
 			.slice(0, n);
-		for (let k = 0; k < order.length; k++) {
-			const p = this.people[order[k]];
+		order.forEach((personIndex, k) => {
+			const p = this.people[personIndex];
+			if (!p) return;
 			window.setTimeout(() => this.yellFrom(p), k * 90 + Math.random() * 80);
-		}
+		});
 	}
 
 	private pickClip(p: Protester): ProtestClip {
@@ -419,22 +430,22 @@ export class ProtestGroupies {
 				? this.merkelClips
 				: this.clips
 			: this.crowdClips.length
-			? this.crowdClips
-			: this.clips;
+				? this.crowdClips
+				: this.clips;
 		// Prefer a clip we didn't just use globally; rotate through voices
 		let idx = Math.floor(Math.random() * bank.length);
 		if (bank.length > 1 && idx === this.lastGlobalClip % bank.length) {
 			idx = (idx + 1 + Math.floor(Math.random() * (bank.length - 1))) % bank.length;
 		}
 		// Light sticky preference: same person often reuses their voiceKey subset
-		const sticky = bank.filter((c) =>
-			c.voice.includes(p.voiceKey) || p.voiceKey.includes(c.voice.split('-').pop() ?? '')
+		const sticky = bank.filter(
+			(c) => c.voice.includes(p.voiceKey) || p.voiceKey.includes(c.voice.split('-').pop() ?? ''),
 		);
 		if (sticky.length && Math.random() < 0.55) {
-			return sticky[Math.floor(Math.random() * sticky.length)];
+			return pick(sticky);
 		}
 		this.lastGlobalClip = idx;
-		return bank[idx];
+		return at(bank, idx);
 	}
 
 	private yellFrom(p: Protester): void {
@@ -480,7 +491,8 @@ export class ProtestGroupies {
 		// Planted flags flutter (stay at camp)
 		for (let i = 0; i < this.plantedFlags.length; i++) {
 			const f = this.plantedFlags[i];
-			const cloth = f.userData.cloth as THREE.Object3D | undefined;
+			if (!f) continue;
+			const cloth = f.userData['cloth'] as THREE.Object3D | undefined;
 			if (cloth) {
 				cloth.rotation.y = Math.sin(this.t * 2.2 + i) * 0.25;
 				cloth.rotation.z = Math.sin(this.t * 1.7 + i * 0.8) * 0.08;
@@ -499,7 +511,7 @@ export class ProtestGroupies {
 			// Occasional full Merkel megaphone drop
 			if (Math.random() < 0.3 && this.merkelIdx >= 0) {
 				const m = this.people[this.merkelIdx];
-				window.setTimeout(() => this.yellFrom(m), 200);
+				if (m) window.setTimeout(() => this.yellFrom(m), 200);
 			}
 		}
 	}
@@ -535,6 +547,7 @@ export class ProtestGroupies {
 
 		for (let i = 0; i < this.people.length; i++) {
 			const p = this.people[i];
+			if (!p) continue;
 			p.retargetCd -= dt;
 			if (p.retargetCd <= 0) {
 				p.retargetCd = 2.5 + Math.random() * 4;
@@ -561,6 +574,7 @@ export class ProtestGroupies {
 			for (let j = 0; j < this.people.length; j++) {
 				if (j === i) continue;
 				const o = this.people[j];
+				if (!o) continue;
 				const sx = p.x - o.x;
 				const sz = p.z - o.z;
 				const d = Math.hypot(sx, sz);
@@ -640,9 +654,7 @@ export class ProtestGroupies {
 	}
 
 	private buildBanner(): void {
-		const pole = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.8 }),
-		);
+		const pole = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.8 }));
 		const pL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 2.6, 6), pole);
 		pL.position.set(-1.6, 1.3, -1.8);
 		const pR = pL.clone();
@@ -655,10 +667,10 @@ export class ProtestGroupies {
 		const ctx = c.getContext('2d')!;
 		// Progress pride stripe base
 		const cols = ['#e40303', '#ff8c00', '#ffed00', '#008026', '#24408e', '#732982'];
-		for (let i = 0; i < 6; i++) {
-			ctx.fillStyle = cols[i];
+		cols.forEach((col, i) => {
+			ctx.fillStyle = col;
 			ctx.fillRect(0, (i * 192) / 6, 768, 192 / 6 + 1);
-		}
+		});
 		// chevron suggestion
 		ctx.fillStyle = '#000';
 		ctx.beginPath();
@@ -730,7 +742,7 @@ export class ProtestGroupies {
 		for (let i = 0; i < kinds.length; i++) {
 			const ang = (i / kinds.length) * Math.PI * 2;
 			const r = 2.85;
-			const g = this.makeFlagPole(kinds[i], 1.55 + (i % 3) * 0.08);
+			const g = this.makeFlagPole(at(kinds, i), 1.55 + (i % 3) * 0.08);
 			g.position.set(Math.sin(ang) * r, 0, Math.cos(ang) * r);
 			g.rotation.y = ang + Math.PI;
 			this.group.add(g);
@@ -776,7 +788,7 @@ export class ProtestGroupies {
 		);
 		cloth.position.set(0.38, height - 0.28, 0);
 		g.add(cloth);
-		g.userData.cloth = cloth;
+		g.userData['cloth'] = cloth;
 		return g;
 	}
 
@@ -801,7 +813,7 @@ export class ProtestGroupies {
 		);
 		cloth.position.set(0.2, 0.62, 0);
 		g.add(cloth);
-		g.userData.cloth = cloth;
+		g.userData['cloth'] = cloth;
 		return g;
 	}
 
@@ -813,10 +825,10 @@ export class ProtestGroupies {
 
 		const stripes = (cols: string[]) => {
 			const h = 160 / cols.length;
-			for (let i = 0; i < cols.length; i++) {
-				ctx.fillStyle = cols[i];
+			cols.forEach((col, i) => {
+				ctx.fillStyle = col;
 				ctx.fillRect(0, i * h, 256, h + 1);
-			}
+			});
 		};
 
 		if (kind === 'rainbow') {
@@ -825,9 +837,9 @@ export class ProtestGroupies {
 			stripes(['#e40303', '#ff8c00', '#ffed00', '#008026', '#24408e', '#732982']);
 			// chevrons: black, brown, light blue, pink, white
 			const chev = ['#000000', '#784F17', '#5BCEFA', '#F5A9B8', '#FFFFFF'];
-			for (let i = 0; i < chev.length; i++) {
+			chev.forEach((col, i) => {
 				const x = 8 + i * 22;
-				ctx.fillStyle = chev[i];
+				ctx.fillStyle = col;
 				ctx.beginPath();
 				ctx.moveTo(0, 0);
 				ctx.lineTo(x + 40, 80);
@@ -836,7 +848,7 @@ export class ProtestGroupies {
 				// only draw the outer edge band by clipping with previous — simple layered triangles
 				ctx.closePath();
 				ctx.fill();
-			}
+			});
 			// re-draw outer black tip cleanly
 			ctx.fillStyle = '#000';
 			ctx.beginPath();
@@ -914,21 +926,11 @@ export class ProtestGroupies {
 		root.position.copy(base);
 
 		// Soft older skin
-		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xe8c4a8, roughness: 0.9 }),
-		);
-		const suit = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.75 }),
-		);
-		const suitPants = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x0d1545, roughness: 0.8 }),
-		);
-		const blouse = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.7 }),
-		);
-		const hairM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xd4b896, roughness: 0.85 }),
-		);
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xe8c4a8, roughness: 0.9 }));
+		const suit = this.track(new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.75 }));
+		const suitPants = this.track(new THREE.MeshStandardMaterial({ color: 0x0d1545, roughness: 0.8 }));
+		const blouse = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.7 }));
+		const hairM = this.track(new THREE.MeshStandardMaterial({ color: 0xd4b896, roughness: 0.85 }));
 		const pearl = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0xfff8e7,
@@ -973,10 +975,7 @@ export class ProtestGroupies {
 		root.add(head);
 
 		// Signature Merkel bowl cut (blonde, short, rounded)
-		const bowl = new THREE.Mesh(
-			new THREE.SphereGeometry(0.24, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.58),
-			hairM,
-		);
+		const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hairM);
 		bowl.position.set(0, 2.12, -0.01);
 		root.add(bowl);
 		// Side volume
@@ -987,10 +986,7 @@ export class ProtestGroupies {
 		sideR.position.x = 0.2;
 		root.add(sideL, sideR);
 		// Fringe
-		const fringe = new THREE.Mesh(
-			new THREE.BoxGeometry(0.32, 0.08, 0.08),
-			hairM,
-		);
+		const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 0.08), hairM);
 		fringe.position.set(0, 2.12, 0.18);
 		root.add(fringe);
 
@@ -1002,10 +998,7 @@ export class ProtestGroupies {
 		eyeR.position.set(0.07, 2.08, 0.2);
 		root.add(eyeL, eyeR);
 		// Soft smile
-		const mouth = new THREE.Mesh(
-			new THREE.TorusGeometry(0.06, 0.012, 4, 10, Math.PI),
-			eyeM,
-		);
+		const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 4, 10, Math.PI), eyeM);
 		mouth.position.set(0, 1.96, 0.2);
 		mouth.rotation.x = 0.3;
 		root.add(mouth);
@@ -1164,7 +1157,7 @@ export class ProtestGroupies {
 		);
 		cloth.position.set(0.38, 1.4, 0);
 		g.add(cloth);
-		g.userData.cloth = cloth;
+		g.userData['cloth'] = cloth;
 		return g;
 	}
 
@@ -1186,27 +1179,9 @@ export class ProtestGroupies {
 
 	private buildCrowd(n: number): void {
 		const skins = [0xf5c9a8, 0xe0a878, 0xc68642, 0x8d5524, 0xffdbac];
-		const tops = [
-			0x1565c0,
-			0x2e7d32,
-			0x6a1b9a,
-			0xc62828,
-			0xffeb3b,
-			0x00897b,
-			0xec407a,
-			0xffffff,
-		];
+		const tops = [0x1565c0, 0x2e7d32, 0x6a1b9a, 0xc62828, 0xffeb3b, 0x00897b, 0xec407a, 0xffffff];
 		const hairs = [0x2c1810, 0xc4a35a, 0x111111, 0xd35400, 0xf5f5f5, 0x4a148c];
-		const handFlags: FlagKind[] = [
-			'progress',
-			'trans',
-			'rainbow',
-			'bi',
-			'lesbian',
-			'nb',
-			'pan',
-			'intersex',
-		];
+		const handFlags: FlagKind[] = ['progress', 'trans', 'rainbow', 'bi', 'lesbian', 'nb', 'pan', 'intersex'];
 
 		for (let i = 0; i < n; i++) {
 			const ang = (i / n) * Math.PI * 1.7 + 0.15;
@@ -1216,12 +1191,8 @@ export class ProtestGroupies {
 			const root = new THREE.Group();
 			root.position.set(bx, 0, bz);
 
-			const skin = this.track(
-				new THREE.MeshStandardMaterial({ color: skins[i % skins.length], roughness: 0.85 }),
-			);
-			const shirt = this.track(
-				new THREE.MeshStandardMaterial({ color: tops[i % tops.length], roughness: 0.7 }),
-			);
+			const skin = this.track(new THREE.MeshStandardMaterial({ color: skins[i % skins.length], roughness: 0.85 }));
+			const shirt = this.track(new THREE.MeshStandardMaterial({ color: tops[i % tops.length], roughness: 0.7 }));
 			const pants = this.track(
 				new THREE.MeshStandardMaterial({
 					color: i % 2 === 0 ? 0x37474f : 0x5d4037,
@@ -1254,10 +1225,7 @@ export class ProtestGroupies {
 				bun.position.set(0, 1.82, -0.05);
 				root.add(bun);
 			}
-			const hair = new THREE.Mesh(
-				new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
-				hairM,
-			);
+			const hair = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
 			hair.position.set(0, 1.72, -0.02);
 			root.add(hair);
 
@@ -1288,7 +1256,7 @@ export class ProtestGroupies {
 				fist = hand;
 			} else {
 				// Hand flag instead of fist
-				const hf = this.makeHandFlag(handFlags[i % handFlags.length]);
+				const hf = this.makeHandFlag(at(handFlags, i));
 				hf.position.set(0.35, 1.15, 0.15);
 				root.add(hf);
 				flag = hf;
@@ -1306,7 +1274,7 @@ export class ProtestGroupies {
 				new THREE.PlaneGeometry(0.7, 0.48),
 				this.track(
 					new THREE.MeshBasicMaterial({
-						map: this.makeSignTex(SIGN_LINES[i % SIGN_LINES.length], i),
+						map: this.makeSignTex(at(SIGN_LINES, i), i),
 						side: THREE.DoubleSide,
 						toneMapped: false,
 					}),
@@ -1320,7 +1288,7 @@ export class ProtestGroupies {
 				new THREE.PlaneGeometry(0.12, 0.08),
 				this.track(
 					new THREE.MeshBasicMaterial({
-						map: this.makePrideFlagTex(handFlags[(i + 2) % handFlags.length]),
+						map: this.makePrideFlagTex(at(handFlags, i + 2)),
 						side: THREE.DoubleSide,
 						toneMapped: false,
 					}),
@@ -1395,7 +1363,7 @@ export class ProtestGroupies {
 				flag,
 				lineIdx: i,
 				legPhase: Math.random() * 10,
-				voiceKey: voiceKeys[i % voiceKeys.length],
+				voiceKey: at(voiceKeys, i),
 				voiceCd: 0,
 			});
 		}
@@ -1407,16 +1375,16 @@ export class ProtestGroupies {
 		c.height = 176;
 		const ctx = c.getContext('2d')!;
 		const bgs = ['#ffffff', '#fff59d', '#e3f2fd', '#f3e5f5', '#e8f5e9'];
-		ctx.fillStyle = bgs[seed % bgs.length];
+		ctx.fillStyle = at(bgs, seed);
 		ctx.fillRect(0, 0, 256, 176);
 		ctx.strokeStyle = '#212121';
 		ctx.lineWidth = 6;
 		ctx.strokeRect(4, 4, 248, 168);
 		const cols = ['#e40303', '#ff8c00', '#ffed00', '#008026', '#24408e', '#732982'];
-		for (let i = 0; i < 6; i++) {
-			ctx.fillStyle = cols[i];
+		cols.forEach((col, i) => {
+			ctx.fillStyle = col;
 			ctx.fillRect(10 + i * 39, 12, 36, 10);
-		}
+		});
 		ctx.fillStyle = '#111';
 		ctx.textAlign = 'center';
 		ctx.font = 'bold 30px system-ui';
@@ -1430,7 +1398,7 @@ export class ProtestGroupies {
 
 	private makeNameTag(i: number): THREE.Sprite {
 		const names = ['Greta-fan', 'Lena', 'Jonas', 'Sophie', 'Kai', 'Mila', 'Noah', 'Emma'];
-		return this.makeTextSprite(names[i % names.length], 'rgba(30,80,180,0.9)', 160, 40);
+		return this.makeTextSprite(at(names, i), 'rgba(30,80,180,0.9)', 160, 40);
 	}
 
 	private makeTextSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
@@ -1447,9 +1415,7 @@ export class ProtestGroupies {
 		ctx.fillText(text, w / 2, h / 2);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 		sp.scale.set(0.85, 0.22, 1);
 		return sp;
 	}
@@ -1486,14 +1452,7 @@ export class ProtestGroupies {
 	}
 }
 
-function roundRect(
-	ctx: CanvasRenderingContext2D,
-	x: number,
-	y: number,
-	w: number,
-	h: number,
-	r: number,
-): void {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
 	ctx.beginPath();
 	ctx.moveTo(x + r, y);
 	ctx.arcTo(x + w, y, x + w, y + h, r);

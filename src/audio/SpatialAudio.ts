@@ -131,14 +131,7 @@ export class SpatialAudio {
 			// Safari legacy
 			const legacy = L as AudioListener & {
 				setPosition?: (x: number, y: number, z: number) => void;
-				setOrientation?: (
-					fx: number,
-					fy: number,
-					fz: number,
-					ux: number,
-					uy: number,
-					uz: number,
-				) => void;
+				setOrientation?: (fx: number, fy: number, fz: number, ux: number, uy: number, uz: number) => void;
 			};
 			legacy.setPosition?.(p.x, p.y, p.z);
 			legacy.setOrientation?.(p.fx, p.fy, p.fz, p.ux, p.uy, p.uz);
@@ -269,7 +262,10 @@ type PannerOpts = {
 	binaural: boolean;
 };
 
-function makePanner(ctx: AudioContext, opts: PannerOpts): {
+function makePanner(
+	ctx: AudioContext,
+	opts: PannerOpts,
+): {
 	panner: PannerNode;
 	gain: GainNode;
 	setPos: (x: number, y: number, z: number) => void;
@@ -303,8 +299,7 @@ function makePanner(ctx: AudioContext, opts: PannerOpts): {
 			panner.positionY.setValueAtTime(y, t);
 			panner.positionZ.setValueAtTime(z, t);
 		} else {
-			(panner as PannerNode & { setPosition?: (x: number, y: number, z: number) => void })
-				.setPosition?.(x, y, z);
+			(panner as PannerNode & { setPosition?: (x: number, y: number, z: number) => void }).setPosition?.(x, y, z);
 		}
 	};
 
@@ -424,13 +419,7 @@ export class SpatialSource {
 	}
 
 	apply(L: ListenerPose): void {
-		this.gain.gain.value = quadraticGain(
-			this.volume,
-			this.k,
-			this.maxDistance,
-			L,
-			this.pos,
-		);
+		this.gain.gain.value = quadraticGain(this.volume, this.k, this.maxDistance, L, this.pos);
 		this.setPos(this.pos.x, this.pos.y, this.pos.z);
 	}
 
@@ -473,12 +462,7 @@ export class SpatialLoop {
 	private stopInner: (() => void) | null = null;
 	private stopped = false;
 
-	constructor(
-		ctx: AudioContext,
-		master: GainNode,
-		pos: { x: number; y: number; z: number },
-		opts: PannerOpts,
-	) {
+	constructor(ctx: AudioContext, master: GainNode, pos: { x: number; y: number; z: number }, opts: PannerOpts) {
 		this.x = pos.x;
 		this.y = pos.y;
 		this.z = pos.z;
@@ -512,13 +496,7 @@ export class SpatialLoop {
 	}
 
 	apply(L: ListenerPose): void {
-		this.gain.gain.value = quadraticGain(
-			this.volume,
-			this.k,
-			this.maxDistance,
-			L,
-			{ x: this.x, y: this.y, z: this.z },
-		);
+		this.gain.gain.value = quadraticGain(this.volume, this.k, this.maxDistance, L, { x: this.x, y: this.y, z: this.z });
 		this.setPos(this.x, this.y, this.z);
 	}
 
@@ -616,13 +594,7 @@ export class SpatialElement {
 
 	apply(L: ListenerPose): void {
 		if (!this.owned) return;
-		this.gain.gain.value = quadraticGain(
-			this.volume,
-			this.k,
-			this.maxDistance,
-			L,
-			this.pos,
-		);
+		this.gain.gain.value = quadraticGain(this.volume, this.k, this.maxDistance, L, this.pos);
 		this.setPos(this.pos.x, this.pos.y, this.pos.z);
 	}
 }

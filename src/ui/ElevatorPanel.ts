@@ -97,11 +97,9 @@ export class ElevatorPanel {
 			(e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				const el = (e.target as HTMLElement | null)?.closest?.('.elev-btn') as
-					| HTMLElement
-					| null;
+				const el = (e.target as HTMLElement | null)?.closest?.('.elev-btn') as HTMLElement | null;
 				if (!el || !this.open) return;
-				const idx = Number(el.dataset.idx);
+				const idx = Number(el.dataset['idx']);
 				if (!Number.isFinite(idx)) return;
 				if (idx === this.currentIdx) return;
 				this.onPick(idx);
@@ -114,11 +112,9 @@ export class ElevatorPanel {
 			'mousedown',
 			(e) => {
 				e.stopPropagation();
-				const el = (e.target as HTMLElement | null)?.closest?.('.elev-btn') as
-					| HTMLElement
-					| null;
+				const el = (e.target as HTMLElement | null)?.closest?.('.elev-btn') as HTMLElement | null;
 				if (!el || !this.open) return;
-				const idx = Number(el.dataset.idx);
+				const idx = Number(el.dataset['idx']);
 				if (!Number.isFinite(idx) || idx === this.currentIdx) return;
 				e.preventDefault();
 				this.onPick(idx);

@@ -58,13 +58,7 @@ export class MovingWalkways {
 		return m;
 	}
 
-	private addBelt(opts: {
-		x: number;
-		y: number;
-		z: number;
-		length: number;
-		rotY: number;
-	}): void {
+	private addBelt(opts: { x: number; y: number; z: number; length: number; rotY: number }): void {
 		const g = new THREE.Group();
 		g.position.set(opts.x, opts.y, opts.z);
 		g.rotation.y = opts.rotY;

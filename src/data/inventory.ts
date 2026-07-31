@@ -3,16 +3,7 @@
  * Empty shops are dead shops.
  */
 
-export type StockKind =
-	| 'box'
-	| 'bottle'
-	| 'can'
-	| 'bag'
-	| 'device'
-	| 'shoe'
-	| 'garment'
-	| 'sphere'
-	| 'book';
+export type StockKind = 'box' | 'bottle' | 'can' | 'bag' | 'device' | 'shoe' | 'garment' | 'sphere' | 'book';
 
 export type StockItem = {
 	name: string;

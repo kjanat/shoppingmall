@@ -1,3 +1,4 @@
+import { at, pickWith } from '@/util/rand';
 import * as THREE from 'three';
 
 /**
@@ -76,15 +77,7 @@ interface Placement {
 	ry: number;
 }
 
-const P = (
-	x: number,
-	y: number,
-	z: number,
-	sx = 1,
-	sy = 1,
-	sz = 1,
-	ry = 0,
-): Placement => ({ x, y, z, sx, sy, sz, ry });
+const P = (x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, ry = 0): Placement => ({ x, y, z, sx, sy, sz, ry });
 
 export class CityGarage {
 	readonly group = new THREE.Group();
@@ -109,12 +102,8 @@ export class CityGarage {
 		this.group.name = 'city_garage';
 		this.geometries.push(this.unitBox);
 
-		this.beton = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x74787a, roughness: 0.95, metalness: 0.05 }),
-		);
-		this.betonDonker = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x585c5e, roughness: 0.9, metalness: 0.1 }),
-		);
+		this.beton = this.track(new THREE.MeshStandardMaterial({ color: 0x74787a, roughness: 0.95, metalness: 0.05 }));
+		this.betonDonker = this.track(new THREE.MeshStandardMaterial({ color: 0x585c5e, roughness: 0.9, metalness: 0.1 }));
 
 		const rand = mulberry32(0x9a1a9e); // garage, ongeveer, als je scheel kijkt
 		this.buildStructure();
@@ -173,9 +162,7 @@ export class CityGarage {
 
 		// Tl-balken onder elk dek: MeshBasicMaterial dat koud kantoorlicht
 		// suggereert zonder de GPU om een gunst te vragen.
-		const stripMat = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xbcd6e4, toneMapped: false }),
-		);
+		const stripMat = this.track(new THREE.MeshBasicMaterial({ color: 0xbcd6e4, toneMapped: false }));
 		const strips: Placement[] = [];
 		for (let i = 1; i <= DECKS; i++) {
 			const y = i * FLOOR_H - SLAB_T / 2 - 0.05;
@@ -239,10 +226,7 @@ export class CityGarage {
 		this.addBox(this.betonDonker, 0.14, 4.9, 3.4, X0 + 0.02, 8.6, CZ);
 		const geo = new THREE.PlaneGeometry(3.1, 4.65);
 		this.geometries.push(geo);
-		const sign = new THREE.Mesh(
-			geo,
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		const sign = new THREE.Mesh(geo, this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })));
 		sign.rotation.y = -Math.PI / 2; // kijkt naar −x, dus naar de mall
 		sign.position.set(X0 - 0.12, 8.6, CZ);
 		this.group.add(sign);
@@ -258,15 +242,9 @@ export class CityGarage {
 		wheelGeo.rotateX(Math.PI / 2);
 		this.geometries.push(bodyGeo, cabinGeo, wheelGeo);
 
-		const bodyMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.3 }),
-		);
-		const glassMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1d262d, roughness: 0.25, metalness: 0.5 }),
-		);
-		const wheelMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.9 }),
-		);
+		const bodyMat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.3 }));
+		const glassMat = this.track(new THREE.MeshStandardMaterial({ color: 0x1d262d, roughness: 0.25, metalness: 0.5 }));
+		const wheelMat = this.track(new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.9 }));
 
 		// Bezetting per dek loopt af naar boven; niemand rijdt vrijwillig door.
 		const perDek = [6, 5, 4, 3];
@@ -281,20 +259,18 @@ export class CityGarage {
 			}
 			for (let i = vakken.length - 1; i > 0; i--) {
 				const j = Math.floor(rand() * (i + 1));
-				const tmp = vakken[i];
-				vakken[i] = vakken[j];
+				const tmp = at(vakken, i);
+				vakken[i] = at(vakken, j);
 				vakken[j] = tmp;
 			}
-			for (let n = 0; n < perDek[dek]; n++) {
-				const [x, z] = vakken[n];
+			for (let n = 0; n < at(perDek, dek); n++) {
+				const [x, z] = at(vakken, n);
 				const ry = rand() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
 				bodies.push(P(x, base, z, 1, 1, 1, ry));
 				const cos = Math.cos(ry);
 				const sin = Math.sin(ry);
 				for (const [wx, wz] of WHEEL_OFFSETS) {
-					wheels.push(
-						P(x + wx * cos + wz * sin, base + 0.38, z - wx * sin + wz * cos, 1, 1, 1, ry),
-					);
+					wheels.push(P(x + wx * cos + wz * sin, base + 0.38, z - wx * sin + wz * cos, 1, 1, 1, ry));
 				}
 			}
 		}
@@ -305,7 +281,7 @@ export class CityGarage {
 		const palet = [0xb0413e, 0x3e63a8, 0x4a4e57, 0xd8d3c8, 0x3f6f4f, 0x23262d, 0x9a7b4f];
 		const kleur = new THREE.Color();
 		for (let i = 0; i < bodies.length; i++) {
-			kleur.setHex(palet[Math.floor(rand() * palet.length)]);
+			kleur.setHex(pickWith(palet, rand));
 			kleur.offsetHSL(0, 0, (rand() - 0.5) * 0.08);
 			bodyMesh.setColorAt(i, kleur);
 		}
@@ -315,13 +291,9 @@ export class CityGarage {
 
 	/** Slagboom + kaartautomaat bij de westingang. De oprit zelf heeft niets; daar heerst vertrouwen. */
 	private buildBoom(): void {
-		const wit = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xe8e8e2, roughness: 0.5, metalness: 0.2 }),
-		);
+		const wit = this.track(new THREE.MeshStandardMaterial({ color: 0xe8e8e2, roughness: 0.5, metalness: 0.2 }));
 		const rood = this.track(new THREE.MeshBasicMaterial({ color: 0xc62f28, toneMapped: false }));
-		const scherm = this.track(
-			new THREE.MeshBasicMaterial({ color: 0x8fd8a0, toneMapped: false }),
-		);
+		const scherm = this.track(new THREE.MeshBasicMaterial({ color: 0x8fd8a0, toneMapped: false }));
 
 		this.addBox(this.betonDonker, 0.22, 1.05, 0.22, 56.9, 0.53, 50.4); // slagboompaal
 		this.addBox(this.betonDonker, 0.55, 1.15, 0.45, 56.9, 0.58, 49.2); // kaartautomaat

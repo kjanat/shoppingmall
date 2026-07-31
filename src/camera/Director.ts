@@ -1,6 +1,7 @@
+import type { GraphNode } from '@/data/graph';
+import { at } from '@/util/rand';
 import gsap from 'gsap';
 import * as THREE from 'three';
-import type { GraphNode } from '../data/graph';
 
 export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
 
@@ -86,9 +87,7 @@ export class Director {
 			return;
 		}
 
-		const points = nodes.map(
-			(n) => new THREE.Vector3(n.x, n.y + EYE - 0.15, n.z),
-		);
+		const points = nodes.map((n) => new THREE.Vector3(n.x, n.y + EYE - 0.15, n.z));
 		const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.3);
 		const progress = { t: 0 };
 		const pathLen = curve.getLength();
@@ -114,8 +113,8 @@ export class Director {
 			},
 			onComplete: () => {
 				this.tourTween = null;
-				const end = points[points.length - 1];
-				const prev = points[Math.max(0, points.length - 2)];
+				const end = at(points, points.length - 1);
+				const prev = at(points, Math.max(0, points.length - 2));
 				const dir = end.clone().sub(prev);
 				dir.y = 0;
 				if (dir.lengthSq() < 0.01) dir.set(0, 0, -1);
@@ -171,12 +170,7 @@ export class Director {
 		this.camera.lookAt(this.target);
 	}
 
-	private animateCamera(
-		pos: THREE.Vector3,
-		target: THREE.Vector3,
-		duration: number,
-		onComplete?: () => void,
-	): void {
+	private animateCamera(pos: THREE.Vector3, target: THREE.Vector3, duration: number, onComplete?: () => void): void {
 		this.moveTween?.kill();
 		const fromPos = this.camera.position.clone();
 		const fromTarget = this.target.clone();

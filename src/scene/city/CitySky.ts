@@ -1,3 +1,4 @@
+import { at } from '@/util/rand';
 import * as THREE from 'three';
 
 /**
@@ -101,11 +102,7 @@ export class CitySky {
 			}
 			const y = 40 + Math.random() * 18;
 			this.basisY.push(y);
-			cluster.position.set(
-				(Math.random() * 2 - 1) * WERELD_X,
-				y,
-				(Math.random() * 2 - 1) * WERELD_Z,
-			);
+			cluster.position.set((Math.random() * 2 - 1) * WERELD_X, y, (Math.random() * 2 - 1) * WERELD_Z);
 			this.drift.push(0.6 + Math.random() * 0.9);
 			this.clusters.push(cluster);
 			this.group.add(cluster);
@@ -150,9 +147,7 @@ export class CitySky {
 		// ── bliksempool: dun cilindertje, vier keer anders gekarteld ──
 		const segGeo = new THREE.CylinderGeometry(0.09, 0.16, 1, 5);
 		this.geometries.push(segGeo);
-		const boltMat = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xf8fbff, toneMapped: false }),
-		);
+		const boltMat = this.track(new THREE.MeshBasicMaterial({ color: 0xf8fbff, toneMapped: false }));
 		for (let i = 0; i < N_BOLTS; i++) {
 			const bolt = this.buildBolt(segGeo, boltMat);
 			this.bolts.push(bolt);
@@ -167,12 +162,11 @@ export class CitySky {
 
 	update(dt: number, t: number): void {
 		// ── wolken driften naar +x; voorbij de rand → achteraan aansluiten ──
-		for (let i = 0; i < N_CLUSTERS; i++) {
-			const c = this.clusters[i];
-			c.position.x += this.drift[i] * dt;
+		this.clusters.forEach((c, i) => {
+			c.position.x += at(this.drift, i) * dt;
 			if (c.position.x > WERELD_X) c.position.x = -WERELD_X;
-			c.position.y = this.basisY[i] + Math.sin(t * 0.12 + i * 1.7) * 0.6;
-		}
+			c.position.y = at(this.basisY, i) + Math.sin(t * 0.12 + i * 1.7) * 0.6;
+		});
 
 		// ── state-machine ──
 		this.stateTimer -= dt;
@@ -195,9 +189,7 @@ export class CitySky {
 		// ── overgang: wolken kleuren mee, in ~2.5 s van wit naar chagrijnig ──
 		const doel = this.state === 'storm' ? 1 : 0;
 		const stap = dt / 2.5;
-		this.stormMix = doel > this.stormMix
-			? Math.min(doel, this.stormMix + stap)
-			: Math.max(doel, this.stormMix - stap);
+		this.stormMix = doel > this.stormMix ? Math.min(doel, this.stormMix + stap) : Math.max(doel, this.stormMix - stap);
 		this.cloudMat.color.lerpColors(KLEUR_HELDER, KLEUR_STORM, this.stormMix);
 		this.cloudMat.opacity = 0.55 + 0.25 * this.stormMix;
 
@@ -208,7 +200,7 @@ export class CitySky {
 		// Bolt maar heel even tonen; langer en het wordt een lantaarnpaal.
 		if (this.boltTimer > 0) {
 			this.boltTimer -= dt;
-			if (this.boltTimer <= 0) this.bolts[this.boltIndex].visible = false;
+			if (this.boltTimer <= 0) at(this.bolts, this.boltIndex).visible = false;
 		}
 
 		// ── regen: vallen, en onder de grond weer bovenaan invoegen ──
@@ -218,7 +210,7 @@ export class CitySky {
 			this.regenMat.opacity = 0.55 * this.stormMix;
 			const p = this.regenPos;
 			for (let i = 0; i < N_DRUPPELS; i++) {
-				let y = p[i * 3 + 1] - this.valsnelheid[i] * dt;
+				let y = (p[i * 3 + 1] ?? 0) - at(this.valsnelheid, i) * dt;
 				if (y < 0) y += REGEN_TOP;
 				p[i * 3 + 1] = y;
 			}
@@ -236,7 +228,7 @@ export class CitySky {
 	/** Volgende bolt uit de pool op een willekeurige plek boven de stad zetten. */
 	private inslag(): void {
 		this.boltIndex = (this.boltIndex + 1) % N_BOLTS;
-		const bolt = this.bolts[this.boltIndex];
+		const bolt = at(this.bolts, this.boltIndex);
 		let x = 0;
 		let z = 0;
 		do {

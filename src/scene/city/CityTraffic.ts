@@ -1,3 +1,4 @@
+import { at } from '@/util/rand';
 import * as THREE from 'three';
 
 /**
@@ -54,7 +55,7 @@ const EDGE_END: number[] = [];
 	}
 }
 /** Omtrek van de ring: 2·103 + 2·75 = 356 m. */
-const PERIM = EDGE_END[EDGE_END.length - 1];
+const PERIM = at(EDGE_END, EDGE_END.length - 1);
 
 const N_CARS = 14;
 const N_TAXIS = 6;
@@ -77,13 +78,19 @@ export class CityTraffic {
 	private textures: THREE.Texture[] = [];
 
 	private readonly getPhase: () => string;
-	private readonly cars: THREE.Group[] = [];
-	/** Boogafstand op de ring, per auto. */
-	private readonly s: number[] = [];
-	/** Huidige snelheid. */
-	private readonly v: number[] = [];
-	/** Kruissnelheid — ieder z'n eigen haast, 6..11 m/s. */
-	private readonly vmax: number[] = [];
+	/**
+	 * Eén record per auto in plaats van vier arrays op dezelfde index — die
+	 * konden uit de pas lopen en dwongen bij elke lookup een bounds-check af.
+	 */
+	private readonly cars: {
+		mesh: THREE.Group;
+		/** Boogafstand op de ring. */
+		s: number;
+		/** Huidige snelheid. */
+		v: number;
+		/** Kruissnelheid — ieder z'n eigen haast, 6..11 m/s. */
+		vmax: number;
+	}[] = [];
 
 	constructor(getPhase: () => string) {
 		this.getPhase = getPhase;
@@ -99,20 +106,12 @@ export class CityTraffic {
 		signGeo.rotateY(Math.PI / 2); // bordje kijkt in de rijrichting
 		this.geometries.push(bodyGeo, cabinGeo, wheelGeo, lampGeo, signGeo);
 
-		const glassMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1d262d, roughness: 0.25, metalness: 0.5 }),
-		);
-		const wheelMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.9 }),
-		);
-		const lampMat = this.track(
-			new THREE.MeshBasicMaterial({ color: 0xfff3c4, toneMapped: false }),
-		);
-		const taxiMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.45, metalness: 0.25 }),
-		);
-		const paint = [0xb0413e, 0x3e63a8, 0x4a4e57, 0xd8d3c8, 0x3f6f4f, 0x23262d, 0x9a7b4f].map(
-			(c) => this.track(new THREE.MeshStandardMaterial({ color: c, roughness: 0.5, metalness: 0.3 })),
+		const glassMat = this.track(new THREE.MeshStandardMaterial({ color: 0x1d262d, roughness: 0.25, metalness: 0.5 }));
+		const wheelMat = this.track(new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.9 }));
+		const lampMat = this.track(new THREE.MeshBasicMaterial({ color: 0xfff3c4, toneMapped: false }));
+		const taxiMat = this.track(new THREE.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.45, metalness: 0.25 }));
+		const paint = [0xb0413e, 0x3e63a8, 0x4a4e57, 0xd8d3c8, 0x3f6f4f, 0x23262d, 0x9a7b4f].map((c) =>
+			this.track(new THREE.MeshStandardMaterial({ color: c, roughness: 0.5, metalness: 0.3 })),
 		);
 		const signMat = this.makeTaxiSignMaterial();
 
@@ -150,45 +149,45 @@ export class CityTraffic {
 				car.add(sign);
 			}
 
-			this.cars.push(car);
 			this.group.add(car);
 
 			// Netjes uitgesmeerd over de omtrek, met wat jitter tegen het kadaver-
 			// gevoel van een perfecte colonne.
-			this.s.push(((i + 0.4 * Math.random()) / N) * PERIM);
 			const cruise = 6 + Math.random() * 5;
-			this.vmax.push(cruise);
-			this.v.push(cruise);
+			this.cars.push({
+				mesh: car,
+				s: ((i + 0.4 * Math.random()) / N) * PERIM,
+				v: cruise,
+				vmax: cruise,
+			});
 			this.place(i);
 		}
 	}
 
 	update(dt: number, _t: number): void {
 		const phase = this.getPhase();
-		for (let i = 0; i < N; i++) {
+		this.cars.forEach((car, i) => {
 			// Voorligger zoeken: kleinste positieve afstand vooruit op de ring.
 			// O(n²) over 20 auto's — de Pi haalt z'n schouders op.
 			let gap = PERIM;
-			for (let j = 0; j < N; j++) {
-				if (j === i) continue;
-				let d = this.s[j] - this.s[i];
+			for (const other of this.cars) {
+				if (other === car) continue;
+				let d = other.s - car.s;
 				if (d <= 0) d += PERIM;
 				if (d < gap) gap = d;
 			}
 
-			const k = this.edgeOf(this.s[i]);
-			const edge = EDGES[k];
-			const distCorner = EDGE_END[k] - this.s[i];
+			const k = this.edgeOf(car.s);
+			const edge = at(EDGES, k);
+			const distCorner = at(EDGE_END, k) - car.s;
 			const blocked = phase !== edge.phase;
 
 			// Remmen voor blik of voor rood, anders rustig terug naar kruissnelheid.
 			const mustBrake = gap < GAP_BRAKE || (blocked && distCorner < LIGHT_SEE);
-			let vi = this.v[i];
-			vi = mustBrake ? Math.max(0, vi - BRAKE * dt) : Math.min(this.vmax[i], vi + ACCEL * dt);
-			this.v[i] = vi;
+			car.v = mustBrake ? Math.max(0, car.v - BRAKE * dt) : Math.min(car.vmax, car.v + ACCEL * dt);
 
 			// Harde clampen: nooit door de voorligger heen, nooit de hoek op bij rood.
-			let move = vi * dt;
+			let move = car.v * dt;
 			const room = gap - GAP_HOLD;
 			if (move > room) move = Math.max(0, room);
 			if (blocked) {
@@ -196,9 +195,9 @@ export class CityTraffic {
 				if (move > line) move = Math.max(0, line);
 			}
 
-			this.s[i] = (this.s[i] + move) % PERIM;
+			car.s = (car.s + move) % PERIM;
 			this.place(i);
-		}
+		});
 	}
 
 	dispose(): void {
@@ -212,18 +211,19 @@ export class CityTraffic {
 	/** Op welke rand boogafstand s ligt. Vier vergelijkingen, geen wiskunde. */
 	private edgeOf(s: number): number {
 		let k = 0;
-		while (k < EDGES.length - 1 && s >= EDGE_END[k]) k++;
+		while (k < EDGES.length - 1 && s >= at(EDGE_END, k)) k++;
 		return k;
 	}
 
 	/** Zet auto i op z'n boogafstand, neus in de rijrichting. Geen allocaties. */
 	private place(i: number): void {
-		const k = this.edgeOf(this.s[i]);
-		const edge = EDGES[k];
-		const u = this.s[i] - EDGE_START[k];
 		const car = this.cars[i];
-		car.position.set(edge.ox + edge.dx * u, 0, edge.oz + edge.dz * u);
-		car.rotation.y = edge.rotY;
+		if (!car) return;
+		const k = this.edgeOf(car.s);
+		const edge = at(EDGES, k);
+		const u = car.s - at(EDGE_START, k);
+		car.mesh.position.set(edge.ox + edge.dx * u, 0, edge.oz + edge.dz * u);
+		car.mesh.rotation.y = edge.rotY;
 	}
 
 	/** Geel bordje met TAXI erop. Van achteren staat er IXAT — heel authentiek. */
@@ -245,9 +245,7 @@ export class CityTraffic {
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
 		this.textures.push(tex);
-		return this.track(
-			new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide }),
-		);
+		return this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {

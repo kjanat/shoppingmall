@@ -45,12 +45,12 @@ export class TravelAgency {
 			this.agentRoot.position.y = Math.sin(this.t * 1.4) * 0.02;
 			this.agentRoot.rotation.y = Math.sin(this.t * 0.5) * 0.08 + Math.PI / 2;
 		}
-		for (let i = 0; i < this.bob.length; i++) {
-			const o = this.bob[i];
-			const phase = (o.userData.phase as number) ?? i;
+		this.bob.forEach((o, i) => {
+			const phase = o.userData['phase'] ?? i;
+			const baseY = o.userData['baseY'] ?? 0;
 			o.rotation.z = Math.sin(this.t * 1.8 + phase) * 0.06;
-			o.position.y = (o.userData.baseY as number) + Math.sin(this.t * 2.2 + phase) * 0.03;
-		}
+			o.position.y = baseY + Math.sin(this.t * 2.2 + phase) * 0.03;
+		});
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
@@ -59,9 +59,7 @@ export class TravelAgency {
 	}
 
 	private buildShell(): void {
-		const wall = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x0d3b4c, roughness: 0.85 }),
-		);
+		const wall = this.track(new THREE.MeshStandardMaterial({ color: 0x0d3b4c, roughness: 0.85 }));
 		const trim = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0xffd54f,
@@ -69,9 +67,7 @@ export class TravelAgency {
 				roughness: 0.4,
 			}),
 		);
-		const floor = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xe0f2f1, roughness: 0.7 }),
-		);
+		const floor = this.track(new THREE.MeshStandardMaterial({ color: 0xe0f2f1, roughness: 0.7 }));
 
 		const slab = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.1, 3.8), floor);
 		slab.position.set(0, 0.05, 0);
@@ -100,9 +96,7 @@ export class TravelAgency {
 	}
 
 	private buildDesk(): void {
-		const wood = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.8 }),
-		);
+		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.8 }));
 		const top = this.track(
 			new THREE.MeshStandardMaterial({
 				color: 0xffecb3,
@@ -156,18 +150,10 @@ export class TravelAgency {
 		g.position.set(-0.15, 0, -0.15);
 		g.rotation.y = Math.PI / 2;
 
-		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }),
-		);
-		const shirt = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.7 }),
-		);
-		const pants = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.8 }),
-		);
-		const hairM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
-		);
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }));
+		const shirt = this.track(new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.7 }));
+		const pants = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.8 }));
+		const hairM = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }));
 
 		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.45, 3, 6), pants);
 		const legR = legL.clone();
@@ -185,21 +171,14 @@ export class TravelAgency {
 				new THREE.SphereGeometry(0.04, 6, 6),
 				this.track(new THREE.MeshStandardMaterial({ color: 0xe91e63, roughness: 0.6 })),
 			);
-			dot.position.set(
-				((i % 3) - 1) * 0.12,
-				0.95 + Math.floor(i / 3) * 0.2,
-				0.22,
-			);
+			dot.position.set(((i % 3) - 1) * 0.12, 0.95 + Math.floor(i / 3) * 0.2, 0.22);
 			g.add(dot);
 		}
 
 		const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 12), skin);
 		head.position.y = 1.65;
 		g.add(head);
-		const hair = new THREE.Mesh(
-			new THREE.SphereGeometry(0.18, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
-			hairM,
-		);
+		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
 		hair.position.set(0, 1.72, -0.02);
 		g.add(hair);
 
@@ -240,9 +219,7 @@ export class TravelAgency {
 		const island = this.makeIslandPoster();
 		const p1 = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.5, 1.1),
-			this.track(
-				new THREE.MeshBasicMaterial({ map: island, toneMapped: false }),
-			),
+			this.track(new THREE.MeshBasicMaterial({ map: island, toneMapped: false })),
 		);
 		p1.position.set(-1.78, 1.55, 0);
 		p1.rotation.y = Math.PI / 2;
@@ -382,17 +359,13 @@ export class TravelAgency {
 
 	private buildProps(): void {
 		// Suitcase
-		const caseM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.6, metalness: 0.2 }),
-		);
+		const caseM = this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.6, metalness: 0.2 }));
 		const bag = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.22), caseM);
 		bag.position.set(1.2, 0.3, 1.1);
 		this.group.add(bag);
 		const handle = new THREE.Mesh(
 			new THREE.TorusGeometry(0.1, 0.02, 6, 12, Math.PI),
-			this.track(
-				new THREE.MeshStandardMaterial({ color: 0xffd54f, metalness: 0.6, roughness: 0.3 }),
-			),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xffd54f, metalness: 0.6, roughness: 0.3 })),
 		);
 		handle.position.set(1.2, 0.6, 1.1);
 		handle.rotation.x = Math.PI;
@@ -411,8 +384,8 @@ export class TravelAgency {
 		);
 		globe.position.set(1.05, 1.2, -0.2);
 		this.group.add(globe);
-		globe.userData.phase = 1.2;
-		globe.userData.baseY = 1.2;
+		globe.userData['phase'] = 1.2;
+		globe.userData['baseY'] = 1.2;
 		this.bob.push(globe);
 		// Continents blobs
 		for (let i = 0; i < 5; i++) {
@@ -421,11 +394,7 @@ export class TravelAgency {
 				this.track(new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 })),
 			);
 			const a = (i / 5) * Math.PI * 2;
-			land.position.set(
-				1.05 + Math.cos(a) * 0.14,
-				1.2 + Math.sin(a * 1.3) * 0.1,
-				-0.2 + Math.sin(a) * 0.14,
-			);
+			land.position.set(1.05 + Math.cos(a) * 0.14, 1.2 + Math.sin(a * 1.3) * 0.1, -0.2 + Math.sin(a) * 0.14);
 			this.group.add(land);
 		}
 
@@ -451,8 +420,8 @@ export class TravelAgency {
 		plane.position.set(0.85, 1.05, -0.25);
 		plane.rotation.y = -0.5;
 		this.group.add(plane);
-		plane.userData.phase = 0.4;
-		plane.userData.baseY = 1.05;
+		plane.userData['phase'] = 0.4;
+		plane.userData['baseY'] = 1.05;
 		this.bob.push(plane);
 
 		// "No cameras" bin
@@ -471,12 +440,8 @@ export class TravelAgency {
 	}
 
 	private buildPalm(): void {
-		const trunkM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.9 }),
-		);
-		const leafM = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.85 }),
-		);
+		const trunkM = this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.9 }));
+		const leafM = this.track(new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.85 }));
 		const pot = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.22, 0.18, 0.35, 10),
 			this.track(new THREE.MeshStandardMaterial({ color: 0xbf360c, roughness: 0.7 })),
@@ -494,30 +459,20 @@ export class TravelAgency {
 			leaf.rotation.y = a;
 			leaf.rotation.z = 0.4;
 			this.group.add(leaf);
-			leaf.userData.phase = i;
-			leaf.userData.baseY = 1.45;
+			leaf.userData['phase'] = i;
+			leaf.userData['baseY'] = 1.45;
 			this.bob.push(leaf);
 		}
 	}
 
 	private buildSigns(): void {
 		// Main fascia sign
-		const main = this.makeSprite(
-			'🌴 ISLAND HOP TRAVEL  ·  Epstein Island charters',
-			'#004d40',
-			512,
-			64,
-		);
+		const main = this.makeSprite('🌴 ISLAND HOP TRAVEL  ·  Epstein Island charters', '#004d40', 512, 64);
 		main.position.set(1.7, 2.55, 0);
 		main.scale.set(3.2, 0.45, 1);
 		this.group.add(main);
 
-		const sub = this.makeSprite(
-			'vlakbij de juwelen-cave  ·  cash only  ·  NDA at desk',
-			'#b71c1c',
-			420,
-			48,
-		);
+		const sub = this.makeSprite('vlakbij de juwelen-cave  ·  cash only  ·  NDA at desk', '#b71c1c', 420, 48);
 		sub.position.set(1.7, 2.2, 0);
 		sub.scale.set(2.6, 0.32, 1);
 		this.group.add(sub);
@@ -527,11 +482,7 @@ export class TravelAgency {
 			new THREE.BoxGeometry(0.7, 0.9, 0.08),
 			this.track(
 				new THREE.MeshBasicMaterial({
-					map: this.makeTextPoster(
-						['BOOK NOW', 'EPSTEIN', 'ISLAND', '⚠ void ticket'],
-						'#ffeb3b',
-						'#b71c1c',
-					),
+					map: this.makeTextPoster(['BOOK NOW', 'EPSTEIN', 'ISLAND', '⚠ void ticket'], '#ffeb3b', '#b71c1c'),
 					toneMapped: false,
 				}),
 			),
@@ -555,8 +506,6 @@ export class TravelAgency {
 		ctx.fillText(text, w / 2, h / 2);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(
-			new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-		);
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
 	}
 }

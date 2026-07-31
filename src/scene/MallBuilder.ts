@@ -1,6 +1,7 @@
+import { getOwner } from '@/data/shopOwners';
+import { type StoreDef, STORES } from '@/data/stores';
+import { at } from '@/util/rand';
 import * as THREE from 'three';
-import { getOwner } from '../data/shopOwners';
-import { type StoreDef, STORES } from '../data/stores';
 
 const FLOOR_H = 6;
 const MALL_W = 72;
@@ -140,10 +141,7 @@ export class MallBuilder {
 		tileTex.colorSpace = THREE.SRGBColorSpace;
 		floorMat.map = tileTex;
 
-		const floor0 = new THREE.Mesh(
-			new THREE.BoxGeometry(MALL_W, 0.3, MALL_D),
-			floorMat,
-		);
+		const floor0 = new THREE.Mesh(new THREE.BoxGeometry(MALL_W, 0.3, MALL_D), floorMat);
 		floor0.position.y = -0.15;
 		floor0.receiveShadow = true;
 		this.group.add(floor0);
@@ -272,22 +270,14 @@ export class MallBuilder {
 				side: THREE.DoubleSide,
 			}),
 		);
-		const skylight = new THREE.Mesh(
-			new THREE.PlaneGeometry(aw + 1, ad + 1),
-			glassMat,
-		);
+		const skylight = new THREE.Mesh(new THREE.PlaneGeometry(aw + 1, ad + 1), glassMat);
 		skylight.rotation.x = -Math.PI / 2;
 		skylight.position.y = FLOOR_H * 2 + 1.4;
 		this.group.add(skylight);
 
 		// Parking lot-ish ground outside
-		const voidMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x8a9099, roughness: 0.95 }),
-		);
-		const voidPlane = new THREE.Mesh(
-			new THREE.PlaneGeometry(200, 200),
-			voidMat,
-		);
+		const voidMat = this.track(new THREE.MeshStandardMaterial({ color: 0x8a9099, roughness: 0.95 }));
+		const voidPlane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), voidMat);
 		voidPlane.rotation.x = -Math.PI / 2;
 		voidPlane.position.y = -0.5;
 		this.group.add(voidPlane);
@@ -374,10 +364,7 @@ export class MallBuilder {
 		beard.scale.set(0.9, 1.1, 0.75);
 		beard.position.set(0, 1.88, 0.09);
 		figure.add(beard);
-		const hair = new THREE.Mesh(
-			new THREE.SphereGeometry(0.215, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62),
-			marble,
-		);
+		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.215, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), marble);
 		hair.position.set(0, 2.04, -0.02);
 		figure.add(hair);
 		const laurel = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.022, 6, 16), gold);
@@ -437,9 +424,7 @@ export class MallBuilder {
 
 		const planter = new THREE.Mesh(
 			new THREE.CylinderGeometry(1.2, 1.4, 0.8, 24),
-			this.track(
-				new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.85 }),
-			),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.85 })),
 		);
 		planter.position.y = 0.7;
 		this.group.add(planter);
@@ -537,23 +522,15 @@ export class MallBuilder {
 				roughness: 0.55,
 			}),
 		);
-		const railMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xb0bec5, metalness: 0.7, roughness: 0.3 }),
-		);
+		const railMat = this.track(new THREE.MeshStandardMaterial({ color: 0xb0bec5, metalness: 0.7, roughness: 0.3 }));
 
 		// Bottom landing
-		const land0 = new THREE.Mesh(
-			new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.4),
-			metal,
-		);
+		const land0 = new THREE.Mesh(new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.4), metal);
 		land0.position.set(opts.x, 0.06, z0 - dir * 0.5);
 		g.add(land0);
 
 		// Top landing (sits in floor-1 hole)
-		const land1 = new THREE.Mesh(
-			new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.5),
-			metal,
-		);
+		const land1 = new THREE.Mesh(new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.5), metal);
 		land1.position.set(opts.x, opts.rise + 0.06, z1 + dir * 0.35);
 		g.add(land1);
 
@@ -563,17 +540,11 @@ export class MallBuilder {
 		for (let i = 0; i < steps; i++) {
 			const z = z0 + dir * (i + 0.5) * stepDepth;
 			const y = (i + 1) * stepRise;
-			const step = new THREE.Mesh(
-				new THREE.BoxGeometry(opts.width, 0.12, stepDepth * 0.92),
-				tread,
-			);
+			const step = new THREE.Mesh(new THREE.BoxGeometry(opts.width, 0.12, stepDepth * 0.92), tread);
 			step.position.set(opts.x, y - 0.06, z);
 			g.add(step);
 			// riser
-			const riser = new THREE.Mesh(
-				new THREE.BoxGeometry(opts.width, stepRise * 0.95, 0.06),
-				metal,
-			);
+			const riser = new THREE.Mesh(new THREE.BoxGeometry(opts.width, stepRise * 0.95, 0.06), metal);
 			riser.position.set(opts.x, y - stepRise * 0.5, z - dir * stepDepth * 0.45);
 			g.add(riser);
 		}
@@ -583,10 +554,7 @@ export class MallBuilder {
 			for (let i = 0; i < steps; i++) {
 				const z = z0 + dir * (i + 0.5) * stepDepth;
 				const y = (i + 0.5) * stepRise;
-				const board = new THREE.Mesh(
-					new THREE.BoxGeometry(0.1, stepRise + 0.08, stepDepth * 0.95),
-					metal,
-				);
+				const board = new THREE.Mesh(new THREE.BoxGeometry(0.1, stepRise + 0.08, stepDepth * 0.95), metal);
 				board.position.set(sx, y, z);
 				g.add(board);
 			}
@@ -594,10 +562,7 @@ export class MallBuilder {
 			for (let i = 0; i < steps; i++) {
 				const z = z0 + dir * (i + 0.5) * stepDepth;
 				const y = (i + 1) * stepRise + 0.75;
-				const post = new THREE.Mesh(
-					new THREE.CylinderGeometry(0.03, 0.03, 0.75, 6),
-					railMat,
-				);
+				const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.75, 6), railMat);
 				post.position.set(sx, y - 0.35, z);
 				g.add(post);
 				if (i < steps - 1) {
@@ -606,10 +571,7 @@ export class MallBuilder {
 					const midZ = (z + z2) / 2;
 					const midY = (y + y2) / 2;
 					const segLen = Math.hypot(z2 - z, y2 - y);
-					const rail = new THREE.Mesh(
-						new THREE.BoxGeometry(0.06, 0.06, segLen),
-						railMat,
-					);
+					const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, segLen), railMat);
 					rail.position.set(sx, midY, midZ);
 					rail.rotation.x = Math.atan2(y2 - y, z2 - z);
 					g.add(rail);
@@ -642,10 +604,7 @@ export class MallBuilder {
 		// Safety rail around floor-1 hole edges (short segments)
 		const holeZ = z1;
 		for (const side of [-1, 1]) {
-			const cap = new THREE.Mesh(
-				new THREE.BoxGeometry(0.08, 1.0, 3.5),
-				railMat,
-			);
+			const cap = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.0, 3.5), railMat);
 			cap.position.set(opts.x + side * (opts.width / 2 + 0.5), FLOOR_H + 0.55, holeZ);
 			g.add(cap);
 		}
@@ -700,20 +659,14 @@ export class MallBuilder {
 		g.add(floor);
 
 		// BACK wall only (thin slab at rear)
-		const backWall = new THREE.Mesh(
-			new THREE.BoxGeometry(w, h, wallT),
-			wallMat,
-		);
+		const backWall = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), wallMat);
 		backWall.position.set(0, h / 2, backZ);
 		backWall.castShadow = true;
 		g.add(backWall);
 
 		// LEFT / RIGHT walls (thin, full depth — open storefront)
 		for (const sx of [-w / 2 + wallT / 2, w / 2 - wallT / 2]) {
-			const side = new THREE.Mesh(
-				new THREE.BoxGeometry(wallT, h, roomDepth),
-				wallMat,
-			);
+			const side = new THREE.Mesh(new THREE.BoxGeometry(wallT, h, roomDepth), wallMat);
 			side.position.set(sx, h / 2, -roomDepth / 2);
 			g.add(side);
 		}
@@ -789,9 +742,7 @@ export class MallBuilder {
 		// was de grootste framekiller. Een emissive plafondpaneel leest hetzelfde.
 		const lightPanel = new THREE.Mesh(
 			new THREE.PlaneGeometry(w * 0.6, roomDepth * 0.5),
-			this.track(
-				new THREE.MeshBasicMaterial({ color: 0xfff4e0, toneMapped: false }),
-			),
+			this.track(new THREE.MeshBasicMaterial({ color: 0xfff4e0, toneMapped: false })),
 		);
 		lightPanel.rotation.x = Math.PI / 2;
 		lightPanel.position.set(0, h - 0.15, -roomDepth * 0.4);
@@ -881,55 +832,28 @@ export class MallBuilder {
 		const seed = hashStr(`${store.id}:${index}`);
 		const skins = [0xe8c4a8, 0xf5c9a8, 0xd4a574, 0xc68642, 0x8d5524, 0xffdbac];
 		const hairs = [0x1a1a1a, 0x2c1810, 0xc4a35a, 0x4a3728, 0xf5f5f5, 0x3e2723];
-		const staffNames = [
-			'Jan',
-			'Kevin',
-			'Mo',
-			'Daan',
-			'Luca',
-			'Sam',
-			'Omar',
-			'Nick',
-			'Bram',
-			'Timo',
-			'Jay',
-			'Rico',
-		];
+		const staffNames = ['Jan', 'Kevin', 'Mo', 'Daan', 'Luca', 'Sam', 'Omar', 'Nick', 'Bram', 'Timo', 'Jay', 'Rico'];
 		const staffTitles = ['Verkoper', 'Kassa', 'Vulploeg', 'Floor', 'Stagiair'];
 
-		const skinCol = isBoss
-			? (owner?.skin ?? 0xe8c4a8)
-			: skins[seed % skins.length];
+		const skinCol = isBoss ? (owner?.skin ?? 0xe8c4a8) : skins[seed % skins.length];
 		const shirtCol = isBoss
 			? (owner?.shirt ?? new THREE.Color(store.color).getHex())
-			// staff: store color, slightly varied brightness
-			: new THREE.Color(store.color)
-				.offsetHSL(0, 0, ((seed % 5) - 2) * 0.04)
-				.getHex();
-		const hairCol = isBoss
-			? (owner?.hair ?? 0x2c1810)
-			: hairs[(seed * 3) % hairs.length];
+			: // staff: store color, slightly varied brightness
+				new THREE.Color(store.color).offsetHSL(0, 0, ((seed % 5) - 2) * 0.04).getHex();
+		const hairCol = isBoss ? (owner?.hair ?? 0x2c1810) : at(hairs, seed * 3);
 
-		g.userData.ownerName = isBoss
-			? (owner?.name ?? 'Verkoper')
-			: staffNames[(seed + index) % staffNames.length];
-		g.userData.ownerLines = owner?.lines ?? ['Thanks!'];
-		g.userData.ownerMeaning = isBoss
-			? (owner?.meaning ?? 'Houdt de winkel draaiende')
-			: 'Werkt hier gewoon';
+		g.userData['ownerName'] = isBoss ? (owner?.name ?? 'Verkoper') : at(staffNames, seed + index);
+		g.userData['ownerLines'] = owner?.lines ?? ['Thanks!'];
+		g.userData['ownerMeaning'] = isBoss ? (owner?.meaning ?? 'Houdt de winkel draaiende') : 'Werkt hier gewoon';
 
-		const skin = this.track(
-			new THREE.MeshStandardMaterial({ color: skinCol, roughness: 0.85 }),
-		);
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: skinCol, roughness: 0.85 }));
 		const uni = this.track(
 			new THREE.MeshStandardMaterial({
 				color: shirtCol,
 				roughness: 0.8,
 			}),
 		);
-		const hairMat = this.track(
-			new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 }),
-		);
+		const hairMat = this.track(new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 }));
 		const pants = this.track(
 			new THREE.MeshStandardMaterial({
 				color: isBoss ? 0x1a1a2e : 0x2c3e50,
@@ -986,12 +910,8 @@ export class MallBuilder {
 		bodyG.scale.setScalar(scale);
 		g.add(bodyG);
 
-		const name = isBoss
-			? (owner?.name ?? 'Verkoper')
-			: (g.userData.ownerName as string);
-		const title = isBoss
-			? (owner?.title ?? 'Shop owner')
-			: staffTitles[index % staffTitles.length];
+		const name = isBoss ? (owner?.name ?? 'Verkoper') : String(g.userData['ownerName'] ?? 'Verkoper');
+		const title = isBoss ? (owner?.title ?? 'Shop owner') : at(staffTitles, index);
 		const meaning = isBoss ? (owner?.meaning ?? '') : `Crew #${index + 1}`;
 
 		const pc = document.createElement('canvas');
@@ -1052,10 +972,7 @@ export class MallBuilder {
 		pole.position.y = 1.6;
 		g.add(pole);
 
-		const bezel = new THREE.Mesh(
-			new THREE.BoxGeometry(1.55, 1.1, 0.1),
-			bodyMat,
-		);
+		const bezel = new THREE.Mesh(new THREE.BoxGeometry(1.55, 1.1, 0.1), bodyMat);
 		bezel.position.set(0, 2.4, 0.05);
 		bezel.rotation.x = -0.15;
 		g.add(bezel);
@@ -1113,12 +1030,10 @@ export class MallBuilder {
 			[aw / 2, 0, ad, Math.PI / 2, ad],
 		];
 
-		for (
-			const [x, z, len] of [
-				[0, -ad / 2, aw],
-				[0, ad / 2, aw],
-			] as const
-		) {
+		for (const [x, z, len] of [
+			[0, -ad / 2, aw],
+			[0, ad / 2, aw],
+		] as const) {
 			const glass = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.1), glassMat);
 			glass.position.set(x, FLOOR_H + 0.55, z);
 			this.group.add(glass);
@@ -1126,12 +1041,10 @@ export class MallBuilder {
 			rail.position.set(x, FLOOR_H + 1.1, z);
 			this.group.add(rail);
 		}
-		for (
-			const [x, z, len] of [
-				[-aw / 2, 0, ad],
-				[aw / 2, 0, ad],
-			] as const
-		) {
+		for (const [x, z, len] of [
+			[-aw / 2, 0, ad],
+			[aw / 2, 0, ad],
+		] as const) {
 			const glass = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.1), glassMat);
 			glass.rotation.y = Math.PI / 2;
 			glass.position.set(x, FLOOR_H + 0.55, z);
