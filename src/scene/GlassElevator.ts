@@ -673,26 +673,17 @@ export class GlassElevator {
 		this.tagInteract(dome, 'call', floorIdx);
 		this.roofCallBtns.push(dome);
 
-		// Beacon light
-		const beacon = new THREE.PointLight(0x00e676, primary ? 8 : 5, 16, 2);
-		beacon.position.y = 3.4;
-		station.add(beacon);
+		// GEEN beacon-PointLight (emissive dome gloeit al — en elke light telt op
+		// de Pi) en GEEN ring van vier dezelfde borden: dat was de bordenspam op
+		// het dak. Eén bescheiden bordje aan de instapkant + één zwevend label.
+		const sign = this.makeCallSign('GROENE KNOP · E', 1.6, 0.55);
+		sign.position.set(0, 1.7, 0.7);
+		station.add(sign);
+		this.tagInteract(sign, 'call', floorIdx);
 
-		// Billboards
-		const n = primary ? 4 : 2;
-		for (let i = 0; i < n; i++) {
-			const sign = this.makeCallSign('GROENE KNOP · E', 2.6, 0.9);
-			const a = (i / n) * Math.PI * 2 + (primary ? 0 : Math.PI / 4);
-			sign.position.set(Math.sin(a) * 0.7, 1.85, Math.cos(a) * 0.7);
-			sign.rotation.y = a;
-			station.add(sign);
-			this.tagInteract(sign, 'call', floorIdx);
-		}
-
-		// Floating camera-facing label
-		const sp = this.makeCallSprite(primary ? '🟢 DRUK KNOP / E' : '🟢 ROEP LIFT · E');
-		sp.position.set(0, 4.0, 0);
-		sp.scale.set(primary ? 4.0 : 3.4, 1.05, 1);
+		const sp = this.makeCallSprite(primary ? '🟢 LIFT · E' : '🟢 ROEP LIFT · E');
+		sp.position.set(0, 3.9, 0);
+		sp.scale.set(2.4, 0.65, 1);
 		station.add(sp);
 		this.tagInteract(sp, 'call', floorIdx);
 

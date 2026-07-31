@@ -185,6 +185,9 @@ export class MallBuilder {
 		addRectHole(-22, -11, 2.0, 3.6);
 		// East escalator: incline z=+8 → z=-2, so open z -2.6 … +1.6
 		addRectHole(22, -0.5, 1.7, 2.1);
+		// Glazen lift (16, -8): schacht V0 → dak — zonder dit gat prikte de
+		// glascabine dwars door de verdieping-1-plaat heen
+		addRectHole(16, -8, 1.2, 1.2);
 
 		// USA-dikke plaat (0.45), en de TOP ligt op FLOOR_H: extrude gaat +Y, dus
 		// de mesh zakt een plaatdikte. Voorheen stak de plaat 6.0→6.3 omhoog en
@@ -245,6 +248,8 @@ export class MallBuilder {
 		rectHole(ceilShape, 0, 0, aw / 2, ad / 2);
 		// Secret stairs run (26, y6, z14) → (26, roof, z18); hole matches the ramp
 		rectHole(ceilShape, 26, 16.25, 1.5, 2.6);
+		// Glazen lift naar het dak — zelfde schachtgat als in de V1-plaat
+		rectHole(ceilShape, 16, -8, 1.2, 1.2);
 		// Glass elevator shaft (16, −8) — hatch so cabin + dak-callstation sit on open roof
 		rectHole(ceilShape, 16, -8, 1.45, 1.45);
 		const ceilGeo = new THREE.ExtrudeGeometry(ceilShape, {

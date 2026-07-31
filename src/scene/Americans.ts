@@ -1265,12 +1265,15 @@ export class Americans {
 		const speechCtx = speechCanvas.getContext('2d')!;
 		const speechTex = new THREE.CanvasTexture(speechCanvas);
 		speechTex.colorSpace = THREE.SRGBColorSpace;
+		// depthTest AAN: met false zag je vanaf het dak alle tekstballonnen van
+		// twee verdiepingen lager dwars door het beton zweven
 		const speech = new THREE.Sprite(
 			this.track(
 				new THREE.SpriteMaterial({
 					map: speechTex,
 					transparent: true,
-					depthTest: false,
+					depthTest: true,
+					depthWrite: false,
 					visible: false,
 				}),
 			),

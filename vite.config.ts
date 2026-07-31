@@ -26,6 +26,8 @@ export default defineConfig(({ mode }) => {
 		base: './',
 		plugins: [djBartekPlugin()],
 		server: {
+			port: 5174,
+			strictPort: true,
 			host: true,
 			allowedHosts: true,
 		},

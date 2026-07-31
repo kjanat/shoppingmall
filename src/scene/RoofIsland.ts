@@ -17,6 +17,8 @@ export class RoofIsland {
 	readonly roofPad = { minX: -32, maxX: -6, minZ: -20, maxZ: 20, y: DECK_Y };
 	/** Landmark voor de kaart/wayfinder */
 	readonly landmark = { x: -19, z: 0, label: '🏝 ROOF ISLAND' };
+	/** De glijbaan-baan — App laat de speler hier overheen glijden (E bovenaan). */
+	slideCurve!: THREE.CatmullRomCurve3;
 
 	private materials: THREE.Material[] = [];
 	private geoms: THREE.BufferGeometry[] = [];
@@ -217,7 +219,7 @@ export class RoofIsland {
 		}
 
 		// De buis: CatmullRom-krul van platform naar het diepe
-		const curve = new THREE.CatmullRomCurve3([
+		const curve = this.slideCurve = new THREE.CatmullRomCurve3([
 			new THREE.Vector3(-27.7, DECK_Y + 3.8, -10),
 			new THREE.Vector3(-26.2, DECK_Y + 3.1, -8.6),
 			new THREE.Vector3(-24.4, DECK_Y + 2.4, -7.8),

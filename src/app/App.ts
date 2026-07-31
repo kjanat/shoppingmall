@@ -129,6 +129,12 @@ export class App {
 	private nearDroneHint = false;
 	private nearScrubberHint = false;
 	private nearCarHint = false;
+	/** Glijbaan-rit: 0..1 langs de curve, -1 = niet aan het glijden */
+	private slideT = -1;
+	/** FPS-meting */
+	private fpsFrames = 0;
+	private fpsT = 0;
+	private fpsEl: HTMLElement | null = null;
 	/** Welk voertuig je bestuurt */
 	private vehicle: 'drone' | 'heli' | 'scrubber' | 'car' | null = null;
 	/** reused each frame for the monkey's target list */
@@ -243,6 +249,15 @@ export class App {
 		// Loopbaar dek: eiland-roofpad registreren zodat jij (en de drone) erop kunnen
 		this.world.roofPads.push(this.roofIsland.roofPad);
 		this.scene.add(this.parking.group);
+		// City outside the mall
+		this.scene.add(this.citySky.group);
+		this.scene.add(this.cityRoads.group);
+		this.scene.add(this.cityTraffic.group);
+		this.scene.add(this.cityBuildings.group);
+		this.scene.add(this.cityPark.group);
+		this.scene.add(this.cityGarage.group);
+		this.scene.add(this.cityTheatre.group);
+		this.scene.add(this.cityBirds.group);
 		// WC + gebedsruimte + cave + travel desk walls
 		for (
 			const c of [
@@ -402,6 +417,12 @@ export class App {
 		this.peopleUi = new PeopleDashboard(uiRoot, (id) => this.enterPossess(id));
 		new DJWidget(uiRoot, this.djPlayer, () => this.djUi.show());
 
+		// FPS-teller
+		this.fpsEl = document.createElement('div');
+		this.fpsEl.className = 'fps-chip';
+		this.fpsEl.textContent = '— fps';
+		uiRoot.appendChild(this.fpsEl);
+
 		// Wei Chen yells Chinese (pre-baked ElevenLabs) when you block his cart
 		this.cleaner.setYellCallback((label) => {
 			this.ui.setStatus(`🧹 WEI CHEN · ${label}`);
@@ -543,6 +564,12 @@ export class App {
 					&& this.heli.distanceTo(this.camera.position) < 4.5
 				) {
 					this.boardHeli();
+				} else if (
+					this.slideT < 0 && this.player.feetHeight > 17
+					&& Math.hypot(this.camera.position.x + 28.5, this.camera.position.z + 10) < 2.2
+				) {
+					// Bovenop de glijbaantoren: E = WHEEE
+					this.startSlide();
 				} else if (this.djBartek.inRange(this.camera.position)) {
 					void this.openDjBooth();
 				} else {
@@ -910,6 +937,39 @@ export class App {
 		this.ui.setStatus(
 			`🚗 ${this.driveCars.activeName} · WASD rijden · Shift = turbo · E = uit · west-exit → STAD`,
 		);
+	}
+
+	/** E bovenop de glijbaantoren: WHEEE — camera volgt de buis het zwembad in. */
+	private startSlide(): void {
+		this.slideT = 0;
+		this.freeMove = false;
+		this.player.enabled = false;
+		this.player.releaseLook();
+		this.ui.setStatus('🛝 WHEEEEE — glijmiddel werkt!');
+	}
+
+	/** Per frame tijdens de glij-rit. */
+	private tickSlide(dt: number): void {
+		if (this.slideT < 0) return;
+		this.slideT = Math.min(1, this.slideT + dt / 1.7);
+		// ease-in: hoe verder, hoe sneller (zwaartekracht + glijmiddel)
+		const t = this.slideT * this.slideT * (3 - 2 * this.slideT);
+		const p = this.roofIsland.slideCurve.getPointAt(t);
+		const look = this.roofIsland.slideCurve.getPointAt(Math.min(1, t + 0.06));
+		this.camera.position.set(p.x, p.y + 0.55, p.z);
+		this.camera.up.set(0, 1, 0);
+		this.camera.lookAt(look.x, look.y + 0.35, look.z);
+
+		if (this.slideT >= 1) {
+			this.slideT = -1;
+			// PLONS in het diepe
+			const end = this.roofIsland.slideCurve.getPointAt(1);
+			this.spawnConfetti(new THREE.Vector3(end.x, end.y + 0.8, end.z));
+			this.ui.setStatus('💦 PLONS! · klim de ladder op voor nog een rondje');
+			this.freeMove = true;
+			this.player.enabled = true;
+			this.player.syncFromCamera();
+		}
 	}
 
 	/** E tijdens de vlucht/rit: uitstappen. */
@@ -1780,6 +1840,18 @@ export class App {
 		this.cityBirds.update(dt, elapsed);
 		this.roofIsland.update(dt, elapsed);
 		this.poolPeople.update(dt, elapsed);
+		this.tickSlide(dt);
+
+		// FPS-teller: 2×/s verversen, kleur zegt genoeg
+		this.fpsFrames++;
+		this.fpsT += dt;
+		if (this.fpsT >= 0.5 && this.fpsEl) {
+			const fps = Math.round(this.fpsFrames / this.fpsT);
+			this.fpsFrames = 0;
+			this.fpsT = 0;
+			this.fpsEl.textContent = `${fps} fps`;
+			this.fpsEl.style.color = fps >= 45 ? '#22c55e' : fps >= 25 ? '#f59e0b' : '#ef4444';
+		}
 
 		// Feed the monkey its victim list, then let it aim
 		this.simPositions.length = 0;
@@ -1792,6 +1864,13 @@ export class App {
 		if (this.vehicle === 'heli') this.heli.followCamera(this.camera, dt);
 		else this.heli.update(dt);
 		this.drone.followCamera(this.camera, dt);
+
+		// Outdoor city systems
+		this.cityRoads.update(dt, elapsed);
+		this.cityTraffic.update(dt, elapsed);
+		this.cityBuildings.update(dt, elapsed);
+		this.citySky.update(dt, elapsed);
+		this.cityBirds.update(dt, elapsed);
 
 		// E-hint als je naast de geparkeerde drone staat
 		const nearDrone = !this.player.flying && !this.player.driving && this.freeMove

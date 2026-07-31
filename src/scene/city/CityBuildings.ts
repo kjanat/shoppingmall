@@ -99,6 +99,19 @@ export class CityBuildings {
 			[7, () => [lerp(60, 87, rand()), lerp(-64, 64, rand())]], // oost
 			[7, () => [-lerp(60, 87, rand()), lerp(-64, 64, rand())]], // west
 		];
+		// Kavels van theater, garage en park — daar bouwt niemand overheen.
+		// "Building's in the way" was letterlijk waar: torens verzwolgen de marquee.
+		const reserved: [number, number, number, number][] = [
+			[52, 90, -70, -40], // PRAIRIE THEATRE (NO)
+			[52, 90, 40, 72], // parkeergarage (ZO)
+			[-94, -52, -74, -36], // stadspark (NW)
+		];
+		const opKavel = (x: number, z: number, w: number, d: number) =>
+			reserved.some(([x0, x1, z0, z1]) =>
+				x + w * 0.5 > x0 && x - w * 0.5 < x1
+				&& z + d * 0.5 > z0 && z - d * 0.5 < z1
+			);
+
 		for (const [count, pick] of bands) {
 			for (let i = 0; i < count; i++) {
 				for (let attempt = 0; attempt < 8; attempt++) {
@@ -107,8 +120,9 @@ export class CityBuildings {
 					const d = lerp(6, 13, rand());
 					// Meest middelhoog, ~1 op 5 een uitschieter richting 46.
 					const h = rand() < 0.22 ? 30 + 16 * rand() : 10 + 20 * rand();
-					// Niet op elkaars tenen (de hoeken van de banden overlappen)
-					const vrij = specs.every(
+					// Niet op elkaars tenen (de hoeken van de banden overlappen),
+					// en niet op een gereserveerd kavel
+					const vrij = !opKavel(x, z, w, d) && specs.every(
 						(s) =>
 							Math.abs(s.x - x) > (s.w + w) * 0.5 + 1.5
 							|| Math.abs(s.z - z) > (s.d + d) * 0.5 + 1.5,

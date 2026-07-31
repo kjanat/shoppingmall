@@ -83,12 +83,33 @@ export class CollisionWorld {
 			openMinZ: 14,
 			openMaxZ: 18.5,
 		},
+		// Glijbaan-ladder op het dakeiland: extreem steile "ramp" — loop er
+		// noordwaarts tegenaan en je klautert naar het platform (arcade-klimmen)
+		{
+			minX: -29.2,
+			maxX: -27.8,
+			zBottom: -12.2,
+			zTop: -10.9,
+			yBottom: 13.95,
+			yTop: 18.03,
+			label: 'slide_ladder',
+			openMinZ: -11.5,
+			openMaxZ: -10.4,
+		},
 	];
 
-	/** Flat walkable roof patches (deck clipped clear of the atrium skylight) */
+	/**
+	 * Flat walkable roof patches (deck clipped clear of the atrium skylight).
+	 * Het SE-dek is opgeknipt rond het secret-stairs-trapgat (24.5..27.5,
+	 * 13.65..18.85) — anders loop je op onzichtbare vloer over het gat en kun
+	 * je nooit naar beneden.
+	 */
 	readonly roofPads: { minX: number; maxX: number; minZ: number; maxZ: number; y: number }[] = [
-		// Helipad SE deck
-		{ minX: 8, maxX: 32, minZ: 7, maxZ: 23, y: ROOF_H },
+		// Helipad SE deck, in vier stukken om het trapgat heen
+		{ minX: 8, maxX: 24.5, minZ: 7, maxZ: 23, y: ROOF_H },
+		{ minX: 27.5, maxX: 32, minZ: 7, maxZ: 23, y: ROOF_H },
+		{ minX: 24.5, maxX: 27.5, minZ: 7, maxZ: 13.65, y: ROOF_H },
+		{ minX: 24.5, maxX: 27.5, minZ: 18.85, maxZ: 23, y: ROOF_H },
 		// Glass elevator roof hatch (16, −8) + corridor toward helipad
 		{ minX: 12, maxX: 28, minZ: -12, maxZ: 8, y: ROOF_H },
 		{ minX: 14, maxX: 30, minZ: 4, maxZ: 18, y: ROOF_H },
@@ -98,6 +119,8 @@ export class CollisionWorld {
 	readonly platforms: { minX: number; maxX: number; minZ: number; maxZ: number; y: number; label: string }[] = [
 		// Catwalk deck incl. rounded tip — jump on, strut, jump off
 		{ minX: -29.5, maxX: -26.5, minZ: -4.7, maxZ: 12.05, y: 0.34, label: 'catwalk' },
+		// Glijbaan-platform op het dakeiland (boven de ladder)
+		{ minX: -29.45, maxX: -27.55, minZ: -10.95, maxZ: -9.05, y: 18.03, label: 'slide_platform' },
 	];
 
 	/** Atrium hole in the floor-1 slab — jump the balustrade and you drop through. */

@@ -606,6 +606,51 @@ export class KioskOverlay {
 	}
 
 	/** Everything in world units. `scale` converts px → world for line widths. */
+	/** Daklaag: dekken, trapgat, helipad-H, eiland + zwembad, lift, skylight. */
+	private paintRoofLayer(ctx: CanvasRenderingContext2D, px: number): void {
+		// Loopbare dekken
+		ctx.fillStyle = 'rgba(90,100,115,0.55)';
+		ctx.fillRect(8, 7, 24, 16); // helipad-dek ZO
+		ctx.fillRect(12, -12, 16, 20); // lift-corridor
+		ctx.fillStyle = 'rgba(214,196,150,0.6)'; // zand
+		ctx.fillRect(-32, -20, 26, 40); // ROOF ISLAND
+
+		// Atrium-skylight (open — hier vlieg je doorheen)
+		ctx.fillStyle = 'rgba(56,120,190,0.4)';
+		ctx.fillRect(-8, -6, 16, 12);
+		ctx.setLineDash([1.2 * px * 3, 1.2 * px * 3]);
+		ctx.strokeStyle = 'rgba(125,211,252,0.8)';
+		ctx.lineWidth = 1.5 * px;
+		ctx.strokeRect(-8, -6, 16, 12);
+		ctx.setLineDash([]);
+
+		// Helipad-H
+		ctx.strokeStyle = '#f5c518';
+		ctx.lineWidth = 2 * px;
+		ctx.beginPath();
+		ctx.arc(22, 16, 5.3, 0, Math.PI * 2);
+		ctx.stroke();
+
+		// Trapgat naar V1 (secret stairs) — open gat, rood gemarkeerd
+		ctx.fillStyle = 'rgba(8,11,20,0.9)';
+		ctx.fillRect(24.5, 13.65, 3, 5.2);
+		ctx.strokeStyle = 'rgba(248,113,113,0.9)';
+		ctx.lineWidth = 1.4 * px;
+		ctx.strokeRect(24.5, 13.65, 3, 5.2);
+
+		// Glazen lift
+		ctx.fillStyle = 'rgba(125,211,252,0.7)';
+		ctx.fillRect(14.8, -9.2, 2.4, 2.4);
+
+		// Zwembad + glijbaantoren op het eiland
+		ctx.fillStyle = 'rgba(56,189,248,0.75)';
+		ctx.beginPath();
+		ctx.ellipse(-20, 2.5, 6.5, 4.6, 0, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.fillStyle = '#ffca28';
+		ctx.fillRect(-29.4, -10.9, 1.8, 1.8); // glijbaantoren
+	}
+
 	private paintWorld(
 		ctx: CanvasRenderingContext2D,
 		floor: 0 | 1 | 2,
@@ -621,6 +666,12 @@ export class KioskOverlay {
 		ctx.lineWidth = 2 * px;
 		ctx.strokeStyle = 'rgba(148,163,184,0.6)';
 		ctx.strokeRect(-MALL_W / 2, -MALL_D / 2, MALL_W, MALL_D);
+
+		// DAK: eigen laag — geen V1-gangen maar helipad, eiland, trapgat en lift
+		if (floor === 2) {
+			this.paintRoofLayer(ctx, px);
+			return;
+		}
 
 		// Walkable corridors, straight from the wayfinding graph
 		ctx.strokeStyle = 'rgba(226,232,240,0.14)';
@@ -829,7 +880,11 @@ export class KioskOverlay {
 	}
 
 	private paintMapChrome(): void {
-		const floorText = this.map.floor === 0 ? 'V0 · BEGANE GROND' : 'V1 · VERDIEPING 1';
+		const floorText = this.map.floor === 2
+			? 'DAK · HELIPAD & ISLAND'
+			: this.map.floor === 0
+			? 'V0 · BEGANE GROND'
+			: 'V1 · VERDIEPING 1';
 		if (this.elMapFloor.textContent !== floorText) {
 			this.elMapFloor.textContent = floorText;
 		}

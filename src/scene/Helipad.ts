@@ -124,8 +124,29 @@ export class Helipad {
 		// Walkable roof patch SE — solid deck under helipad + approach from stairs
 		// Deck starts at x=8/z=7 — the old 4..32 × 5..23 footprint overhung the
 		// atrium skylight corner, so from V1 you saw roof clutter over your head.
+		// Dek als shape MET een gat boven de secret stairs (26, 16.25) — de oude
+		// dichte doos lag over de trapopening heen, dus boven was er geen trapgat.
+		// NB: rotateX(-π/2) spiegelt shape-y → wereld −z, dus snijden op −z.
+		const deckShape = new THREE.Shape();
+		deckShape.moveTo(8, -23);
+		deckShape.lineTo(32, -23);
+		deckShape.lineTo(32, -7);
+		deckShape.lineTo(8, -7);
+		deckShape.lineTo(8, -23);
+		const stairHole = new THREE.Path();
+		stairHole.moveTo(24.5, -18.85);
+		stairHole.lineTo(27.5, -18.85);
+		stairHole.lineTo(27.5, -13.65);
+		stairHole.lineTo(24.5, -13.65);
+		stairHole.lineTo(24.5, -18.85);
+		deckShape.holes.push(stairHole);
+		const deckGeo = new THREE.ExtrudeGeometry(deckShape, {
+			depth: 0.35,
+			bevelEnabled: false,
+		});
+		deckGeo.rotateX(-Math.PI / 2);
 		const deck = new THREE.Mesh(
-			new THREE.BoxGeometry(24, 0.35, 16),
+			deckGeo,
 			this.track(
 				new THREE.MeshStandardMaterial({
 					color: 0x3a3f48,
@@ -134,7 +155,7 @@ export class Helipad {
 				}),
 			),
 		);
-		deck.position.set(20, ROOF_Y - 0.15, 15);
+		deck.position.y = ROOF_Y - 0.35;
 		deck.receiveShadow = true;
 		this.group.add(deck);
 
