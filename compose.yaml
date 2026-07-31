@@ -1,0 +1,30 @@
+services:
+  mall:
+    build: .
+    image: mall-sim
+    container_name: mall-sim
+    restart: unless-stopped
+    # .env (ELEVENLABS/OPENROUTER/YOUTUBE keys) is not baked into the image;
+    # compose injects it at runtime — same keys vite's loadEnv picked up in dev.
+    env_file: .env
+    # No published ports: traefik reaches the container over the shared
+    # `traefik` docker network (docker provider + labels), like the rest
+    # of the stack. Dev `bun dev` keeps 5174 on the host.
+    networks: [traefik]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.kruidvat.rule=Host(`kruidvat.kajkowalski.nl`)
+      - traefik.http.routers.kruidvat.entrypoints=websecure
+      - traefik.http.routers.kruidvat.tls=true
+      - traefik.http.routers.kruidvat.middlewares=security-headers@file
+      - traefik.http.routers.kruidvat.service=kruidvat
+      - traefik.http.services.kruidvat.loadbalancer.server.port=5174
+    volumes:
+      # Shared crate library: yt-dlp downloads land in the repo's public/
+      # dj-music, so dev and live see the same tracks.
+      - ./public/dj-music:/app/public/dj-music
+
+networks:
+  traefik:
+    external: true

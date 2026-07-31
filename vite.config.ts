@@ -37,6 +37,9 @@ export default defineConfig(({ mode }) => {
 		},
 		preview: {
 			port: process.env.PORT ?? 5174,
+			strictPort: true,
+			host: true,
+			allowedHosts: true,
 		},
 	};
 });

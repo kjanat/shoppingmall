@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+dist
+.env
+.env.*
+# live crate library is a bind mount, not baked into the image (115 MB+)
+public/dj-music
+.debug-*.png
+Dockerfile
+compose.yaml
+Makefile
