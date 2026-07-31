@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
-export const ROOF_Y = 13.55;
+// Ceiling slab tops out at 13.75 (y 13.5 + 0.25 extrude) — the deck used to sit
+// AT 13.4…13.575, i.e. embedded inside the slab. Deck top now lands at 13.95.
+export const ROOF_Y = 13.95;
 
 /**
  * Secret service stairs (V1 → dak) + helicopter landing pad on the roof.
@@ -120,8 +122,10 @@ export class Helipad {
 
 	private buildRoofDeck(): void {
 		// Walkable roof patch SE — solid deck under helipad + approach from stairs
+		// Deck starts at x=8/z=7 — the old 4..32 × 5..23 footprint overhung the
+		// atrium skylight corner, so from V1 you saw roof clutter over your head.
 		const deck = new THREE.Mesh(
-			new THREE.BoxGeometry(28, 0.35, 18),
+			new THREE.BoxGeometry(24, 0.35, 16),
 			this.track(
 				new THREE.MeshStandardMaterial({
 					color: 0x3a3f48,
@@ -130,7 +134,7 @@ export class Helipad {
 				}),
 			),
 		);
-		deck.position.set(18, ROOF_Y - 0.15, 14);
+		deck.position.set(20, ROOF_Y - 0.15, 15);
 		deck.receiveShadow = true;
 		this.group.add(deck);
 
@@ -143,9 +147,9 @@ export class Helipad {
 			m.position.set(x, ROOF_Y + 0.5, z);
 			this.group.add(m);
 		};
-		wall(28, 0.2, 18, 22.8);
-		wall(0.2, 18, 31.8, 14);
-		wall(0.2, 12, 4.2, 16);
+		wall(24, 0.2, 20, 22.8);
+		wall(0.2, 16, 31.8, 15);
+		wall(0.2, 16, 8.2, 15);
 	}
 
 	private buildPad(): void {
@@ -250,11 +254,46 @@ export class Helipad {
 		ctx.fillText('Land soft · via geheime trap', 256, 95);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
+		// depthTest AAN: met false prikte het bord door de plafondplaat en hing
+		// het als spook-signage boven verdieping 1
 		const sp = new THREE.Sprite(
-			this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })),
+			this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })),
 		);
 		sp.scale.set(6, 1.5, 1);
 		sp.position.set(this.padCenter.x, ROOF_Y + 3.2, this.padCenter.z);
 		this.group.add(sp);
+
+		// Point south toward glass elevator + green call pedestals
+		const c2 = document.createElement('canvas');
+		c2.width = 512;
+		c2.height = 160;
+		const ctx2 = c2.getContext('2d')!;
+		ctx2.fillStyle = '#1b5e20';
+		ctx2.fillRect(0, 0, 512, 160);
+		ctx2.strokeStyle = '#00e676';
+		ctx2.lineWidth = 10;
+		ctx2.strokeRect(6, 6, 500, 148);
+		ctx2.fillStyle = '#fff';
+		ctx2.font = 'bold 40px system-ui,sans-serif';
+		ctx2.textAlign = 'center';
+		ctx2.fillText('←  GLAZEN LIFT', 256, 60);
+		ctx2.font = 'bold 28px system-ui,sans-serif';
+		ctx2.fillStyle = '#ffc107';
+		ctx2.fillText('gele streep · groene knop · E', 256, 115);
+		const tex2 = new THREE.CanvasTexture(c2);
+		tex2.colorSpace = THREE.SRGBColorSpace;
+		const liftSign = new THREE.Mesh(
+			new THREE.PlaneGeometry(5.5, 1.7),
+			this.track(
+				new THREE.MeshBasicMaterial({
+					map: tex2,
+					side: THREE.DoubleSide,
+					toneMapped: false,
+				}),
+			),
+		);
+		// South edge of helipad deck → follow yellow path to green call knobs
+		liftSign.position.set(18, ROOF_Y + 2.2, 8.5);
+		this.group.add(liftSign);
 	}
 }

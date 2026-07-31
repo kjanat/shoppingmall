@@ -215,68 +215,69 @@ body {
 	color: var(--text);
 }
 
-.possess-btn,
-.disco-btn,
-.money-btn,
-.thief-btn {
-	width: 100%;
-	margin-top: 8px;
-	padding: 10px 12px;
+/* Compact action tiles — one tidy grid instead of a tower of buttons */
+
+.actions-label {
+	margin: 12px 0 6px;
+	font-family: var(--mono);
+	font-size: 0.62rem;
+	letter-spacing: 0.14em;
+	color: var(--muted);
+	text-transform: uppercase;
+}
+
+.actions-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 6px;
+}
+
+.btn.tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	padding: 8px 4px;
 	border-radius: 10px;
-	border: 1px solid rgba(15, 23, 42, 0.15);
+	border: 1px solid rgba(15, 23, 42, 0.12);
 	background: #f1f5f9;
-	font-weight: 600;
 	cursor: pointer;
 	font-family: var(--font);
 	color: var(--text);
+	transition: border-color 0.15s, background 0.15s;
 }
 
-.possess-btn:hover,
-.disco-btn:hover,
-.money-btn:hover,
-.thief-btn:hover {
-	background: #e2e8f0;
+.btn.tile i {
+	font-style: normal;
+	font-size: 1.05rem;
+	line-height: 1;
 }
 
-.disco-btn {
-	background: linear-gradient(90deg, #ff0088, #00ffcc);
-	color: #0f172a;
-	border: none;
-}
-
-.money-btn {
-	background: #fef3c7;
-	border-color: #f59e0b;
-}
-
-.thief-btn {
-	background: #1e293b;
-	color: #fbbf24;
-	border-color: #334155;
-}
-
-.mood-row {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 6px;
-	margin-top: 10px;
-}
-
-.mood-label {
-	grid-column: 1 / -1;
-	font-size: 0.75rem;
-	color: var(--muted);
+.btn.tile span {
+	font-size: 0.62rem;
 	font-weight: 600;
+	white-space: nowrap;
 }
 
-.mood-up {
-	background: #dcfce7 !important;
-	border-color: #22c55e !important;
+.btn.tile:hover {
+	background: #e2e8f0;
+	border-color: var(--neon);
 }
 
-.mood-down {
-	background: #fee2e2 !important;
-	border-color: #ef4444 !important;
+.btn.tile.tile-party {
+	background: linear-gradient(
+		135deg,
+		rgba(255, 0, 136, 0.16),
+		rgba(0, 255, 204, 0.16)
+	);
+}
+
+.btn.tile.tile-up:hover {
+	border-color: #22c55e;
+}
+
+.btn.tile.tile-down:hover {
+	border-color: #ef4444;
 }
 
 .possess-banner {
@@ -966,6 +967,67 @@ body {
 	text-align: center;
 }
 
+/* Permanente DJ mini-player (naast ⚙ linksonder) */
+
+.dj-widget {
+	position: absolute;
+	left: 16px;
+	bottom: 58px;
+	z-index: 21;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: 99px;
+	background: var(--panel);
+	border: 1px solid var(--panel-border);
+	backdrop-filter: blur(16px);
+	pointer-events: auto;
+	max-width: min(420px, calc(100vw - 32px));
+}
+
+.dj-widget-icon {
+	font-size: 0.95rem;
+	flex-shrink: 0;
+}
+
+.dj-widget-title {
+	font-family: var(--mono);
+	font-size: 0.68rem;
+	color: var(--text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+	flex: 1;
+}
+
+.dj-widget button {
+	flex-shrink: 0;
+	width: 26px;
+	height: 26px;
+	display: grid;
+	place-items: center;
+	border-radius: 50%;
+	border: 1px solid var(--panel-border);
+	background: rgba(15, 23, 42, 0.05);
+	color: var(--text);
+	cursor: pointer;
+	font-size: 0.72rem;
+}
+
+.dj-widget button:hover {
+	border-color: var(--neon);
+	color: var(--neon);
+}
+
+.dj-widget input[type="range"] {
+	flex-shrink: 0;
+	width: 70px;
+	accent-color: var(--neon);
+	cursor: pointer;
+}
+
 /* Crosshair — only while the mouse is captured */
 
 .crosshair {
@@ -1422,4 +1484,103 @@ body {
 }
 .detail-stock li {
 	margin: 2px 0;
+}
+
+/* ── Glass elevator floor picker (Hans) ───────────── */
+.elev-host {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: end center;
+	padding-bottom: 7vh;
+	pointer-events: none;
+	z-index: 50; /* above canvas + DJ overlay so clicks hit Hans' menu */
+}
+.elev-card {
+	width: min(340px, 92vw);
+	padding: 14px 14px 10px;
+	border-radius: 16px;
+	background: linear-gradient(165deg, #0d1545 0%, #0f172a 60%, #111827 100%);
+	border: 1px solid rgba(255, 215, 0, 0.45);
+	box-shadow: 0 0 32px rgba(13, 71, 161, 0.35), 0 18px 48px rgba(0, 0, 0, 0.45);
+	color: #f8fafc;
+	pointer-events: auto;
+	font-family: var(--font);
+	/* Clicks must hit buttons, not fall through to the game canvas */
+	isolation: isolate;
+}
+.elev-btn,
+.elev-btns {
+	pointer-events: auto;
+	position: relative;
+	z-index: 1;
+}
+.elev-card.hidden {
+	display: none;
+}
+.elev-head strong {
+	font-size: 1rem;
+	color: #ffd700;
+}
+.elev-head p {
+	margin: 4px 0 0;
+	font-size: 0.8rem;
+	color: #94a3b8;
+}
+.elev-btns {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 12px;
+}
+.elev-btn {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 10px 12px;
+	border-radius: 12px;
+	border: 1px solid rgba(148, 163, 184, 0.35);
+	background: rgba(255, 255, 255, 0.06);
+	color: #f8fafc;
+	cursor: pointer;
+	text-align: left;
+	font-family: var(--font);
+	transition: background 0.12s, border-color 0.12s;
+}
+.elev-btn:hover:not(:disabled) {
+	background: rgba(255, 215, 0, 0.12);
+	border-color: rgba(255, 215, 0, 0.55);
+}
+.elev-btn:disabled,
+.elev-btn.elev-here {
+	opacity: 0.55;
+	cursor: default;
+	border-color: rgba(0, 230, 118, 0.45);
+}
+.elev-code {
+	flex: 0 0 3.2rem;
+	font-weight: 800;
+	font-size: 1.05rem;
+	color: #ffc107;
+	font-family: var(--mono, ui-monospace, monospace);
+}
+.elev-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.elev-meta b {
+	font-size: 0.9rem;
+}
+.elev-meta small {
+	font-size: 0.72rem;
+	color: #94a3b8;
+}
+.elev-foot {
+	margin-top: 10px;
+	font-size: 0.7rem;
+	color: #64748b;
+	text-align: center;
 }

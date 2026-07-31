@@ -122,11 +122,14 @@ export class PeopleDashboard {
 			this.toggle(false);
 		});
 
+		// B is handled in App (so we can refresh data on open). Esc closes here.
 		window.addEventListener('keydown', (e) => {
 			const el = e.target as HTMLElement | null;
 			if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
-			if (e.code === 'KeyB') this.toggle();
-			else if (e.code === 'Escape' && this.open) this.toggle(false);
+			if (e.code === 'Escape' && this.open) {
+				e.stopPropagation();
+				this.toggle(false);
+			}
 		});
 	}
 }

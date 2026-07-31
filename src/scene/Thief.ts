@@ -16,7 +16,7 @@ export class BakerThief {
 	private world: CollisionWorld;
 	private onLoot: ((pos: THREE.Vector3) => void) | null = null;
 	private onHome: ((pos: THREE.Vector3) => void) | null = null;
-	private caveHome = new THREE.Vector3(-33.2, 0, 18.5);
+	private caveHome = new THREE.Vector3(-33.5, 0, 20);
 	private homeReported = false;
 	private lingerT = 0;
 

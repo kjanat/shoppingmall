@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite';
-import { djBartekPlugin } from './server/djMiddleware';
+// Explicit extension: Vite's upcoming native config loader requires it
+import { djBartekPlugin } from './server/djMiddleware.ts';
 
 export default defineConfig(({ mode }) => {
 	// loadEnv with '' loads ALL keys from .env / .env.local / .env.[mode]

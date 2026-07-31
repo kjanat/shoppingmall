@@ -7,9 +7,9 @@ import * as THREE from 'three';
 export class BeardCave {
 	readonly group = new THREE.Group();
 	/** World center of the cave mouth (path target) */
-	readonly entrance = new THREE.Vector3(-33.2, 0, 18.5);
+	readonly entrance = new THREE.Vector3(-33.5, 0, 20);
 	/** Deep pile of loot (for confetti / glow) */
-	readonly lootCenter = new THREE.Vector3(-34.4, 0.4, 18.5);
+	readonly lootCenter = new THREE.Vector3(-34.7, 0.4, 20);
 	private materials: THREE.Material[] = [];
 	private lootGroup = new THREE.Group();
 	private pulseT = 0;

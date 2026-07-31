@@ -31,6 +31,7 @@ always sits behind your eyes and never drifts toward the middle of the mall.
 | **K**                | Instant Kruidvat route (cinematic auto-walk)         |
 | **V**                | Guest view (ride along as a shopper)                 |
 | **J**                | Provoke the atrium monkey (it throws shit)           |
+| **B**                | Bewoners-dashboard — everyone live, 👁 = follow       |
 | **Esc**              | Free the mouse, then cancel route                    |
 
 The minimap is player-centred and rotates with your heading (what you face is

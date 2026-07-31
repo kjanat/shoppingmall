@@ -1,9 +1,18 @@
 import * as THREE from 'three';
 import { spatial } from '../audio/SpatialAudio';
+import type { CollisionWorld } from '../physics/Collision';
 
 type Protester = {
 	root: THREE.Group;
-	base: THREE.Vector3;
+	/** local pos relative to group (camp) */
+	x: number;
+	z: number;
+	vx: number;
+	vz: number;
+	tx: number;
+	tz: number;
+	speed: number;
+	retargetCd: number;
 	phase: number;
 	sign: THREE.Object3D;
 	speech: THREE.Sprite;
@@ -12,11 +21,12 @@ type Protester = {
 	speechLife: number;
 	fist?: THREE.Object3D;
 	flag?: THREE.Object3D;
-	/** Merkel stays center stage, thicker bob */
 	isMerkel?: boolean;
 	lineIdx: number;
+	legPhase: number;
 };
 
+/** Dumb protest noise — loud, empty, endless */
 const CHANTS = [
 	'Wir schaffen das!',
 	'WIR SCHAFFEN DAS!!!',
@@ -30,6 +40,38 @@ const CHANTS = [
 	'Solidarity forever',
 	'Hope not hate 🌈',
 	'Trans rights are human rights',
+	// dumber
+	'TAX THE RICH (not me)',
+	'My therapist said protest more',
+	'Late-stage capitalism?? in the mall??',
+	'Free Palestine free smoothies',
+	'ACAB but like, politely',
+	'Defund the food court',
+	'Eat the rich (vegan tho)',
+	'This sign is recycled!!',
+	'I read half a tweet about this',
+	'Oat milk is a human right',
+	'Silence is violence (also loud is fine)',
+	'Check your privilege (and your receipt)',
+	'No ethical consumption under capitalism so… Primark',
+	'Boooo fossil fuels',
+	'Who wants hummus??',
+	'I am the main character of this march',
+	'Guys is this being filmed?',
+	'Wir schaffen das… right??',
+	'Mutual aid = group chat',
+	'Smash the patriarchy after brunch',
+	'My zodiac said to chant today',
+	'DECOLONIZE the escalator',
+	'This is literally 1984 (mall remix)',
+	'UwU no fascism',
+	'Be kind or else',
+	'I brought a drum and no rhythm',
+	'Who has the aux??',
+	'Land back / snack back',
+	'Protect trans kids protect my WiFi',
+	'Guillotine? soft launch',
+	'I googled "what is neoliberalism" once',
 ];
 
 const MERKEL_LINES = [
@@ -41,6 +83,9 @@ const MERKEL_LINES = [
 	'Mutti is watching 👀',
 	'Bundeskanzlerin mode ON',
 	'Open borders, open hearts',
+	'Bitte nicht rennen — langsam swarm',
+	'The science is settled (on tofu)',
+	'I have a plan. It is: walk.',
 ];
 
 const SIGN_LINES: [string, string][] = [
@@ -58,29 +103,31 @@ type FlagKind = 'progress' | 'rainbow' | 'trans' | 'bi' | 'lesbian' | 'nb' | 'pa
 
 /**
  * Atrium protest — liberal groupies + LGBTQIA+ flags +
- * thick elderly Angela Merkel leading "Wir schaffen das".
+ * thick elderly Angela Merkel. Swarm walks the floor like chanting zombies.
  */
 export class ProtestGroupies {
 	readonly group = new THREE.Group();
-	readonly pos = new THREE.Vector3(-2, 0, -4.5);
+	/** East of atrium ground — clear of kiosk / north corridor */
+	readonly pos = new THREE.Vector3(8, 0, 4);
 	private materials: THREE.Material[] = [];
 	private people: Protester[] = [];
 	private plantedFlags: THREE.Group[] = [];
 	private t = 0;
-	private chantCd = 1.2;
-	private leaderIdx = 0;
+	private chantCd = 0.6;
 	private audioStarted = false;
 	private stopAudio: (() => void) | null = null;
 	private banner!: THREE.Mesh;
 	private merkelIdx = -1;
+	private world: CollisionWorld;
 
-	constructor() {
+	constructor(world: CollisionWorld) {
+		this.world = world;
 		this.group.name = 'protestGroupies';
 		this.group.position.copy(this.pos);
 		this.buildBanner();
 		this.buildPlantedFlags();
 		this.buildMerkel();
-		this.buildCrowd(8);
+		this.buildCrowd(12);
 		this.buildMegaphoneStand();
 	}
 
@@ -141,46 +188,12 @@ export class ProtestGroupies {
 		this.stopAudio = () => handle.stop();
 	}
 
-	update(dt: number): void {
+	update(dt: number, playerPos?: THREE.Vector3): void {
 		this.t += dt;
 		this.chantCd -= dt;
+		this.tickSwarm(dt, playerPos);
 
-		for (let i = 0; i < this.people.length; i++) {
-			const p = this.people[i];
-			const march = Math.sin(this.t * (p.isMerkel ? 2.1 : 3.2) + p.phase);
-			if (p.isMerkel) {
-				// Slow Mutti sway — heavy, proud
-				p.root.position.y = p.base.y + Math.abs(march) * 0.04;
-				p.root.rotation.y = Math.sin(this.t * 0.6) * 0.12;
-				p.root.rotation.z = Math.sin(this.t * 0.45) * 0.03;
-			} else {
-				const side = Math.sin(this.t * 0.55 + p.phase * 0.7) * 0.12;
-				p.root.position.x = p.base.x + side;
-				p.root.position.z = p.base.z + Math.cos(this.t * 0.4 + p.phase) * 0.08;
-				p.root.position.y = Math.abs(march) * 0.07;
-				p.root.rotation.y = Math.atan2(-p.root.position.x, 2.5 - p.root.position.z)
-					+ Math.sin(this.t * 1.4 + p.phase) * 0.15;
-			}
-
-			p.sign.rotation.z = Math.sin(this.t * 2.4 + p.phase) * (p.isMerkel ? 0.1 : 0.18);
-			p.sign.rotation.x = Math.sin(this.t * 1.8 + p.phase * 0.5) * 0.08;
-			if (p.fist) {
-				const baseY = p.isMerkel ? 1.75 : 1.55;
-				p.fist.position.y = baseY + Math.max(0, march) * 0.18;
-				p.fist.rotation.z = -0.4 - Math.max(0, march) * 0.45;
-			}
-			if (p.flag) {
-				p.flag.rotation.y = Math.sin(this.t * 2.8 + p.phase) * 0.35;
-				p.flag.rotation.z = Math.sin(this.t * 3.1 + p.phase * 0.6) * 0.12;
-			}
-
-			if (p.speechLife > 0) {
-				p.speechLife -= dt;
-				if (p.speechLife <= 0) p.speech.visible = false;
-			}
-		}
-
-		// Planted flags flutter
+		// Planted flags flutter (stay at camp)
 		for (let i = 0; i < this.plantedFlags.length; i++) {
 			const f = this.plantedFlags[i];
 			const cloth = f.userData.cloth as THREE.Object3D | undefined;
@@ -194,32 +207,149 @@ export class ProtestGroupies {
 			this.banner.rotation.z = Math.sin(this.t * 1.3) * 0.04;
 		}
 
+		// Dumb overlapping chants — denser swarm noise
 		if (this.chantCd <= 0) {
-			this.chantCd = 2.0 + Math.random() * 1.6;
-			// Merkel often leads
-			if (this.merkelIdx >= 0 && Math.random() < 0.55) {
-				const line = MERKEL_LINES[Math.floor(Math.random() * MERKEL_LINES.length)];
-				this.showBubble(this.people[this.merkelIdx], line, true);
-				// 1–2 groupies echo
-				const n = 1 + Math.floor(Math.random() * 2);
-				for (let k = 0; k < n; k++) {
-					let idx = Math.floor(Math.random() * this.people.length);
-					if (idx === this.merkelIdx) idx = (idx + 1) % this.people.length;
-					this.showBubble(this.people[idx], 'Wir schaffen das!');
+			this.chantCd = 0.7 + Math.random() * 1.1;
+			const n = 3 + Math.floor(Math.random() * 4);
+			for (let k = 0; k < n; k++) {
+				const idx = Math.floor(Math.random() * this.people.length);
+				const p = this.people[idx];
+				const line = p.isMerkel
+					? MERKEL_LINES[Math.floor(Math.random() * MERKEL_LINES.length)]
+					: Math.random() < 0.22
+					? 'Wir schaffen das!'
+					: CHANTS[Math.floor(Math.random() * CHANTS.length)];
+				this.showBubble(p, line, !!p.isMerkel);
+			}
+			// Occasional full swarm echo
+			if (Math.random() < 0.28 && this.merkelIdx >= 0) {
+				this.showBubble(this.people[this.merkelIdx], 'WIR SCHAFFEN DAS!!!', true);
+			}
+		}
+	}
+
+	/**
+	 * Zombie-swarm march: wander targets + cohesion + separation + mild player curiosity.
+	 * Camp decorations stay put; bodies roam floor 0.
+	 */
+	private tickSwarm(dt: number, playerPos?: THREE.Vector3): void {
+		// Swarm centroid (local)
+		let cx = 0;
+		let cz = 0;
+		for (const p of this.people) {
+			cx += p.x;
+			cz += p.z;
+		}
+		const n = Math.max(1, this.people.length);
+		cx /= n;
+		cz /= n;
+		// Soft pull swarm toward player when nearby (zombie mall brains)
+		let attractX = cx;
+		let attractZ = cz;
+		if (playerPos && playerPos.y < 4.5) {
+			const pwx = playerPos.x - this.pos.x;
+			const pwz = playerPos.z - this.pos.z;
+			const pd = Math.hypot(pwx - cx, pwz - cz);
+			if (pd < 22) {
+				const w = 0.35 * (1 - pd / 22);
+				attractX = cx * (1 - w) + pwx * w;
+				attractZ = cz * (1 - w) + pwz * w;
+			}
+		}
+
+		for (let i = 0; i < this.people.length; i++) {
+			const p = this.people[i];
+			p.retargetCd -= dt;
+			if (p.retargetCd <= 0) {
+				p.retargetCd = 2.5 + Math.random() * 4;
+				// New wander near attractor / camp with wide mall radius
+				const ang = Math.random() * Math.PI * 2;
+				const rad = 3 + Math.random() * 14;
+				p.tx = attractX + Math.cos(ang) * rad + (Math.random() - 0.5) * 4;
+				p.tz = attractZ + Math.sin(ang) * rad + (Math.random() - 0.5) * 4;
+				// Clamp roam box (local to camp)
+				p.tx = THREE.MathUtils.clamp(p.tx, -26, 28);
+				p.tz = THREE.MathUtils.clamp(p.tz, -18, 22);
+			}
+
+			// Desired velocity: wander + cohesion
+			let dx = p.tx - p.x;
+			let dz = p.tz - p.z;
+			const toT = Math.hypot(dx, dz) || 1;
+			dx = (dx / toT) * p.speed;
+			dz = (dz / toT) * p.speed;
+			// Cohesion
+			dx += (attractX - p.x) * 0.35;
+			dz += (attractZ - p.z) * 0.35;
+			// Separation (don't stack like tofu)
+			for (let j = 0; j < this.people.length; j++) {
+				if (j === i) continue;
+				const o = this.people[j];
+				const sx = p.x - o.x;
+				const sz = p.z - o.z;
+				const d = Math.hypot(sx, sz);
+				const minD = p.isMerkel || o.isMerkel ? 1.4 : 0.95;
+				if (d > 0.01 && d < minD) {
+					const push = ((minD - d) / minD) * 1.8;
+					dx += (sx / d) * push;
+					dz += (sz / d) * push;
 				}
-			} else {
-				this.leaderIdx = (this.leaderIdx + 1) % this.people.length;
-				const n = 2 + Math.floor(Math.random() * 2);
-				for (let k = 0; k < n; k++) {
-					const idx = (this.leaderIdx + k * 2) % this.people.length;
-					const p = this.people[idx];
-					const line = p.isMerkel
-						? MERKEL_LINES[Math.floor(Math.random() * MERKEL_LINES.length)]
-						: Math.random() < 0.5
-						? CHANTS[Math.floor(Math.random() * 2)]
-						: CHANTS[Math.floor(Math.random() * CHANTS.length)];
-					this.showBubble(p, line, p.isMerkel);
-				}
+			}
+
+			// Integrate with drag
+			p.vx = THREE.MathUtils.lerp(p.vx, dx, Math.min(1, dt * 2.2));
+			p.vz = THREE.MathUtils.lerp(p.vz, dz, Math.min(1, dt * 2.2));
+			const sp = Math.hypot(p.vx, p.vz);
+			const maxSp = p.speed * (p.isMerkel ? 0.75 : 1.15);
+			if (sp > maxSp) {
+				p.vx = (p.vx / sp) * maxSp;
+				p.vz = (p.vz / sp) * maxSp;
+			}
+
+			let nx = p.x + p.vx * dt;
+			let nz = p.z + p.vz * dt;
+			// World collision
+			const wx = this.pos.x + nx;
+			const wz = this.pos.z + nz;
+			const hitR = p.isMerkel ? 0.55 : 0.35;
+			const solved = this.world.resolveCircle(wx, wz, 0.5, hitR, 3, true);
+			nx = solved.x - this.pos.x;
+			nz = solved.z - this.pos.z;
+			p.x = nx;
+			p.z = nz;
+
+			// Face move dir (zombie shuffle)
+			const face = Math.hypot(p.vx, p.vz);
+			if (face > 0.05) {
+				const yaw = Math.atan2(p.vx, p.vz);
+				let dy = yaw - p.root.rotation.y;
+				while (dy > Math.PI) dy -= Math.PI * 2;
+				while (dy < -Math.PI) dy += Math.PI * 2;
+				p.root.rotation.y += dy * Math.min(1, dt * 4);
+			}
+
+			p.legPhase += dt * (4 + face * 3);
+			const march = Math.sin(p.legPhase + p.phase);
+			const bob = Math.abs(march) * (p.isMerkel ? 0.05 : 0.09);
+			p.root.position.set(p.x, bob, p.z);
+			p.root.rotation.z = Math.sin(p.legPhase * 0.5) * 0.04;
+
+			// Props
+			p.sign.rotation.z = Math.sin(this.t * 2.4 + p.phase) * (p.isMerkel ? 0.1 : 0.22);
+			p.sign.rotation.x = Math.sin(this.t * 1.8 + p.phase * 0.5) * 0.1;
+			if (p.fist) {
+				const baseY = p.isMerkel ? 1.75 : 1.55;
+				p.fist.position.y = baseY + Math.max(0, march) * 0.2;
+				p.fist.rotation.z = -0.4 - Math.max(0, march) * 0.5;
+			}
+			if (p.flag) {
+				p.flag.rotation.y = Math.sin(this.t * 2.8 + p.phase) * 0.4;
+				p.flag.rotation.z = Math.sin(this.t * 3.1 + p.phase * 0.6) * 0.15;
+			}
+
+			if (p.speechLife > 0) {
+				p.speechLife -= dt;
+				if (p.speechLife <= 0) p.speech.visible = false;
 			}
 		}
 	}
@@ -504,7 +634,7 @@ export class ProtestGroupies {
 	 */
 	private buildMerkel(): void {
 		const root = new THREE.Group();
-		const base = new THREE.Vector3(0, 0.35, 1.35); // on crate height
+		const base = new THREE.Vector3(0, 0, 1.2); // floor — joins the zombie shuffle
 		root.position.copy(base);
 
 		// Soft older skin
@@ -677,17 +807,17 @@ export class ProtestGroupies {
 		speech.visible = false;
 		root.add(speech);
 
-		// Platform crate under Mutti (extra bulk presence)
+		// Abandoned crate at camp (Mutti left the stage)
 		const crate = new THREE.Mesh(
 			new THREE.BoxGeometry(0.9, 0.38, 0.75),
 			this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.85 })),
 		);
-		crate.position.set(0, 0.19, 1.35);
+		crate.position.set(0, 0.19, 0.4);
 		this.group.add(crate);
 
-		// German flag mini next to her
+		// German flag mini at camp
 		const de = this.makeDeFlagPole();
-		de.position.set(0.7, 0, 1.5);
+		de.position.set(0.7, 0, 0.5);
 		this.group.add(de);
 		this.plantedFlags.push(de);
 
@@ -695,7 +825,14 @@ export class ProtestGroupies {
 		this.merkelIdx = this.people.length;
 		this.people.push({
 			root,
-			base: base.clone(),
+			x: base.x,
+			z: base.z,
+			vx: 0,
+			vz: 0,
+			tx: base.x + 2,
+			tz: base.z + 2,
+			speed: 0.85,
+			retargetCd: 1,
 			phase: 0.2,
 			sign,
 			speech,
@@ -706,6 +843,7 @@ export class ProtestGroupies {
 			flag,
 			isMerkel: true,
 			lineIdx: -1,
+			legPhase: 0,
 		});
 	}
 
@@ -794,9 +932,10 @@ export class ProtestGroupies {
 		for (let i = 0; i < n; i++) {
 			const ang = (i / n) * Math.PI * 1.7 + 0.15;
 			const r = 1.65 + (i % 3) * 0.35;
-			const base = new THREE.Vector3(Math.sin(ang) * r, 0, Math.cos(ang) * r * 0.85 - 0.2);
+			const bx = Math.sin(ang) * r;
+			const bz = Math.cos(ang) * r * 0.85 - 0.2;
 			const root = new THREE.Group();
-			root.position.copy(base);
+			root.position.set(bx, 0, bz);
 
 			const skin = this.track(
 				new THREE.MeshStandardMaterial({ color: skins[i % skins.length], roughness: 0.85 }),
@@ -936,7 +1075,14 @@ export class ProtestGroupies {
 			this.group.add(root);
 			this.people.push({
 				root,
-				base: base.clone(),
+				x: bx,
+				z: bz,
+				vx: 0,
+				vz: 0,
+				tx: bx + (Math.random() - 0.5) * 6,
+				tz: bz + (Math.random() - 0.5) * 6,
+				speed: 1.05 + Math.random() * 0.55,
+				retargetCd: Math.random() * 2,
 				phase: i * 0.9 + 0.5,
 				sign,
 				speech,
@@ -946,6 +1092,7 @@ export class ProtestGroupies {
 				fist,
 				flag,
 				lineIdx: i,
+				legPhase: Math.random() * 10,
 			});
 		}
 	}

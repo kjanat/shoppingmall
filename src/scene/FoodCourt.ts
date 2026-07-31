@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 
 /**
- * Open food court — floor 0, south of the atrium/kiosk.
+ * Open food court — floor 1, south balcony over the atrium.
  * Tables in the middle, greasy stalls around the edge.
  * Perfect hangry American destination.
  */
 export class FoodCourt {
 	readonly group = new THREE.Group();
-	/** Plaza center */
-	readonly pos = new THREE.Vector3(0, 0, 13.5);
+	/** V1 south balcony strip — between atrium void and south store wall */
+	readonly pos = new THREE.Vector3(0, 6, 11.5);
 	private materials: THREE.Material[] = [];
 
 	constructor() {
@@ -28,8 +28,9 @@ export class FoodCourt {
 
 	private buildFloor(): void {
 		// Checker tile plaza
+		// Compact balcony plaza (must not eat south store footprints at z=18)
 		const floor = new THREE.Mesh(
-			new THREE.BoxGeometry(18, 0.06, 9),
+			new THREE.BoxGeometry(14, 0.06, 5.2),
 			this.track(
 				new THREE.MeshStandardMaterial({
 					color: 0xe8dcc8,
@@ -44,13 +45,13 @@ export class FoodCourt {
 
 		// Yellow caution strip border
 		const strip = new THREE.Mesh(
-			new THREE.BoxGeometry(18.2, 0.04, 0.18),
+			new THREE.BoxGeometry(14.2, 0.04, 0.18),
 			this.track(new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false })),
 		);
-		strip.position.set(0, 0.06, -4.4);
+		strip.position.set(0, 0.06, -2.5);
 		this.group.add(strip);
 		const strip2 = strip.clone();
-		strip2.position.z = 4.4;
+		strip2.position.z = 2.5;
 		this.group.add(strip2);
 	}
 
@@ -66,16 +67,13 @@ export class FoodCourt {
 		);
 
 		const spots: [number, number][] = [
-			[-5, -1.5],
-			[-2.5, 0.5],
-			[0, -1.2],
-			[2.5, 0.8],
-			[5, -0.8],
-			[-4, 2.2],
-			[0, 2.0],
-			[4, 2.2],
-			[-1.5, -2.8],
-			[1.8, -2.5],
+			[-4, -0.8],
+			[-1.5, 0.4],
+			[1.5, -0.5],
+			[4, 0.6],
+			[-3, 1.2],
+			[0, 1.0],
+			[3, 1.2],
 		];
 
 		for (const [tx, tz] of spots) {
@@ -136,8 +134,8 @@ export class FoodCourt {
 				sub: 'double thicc',
 				color: 0xc62828,
 				accent: 0xffc107,
-				x: -7.5,
-				z: -2.5,
+				x: -5.8,
+				z: -1.6,
 				rot: Math.PI / 2,
 			},
 			{
@@ -145,8 +143,8 @@ export class FoodCourt {
 				sub: 'by the kilo',
 				color: 0x2e7d32,
 				accent: 0xffffff,
-				x: -7.5,
-				z: 2.2,
+				x: -5.8,
+				z: 1.4,
 				rot: Math.PI / 2,
 			},
 			{
@@ -154,8 +152,8 @@ export class FoodCourt {
 				sub: 'extra cheese',
 				color: 0xef6c00,
 				accent: 0xfff176,
-				x: 7.5,
-				z: -2.5,
+				x: 5.8,
+				z: -1.6,
 				rot: -Math.PI / 2,
 			},
 			{
@@ -163,8 +161,8 @@ export class FoodCourt {
 				sub: 'sprinkles free',
 				color: 0x6a1b9a,
 				accent: 0xf8bbd0,
-				x: 7.5,
-				z: 2.2,
+				x: 5.8,
+				z: 1.4,
 				rot: -Math.PI / 2,
 			},
 			{
@@ -173,7 +171,7 @@ export class FoodCourt {
 				color: 0xb71c1c,
 				accent: 0xffeb3b,
 				x: 0,
-				z: 3.8,
+				z: 2.0,
 				rot: Math.PI,
 			},
 		];
@@ -216,6 +214,17 @@ export class FoodCourt {
 			);
 			back.position.set(0, 1.9, -0.55);
 			g.add(back);
+
+			// Staanders: de achterwand begint op 1.1 m — zonder poten leek het
+			// vanaf de noordkant een rij zwevende planken
+			const postMat = this.track(
+				new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.6, roughness: 0.4 }),
+			);
+			for (const sx of [-1.32, 1.32]) {
+				const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.7, 8), postMat);
+				post.position.set(sx, 1.35, -0.55);
+				g.add(post);
+			}
 
 			const menu = this.makeSign(s.name, s.sub, s.color, s.accent);
 			menu.position.set(0, 2.15, -0.46);

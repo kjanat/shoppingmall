@@ -7,8 +7,13 @@ const FLIGHT = 1.05;
 const THROW_MIN = 5;
 const THROW_MAX = 11;
 const HIT_RADIUS = 0.55;
-const MAX_SPLATS = 14;
-const SPLAT_LIFE = 7;
+const MAX_SPLATS = 18;
+const SPLAT_LIFE = 9;
+/** Closer than this → monkey aims at you. Farther → gebedsruimte gets it. */
+const PLAYER_RANGE = 13;
+
+/** Gebedsruimte (see PrayerRoom.pos) — default target when you're a coward */
+const PRAYER_POS = new THREE.Vector3(-31.5, 1.35, -19.5);
 
 /** Palm-top perches around the atrium. */
 const PERCHES: [number, number, number][] = [
@@ -18,17 +23,36 @@ const PERCHES: [number, number, number][] = [
 	[0, 3.05, 4.2],
 ];
 
+const FACE_YELLS = [
+	'AU!!',
+	'STINK STINK',
+	'DIT IS NIET GOED!',
+	'AUW M’N OGEN',
+	'BAH 💩',
+	'STINKT HIER!!',
+	'NIET COOL AAP',
+	'HELP DE KAK',
+];
+
 type Poop = {
-	mesh: THREE.Mesh;
+	mesh: THREE.Object3D;
 	vel: THREE.Vector3;
 	alive: boolean;
-	/** aimed at the player rather than a shopper */
 	atPlayer: boolean;
+	atPrayer: boolean;
+	spin: number;
 };
 
 type Splat = { mesh: THREE.Mesh; life: number };
 
-export type MonkeyHit = { what: 'player' | 'sim' | 'floor'; x: number; y: number; z: number };
+export type MonkeyHit = {
+	what: 'player' | 'sim' | 'floor' | 'prayer';
+	x: number;
+	y: number;
+	z: number;
+	/** Shown on-screen when the player is hit */
+	yell?: string;
+};
 
 /**
  * Atrium monkey. Sits in a palm, judges you, throws its own shit.
@@ -46,15 +70,16 @@ export class Monkey {
 	private armR = new THREE.Group();
 	private tail = new THREE.Group();
 	private faceSplat: THREE.Mesh | null = null;
+	private faceYell: THREE.Sprite | null = null;
 	private faceFade = 0;
+	private yellFade = 0;
+	private faceTex: THREE.CanvasTexture | null = null;
+	private yellTex: THREE.CanvasTexture | null = null;
 
 	private materials: THREE.Material[] = [];
 	private poops: Poop[] = [];
 	private splats: Splat[] = [];
-	private poopGeo = new THREE.SphereGeometry(0.11, 8, 6);
-	private poopMat: THREE.MeshStandardMaterial;
-	private splatGeo = new THREE.CircleGeometry(0.34, 12);
-	private splatMat: THREE.MeshStandardMaterial;
+	private poopMats: THREE.MeshStandardMaterial[] = [];
 
 	private perch = 0;
 	private cooldown = 4;
@@ -64,6 +89,7 @@ export class Monkey {
 	private onHit: ((hit: MonkeyHit) => void) | null = null;
 	private pendingTarget = new THREE.Vector3();
 	private pendingAtPlayer = false;
+	private pendingAtPrayer = false;
 	/** scratch — update() runs 60×/s, it must not allocate */
 	private tmp = new THREE.Vector3();
 
@@ -72,18 +98,30 @@ export class Monkey {
 		this.camera = camera;
 		this.group.name = 'monkey';
 
-		this.poopMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.95 }),
-		);
-		this.splatMat = this.track(
-			new THREE.MeshStandardMaterial({
-				color: 0x4a2f18,
-				roughness: 1,
-				transparent: true,
-				opacity: 0.85,
-				depthWrite: false,
-			}),
-		);
+		// Soft, wet-looking dung palette (not a flat brown ball)
+		this.poopMats = [
+			this.track(
+				new THREE.MeshStandardMaterial({
+					color: 0x3e2723,
+					roughness: 0.92,
+					metalness: 0.02,
+				}),
+			),
+			this.track(
+				new THREE.MeshStandardMaterial({
+					color: 0x5d4037,
+					roughness: 0.88,
+					metalness: 0.04,
+				}),
+			),
+			this.track(
+				new THREE.MeshStandardMaterial({
+					color: 0x4e342e,
+					roughness: 0.95,
+					metalness: 0,
+				}),
+			),
+		];
 
 		this.build();
 		this.group.add(this.body);
@@ -154,8 +192,6 @@ export class Monkey {
 
 	dispose(): void {
 		for (const m of this.materials) m.dispose();
-		this.poopGeo.dispose();
-		this.splatGeo.dispose();
 	}
 
 	// ── internals ──────────────────────────────────────────
@@ -166,35 +202,90 @@ export class Monkey {
 		this.group.position.set(x, y, z);
 	}
 
+	/** Look-at target for head tracking */
 	private nearestVictim(): THREE.Vector3 | null {
 		const origin = this.group.position;
 		const player = this.camera.position;
-		let best: THREE.Vector3 | null = null;
-		let bestD = Infinity;
-		// Player counts double — the monkey has priorities
-		const pd = origin.distanceTo(player) * 0.5;
-		if (pd < 26) {
-			best = player;
-			bestD = pd;
+		const pd = origin.distanceTo(player);
+		if (pd < PLAYER_RANGE && player.y < 5.5) return player;
+		// Far: stare at the prayer room while plotting
+		return PRAYER_POS;
+	}
+
+	/**
+	 * Close enough → you. Too far → bombard the gebedsruimte.
+	 * Always returns true (the monkey always has a plan).
+	 */
+	private pickTarget(): boolean {
+		const origin = this.group.position;
+		const player = this.camera.position;
+		const pd = origin.distanceTo(player);
+		const playerInRange = pd < PLAYER_RANGE && player.y < 5.5;
+
+		this.pendingAtPlayer = false;
+		this.pendingAtPrayer = false;
+
+		if (playerInRange) {
+			this.pendingAtPlayer = true;
+			this.pendingTarget.copy(player);
+			this.pendingTarget.y = player.y - 0.1;
+			return true;
 		}
+
+		// Maybe still hit a nearby sim, else prayer
+		let bestSim: THREE.Vector3 | null = null;
+		let bestD = 16;
 		for (const s of this.simPositions) {
 			const d = origin.distanceTo(s);
-			if (d < bestD && d < 22) {
-				best = s;
+			if (d < bestD) {
+				bestSim = s;
 				bestD = d;
 			}
 		}
-		return best;
+		if (bestSim && Math.random() < 0.35) {
+			this.pendingTarget.copy(bestSim);
+			this.pendingTarget.y += 1.2;
+			return true;
+		}
+
+		// Default: fling dung at the gebedsruimte
+		this.pendingAtPrayer = true;
+		this.pendingTarget.copy(PRAYER_POS);
+		this.pendingTarget.x += (Math.random() - 0.5) * 2.4;
+		this.pendingTarget.z += (Math.random() - 0.5) * 1.8;
+		this.pendingTarget.y = 0.9 + Math.random() * 1.4;
+		return true;
 	}
 
-	private pickTarget(): boolean {
-		const victim = this.nearestVictim();
-		if (!victim) return false;
-		this.pendingAtPlayer = victim === this.camera.position;
-		// Lead the shot a little so it lands where they're heading
-		this.pendingTarget.copy(victim);
-		if (this.pendingAtPlayer) this.pendingTarget.y = this.camera.position.y - 0.15;
-		return true;
+	/** Soft-serve style dung: stacked blobs, not a sad brown ball. */
+	private makePoopMesh(): THREE.Group {
+		const g = new THREE.Group();
+		const layers = [
+			{ y: 0.0, r: 0.13, s: 1.15 },
+			{ y: 0.09, r: 0.11, s: 1.05 },
+			{ y: 0.17, r: 0.085, s: 0.95 },
+			{ y: 0.24, r: 0.055, s: 0.85 },
+		];
+		for (let i = 0; i < layers.length; i++) {
+			const L = layers[i];
+			const mat = this.poopMats[i % this.poopMats.length];
+			const blob = new THREE.Mesh(new THREE.SphereGeometry(L.r, 10, 8), mat);
+			blob.position.y = L.y;
+			blob.scale.set(L.s, 0.75 + Math.random() * 0.15, L.s * 0.95);
+			blob.rotation.y = Math.random() * Math.PI;
+			blob.castShadow = true;
+			g.add(blob);
+		}
+		// Pointy tip curl
+		const tip = new THREE.Mesh(
+			new THREE.ConeGeometry(0.04, 0.08, 6),
+			this.poopMats[0],
+		);
+		tip.position.set(0.02, 0.3, 0);
+		tip.rotation.z = -0.4;
+		g.add(tip);
+		g.scale.setScalar(0.95 + Math.random() * 0.25);
+		return g;
 	}
 
 	private throwPoop(): void {
@@ -202,17 +293,24 @@ export class Monkey {
 		const target = this.pendingTarget.clone();
 
 		// Solve the lob: v = Δ/T + ½gT
-		const vel = target.clone().sub(origin).divideScalar(FLIGHT);
-		vel.y += 0.5 * GRAVITY * FLIGHT;
+		const flight = this.pendingAtPrayer ? 1.35 : FLIGHT;
+		const vel = target.clone().sub(origin).divideScalar(flight);
+		vel.y += 0.5 * GRAVITY * flight;
 		// A monkey is not a sniper
 		vel.x += (Math.random() - 0.5) * 0.9;
 		vel.z += (Math.random() - 0.5) * 0.9;
 
-		const mesh = new THREE.Mesh(this.poopGeo, this.poopMat);
+		const mesh = this.makePoopMesh();
 		mesh.position.copy(origin);
-		mesh.castShadow = true;
 		this.group.parent?.add(mesh);
-		this.poops.push({ mesh, vel, alive: true, atPlayer: this.pendingAtPlayer });
+		this.poops.push({
+			mesh,
+			vel,
+			alive: true,
+			atPlayer: this.pendingAtPlayer,
+			atPrayer: this.pendingAtPrayer,
+			spin: 4 + Math.random() * 5,
+		});
 	}
 
 	private tickPoops(dt: number): void {
@@ -220,16 +318,26 @@ export class Monkey {
 			if (!p.alive) continue;
 			p.vel.y -= GRAVITY * dt;
 			p.mesh.position.addScaledVector(p.vel, dt);
-			p.mesh.rotation.x += dt * 6;
+			p.mesh.rotation.x += dt * p.spin;
+			p.mesh.rotation.z += dt * p.spin * 0.6;
 
 			const pos = p.mesh.position;
 
-			// Player hit?
-			if (pos.distanceTo(this.camera.position) < HIT_RADIUS + 0.25) {
+			// Player hit (only if this turd was meant for you, or you're unlucky mid-air)
+			if (pos.distanceTo(this.camera.position) < HIT_RADIUS + 0.35) {
 				this.land(p, 'player', pos);
 				continue;
 			}
-			// Shopper hit? (chest height, so aim at pos + 1.2)
+			// Prayer-room vicinity landing
+			if (p.atPrayer) {
+				const dx = pos.x - PRAYER_POS.x;
+				const dz = pos.z - PRAYER_POS.z;
+				if (dx * dx + dz * dz < 9 && pos.y < 3.2) {
+					this.land(p, 'prayer', pos);
+					continue;
+				}
+			}
+			// Shopper hit
 			let hitSim = false;
 			for (const s of this.simPositions) {
 				const dx = pos.x - s.x;
@@ -243,14 +351,12 @@ export class Monkey {
 			}
 			if (hitSim) continue;
 
-			// Floor / slab
 			const ground = this.world.groundHeightAt(pos.x, pos.z, pos.y, 3);
 			if (pos.y <= ground + 0.1) {
 				pos.y = ground + 0.02;
-				this.land(p, 'floor', pos);
+				this.land(p, p.atPrayer ? 'prayer' : 'floor', pos);
 				continue;
 			}
-			// Fell out of the world
 			if (pos.y < -4) this.land(p, 'floor', pos);
 		}
 		this.poops = this.poops.filter((p) => p.alive);
@@ -260,22 +366,69 @@ export class Monkey {
 		p.alive = false;
 		p.mesh.removeFromParent();
 		this.addSplat(at, what);
-		if (what === 'player') this.splatFace();
-		this.onHit?.({ what, x: at.x, y: at.y, z: at.z });
+		let yell: string | undefined;
+		if (what === 'player') {
+			yell = FACE_YELLS[Math.floor(Math.random() * FACE_YELLS.length)];
+			this.splatFace(yell);
+		}
+		this.onHit?.({ what, x: at.x, y: at.y, z: at.z, yell });
+	}
+
+	private makeSplatTexture(): THREE.CanvasTexture {
+		const c = document.createElement('canvas');
+		c.width = 128;
+		c.height = 128;
+		const ctx = c.getContext('2d')!;
+		ctx.clearRect(0, 0, 128, 128);
+		// Irregular dung puddle — several overlapping blobs
+		const blobs = 7 + Math.floor(Math.random() * 5);
+		for (let i = 0; i < blobs; i++) {
+			const x = 40 + Math.random() * 48;
+			const y = 40 + Math.random() * 48;
+			const r = 14 + Math.random() * 28;
+			const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+			g.addColorStop(0, 'rgba(62,39,35,0.95)');
+			g.addColorStop(0.45, 'rgba(78,52,46,0.75)');
+			g.addColorStop(1, 'rgba(62,39,35,0)');
+			ctx.fillStyle = g;
+			ctx.beginPath();
+			ctx.ellipse(x, y, r, r * (0.55 + Math.random() * 0.5), Math.random() * Math.PI, 0, Math.PI * 2);
+			ctx.fill();
+		}
+		// Speckles
+		ctx.fillStyle = 'rgba(30,20,15,0.5)';
+		for (let i = 0; i < 20; i++) {
+			ctx.beginPath();
+			ctx.arc(30 + Math.random() * 70, 30 + Math.random() * 70, 1 + Math.random() * 2.5, 0, Math.PI * 2);
+			ctx.fill();
+		}
+		const tex = new THREE.CanvasTexture(c);
+		tex.colorSpace = THREE.SRGBColorSpace;
+		return tex;
 	}
 
 	private addSplat(at: THREE.Vector3, what: MonkeyHit['what']): void {
-		// Splats only stick to the floor, not to faces
 		if (what === 'player') return;
 		const ground = this.world.groundHeightAt(at.x, at.z, at.y, 3);
-		const mesh = new THREE.Mesh(this.splatGeo, this.splatMat.clone());
-		this.materials.push(mesh.material as THREE.Material);
+		const tex = this.makeSplatTexture();
+		const mat = this.track(
+			new THREE.MeshBasicMaterial({
+				map: tex,
+				transparent: true,
+				opacity: 0.92,
+				depthWrite: false,
+				toneMapped: false,
+			}),
+		);
+		const mesh = new THREE.Mesh(new THREE.CircleGeometry(0.42, 16), mat);
 		mesh.rotation.x = -Math.PI / 2;
 		mesh.rotation.z = Math.random() * Math.PI;
-		mesh.scale.setScalar(0.7 + Math.random() * 0.6);
-		mesh.position.set(at.x, ground + 0.03, at.z);
+		mesh.scale.setScalar(0.85 + Math.random() * 0.7);
+		// Prayer hits leave a bigger insult
+		if (what === 'prayer') mesh.scale.multiplyScalar(1.35);
+		mesh.position.set(at.x, ground + 0.035, at.z);
 		this.group.parent?.add(mesh);
-		this.splats.push({ mesh, life: SPLAT_LIFE });
+		this.splats.push({ mesh, life: SPLAT_LIFE + (what === 'prayer' ? 3 : 0) });
 
 		while (this.splats.length > MAX_SPLATS) {
 			const old = this.splats.shift();
@@ -286,41 +439,138 @@ export class Monkey {
 	private tickSplats(dt: number): void {
 		for (const s of this.splats) {
 			s.life -= dt;
-			const mat = s.mesh.material as THREE.MeshStandardMaterial;
-			mat.opacity = Math.max(0, Math.min(0.85, s.life / 2));
+			const mat = s.mesh.material as THREE.MeshBasicMaterial;
+			mat.opacity = Math.max(0, Math.min(0.92, s.life / 2.5));
 		}
 		const dead = this.splats.filter((s) => s.life <= 0);
 		for (const d of dead) d.mesh.removeFromParent();
 		if (dead.length) this.splats = this.splats.filter((s) => s.life > 0);
 	}
 
-	/** Brown smear across the lens when it gets you in the face. */
-	private splatFace(): void {
+	/** Gooey face smear + floating AU / STINK text on the lens. */
+	private splatFace(yell: string): void {
 		if (!this.faceSplat) {
-			const geo = new THREE.PlaneGeometry(0.42, 0.3);
+			const c = document.createElement('canvas');
+			c.width = 256;
+			c.height = 192;
+			const ctx = c.getContext('2d')!;
+			this.paintFaceGoo(ctx, 256, 192);
+			this.faceTex = new THREE.CanvasTexture(c);
+			this.faceTex.colorSpace = THREE.SRGBColorSpace;
 			const mat = this.track(
 				new THREE.MeshBasicMaterial({
-					color: 0x4a2f18,
+					map: this.faceTex,
 					transparent: true,
 					opacity: 0,
 					depthTest: false,
 					depthWrite: false,
+					toneMapped: false,
 				}),
 			);
-			this.faceSplat = new THREE.Mesh(geo, mat);
+			this.faceSplat = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.4), mat);
 			this.faceSplat.renderOrder = 999;
-			this.faceSplat.position.set(0.04, -0.02, -0.32);
+			this.faceSplat.position.set(0.02, -0.04, -0.28);
 			this.camera.add(this.faceSplat);
+		} else if (this.faceTex) {
+			const ctx = (this.faceTex.image as HTMLCanvasElement).getContext('2d')!;
+			this.paintFaceGoo(ctx, 256, 192);
+			this.faceTex.needsUpdate = true;
 		}
-		this.faceFade = 2.4;
+
+		// Yell sprite
+		if (!this.faceYell) {
+			const c = document.createElement('canvas');
+			c.width = 512;
+			c.height = 128;
+			this.yellTex = new THREE.CanvasTexture(c);
+			this.yellTex.colorSpace = THREE.SRGBColorSpace;
+			this.faceYell = new THREE.Sprite(
+				this.track(
+					new THREE.SpriteMaterial({
+						map: this.yellTex,
+						transparent: true,
+						depthTest: false,
+						depthWrite: false,
+						toneMapped: false,
+					}),
+				),
+			);
+			this.faceYell.scale.set(0.9, 0.22, 1);
+			this.faceYell.position.set(0, 0.12, -0.35);
+			this.faceYell.renderOrder = 1000;
+			this.camera.add(this.faceYell);
+		}
+		if (this.yellTex) {
+			const c = this.yellTex.image as HTMLCanvasElement;
+			const ctx = c.getContext('2d')!;
+			ctx.clearRect(0, 0, 512, 128);
+			ctx.fillStyle = 'rgba(0,0,0,0.55)';
+			ctx.beginPath();
+			ctx.roundRect?.(40, 24, 432, 80, 16);
+			if (!ctx.roundRect) ctx.fillRect(40, 24, 432, 80);
+			else ctx.fill();
+			ctx.fillStyle = '#ffeb3b';
+			ctx.strokeStyle = '#b71c1c';
+			ctx.lineWidth = 4;
+			ctx.font = 'bold 48px system-ui,sans-serif';
+			ctx.textAlign = 'center';
+			ctx.textBaseline = 'middle';
+			ctx.strokeText(yell, 256, 64);
+			ctx.fillText(yell, 256, 64);
+			this.yellTex.needsUpdate = true;
+		}
+
+		this.faceFade = 3.2;
+		this.yellFade = 2.6;
+	}
+
+	private paintFaceGoo(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+		ctx.clearRect(0, 0, w, h);
+		// Drips + globs — looks like actual face-dung, not a brown rectangle
+		for (let i = 0; i < 12; i++) {
+			const x = 30 + Math.random() * (w - 60);
+			const y = 20 + Math.random() * (h * 0.55);
+			const r = 18 + Math.random() * 40;
+			const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+			g.addColorStop(0, 'rgba(78,52,46,0.95)');
+			g.addColorStop(0.5, 'rgba(62,39,35,0.7)');
+			g.addColorStop(1, 'rgba(40,25,20,0)');
+			ctx.fillStyle = g;
+			ctx.beginPath();
+			ctx.ellipse(x, y, r, r * (0.6 + Math.random() * 0.5), Math.random(), 0, Math.PI * 2);
+			ctx.fill();
+		}
+		// Vertical drips
+		for (let i = 0; i < 6; i++) {
+			const x = 40 + Math.random() * (w - 80);
+			const y0 = 40 + Math.random() * 40;
+			const len = 40 + Math.random() * 70;
+			const g = ctx.createLinearGradient(x, y0, x, y0 + len);
+			g.addColorStop(0, 'rgba(62,39,35,0.85)');
+			g.addColorStop(1, 'rgba(62,39,35,0)');
+			ctx.fillStyle = g;
+			ctx.beginPath();
+			ctx.ellipse(x, y0 + len * 0.4, 8 + Math.random() * 10, len * 0.5, 0, 0, Math.PI * 2);
+			ctx.fill();
+		}
 	}
 
 	private tickFace(dt: number): void {
-		if (!this.faceSplat) return;
 		if (this.faceFade > 0) this.faceFade -= dt;
-		const mat = this.faceSplat.material as THREE.MeshBasicMaterial;
-		mat.opacity = Math.max(0, Math.min(0.9, this.faceFade));
-		this.faceSplat.visible = mat.opacity > 0.01;
+		if (this.yellFade > 0) this.yellFade -= dt;
+		if (this.faceSplat) {
+			const mat = this.faceSplat.material as THREE.MeshBasicMaterial;
+			mat.opacity = Math.max(0, Math.min(0.95, this.faceFade * 0.45));
+			this.faceSplat.visible = mat.opacity > 0.02;
+			// Slight drip drift
+			this.faceSplat.position.y = -0.04 - (3.2 - Math.max(0, this.faceFade)) * 0.015;
+		}
+		if (this.faceYell) {
+			const mat = this.faceYell.material as THREE.SpriteMaterial;
+			mat.opacity = Math.max(0, Math.min(1, this.yellFade));
+			this.faceYell.visible = mat.opacity > 0.05;
+			this.faceYell.position.y = 0.12 + Math.sin(performance.now() * 0.01) * 0.02;
+		}
 	}
 
 	private approachAngle(from: number, to: number, step: number): number {

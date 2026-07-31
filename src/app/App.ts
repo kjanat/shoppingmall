@@ -18,15 +18,20 @@ import type { PersonRow } from '../scene/Americans';
 import { Atmosphere } from '../scene/Atmosphere';
 import { BeardCave } from '../scene/BeardCave';
 import { Catwalk } from '../scene/Catwalk';
+import { CleaningCart } from '../scene/CleaningCart';
 import { DiscoParty } from '../scene/Disco';
 import { BARTEK_LINES, DJBartek } from '../scene/DJBartek';
+import { Drone } from '../scene/Drone';
 import { FoodCourt } from '../scene/FoodCourt';
+import { GlassElevator } from '../scene/GlassElevator';
+import { Helicopter } from '../scene/Helicopter';
 import { Helipad } from '../scene/Helipad';
 import { setupLighting } from '../scene/Lighting';
 import { MallBuilder } from '../scene/MallBuilder';
 import { MallRat } from '../scene/MallRat';
 import { Monkey } from '../scene/Monkey';
 import { PalmForest } from '../scene/Palms';
+import { ParkingGarage } from '../scene/ParkingGarage';
 import { PrayerRoom } from '../scene/PrayerRoom';
 import { ProtestGroupies } from '../scene/ProtestGroupies';
 import { Restrooms } from '../scene/Restrooms';
@@ -34,8 +39,11 @@ import { ShopVoice } from '../scene/ShopVoice';
 import { Spaceship } from '../scene/Spaceship';
 import { StockDisplay } from '../scene/StockDisplay';
 import { BakerThief } from '../scene/Thief';
+import { TravelAgency } from '../scene/TravelAgency';
 import { MovingWalkways } from '../scene/Walkways';
 import { DJOverlay } from '../ui/DJOverlay';
+import { DJWidget } from '../ui/DJWidget';
+import { ElevatorPanel } from '../ui/ElevatorPanel';
 import { KioskOverlay, type MapBlip } from '../ui/KioskOverlay';
 import { type CastRow, PeopleDashboard } from '../ui/PeopleDashboard';
 import { SettingsPanel } from '../ui/SettingsPanel';
@@ -63,17 +71,30 @@ export class App {
 	private spaceship = new Spaceship();
 	private thief: BakerThief;
 	private beardCave = new BeardCave();
-	private protest = new ProtestGroupies();
+	private protest!: ProtestGroupies;
+	private travel = new TravelAgency();
 	private rat!: MallRat;
+	private cleaner!: CleaningCart;
 	private prayer = new PrayerRoom();
 	private restrooms = new Restrooms();
 	private helipad = new Helipad();
 	private foodCourt = new FoodCourt();
+	private elevator = new GlassElevator();
+	private parking = new ParkingGarage();
+	private nearElevHint = false;
+	/** Latched until you walk out of the cabin XZ */
+	private elevRiding = false;
+	private elevUi!: ElevatorPanel;
 	private bartekChat = new BartekChat();
 	private djBartek = new DJBartek();
 	private alienProbe = new AlienProbe();
 	private monkey!: Monkey;
 	private catwalk = new Catwalk();
+	private heli!: Helicopter;
+	private drone = new Drone();
+	private nearDroneHint = false;
+	/** Welk voertuig je bestuurt tijdens fly-mode */
+	private vehicle: 'drone' | 'heli' | null = null;
 	/** reused each frame for the monkey's target list */
 	private simPositions: THREE.Vector3[] = [];
 	private djPlayer = new DJPlayer();
@@ -104,6 +125,8 @@ export class App {
 	private thiefFiredAt = 0;
 	private nearDjHint = false;
 	private nearProtestHint = false;
+	private nearTravelHint = false;
+	private nearPrayerHint = false;
 	private bartekSpeaking = false;
 	private crowdCheerCd = 0;
 	private persistT = 0;
@@ -113,12 +136,15 @@ export class App {
 		this.atmosphere = new Atmosphere(this.world);
 		this.thief = new BakerThief(this.world, this.beardCave);
 		this.rat = new MallRat(this.world);
+		this.cleaner = new CleaningCart(this.world);
+		this.protest = new ProtestGroupies(this.world);
 
 		this.renderer = new THREE.WebGLRenderer({
-			antialias: true,
+			// De composer doet al AA — canvas-MSAA erbovenop is puur dubbel werk
+			antialias: false,
 			powerPreference: 'high-performance',
 		});
-		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -149,23 +175,37 @@ export class App {
 		this.scene.add(this.thief.group);
 		this.scene.add(this.beardCave.group);
 		this.scene.add(this.protest.group);
+		this.scene.add(this.travel.group);
 		this.scene.add(this.rat.group);
+		this.scene.add(this.cleaner.group);
 		this.scene.add(this.prayer.group);
 		this.scene.add(this.restrooms.group);
 		this.scene.add(this.helipad.group);
 		this.scene.add(this.foodCourt.group);
-		// WC + gebedsruimte + cave walls block walking
+		this.scene.add(this.elevator.group);
+		this.scene.add(this.parking.group);
+		// WC + gebedsruimte + cave + travel desk walls
 		for (
 			const c of [
 				...this.restrooms.getColliders(),
 				...this.prayer.getColliders(),
 				...this.beardCave.getColliders(),
+				...this.travel.getColliders(),
 			]
 		) {
 			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
 				minY: -0.5,
 				maxY: 3.2,
 				label: c.label,
+			});
+		}
+		// Elevator shaft: full height P1→dak; climbable so player enters, sims bounce
+		for (const c of this.elevator.getColliders()) {
+			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
+				minY: c.minY ?? -7.5,
+				maxY: c.maxY ?? 16.5,
+				label: c.label,
+				climbable: c.climbable ?? false,
 			});
 		}
 		this.scene.add(this.pathMesh.group);
@@ -175,8 +215,10 @@ export class App {
 		// Sims ride the loopband too
 		this.atmosphere.americans.setBeltProvider((x, y, z) => this.walkways.beltVelocityAt(x, y, z));
 
-		// Bewoners-dashboard (B): everyone in the mall, live; 👁 = guest view
-		this.peopleUi = new PeopleDashboard(uiRoot, (id) => this.enterPossess(id));
+		// Luchtvloot: heli op het dak (cyclus), drone bij de fontein (instappen!)
+		this.heli = new Helicopter(this.helipad.padCenter);
+		this.scene.add(this.heli.group);
+		this.scene.add(this.drone.group);
 
 		// Fashion Week runway, floor 0 west (in front of Douglas)
 		this.scene.add(this.catwalk.group);
@@ -192,12 +234,16 @@ export class App {
 			if (hit.what === 'player') {
 				this.score = Math.max(0, this.score - 8);
 				this.ui.setScore(this.score, this.metSims.size);
-				this.ui.setStatus('🐒💩 VOLLE TREFFER — de aap gooide kak in je gezicht (−8)');
+				const yell = hit.yell ?? 'AU!!';
+				this.ui.setStatus(`🐒💩 ${yell} — volle treffer in je gezicht (−8)`);
 				this.spawnConfetti(new THREE.Vector3(hit.x, hit.y + 0.4, hit.z));
 			} else if (hit.what === 'sim') {
-				// The whole crowd notices
 				this.atmosphere.americans.nudgeAllMood(4);
 				this.ui.setStatus('🐒💩 De aap raakte een shopper — publiek is niet blij');
+			} else if (hit.what === 'prayer') {
+				this.ui.setStatus(
+					'🐒💩 Aap gooit kak op de GEBEDSRUIMTE — je stond te ver weg',
+				);
 			}
 		});
 
@@ -272,6 +318,33 @@ export class App {
 		this.djUi = new DJOverlay(uiRoot);
 		this.wireDjBooth();
 
+		// NA KioskOverlay: die mount met `root.innerHTML = …` en veegt alles weg
+		// wat eerder aan uiRoot hing. En ná wireDjBooth, zodat de widget de
+		// onChange-keten van de booth netjes doorgeeft i.p.v. overschreven wordt.
+		this.peopleUi = new PeopleDashboard(uiRoot, (id) => this.enterPossess(id));
+		new DJWidget(uiRoot, this.djPlayer, () => this.djUi.show());
+
+		// Wei Chen yells Chinese (pre-baked ElevenLabs) when you block his cart
+		this.cleaner.setYellCallback((label) => {
+			this.ui.setStatus(`🧹 WEI CHEN · ${label}`);
+		});
+		// Liftman Hans announces floors (TTS when ElevenLabs has credits)
+		this.elevator.setLineCallback((text) => {
+			this.ui.setStatus(`🛗 HANS · ${text}`);
+		});
+		// Floor picker (only after E on Hans/knoppen — frees mouse then)
+		this.elevUi = new ElevatorPanel(uiRoot, (idx) => {
+			const ok = this.elevator.requestFloor(idx);
+			if (ok) {
+				this.elevUi.hide();
+				this.elevator.holdForPassenger(false);
+				const names = ['P1 garage', 'begane grond', 'verdieping 1', 'het dak'];
+				this.ui.setStatus(`🛗 Hans rijdt naar ${names[idx] ?? '…'}`);
+			} else {
+				this.ui.setStatus('🛗 Hans: je bent er al — kies een andere');
+			}
+		});
+
 		// Control scheme menu (⚙ / O) — mouse, no-mouse or tank steering
 		this.settingsUi = new SettingsPanel(uiRoot, (s) => {
 			this.player.applySettings(s);
@@ -282,6 +355,24 @@ export class App {
 					}`
 					: 'Besturing: geen muis · A/D draaien · R/F kijken',
 			);
+		});
+
+		// Grafische kwaliteit (⚙): DPR + schaduwen — NA de aanmaak van settingsUi;
+		// deze bind stond eerst vóór de constructie en sloopte de hele UI-mount.
+		this.settingsUi.bindQuality((q) => {
+			const dpr = window.devicePixelRatio;
+			if (q === 'laag') {
+				this.renderer.setPixelRatio(1);
+				this.renderer.shadowMap.enabled = false;
+			} else if (q === 'middel') {
+				this.renderer.setPixelRatio(Math.min(dpr, 1.25));
+				this.renderer.shadowMap.enabled = true;
+			} else {
+				this.renderer.setPixelRatio(Math.min(dpr, 1.75));
+				this.renderer.shadowMap.enabled = true;
+			}
+			this.renderer.shadowMap.needsUpdate = true;
+			this.onResize();
 		});
 
 		window.addEventListener('resize', () => this.onResize());
@@ -296,6 +387,14 @@ export class App {
 			if (e.key === 'Escape') {
 				if (this.djUi.isOpen()) {
 					this.djUi.hide();
+					return;
+				}
+				if (this.elevUi?.isOpen) {
+					this.elevUi.hide();
+					return;
+				}
+				if (this.peopleUi.isOpen) {
+					this.peopleUi.toggle(false);
 					return;
 				}
 				// Esc while the mouse is captured just frees the mouse — it must not
@@ -325,17 +424,43 @@ export class App {
 						: '🐒 De aap heeft even niks bij de hand',
 				);
 			}
-			// E = talk to DJ Bartek OR nearest shopkeeper (Youssef!)
+			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper
 			if (e.key === 'e' || e.key === 'E') {
-				if (this.djBartek.inRange(this.camera.position)) {
+				// Voertuigen eerst: uitstappen als je vliegt, instappen als je ernaast staat
+				if (this.player.flying) {
+					this.exitVehicle();
+				} else if (this.tryOpenElevatorMenu()) {
+					// Hans floor picker — frees mouse without Esc
+				} else if (
+					!this.possessId && this.freeMove
+					&& this.drone.distanceTo(this.camera.position) < 3.2
+				) {
+					this.boardDrone();
+				} else if (
+					!this.possessId && this.freeMove && this.heli.boardable
+					&& this.heli.distanceTo(this.camera.position) < 4.5
+				) {
+					this.boardHeli();
+				} else if (this.djBartek.inRange(this.camera.position)) {
 					void this.openDjBooth();
 				} else {
 					void this.talkToShopkeeper();
 				}
 			}
+			// B = bewoners-dashboard (shoppers + vaste cast)
 			if (e.key === 'b' || e.key === 'B') {
-				// Jump cue to Bartek
-				this.ui.setStatus('→ DJ Bartek bij de west-trap (−20, −6)');
+				this.peopleUi.toggle();
+				if (this.peopleUi.isOpen) {
+					// Force immediate fill so you don't stare at empty for 0.5s
+					this.atmosphere.americans.getPeopleSnapshot(
+						this.camera.position,
+						this.peopleRows,
+					);
+					this.peopleUi.update(this.peopleRows, this.buildCastRows());
+					this.ui.setStatus('📋 Bewoners-dashboard · B sluiten · 👁 = guest view');
+				} else {
+					this.ui.setStatus('Dashboard dicht');
+				}
 			}
 		});
 
@@ -345,6 +470,7 @@ export class App {
 			spatial.ensure();
 			this.prayer.ensureAudio();
 			this.protest.ensureAudio();
+			this.cleaner.ensureAudio();
 			// Resume DJ track after HMR / refresh (needs a user gesture for autoplay)
 			void this.djPlayer.restoreIfNeeded().then((ok) => {
 				if (ok && !this.restoredFromSave) {
@@ -540,7 +666,84 @@ export class App {
 			floor: 'atrium',
 		});
 
+		rows.push({
+			icon: '🚁',
+			name: 'PRAIRIE 1',
+			doing: this.heli.statusLine,
+			floor: 'dak',
+		});
+
+		rows.push({
+			icon: '🚕',
+			name: 'Passagiersdrone',
+			doing: this.drone.statusLine,
+			floor: this.player.flying ? 'lucht' : 'V0',
+		});
+
 		return rows;
+	}
+
+	/** E op het dak naast PRAIRIE 1: jij aan de stick. */
+	private boardHeli(): void {
+		this.player.releaseLook();
+		this.vehicle = 'heli';
+		this.player.flightProfile = 'heli';
+		this.player.flying = true;
+		// eerst in de cockpit gaan zitten, dán pas volgt de heli de camera
+		const seat = this.heli.getSeatPosition();
+		this.camera.position.copy(seat);
+		this.heli.board();
+		this.player.syncFromCamera();
+		this.ui.setStatus(
+			'🚁 PRAIRIE 1 · Space = collective omhoog · Shift = dalen · WASD vliegen · E = uitstappen',
+		);
+	}
+
+	/** E naast de drone: instappen → fly-mode. */
+	private boardDrone(): void {
+		this.player.releaseLook();
+		this.drone.board();
+		this.vehicle = 'drone';
+		this.player.flightProfile = 'drone';
+		this.player.flying = true;
+		// camera in het stoeltje
+		this.camera.position.set(
+			this.drone.parkPos.x,
+			this.drone.parkPos.y + 1.1,
+			this.drone.parkPos.z,
+		);
+		this.player.syncFromCamera();
+		this.ui.setStatus(
+			'🛸 DRONE · Space = stijgen · Shift = dalen · WASD vliegen · door het atrium-gat de stad in · E = uitstappen',
+		);
+	}
+
+	/** E tijdens de vlucht: uitstappen. Drone parkeert; heli vliegt zelf terug. */
+	private exitVehicle(): void {
+		const wasHeli = this.vehicle === 'heli';
+		this.vehicle = null;
+		this.player.flying = false;
+		this.player.flightProfile = 'drone';
+		const p = this.camera.position;
+
+		if (wasHeli) {
+			// PRAIRIE 1 keert op de automaat terug naar het pad; jij valt eruit —
+			// de zwaartekracht en groundHeightAt vangen je op
+			this.heli.release();
+			this.player.syncFromCamera();
+			this.ui.setStatus('🚁 Uitgestapt — PRAIRIE 1 vliegt zelf terug naar het pad');
+			return;
+		}
+
+		const ground = Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5
+			? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3)
+			: 0;
+		this.drone.parkAt(new THREE.Vector3(p.x, ground, p.z));
+		// speler stapt er net naast uit
+		p.x += 1.2;
+		p.y = ground + 1.68;
+		this.player.syncFromCamera();
+		this.ui.setStatus('Uitgestapt — de drone wacht hier op je (E)');
 	}
 
 	private togglePossess(force?: boolean): void {
@@ -861,7 +1064,7 @@ export class App {
 		if (store.id === 'helipad') return 'Geheime trap · dak · helipad 🚁';
 		if (store.id === 'secret_stairs') return 'Service trap V1 → dak';
 		if (store.id === 'toilets') return 'Begane grond · west · ♂♀';
-		if (store.id === 'prayer') return 'Begane grond · west · stilte';
+		if (store.id === 'prayer') return 'Begane grond · west · gebedsmuziek · Allahu Akbar';
 		if (store.nodeId === 'spaceship') {
 			return 'Loopband · roltrap · level 1 · aankomst';
 		}
@@ -1027,6 +1230,120 @@ export class App {
 	 * Walls are the controller's job now; this only stops you standing inside Brad.
 	 * `climb` keeps the escalator/stairs volumes walkable.
 	 */
+	/**
+	 * Latch onto the glass elevator once you're in the cabin near the floor.
+	 * Menu is NOT auto-shown — press E while looking at Hans / knoppen.
+	 * Lift stays put while you're aboard (no auto-cycle).
+	 */
+	private updateElevatorRide(): void {
+		if (!this.freeMove || !this.player.enabled || this.possessId !== null || this.player.flying) {
+			this.elevRiding = false;
+			this.player.setElevatorRide(null);
+			this.elevUi?.hide();
+			this.elevator.holdForPassenger(false);
+			return;
+		}
+		const inXZ = this.elevator.contains(
+			this.camera.position.x,
+			this.camera.position.z,
+			0.05,
+		);
+		const cabinY = this.elevator.cabinFloorY;
+		const dy = Math.abs(this.player.feetHeight - cabinY);
+
+		if (this.elevRiding) {
+			if (!inXZ) {
+				// Walked out the door — free the lift for auto-cycle
+				this.elevRiding = false;
+				this.player.setElevatorRide(null);
+				this.elevUi.hide();
+				this.elevator.holdForPassenger(false);
+			} else {
+				this.player.setElevatorRide(cabinY);
+				// Stay put until player requests a floor (or leaves)
+				if (!this.elevator.isMoving) {
+					this.elevator.holdForPassenger(true);
+				}
+				// Hide menu if we started moving; keep mouse alone unless menu open
+				if (this.elevator.isMoving && this.elevUi.isOpen) {
+					this.elevUi.hide();
+				}
+			}
+			return;
+		}
+
+		// Board silently — no popup, no focus steal
+		if (inXZ && dy < 1.8) {
+			this.elevRiding = true;
+			this.player.setElevatorRide(cabinY);
+			this.elevator.holdForPassenger(true);
+			this.ui.setStatus('🛗 In de lift · kijk Hans/paneel · E = kies verdieping');
+		} else {
+			this.player.setElevatorRide(null);
+			if (this.elevUi.isOpen) this.elevUi.hide();
+		}
+	}
+
+	/**
+	 * E on elevator controls:
+	 * - Outside call (look or stand next to shaft) → summon cabin to THIS floor
+	 * - Inside Hans / panel → destination menu + free mouse
+	 */
+	private tryOpenElevatorMenu(): boolean {
+		if (!this.freeMove || this.possessId !== null || this.player.flying) return false;
+		const hit = this.elevator.getLookHit(this.camera, 10);
+		const inCab = this.elevator.contains(
+			this.camera.position.x,
+			this.camera.position.z,
+			0.2,
+		);
+		const names = ['P1 garage', 'begane grond', 'V1', 'dak'];
+
+		const distXZ = Math.hypot(
+			this.camera.position.x - this.elevator.pos.x,
+			this.camera.position.z - this.elevator.pos.z,
+		);
+		const floorHere = this.elevatorFloorFromY(this.player.feetHeight);
+		// Dak has a second call pedestal ~12 m toward the helipad — wider radius
+		const onRoof = floorHere === 3;
+		const nearShaft = distXZ < (onRoof ? 14 : 4.5);
+
+		// Inside Hans / panel → menu
+		if (hit?.kind === 'hans' || hit?.kind === 'panel' || (inCab && hit?.kind === 'call')) {
+			if (this.elevator.isMoving) {
+				this.ui.setStatus('🛗 Even wachten — lift is onderweg');
+				return true;
+			}
+			this.player.releaseLook();
+			this.elevator.holdForPassenger(true);
+			this.elevUi.show(this.elevator.currentStop);
+			this.ui.setStatus('🛗 Hans: kies een verdieping');
+			return true;
+		}
+
+		// Outside call button OR proximity on landing
+		if (hit?.kind === 'call' || (nearShaft && !inCab && floorHere !== null)) {
+			const floorIdx = hit?.kind === 'call' && hit.floorIdx !== undefined
+				? hit.floorIdx
+				: floorHere!;
+			const floorName = names[floorIdx] ?? '…';
+			this.elevator.callToFloor(floorIdx);
+			this.ui.setStatus(`🛗 Hans komt naar ${floorName} — even wachten`);
+			return true;
+		}
+
+		return false;
+	}
+
+	/** Map feet Y to elevator stop index */
+	private elevatorFloorFromY(feetY: number): number | null {
+		if (feetY < -2) return 0; // P1
+		if (feetY < 3) return 1; // V0
+		if (feetY < 10) return 2; // V1
+		if (feetY >= 10) return 3; // dak
+		return null;
+	}
+
 	private pushPlayerFromSims(minDist: number): void {
 		const cam = this.camera.position;
 		const playerFloor = cam.y < 4 ? 0 : 6;
@@ -1045,7 +1362,29 @@ export class App {
 			cam.x = sep.ax;
 			cam.z = sep.az;
 		}
-		const r = this.world.resolveCircle(cam.x, cam.z, cam.y, PLAYER_RADIUS, 3, true);
+		// Wei Chen scrubber is solid — don't walk through the cart
+		if (cam.y < 4) {
+			const sep = this.world.separate(
+				cam.x,
+				cam.z,
+				this.cleaner.pos.x,
+				this.cleaner.pos.z,
+				PLAYER_RADIUS + this.cleaner.radius,
+			);
+			cam.x = sep.ax;
+			cam.z = sep.az;
+		}
+		// Pass airborne so we don't void-eject mid-balcony-jump
+		const airborne = !this.player.isGrounded;
+		const r = this.world.resolveCircle(
+			cam.x,
+			cam.z,
+			this.player.feetHeight,
+			PLAYER_RADIUS,
+			3,
+			true,
+			airborne,
+		);
 		cam.x = r.x;
 		cam.z = r.z;
 	}
@@ -1054,12 +1393,19 @@ export class App {
 		requestAnimationFrame(this.animate);
 		const dt = Math.min(this.clock.getDelta(), 0.05);
 
-		this.atmosphere.update(dt);
+		this.atmosphere.update(dt, this.camera.position);
 		this.pathMesh.update(dt);
 		this.thief.update(dt);
 		this.beardCave.update(dt);
-		this.protest.update(dt);
+		this.protest.update(dt, this.camera.position);
+		this.travel.update(dt);
+		this.elevator.update(dt, this.camera.position);
+		// Board / stay latched on elevator BEFORE player physics so ground snap
+		// doesn't yank you out mid-shaft (that was the stutter + strand bug).
+		this.updateElevatorRide();
+
 		this.rat.update(dt);
+		this.cleaner.update(dt, this.camera.position);
 		// Quadratic spatial listener follows camera
 		spatial.updateListener(
 			this.camera.position.x,
@@ -1084,17 +1430,23 @@ export class App {
 			}
 		} else if (this.freeMove && this.player.enabled) {
 			this.player.update(dt);
-			// The loopband carries you while you stand on it
-			if (this.player.isGrounded) {
-				const belt = this.walkways.beltVelocityAt(
-					this.camera.position.x,
-					this.player.feetHeight,
-					this.camera.position.z,
-				);
-				if (belt) this.player.nudge(belt.x * dt, belt.z * dt);
+			// Keep glued after physics (belt/sim push can nudge feet)
+			if (this.elevRiding) {
+				this.player.setElevatorRide(this.elevator.cabinFloorY);
 			}
-			// Soft separate from nearby sims so you don't stand inside Brad
-			this.pushPlayerFromSims(0.9);
+			// Lopend: loopband-drift + niet ín Brad staan. Vliegend: skip beide —
+			// de muur-push zou je op hoogte tegen onzichtbare wanden drukken.
+			if (!this.player.flying) {
+				if (this.player.isGrounded && !this.elevRiding) {
+					const belt = this.walkways.beltVelocityAt(
+						this.camera.position.x,
+						this.player.feetHeight,
+						this.camera.position.z,
+					);
+					if (belt) this.player.nudge(belt.x * dt, belt.z * dt);
+				}
+				if (!this.elevRiding) this.pushPlayerFromSims(0.9);
+			}
 		} else {
 			// Cinematic: the tour walks the authored path, collision must not shove it
 			this.director.update(dt);
@@ -1117,6 +1469,19 @@ export class App {
 		this.monkey.setSimPositions(this.simPositions);
 		this.monkey.update(dt);
 		this.catwalk.update(dt, this.clock.elapsedTime);
+		if (this.vehicle === 'heli') this.heli.followCamera(this.camera, dt);
+		else this.heli.update(dt);
+		this.drone.followCamera(this.camera, dt);
+
+		// E-hint als je naast de geparkeerde drone staat
+		const nearDrone = !this.player.flying && this.freeMove
+			&& this.drone.distanceTo(this.camera.position) < 3.2;
+		if (nearDrone && !this.nearDroneHint) {
+			this.nearDroneHint = true;
+			this.ui.setStatus('🛸 Passagiersdrone — druk E om in te stappen');
+		} else if (!nearDrone && this.nearDroneHint) {
+			this.nearDroneHint = false;
+		}
 
 		// Bewoners-dashboard: refresh 2×/s, only while open
 		this.peopleT += dt;
@@ -1145,6 +1510,12 @@ export class App {
 		this.nearHudT += dt;
 		if (this.nearHudT > 0.35) {
 			this.nearHudT = 0;
+			// Bartek's mix zakt weg met de afstand tot de booth (kwadratisch),
+			// net als de gebedsruimte-loop. Dichtbij = vol, andere kant mall = zacht.
+			{
+				const bd = this.camera.position.distanceTo(this.djBartek.pos);
+				this.djPlayer.setDistanceGain(1 / (1 + 0.012 * bd * bd));
+			}
 			const near = this.atmosphere.americans.getSimsNear(this.camera.position, 5.5);
 			let gained = false;
 			for (const sim of near) {
@@ -1184,6 +1555,56 @@ export class App {
 				);
 			} else if (dProt >= 9) {
 				this.nearProtestHint = false;
+			}
+
+			// Island Hop Travel — next to juwelen cave
+			const dTravel = this.camera.position.distanceTo(this.travel.pos);
+			if (dTravel < 6 && !this.nearTravelHint) {
+				this.nearTravelHint = true;
+				this.ui.setStatus(
+					'🌴 ISLAND HOP · Epstein Island charters · flights suspended · NDA desk',
+				);
+			} else if (dTravel >= 8) {
+				this.nearTravelHint = false;
+			}
+
+			// Gebedsruimte — music + Allahu Akbar wall
+			const dPrayer = Math.hypot(
+				this.camera.position.x - this.prayer.pos.x,
+				this.camera.position.z - this.prayer.pos.z,
+			);
+			if (dPrayer < 7 && this.camera.position.y < 4 && !this.nearPrayerHint) {
+				this.nearPrayerHint = true;
+				this.ui.setStatus(
+					'🕌 GEBEDSRUIMTE · ambient gebedsmuziek · iedereen: Allahu Akbar',
+				);
+			} else if (dPrayer >= 10) {
+				this.nearPrayerHint = false;
+			}
+
+			// Glass elevator (+ dak: wide radius because call pedestals sit off-shaft)
+			const dElevXZ = Math.hypot(
+				this.camera.position.x - this.elevator.pos.x,
+				this.camera.position.z - this.elevator.pos.z,
+			);
+			const onRoofHint = this.player.feetHeight >= 10;
+			const elevHintR = onRoofHint ? 16 : 5;
+			const elevHintLeave = onRoofHint ? 20 : 7;
+			const inElev = this.elevator.contains(
+				this.camera.position.x,
+				this.camera.position.z,
+			);
+			if ((dElevXZ < elevHintR || inElev) && !this.nearElevHint) {
+				this.nearElevHint = true;
+				this.ui.setStatus(
+					inElev
+						? '🛗 GLAZEN LIFT · kijk Hans · E = kies verdieping'
+						: onRoofHint
+							? '🟢 GROENE KNOP / gele streep · E = roep Hans naar het dak'
+							: '🛗 GLAZEN LIFT · gele/blauwe knop of E naast schacht = roep lift',
+				);
+			} else if (dElevXZ >= elevHintLeave && !inElev) {
+				this.nearElevHint = false;
 			}
 		}
 

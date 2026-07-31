@@ -9,7 +9,8 @@ import * as THREE from 'three';
 export class Restrooms {
 	readonly group = new THREE.Group();
 	/** Center of the WC block (world) */
-	readonly pos = new THREE.Vector3(-28, 0, 15.5);
+	/** West wall utility strip — clear of south-store fronts */
+	readonly pos = new THREE.Vector3(-30, 0, 12);
 	private materials: THREE.Material[] = [];
 
 	constructor() {

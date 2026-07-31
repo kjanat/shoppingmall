@@ -6,6 +6,16 @@ const FLOOR_H = 6;
 const MALL_W = 72;
 const MALL_D = 48;
 
+/** Tiny stable hash for per-staff variety */
+function hashStr(s: string): number {
+	let h = 2166136261;
+	for (let i = 0; i < s.length; i++) {
+		h ^= s.charCodeAt(i);
+		h = Math.imul(h, 16777619);
+	}
+	return h >>> 0;
+}
+
 function makeTextTexture(
 	lines: string[],
 	opts: {
@@ -148,13 +158,17 @@ export class MallBuilder {
 		f1Shape.lineTo(-MALL_W / 2, -MALL_D / 2);
 
 		const rectHole = (shape: THREE.Shape, cx: number, cz: number, hw: number, hd: number) => {
+			// rotateX(-π/2) maps shape-y → world −z, so cut at NEGATED z. Without
+			// this every asymmetric hole landed mirrored: the stair openings sat on
+			// the wrong side of the mall while the flights pierced solid slab. The
+			// atrium hole at (0,0) mirrored onto itself, which is why it "worked".
+			const sy = -cz;
 			const h = new THREE.Path();
-			// Shape XZ after rotateX: path uses (x,z) as (x,y) of shape
-			h.moveTo(cx - hw, cz - hd);
-			h.lineTo(cx + hw, cz - hd);
-			h.lineTo(cx + hw, cz + hd);
-			h.lineTo(cx - hw, cz + hd);
-			h.lineTo(cx - hw, cz - hd);
+			h.moveTo(cx - hw, sy - hd);
+			h.lineTo(cx + hw, sy - hd);
+			h.lineTo(cx + hw, sy + hd);
+			h.lineTo(cx - hw, sy + hd);
+			h.lineTo(cx - hw, sy - hd);
 			shape.holes.push(h);
 		};
 		const addRectHole = (cx: number, cz: number, hw: number, hd: number) => rectHole(f1Shape, cx, cz, hw, hd);
@@ -172,13 +186,17 @@ export class MallBuilder {
 		// East escalator: incline z=+8 → z=-2, so open z -2.6 … +1.6
 		addRectHole(22, -0.5, 1.7, 2.1);
 
+		// USA-dikke plaat (0.45), en de TOP ligt op FLOOR_H: extrude gaat +Y, dus
+		// de mesh zakt een plaatdikte. Voorheen stak de plaat 6.0→6.3 omhoog en
+		// liep iedereen op verdieping 1 tot de enkels in het beton.
+		const SLAB_T = 0.45;
 		const f1Geo = new THREE.ExtrudeGeometry(f1Shape, {
-			depth: 0.3,
+			depth: SLAB_T,
 			bevelEnabled: false,
 		});
 		f1Geo.rotateX(-Math.PI / 2);
 		const floor1 = new THREE.Mesh(f1Geo, floor1Mat);
-		floor1.position.y = FLOOR_H;
+		floor1.position.y = FLOOR_H - SLAB_T;
 		floor1.receiveShadow = true;
 		this.group.add(floor1);
 
@@ -227,8 +245,10 @@ export class MallBuilder {
 		rectHole(ceilShape, 0, 0, aw / 2, ad / 2);
 		// Secret stairs run (26, y6, z14) → (26, roof, z18); hole matches the ramp
 		rectHole(ceilShape, 26, 16.25, 1.5, 2.6);
+		// Glass elevator shaft (16, −8) — hatch so cabin + dak-callstation sit on open roof
+		rectHole(ceilShape, 16, -8, 1.45, 1.45);
 		const ceilGeo = new THREE.ExtrudeGeometry(ceilShape, {
-			depth: 0.25,
+			depth: 0.4, // USA dikte — het dakdek (13.95) rust hier bovenop
 			bevelEnabled: false,
 		});
 		ceilGeo.rotateX(-Math.PI / 2);
@@ -717,17 +737,25 @@ export class MallBuilder {
 		interior.position.set(0, h / 2, backZ + wallT / 2 + 0.02);
 		g.add(interior);
 
-		// Counter + shopkeeper in OPEN floor area (visible from door)
+		// Counter + 5 guys on the floor (owner + 4 staff)
+		const counterW = Math.min(w * 0.78, 5.2);
 		const counter = new THREE.Mesh(
-			new THREE.BoxGeometry(Math.min(w * 0.5, 2.8), 0.85, 0.5),
+			new THREE.BoxGeometry(counterW, 0.85, 0.5),
 			this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 })),
 		);
 		counter.position.set(0, 0.42, -roomDepth * 0.55);
 		g.add(counter);
 
-		const keeper = this.makeShopkeeper(store);
-		keeper.position.set(0, 0, -roomDepth * 0.68);
-		g.add(keeper);
+		const crew = 5;
+		const span = Math.min(counterW * 0.88, 4.6);
+		for (let i = 0; i < crew; i++) {
+			const t = i / (crew - 1);
+			const x = (t - 0.5) * span;
+			const guy = this.makeShopkeeper(store, i);
+			// Behind counter, facing storefront (+Z)
+			guy.position.set(x, 0, -roomDepth * 0.68);
+			g.add(guy);
+		}
 
 		// OPEN signs
 		const openCanvas = document.createElement('canvas');
@@ -751,12 +779,18 @@ export class MallBuilder {
 		g.add(openSign);
 
 		// Bright interior lights so stock + keeper pop
-		const shopLight = new THREE.PointLight(0xfff4e0, 8, 14, 1.6);
-		shopLight.position.set(0, h - 0.6, -roomDepth * 0.4);
-		g.add(shopLight);
-		const shopLight2 = new THREE.PointLight(0xffffff, 4, 10, 2);
-		shopLight2.position.set(0, 2.2, -roomDepth * 0.2);
-		g.add(shopLight2);
+		// GEEN PointLights per winkel meer: 19 winkels × 2 lampen = ~38 lichten,
+		// en bij forward rendering rekent élk object met ál die lichten mee — dat
+		// was de grootste framekiller. Een emissive plafondpaneel leest hetzelfde.
+		const lightPanel = new THREE.Mesh(
+			new THREE.PlaneGeometry(w * 0.6, roomDepth * 0.5),
+			this.track(
+				new THREE.MeshBasicMaterial({ color: 0xfff4e0, toneMapped: false }),
+			),
+		);
+		lightPanel.rotation.x = Math.PI / 2;
+		lightPanel.position.set(0, h - 0.15, -roomDepth * 0.4);
+		g.add(lightPanel);
 
 		// Sign board — bright MeshBasic so names always readable
 		const lines = store.name.split('\n');
@@ -828,17 +862,57 @@ export class MallBuilder {
 		return g;
 	}
 
-	private makeShopkeeper(store: StoreDef): THREE.Group {
+	/**
+	 * One of five floor staff. Index 0 = named owner (`keeper_${id}` for ShopVoice).
+	 * 1–4 = extra guys with store-branded uniforms.
+	 */
+	private makeShopkeeper(store: StoreDef, index = 0): THREE.Group {
 		const owner = getOwner(store.id);
+		const isBoss = index === 0;
 		const g = new THREE.Group();
-		g.name = `keeper_${store.id}`;
-		g.userData.ownerName = owner?.name ?? 'Verkoper';
-		g.userData.ownerLines = owner?.lines ?? ['Thanks!'];
-		g.userData.ownerMeaning = owner?.meaning ?? 'Houdt de winkel draaiende';
+		g.name = isBoss ? `keeper_${store.id}` : `staff_${store.id}_${index}`;
 
-		const skinCol = owner?.skin ?? 0xe8c4a8;
-		const shirtCol = owner?.shirt ?? new THREE.Color(store.color).getHex();
-		const hairCol = owner?.hair ?? 0x2c1810;
+		// Deterministic variety from store id + index
+		const seed = hashStr(`${store.id}:${index}`);
+		const skins = [0xe8c4a8, 0xf5c9a8, 0xd4a574, 0xc68642, 0x8d5524, 0xffdbac];
+		const hairs = [0x1a1a1a, 0x2c1810, 0xc4a35a, 0x4a3728, 0xf5f5f5, 0x3e2723];
+		const staffNames = [
+			'Jan',
+			'Kevin',
+			'Mo',
+			'Daan',
+			'Luca',
+			'Sam',
+			'Omar',
+			'Nick',
+			'Bram',
+			'Timo',
+			'Jay',
+			'Rico',
+		];
+		const staffTitles = ['Verkoper', 'Kassa', 'Vulploeg', 'Floor', 'Stagiair'];
+
+		const skinCol = isBoss
+			? (owner?.skin ?? 0xe8c4a8)
+			: skins[seed % skins.length];
+		const shirtCol = isBoss
+			? (owner?.shirt ?? new THREE.Color(store.color).getHex())
+			// staff: store color, slightly varied brightness
+			: new THREE.Color(store.color)
+				.offsetHSL(0, 0, ((seed % 5) - 2) * 0.04)
+				.getHex();
+		const hairCol = isBoss
+			? (owner?.hair ?? 0x2c1810)
+			: hairs[(seed * 3) % hairs.length];
+
+		g.userData.ownerName = isBoss
+			? (owner?.name ?? 'Verkoper')
+			: staffNames[(seed + index) % staffNames.length];
+		g.userData.ownerLines = owner?.lines ?? ['Thanks!'];
+		g.userData.ownerMeaning = isBoss
+			? (owner?.meaning ?? 'Houdt de winkel draaiende')
+			: 'Werkt hier gewoon';
+
 		const skin = this.track(
 			new THREE.MeshStandardMaterial({ color: skinCol, roughness: 0.85 }),
 		);
@@ -851,42 +925,77 @@ export class MallBuilder {
 		const hairMat = this.track(
 			new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 }),
 		);
+		const pants = this.track(
+			new THREE.MeshStandardMaterial({
+				color: isBoss ? 0x1a1a2e : 0x2c3e50,
+				roughness: 0.85,
+			}),
+		);
 
-		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 4, 8), uni);
-		body.position.y = 1.05;
-		g.add(body);
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), skin);
-		head.position.y = 1.55;
-		g.add(head);
-		// Hair cap
-		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 10), hairMat);
-		hair.position.y = 1.68;
+		// Slight size variety so the crew doesn't look cloned
+		const scale = isBoss ? 1 : 0.9 + (seed % 7) * 0.02;
+		const bodyG = new THREE.Group();
+
+		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.4, 3, 6), pants);
+		const legR = legL.clone();
+		legL.position.set(-0.1, 0.38, 0);
+		legR.position.set(0.1, 0.38, 0);
+		bodyG.add(legL, legR);
+
+		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 8), uni);
+		body.position.y = 1.0;
+		bodyG.add(body);
+
+		// Store name tag on chest
+		const badge = new THREE.Mesh(
+			new THREE.BoxGeometry(0.18, 0.1, 0.02),
+			this.track(
+				new THREE.MeshStandardMaterial({
+					color: store.accent ? new THREE.Color(store.accent).getHex() : 0xffffff,
+					roughness: 0.5,
+				}),
+			),
+		);
+		badge.position.set(0.12, 1.15, 0.18);
+		bodyG.add(badge);
+
+		const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), skin);
+		head.position.y = 1.48;
+		bodyG.add(head);
+		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 10), hairMat);
+		hair.position.y = 1.6;
 		hair.scale.set(1, 0.55, 1);
-		g.add(hair);
+		bodyG.add(hair);
 
-		// Simple black eyes + mouth (same language as guests)
 		const eyeMat = this.track(new THREE.MeshBasicMaterial({ color: 0x111111 }));
-		const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
+		const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 8), eyeMat);
 		const eyeR = eyeL.clone();
-		eyeL.position.set(-0.06, 1.58, 0.16);
-		eyeR.position.set(0.06, 1.58, 0.16);
-		g.add(eyeL, eyeR);
-		const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), eyeMat);
-		mouth.position.set(0, 1.48, 0.17);
+		eyeL.position.set(-0.055, 1.5, 0.15);
+		eyeR.position.set(0.055, 1.5, 0.15);
+		bodyG.add(eyeL, eyeR);
+		const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), eyeMat);
+		mouth.position.set(0, 1.4, 0.15);
 		mouth.scale.set(1.4, 0.45, 0.5);
-		g.add(mouth);
+		bodyG.add(mouth);
 
-		const name = owner?.name ?? 'Verkoper';
-		const title = owner?.title ?? 'Shop owner';
-		const meaning = owner?.meaning ?? '';
+		bodyG.scale.setScalar(scale);
+		g.add(bodyG);
+
+		const name = isBoss
+			? (owner?.name ?? 'Verkoper')
+			: (g.userData.ownerName as string);
+		const title = isBoss
+			? (owner?.title ?? 'Shop owner')
+			: staffTitles[index % staffTitles.length];
+		const meaning = isBoss ? (owner?.meaning ?? '') : `Crew #${index + 1}`;
+
 		const pc = document.createElement('canvas');
 		pc.width = 320;
 		pc.height = 96;
 		const pctx = pc.getContext('2d')!;
 		pctx.fillStyle = '#0f172a';
 		pctx.fillRect(0, 0, 320, 96);
-		// accent bar for named owners
-		pctx.fillStyle = owner ? '#4ade80' : '#64748b';
+		pctx.fillStyle = isBoss && owner ? '#4ade80' : '#38bdf8';
 		pctx.fillRect(0, 0, 6, 96);
 		pctx.fillStyle = '#f8fafc';
 		pctx.font = 'bold 20px system-ui,sans-serif';
@@ -896,17 +1005,17 @@ export class MallBuilder {
 		pctx.font = '14px system-ui,sans-serif';
 		pctx.fillText(title.slice(0, 24), 160, 50);
 		if (meaning) {
-			pctx.fillStyle = '#a78bfa';
+			pctx.fillStyle = isBoss ? '#a78bfa' : '#64748b';
 			pctx.font = '12px system-ui,sans-serif';
 			pctx.fillText(meaning.slice(0, 36), 160, 74);
 		}
 		const ptex = new THREE.CanvasTexture(pc);
 		ptex.colorSpace = THREE.SRGBColorSpace;
 		const plate = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.35, 0.4),
+			new THREE.PlaneGeometry(1.2, 0.36),
 			this.track(new THREE.MeshBasicMaterial({ map: ptex, toneMapped: false })),
 		);
-		plate.position.set(0, 2.15, 0.12);
+		plate.position.set(0, 2.05 * scale, 0.12);
 		g.add(plate);
 		return g;
 	}

@@ -71,7 +71,7 @@ export class DJPlayer {
 		if (!list.length) return false;
 		// Map back to full playlist index
 		const fullIdx = this.playlist.findIndex((t) => t.file === list[idx].file);
-		this.audio.volume = Math.max(0.05, Math.min(1, p.volume ?? 0.55));
+		this.setVolume(Math.max(0.05, Math.min(1, p.volume ?? 0.55)));
 		await this.playIndex(fullIdx >= 0 ? fullIdx : 0, p.time ?? 0, p.playing !== false);
 		return true;
 	}
@@ -155,9 +155,27 @@ export class DJPlayer {
 		void this.playIndex(this.index - 1);
 	}
 
+	/** Door de gebruiker gekozen volume — afstand schaalt hier bovenop. */
+	private baseVolume = 0.55;
+	private distanceGain = 1;
+
 	setVolume(v: number): void {
-		this.audio.volume = Math.max(0, Math.min(1, v));
+		this.baseVolume = Math.max(0, Math.min(1, v));
+		this.applyVolume();
 		this.checkpoint();
+	}
+
+	/**
+	 * Afstands-falloff vanaf de DJ-booth: dichtbij = vol, verderop zakt de mix
+	 * weg. App voedt dit een paar keer per seconde met de luisteraarpositie.
+	 */
+	setDistanceGain(g: number): void {
+		this.distanceGain = Math.max(0.02, Math.min(1, g));
+		this.applyVolume();
+	}
+
+	private applyVolume(): void {
+		this.audio.volume = Math.max(0, Math.min(1, this.baseVolume * this.distanceGain));
 	}
 
 	async requestSong(query: string): Promise<{ ok: boolean; message: string; file?: string }> {
@@ -213,7 +231,9 @@ export class DJPlayer {
 				index: this.index,
 				time: this.audio.currentTime || 0,
 				playing: this.playing && !this.audio.paused,
-				volume: this.audio.volume,
+				// baseVolume, niet audio.volume: anders slaat een checkpoint ver van
+				// de booth het weggezakte afstandsvolume op als jouw voorkeur
+				volume: this.baseVolume,
 			});
 		}, 400);
 	}

@@ -1,6 +1,18 @@
 import { type ControlSettings, DEFAULT_SETTINGS } from '../player/Controls';
 
 const STORE_KEY = 'mallsim.controls.v1';
+const QUALITY_KEY = 'mallsim.quality.v1';
+
+export type QualityLevel = 'laag' | 'middel' | 'hoog';
+
+function loadQuality(): QualityLevel {
+	try {
+		const q = localStorage.getItem(QUALITY_KEY);
+		return q === 'laag' || q === 'hoog' ? q : 'middel';
+	} catch {
+		return 'middel';
+	}
+}
 
 /**
  * Besturing-instellingen: mouse-look on/off, tank-steering, left-handed mouse.
@@ -13,6 +25,16 @@ export class SettingsPanel {
 	private open = false;
 	private settings: ControlSettings;
 	private onChange: (s: ControlSettings) => void;
+
+	/** Grafische kwaliteit — de Pi trekt 'hoog' niet met schaduwen aan. */
+	private quality: QualityLevel = loadQuality();
+	private onQuality: ((q: QualityLevel) => void) | null = null;
+
+	/** App meldt zich hier aan; krijgt meteen de opgeslagen stand. */
+	bindQuality(fn: (q: QualityLevel) => void): void {
+		this.onQuality = fn;
+		fn(this.quality);
+	}
 
 	constructor(root: HTMLElement, onChange: (s: ControlSettings) => void) {
 		this.root = root;
@@ -95,6 +117,18 @@ export class SettingsPanel {
           <input type="checkbox" id="set-invert" />
         </label>
 
+        <label class="settings-row">
+          <span>
+            <b>Grafische kwaliteit</b>
+            <small>Laag = geen schaduwen, scherpte omlaag — voor de Pi. Hoog = alles aan.</small>
+          </span>
+          <select id="set-quality">
+            <option value="laag">Laag</option>
+            <option value="middel">Middel</option>
+            <option value="hoog">Hoog</option>
+          </select>
+        </label>
+
         <div class="settings-keys">
           WASD lopen · Shift rennen · Space springen · Q/E draaien · R/F kijken ·
           M kaart · Esc muis los
@@ -108,6 +142,18 @@ export class SettingsPanel {
 
 		q('#settings-btn').addEventListener('click', () => this.toggle());
 		q('#settings-close').addEventListener('click', () => this.toggle(false));
+		const qualitySel = q<HTMLSelectElement>('#set-quality');
+		qualitySel.value = this.quality;
+		qualitySel.addEventListener('change', () => {
+			this.quality = (qualitySel.value as QualityLevel) ?? 'middel';
+			try {
+				localStorage.setItem(QUALITY_KEY, this.quality);
+			} catch {
+				/* private mode */
+			}
+			this.onQuality?.(this.quality);
+		});
+
 		q('#settings-reset').addEventListener('click', () => {
 			this.settings = { ...DEFAULT_SETTINGS };
 			this.sync();

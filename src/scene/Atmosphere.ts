@@ -15,8 +15,8 @@ export class Atmosphere {
 		this.createBillboards();
 	}
 
-	update(dt: number): void {
-		this.americans.update(dt);
+	update(dt: number, playerPos?: THREE.Vector3): void {
+		this.americans.update(dt, playerPos);
 	}
 
 	private createBillboards(): void {

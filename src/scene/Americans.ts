@@ -263,6 +263,12 @@ export class Americans {
 	private gossipBusy = false;
 	/** Don't spam the player with roasts */
 	private roastPlayerCd = 5;
+	/** Player camera — only gossip / bubbles on this floor nearby */
+	private listener: THREE.Vector3 | null = null;
+	/** Max distance for visible speech bubbles */
+	private static readonly SPEECH_RANGE = 16;
+	/** Max distance for LLM gossip (same floor only) */
+	private static readonly GOSSIP_RANGE = 12;
 
 	constructor(world: CollisionWorld, count = 20) {
 		this.world = world;
@@ -443,6 +449,7 @@ export class Americans {
 			'Yallah dansen!',
 		];
 		for (const s of this.sims) {
+			if (Math.abs(s.pos.y - worldPos.y) > 2.5) continue;
 			if (s.pos.distanceTo(worldPos) > radius) continue;
 			s.f.unhappiness = Math.max(0, s.f.unhappiness - 8);
 			s.f.mood = Math.random() > 0.4 ? 'hyped' : s.f.mood;
@@ -518,16 +525,19 @@ export class Americans {
 		if (this.audio.state === 'suspended') void this.audio.resume();
 	}
 
-	update(dt: number): void {
+	update(dt: number, playerPos?: THREE.Vector3): void {
+		if (playerPos) this.listener = playerPos;
 		if (this.dancing) {
 			for (const s of this.sims) {
 				this.tickDance(s, dt);
 				this.tickFace(s, dt);
+				this.cullSpeechVisibility(s);
 			}
 		} else {
 			for (const s of this.sims) {
 				this.tick(s, dt);
 				this.tickFace(s, dt);
+				this.cullSpeechVisibility(s);
 			}
 			this.resolveAgents();
 			this.tickGossip(dt);
@@ -535,6 +545,28 @@ export class Americans {
 		this.tickFarts(dt);
 		this.tickCoins(dt);
 		this.tickBubbles(dt);
+	}
+
+	/** Same floor + close enough that the player could actually read the bubble */
+	private isNearListener(pos: THREE.Vector3, range = Americans.SPEECH_RANGE): boolean {
+		const L = this.listener;
+		if (!L) return false;
+		if (Math.abs(pos.y - L.y) > 2.5) return false; // other floor
+		const dx = pos.x - L.x;
+		const dz = pos.z - L.z;
+		return dx * dx + dz * dz <= range * range;
+	}
+
+	/** Kill bubbles the player cannot see — no free floating text on other levels */
+	private cullSpeechVisibility(sim: Sim): void {
+		if (sim.speechLife <= 0) {
+			if (sim.speech.visible) sim.speech.visible = false;
+			return;
+		}
+		const ok = this.isNearListener(sim.pos, Americans.SPEECH_RANGE);
+		sim.speech.visible = ok;
+		(sim.speech.material as THREE.SpriteMaterial).visible = ok;
+		// Don't burn life while culled far away? Still tick down so they don't pile up.
 	}
 
 	/**
@@ -581,18 +613,37 @@ export class Americans {
 		return `${best.f.name}: ${line}`;
 	}
 
-	/** Nearby sims chat via OpenRouter (or local banter fallback) */
+	/**
+	 * Nearby sims chat via OpenRouter — ONLY pairs near the player on the same floor.
+	 * No LLM tokens for ghosts on other levels you cannot see.
+	 */
 	private tickGossip(dt: number): void {
 		this.gossipCd -= dt;
 		if (this.gossipCd > 0 || this.gossipBusy) return;
-		// Find a close pair on the same floor
+		const L = this.listener;
+		if (!L) {
+			this.gossipCd = 3;
+			return;
+		}
+
+		// Find a close pair near the player (same floor as player)
 		let best: [Sim, Sim] | null = null;
-		let bestD = 3.4;
+		let bestD = 3.2;
+		const range = Americans.GOSSIP_RANGE;
+		const range2 = range * range;
 		for (let i = 0; i < this.sims.length; i++) {
+			const a = this.sims[i];
+			if (Math.abs(a.pos.y - L.y) > 2.2) continue;
+			const adx = a.pos.x - L.x;
+			const adz = a.pos.z - L.z;
+			if (adx * adx + adz * adz > range2) continue;
 			for (let j = i + 1; j < this.sims.length; j++) {
-				const a = this.sims[i];
 				const b = this.sims[j];
 				if (Math.abs(a.pos.y - b.pos.y) > 2.2) continue;
+				if (Math.abs(b.pos.y - L.y) > 2.2) continue;
+				const bdx = b.pos.x - L.x;
+				const bdz = b.pos.z - L.z;
+				if (bdx * bdx + bdz * bdz > range2) continue;
 				// Don't interrupt if both already mid-speech bubble
 				if (a.speechLife > 0.8 && b.speechLife > 0.8) continue;
 				const d = a.pos.distanceTo(b.pos);
@@ -603,10 +654,10 @@ export class Americans {
 			}
 		}
 		if (!best) {
-			this.gossipCd = 2.5;
+			this.gossipCd = 3.5;
 			return;
 		}
-		this.gossipCd = 7 + Math.random() * 6;
+		this.gossipCd = 9 + Math.random() * 8;
 		const [sa, sb] = best;
 		// Brief pause so they "face" the chat
 		sa.wait = Math.max(sa.wait, 1.4);
@@ -627,12 +678,18 @@ export class Americans {
 			? 'koppel loopt hand in hand'
 			: bestD < 1.8
 			? 'bijna botsing in de gang'
-			: 'passeren in de mall';
+			: 'passeren in de mall (dicht bij speler)';
 		void fetchSimChat(persona(sa), persona(sb), ctx)
 			.then((ex) => {
-				this.sayLine(sa, ex.a, false);
-				// B answers a beat later
-				window.setTimeout(() => this.sayLine(sb, ex.b, false), 900);
+				// Re-check visibility — player may have left the floor mid-request
+				if (this.isNearListener(sa.pos, Americans.GOSSIP_RANGE + 4)) {
+					this.sayLine(sa, ex.a, false);
+				}
+				window.setTimeout(() => {
+					if (this.isNearListener(sb.pos, Americans.GOSSIP_RANGE + 4)) {
+						this.sayLine(sb, ex.b, false);
+					}
+				}, 900);
 			})
 			.finally(() => {
 				this.gossipBusy = false;
@@ -1376,14 +1433,19 @@ export class Americans {
 			f.unhappiness = Math.min(100, f.unhappiness + 2);
 		}
 
-		// Gibberish chatter
+		// Gibberish chatter — only near the player (no bubbles on other floors)
 		sim.gibberCd -= dt;
 		if (sim.speechLife > 0) {
 			sim.speechLife -= dt;
-			if (sim.speechLife <= 0) sim.speech.visible = false;
+			if (sim.speechLife <= 0) {
+				sim.speech.visible = false;
+				(sim.speech.material as THREE.SpriteMaterial).visible = false;
+			}
 		} else if (sim.gibberCd <= 0) {
-			this.sayGibberish(sim);
-			sim.gibberCd = 5 + Math.random() * 14;
+			sim.gibberCd = 6 + Math.random() * 16;
+			if (this.isNearListener(sim.pos, Americans.SPEECH_RANGE)) {
+				this.sayGibberish(sim);
+			}
 		}
 
 		if (sim.wait > 0) {
@@ -1702,8 +1764,12 @@ export class Americans {
 		this.bubbles.push({ mesh, life: 1.5, vel });
 	}
 
-	/** Speech bubble with real words (gossip / checkout) */
+	/** Speech bubble with real words (gossip / checkout) — skipped if not visible to player */
 	private sayLine(sim: Sim, line: string, checkout = false): void {
+		// Never paint / show / squeak for sims the player can't see
+		if (!this.isNearListener(sim.pos, Americans.SPEECH_RANGE + (checkout ? 6 : 0))) {
+			return;
+		}
 		const ctx = sim.speechCtx;
 		ctx.clearRect(0, 0, 280, 72);
 		ctx.fillStyle = 'rgba(255,255,255,0.96)';

@@ -1,0 +1,50 @@
+[
+	{
+		"id": "block_01",
+		"file": "/voices/wei/block_01.mp3",
+		"text": "让开！让开！你挡路了！",
+		"label": "让开！你挡路了！"
+	},
+	{
+		"id": "block_02",
+		"file": "/voices/wei/block_02.mp3",
+		"text": "喂！不要站在中间！",
+		"label": "喂！不要站在中间！"
+	},
+	{
+		"id": "block_03",
+		"file": "/voices/wei/block_03.mp3",
+		"text": "小心！地滑！走开走开！",
+		"label": "小心！地滑！走开！"
+	},
+	{
+		"id": "block_04",
+		"file": "/voices/wei/block_04.mp3",
+		"text": "我在拖地！让一下行不行？",
+		"label": "我在拖地！让一下！"
+	},
+	{
+		"id": "block_05",
+		"file": "/voices/wei/block_05.mp3",
+		"text": "哎！你挡着我的车了！",
+		"label": "你挡着我的车了！"
+	},
+	{
+		"id": "block_06",
+		"file": "/voices/wei/block_06.mp3",
+		"text": "拜托，让一让！我还要工作！",
+		"label": "拜托，让一让！"
+	},
+	{
+		"id": "block_07",
+		"file": "/voices/wei/block_07.mp3",
+		"text": "借过借过！清洁车来了！",
+		"label": "借过！清洁车来了！"
+	},
+	{
+		"id": "block_08",
+		"file": "/voices/wei/block_08.mp3",
+		"text": "你是看不见我吗？让开！",
+		"label": "你是看不见我吗？"
+	}
+]

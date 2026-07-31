@@ -144,7 +144,7 @@ export class KioskOverlay {
         <aside class="panel">
           <div class="panel-head">
             <h1>Waar wil je heen?</h1>
-            <p class="panel-sub"><b>Klik</b> het beeld = muis vangen (Esc = los). <b>WASD</b> lopen, <b>Shift</b> rennen, <b>Space</b> springen. Roltrap ⇅ naar V1. <b>M</b> = plattegrond, <b>V</b> = guest view.</p>
+            <p class="panel-sub"><b>Klik</b> = muis vangen · <b>WASD</b> lopen · <b>M</b> kaart · <b>B</b> bewoners</p>
           </div>
           <div class="nearby-sim hidden" id="nearby-sim"></div>
 
@@ -152,27 +152,31 @@ export class KioskOverlay {
             <span class="hero-cta-icon">✚</span>
             <span>
               <strong>Naar Kruidvat</strong>
-              <small>OPEN · gele route · first-person auto-walk</small>
+              <small>gele route · auto-walk</small>
             </span>
             <span class="hero-cta-go">Start →</span>
           </button>
 
-          <button class="btn possess-btn" type="button" id="btn-possess">
-            👁 Guest view (word een shopper)
-          </button>
-          <button class="btn disco-btn" type="button" id="btn-disco">
-            🕺 DANCE PARTY
-          </button>
-          <button class="btn money-btn" type="button" id="btn-money">
-            💰 Geef geld (dichtstbijzijnde sim)
-          </button>
-          <button class="btn thief-btn" type="button" id="btn-thief">
-            🧔 Roep baard-dief (juwelen!)
-          </button>
-          <div class="mood-row">
-            <span class="mood-label">Guest mood (jij = viewer)</span>
-            <button type="button" class="btn mood-up" id="btn-mood-up">😊 Blijer</button>
-            <button type="button" class="btn mood-down" id="btn-mood-down">😭 Ongelukkiger</button>
+          <div class="actions-label">Acties</div>
+          <div class="actions-grid">
+            <button class="btn tile" type="button" id="btn-possess" title="Word een shopper (V)">
+              <i>👁</i><span>Guest view</span>
+            </button>
+            <button class="btn tile tile-party" type="button" id="btn-disco" title="Dance party (P)">
+              <i>🕺</i><span>Party</span>
+            </button>
+            <button class="btn tile" type="button" id="btn-money" title="Geef €25 aan de dichtstbijzijnde sim (G)">
+              <i>💰</i><span>Geef geld</span>
+            </button>
+            <button class="btn tile" type="button" id="btn-thief" title="Roep de baard-dief (T)">
+              <i>🧔</i><span>Dief</span>
+            </button>
+            <button type="button" class="btn tile tile-up" id="btn-mood-up" title="Iedereen blijer">
+              <i>😊</i><span>Mood +</span>
+            </button>
+            <button type="button" class="btn tile tile-down" id="btn-mood-down" title="Iedereen chagrijniger">
+              <i>😭</i><span>Mood −</span>
+            </button>
           </div>
 
           <div class="search-wrap">
@@ -202,8 +206,8 @@ export class KioskOverlay {
         </div>
 
         <div class="hint-bar" id="hint">
-          <b>Klik</b> = muis vangen · <b>WASD</b> lopen · <b>Shift</b> rennen · <b>Space</b> springen ·
-          <b>M</b> kaart · <b>V</b> guest · <b>K</b> Kruidvat · <b>H</b> kiosk
+          <b>WASD</b> lopen · <b>Shift</b> rennen · <b>Space</b> spring ·
+          <b>M</b> kaart · <b>B</b> bewoners · <b>O</b> besturing
         </div>
         <div class="possess-banner hidden" id="possess-banner">GUEST VIEW</div>
       </div>

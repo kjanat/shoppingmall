@@ -9,7 +9,7 @@
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
-import type { Connect, Plugin, ViteDevServer } from 'vite';
+import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite';
 
 const MUSIC_DIR = join(process.cwd(), 'public', 'dj-music');
 const AUDIO_EXT = new Set(['.mp3', '.m4a', '.ogg', '.webm', '.wav', '.opus']);
@@ -28,12 +28,24 @@ function listPlaylist(): { file: string; title: string; url: string; bytes: numb
 			return {
 				file: f,
 				title: basename(f, extname(f)).replace(/[_-]+/g, ' '),
-				url: `./dj-music/${encodeURIComponent(f)}`,
+				// Stream via the API, not `./dj-music/…`: static serving reads the
+				// dist/ copy in preview, which doesn't contain tracks downloaded
+				// after the build — the API always reads live from public/.
+				url: `/api/dj/file/${encodeURIComponent(f)}`,
 				bytes: st.size,
 			};
 		})
 		.sort((a, b) => a.title.localeCompare(b.title));
 }
+
+const AUDIO_MIME: Record<string, string> = {
+	'.mp3': 'audio/mpeg',
+	'.m4a': 'audio/mp4',
+	'.ogg': 'audio/ogg',
+	'.webm': 'audio/webm',
+	'.wav': 'audio/wav',
+	'.opus': 'audio/ogg',
+};
 
 /**
  * These routes spend real money (ElevenLabs, OpenRouter, YouTube quota) and write
@@ -368,12 +380,14 @@ function runYtDlpUrl(
 			'--no-warnings',
 			'--no-progress',
 			'--no-mtime',
-			'--no-part',
-			// Refuse absurd inputs instead of filling the disk: ≤ 100 MB and ≤ 15 min
+			// NB: no `--no-part` — with .part suffixes an interrupted download never
+			// carries an audio extension, so half files can't show up in the crates.
+			// Refuse absurd inputs instead of filling the disk: ≤ 150 MB and ≤ 1 h
+			// (DJ sets are long; bartek_deep_house alone is 66 MB).
 			'--max-filesize',
-			'100M',
+			'150M',
 			'--match-filter',
-			'duration<=900',
+			'duration<=3600',
 			// One retry, fail fast — the request endpoint already rate-limits
 			'--retries',
 			'1',
@@ -543,14 +557,48 @@ function djMiddleware(): Connect.NextHandleFunction {
 				}
 			}
 
-			// Serve a track by name (fallback if static fails)
+			// Primary track route — live from public/dj-music, works in dev + preview.
+			// Speaks HTTP Range: <audio> switches to range-requests on long tracks
+			// (and on every seek); answering those with a plain 200 stalls playback
+			// partway through — which made the 24-minute tracks "not quite work".
 			if (url.startsWith('/api/dj/file/') && req.method === 'GET') {
 				const name = decodeURIComponent(url.replace('/api/dj/file/', ''));
 				const safe = basename(name);
 				const full = join(MUSIC_DIR, safe);
 				if (!existsSync(full)) return json(res, 404, { error: 'not found' });
+
+				const size = statSync(full).size;
+				const mime = AUDIO_MIME[extname(safe).toLowerCase()] ?? 'audio/mpeg';
+				res.setHeader('Content-Type', mime);
+				res.setHeader('Accept-Ranges', 'bytes');
+
+				const headers = (req as unknown as {
+					headers?: Record<string, string | undefined>;
+				}).headers ?? {};
+				const range = headers.range;
+				const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+
+				if (m && (m[1] !== '' || m[2] !== '')) {
+					// bytes=a-b | bytes=a- | bytes=-suffix
+					let start = m[1] === '' ? size - Number(m[2]) : Number(m[1]);
+					let end = m[1] !== '' && m[2] !== '' ? Number(m[2]) : size - 1;
+					start = Math.max(0, start);
+					end = Math.min(end, size - 1);
+					if (start > end || start >= size) {
+						res.statusCode = 416;
+						res.setHeader('Content-Range', `bytes */${size}`);
+						res.end();
+						return;
+					}
+					res.statusCode = 206;
+					res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+					res.setHeader('Content-Length', String(end - start + 1));
+					createReadStream(full, { start, end }).pipe(res);
+					return;
+				}
+
 				res.statusCode = 200;
-				res.setHeader('Content-Type', 'audio/mpeg');
+				res.setHeader('Content-Length', String(size));
 				createReadStream(full).pipe(res);
 				return;
 			}
@@ -573,6 +621,13 @@ export function djBartekPlugin(): Plugin {
 			ensureMusicDir();
 			server.middlewares.use(djMiddleware());
 			console.log('[DJ Bartek] API ready · /api/tts · /api/dj/* · music → public/dj-music/');
+		},
+		// `vite preview` only runs THIS hook, not configureServer — without it the
+		// whole /api/* surface 404s and the booth reports empty crates.
+		configurePreviewServer(server: PreviewServer) {
+			ensureMusicDir();
+			server.middlewares.use(djMiddleware());
+			console.log('[DJ Bartek] API ready (preview) · /api/tts · /api/dj/*');
 		},
 	};
 }

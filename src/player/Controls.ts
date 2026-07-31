@@ -9,7 +9,8 @@ const ACCEL = 46;
 const FRICTION = 26;
 const AIR_ACCEL = 9;
 const GRAVITY = 24;
-const JUMP_V = 6.2;
+/** High enough to clear the floor-1 balustrade into the atrium void */
+const JUMP_V = 7.4;
 const RADIUS = 0.4;
 const PITCH_MAX = 1.45;
 /** rad per pixel */
@@ -141,6 +142,15 @@ export class PlayerControls {
 		return 0;
 	}
 
+	/**
+	 * Drone-vlucht: geen zwaartekracht, Space = stijgen, Shift = dalen, WASD
+	 * horizontaal. Binnen de mall gelden de muren en het plafond; boven het
+	 * atrium (of buiten de muren) mag je omhoog de stad in.
+	 */
+	flying = false;
+	/** Drone = wendbaar; heli = zwaarder en sneller (flight-sim-gevoel). */
+	flightProfile: 'drone' | 'heli' = 'drone';
+
 	/** True while feet are on a surface (belts only convey grounded players). */
 	get isGrounded(): boolean {
 		return this.grounded;
@@ -149,6 +159,33 @@ export class PlayerControls {
 	/** Feet height in world units. */
 	get feetHeight(): number {
 		return this.feetY;
+	}
+
+	/**
+	 * Glass elevator ride mode. While set, gravity + groundHeightAt are ignored
+	 * so the cabin can carry you between floors without stuttering.
+	 * Pass `null` to disembark.
+	 */
+	private elevFloorY: number | null = null;
+
+	setElevatorRide(cabinFloorY: number | null): void {
+		this.elevFloorY = cabinFloorY;
+		if (cabinFloorY !== null) {
+			this.feetY = cabinFloorY;
+			this.vy = 0;
+			this.grounded = true;
+			this.jumpQueued = false;
+			this.cam.position.y = cabinFloorY + EYE + this.bob - this.dip;
+		}
+	}
+
+	get isRidingElevator(): boolean {
+		return this.elevFloorY !== null;
+	}
+
+	/** @deprecated use setElevatorRide */
+	snapToElevator(cabinFloorY: number): void {
+		this.setElevatorRide(cabinFloorY);
 	}
 
 	/** External displacement (moving walkway) — applied through collision. */
@@ -208,6 +245,10 @@ export class PlayerControls {
 
 	update(dt: number): void {
 		if (!this.enabled) return;
+		if (this.flying) {
+			this.updateFlight(dt);
+			return;
+		}
 
 		const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
 
@@ -279,6 +320,19 @@ export class PlayerControls {
 			this.vel.z += dvz * s;
 		}
 
+		// ── Jump first so the same frame can clear the atrium void barrier ──
+		// No jumping while riding the lift — would eject you mid-shaft.
+		if (this.jumpQueued && this.grounded && this.elevFloorY === null) {
+			this.vy = JUMP_V;
+			this.grounded = false;
+			// Small forward boost so a standing hop still carries you over the rail
+			if (moving) {
+				this.vel.x += wx * 1.6;
+				this.vel.z += wz * 1.6;
+			}
+		}
+		this.jumpQueued = false;
+
 		// ── Horizontal move + collision ──────────────────────
 		const p = this.cam.position;
 		const wantX = p.x + this.vel.x * dt;
@@ -290,7 +344,7 @@ export class PlayerControls {
 			RADIUS,
 			3,
 			true,
-			!this.grounded,
+			!this.grounded && this.elevFloorY === null,
 		);
 		// Bleed off speed we lost to a wall so you slide instead of juddering
 		if (dt > 0) {
@@ -300,39 +354,41 @@ export class PlayerControls {
 		p.x = solved.x;
 		p.z = solved.z;
 
-		// ── Vertical: ramps, gravity, hop ────────────────────
-		// Airborne gets a looser step so hopping on the escalator doesn't snap you
-		// onto the deck above.
-		const ground = this.world.groundHeightAt(
-			p.x,
-			p.z,
-			this.feetY,
-			this.grounded ? 0.5 : 2.5,
-		);
-		if (this.jumpQueued && this.grounded) {
-			this.vy = JUMP_V;
-			this.grounded = false;
-		}
-		this.jumpQueued = false;
-
-		if (this.grounded) {
-			// Follow the surface: snappy on ramps, instant on flat ground
-			const near = Math.abs(ground - this.feetY);
-			this.feetY = near < 0.02
-				? ground
-				: THREE.MathUtils.lerp(this.feetY, ground, Math.min(1, 22 * dt));
-			if (this.feetY - ground > 0.9) {
-				this.grounded = false;
-				this.vy = 0;
-			}
+		// ── Vertical: elevator ride OR ramps/gravity ─────────
+		if (this.elevFloorY !== null) {
+			// Glued to cabin — no groundHeightAt fight mid-shaft
+			this.feetY = this.elevFloorY;
+			this.vy = 0;
+			this.grounded = true;
 		} else {
-			this.vy -= GRAVITY * dt;
-			this.feetY += this.vy * dt;
-			if (this.feetY <= ground) {
-				this.dip = Math.min(0.16, Math.abs(this.vy) * 0.014);
-				this.feetY = ground;
-				this.vy = 0;
-				this.grounded = true;
+			// Airborne gets a looser step so hopping on the escalator doesn't snap you
+			// onto the deck above.
+			const ground = this.world.groundHeightAt(
+				p.x,
+				p.z,
+				this.feetY,
+				this.grounded ? 0.5 : 2.5,
+			);
+
+			if (this.grounded) {
+				// Follow the surface: snappy on ramps, instant on flat ground
+				const near = Math.abs(ground - this.feetY);
+				this.feetY = near < 0.02
+					? ground
+					: THREE.MathUtils.lerp(this.feetY, ground, Math.min(1, 22 * dt));
+				if (this.feetY - ground > 0.9) {
+					this.grounded = false;
+					this.vy = 0;
+				}
+			} else {
+				this.vy -= GRAVITY * dt;
+				this.feetY += this.vy * dt;
+				if (this.feetY <= ground) {
+					this.dip = Math.min(0.16, Math.abs(this.vy) * 0.014);
+					this.feetY = ground;
+					this.vy = 0;
+					this.grounded = true;
+				}
 			}
 		}
 
@@ -476,6 +532,78 @@ export class PlayerControls {
 		this.pitch = THREE.MathUtils.clamp(this.pitch, -PITCH_MAX, PITCH_MAX);
 		this.wrapYaw();
 	};
+
+	/** Drone-vlucht: traag versnellen, muren tellen binnen, plafond via clamp. */
+	private updateFlight(dt: number): void {
+		// Kijken werkt zoals altijd (muis / Q-E / R-F)
+		let turn = 0;
+		if (this.keys.has('KeyQ')) turn += 1;
+		if (this.keys.has('KeyE')) turn -= 1;
+		if (this.settings.turnWithKeys) {
+			if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) turn -= 1;
+			if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) turn += 1;
+		}
+		if (turn !== 0) {
+			this.yaw += turn * TURN_SPEED * dt;
+			this.wrapYaw();
+		}
+
+		const sin = Math.sin(this.yaw);
+		const cos = Math.cos(this.yaw);
+		let fwd = 0;
+		let strafe = 0;
+		if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) fwd += 1;
+		if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) fwd -= 1;
+		if (!this.settings.turnWithKeys) {
+			if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) strafe += 1;
+			if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) strafe -= 1;
+		}
+		let vert = 0;
+		if (this.keys.has('Space')) vert += 1;
+		if (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) vert -= 1;
+
+		// Heli: hogere topsnelheid maar trage respons (massa); drone: direct
+		const heli = this.flightProfile === 'heli';
+		const speed = heli ? 15 : 9;
+		const accel = heli ? 1.6 : 3.5;
+		const vSpeed = heli ? 7.5 : 6;
+		const tx = (-sin * fwd + cos * strafe) * speed;
+		const tz = (-cos * fwd - sin * strafe) * speed;
+		this.vel.x = THREE.MathUtils.lerp(this.vel.x, tx, Math.min(1, dt * accel));
+		this.vel.z = THREE.MathUtils.lerp(this.vel.z, tz, Math.min(1, dt * accel));
+		this.vy = THREE.MathUtils.lerp(this.vy, vert * vSpeed, Math.min(1, dt * accel));
+
+		const p = this.cam.position;
+		const wantX = p.x + this.vel.x * dt;
+		const wantZ = p.z + this.vel.z * dt;
+
+		const aboveMall = this.feetY > 14.2;
+		if (aboveMall) {
+			// Vrije stadslucht — geen mall-collision, wel de wereldrand
+			p.x = THREE.MathUtils.clamp(wantX, -95, 95);
+			p.z = THREE.MathUtils.clamp(wantZ, -75, 75);
+		} else {
+			const solved = this.world.resolveCircle(wantX, wantZ, this.feetY, 0.7, 3, true, true);
+			p.x = solved.x;
+			p.z = solved.z;
+		}
+
+		// Verticaal: binnen de mall onder het plafond blijven, behalve boven het
+		// atrium-gat of buiten de muren — daar mag je omhoog de stad in.
+		this.feetY += this.vy * dt;
+		const insideMall = Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5;
+		const overVoid = Math.abs(p.x) < 7.4 && Math.abs(p.z) < 5.4;
+		const ceiling = insideMall && !overVoid && this.feetY < 13.4 ? 12.6 : 55;
+		const floor = insideMall
+			? this.world.groundHeightAt(p.x, p.z, this.feetY, 2.5) + 0.45
+			: 0.45;
+		this.feetY = THREE.MathUtils.clamp(this.feetY, floor, ceiling);
+
+		p.y = this.feetY + 0.55; // ooghoogte in het stoeltje
+		this.cam.rotation.order = 'YXZ';
+		this.cam.rotation.set(this.pitch, this.yaw, -this.vel.x * 0.004);
+		this.grounded = false;
+	}
 
 	/** Keep yaw in ±π so the minimap needle never wraps oddly. */
 	private wrapYaw(): void {

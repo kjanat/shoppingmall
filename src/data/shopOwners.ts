@@ -237,6 +237,23 @@ export const SHOP_OWNERS: Record<string, ShopOwner> = {
 			'Next! Move, hangry people waiting.',
 		],
 	},
+	island_hop: {
+		storeId: 'island_hop',
+		name: 'Ricky Isles',
+		title: 'Island charter desk',
+		meaning: 'Private hops · geen vragen · NDA eerst',
+		shirt: 0xff6f00,
+		skin: 0xc68642,
+		hair: 0x1a1a1a,
+		lang: 'en',
+		lines: [
+			'Epstein Island? Flights suspended — still selling the dream, champ.',
+			'Next to the gold cave for a reason. Cash only.',
+			'Seaplane voucher, NDA, blackout shades. Package deal.',
+			'Little Saint James… beautiful brochure, terrible reviews.',
+			'Guest list is redacted. Your name too, if you tip.',
+		],
+	},
 };
 
 export function getOwner(storeId: string): ShopOwner | undefined {

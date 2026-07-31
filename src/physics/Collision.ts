@@ -33,7 +33,9 @@ export type Ramp = {
 
 const FLOOR_H = 6;
 /** Walkable roof / helipad deck (matches Helipad.ROOF_Y) */
-const ROOF_H = 13.55;
+const ROOF_H = 13.95;
+/** Underground parking deck */
+const BASEMENT_H = -6;
 const MALL_W = 72;
 const MALL_D = 48;
 
@@ -83,9 +85,13 @@ export class CollisionWorld {
 		},
 	];
 
-	/** Flat walkable roof patches */
+	/** Flat walkable roof patches (deck clipped clear of the atrium skylight) */
 	readonly roofPads: { minX: number; maxX: number; minZ: number; maxZ: number; y: number }[] = [
-		{ minX: 4, maxX: 32, minZ: 5, maxZ: 23, y: ROOF_H },
+		// Helipad SE deck
+		{ minX: 8, maxX: 32, minZ: 7, maxZ: 23, y: ROOF_H },
+		// Glass elevator roof hatch (16, −8) + corridor toward helipad
+		{ minX: 12, maxX: 28, minZ: -12, maxZ: 8, y: ROOF_H },
+		{ minX: 14, maxX: 30, minZ: 4, maxZ: 18, y: ROOF_H },
 	];
 
 	/** Low platforms you can hop onto (deck top is the walkable surface). */
@@ -222,6 +228,7 @@ export class CollisionWorld {
 			}
 		}
 		if (y >= 10) return ROOF_H;
+		if (y < -2) return BASEMENT_H;
 		return y < 3.2 ? 0 : FLOOR_H;
 	}
 
@@ -249,14 +256,19 @@ export class CollisionWorld {
 			if (currentY >= p.y - 0.35 && currentY < p.y + 2) return p.y;
 		}
 
-		// Over the atrium hole below roof height there is no floor-1 slab at all —
-		// cleared the balustrade? Then it's a 6 m drop to the fountain plaza.
+		// Over the atrium hole there is no slab at any height below the roof: the
+		// balustrade-jump drops through, and the drone can descend back in through
+		// the skylight (capped just under ROOF_H so roof walkers aren't affected).
+		// Does not punch into the basement garage.
 		if (
-			currentY < 10 && currentY > 0.3
+			currentY < ROOF_H - 0.5 && currentY > 0.3
 			&& Math.abs(x) < CollisionWorld.VOID_X && Math.abs(z) < CollisionWorld.VOID_Z
 		) {
 			return 0;
 		}
+
+		// Underground parking deck
+		if (currentY < -2) return BASEMENT_H;
 
 		const slab = currentY < 3.2 ? 0 : currentY >= 10 ? ROOF_H : FLOOR_H;
 
@@ -354,8 +366,10 @@ export class CollisionWorld {
 		px = Math.max(-hw, Math.min(hw, px));
 		pz = Math.max(-hd, Math.min(hd, pz));
 
-		// Floor-1 void eject (don't hang over atrium hole)
-		if (y > 4) {
+		// Floor-1 void eject — only when standing/walking.
+		// Mid-jump (airborne) we MUST allow XZ over the hole so you can leap
+		// the balustrade and plummet to the fountain plaza.
+		if (!airborne && y > 4) {
 			const inHole = Math.abs(px) < 8.2 && Math.abs(pz) < 6.2;
 			if (inHole) {
 				const toEdgeX = 8.4 - Math.abs(px);

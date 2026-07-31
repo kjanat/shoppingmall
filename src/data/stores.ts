@@ -12,7 +12,7 @@ export interface StoreDef {
 	id: string;
 	name: string;
 	category: StoreCategory;
-	/** 0 = begane grond, 1 = verdieping 1, 2 = dak / helipad */
+	/** 0 = begane grond, 1 = verdieping 1, 2 = dak / helipad (garage via lift) */
 	floor: 0 | 1 | 2;
 	/** World position of storefront center */
 	x: number;
@@ -52,9 +52,24 @@ export const FLOOR_LABELS: Record<0 | 1 | 2, string> = {
 	2: 'Dak',
 };
 
-/** Night-neon mall store map. Kruidvat is the hero on floor 1. */
+/**
+ * Mall layout (72×48, center atrium).
+ *
+ * FLOOR 0
+ *  N wall z=-18: Zara · H&M · MediaWorld · Nike
+ *  S wall z=18:  Starbucks · Primark · Apple · Ikea  (cleared SW for utilities)
+ *  W wall: Douglas (−30,−8), prayer NW, toilets (−30,12), island (−30,18), cave (−33.5,20)
+ *  E wall: Game (30,0), Saucy (30,−10)
+ *  Center: kiosk (0,9), protest (8,4)
+ *
+ * FLOOR 1 (outside void ±8×±6)
+ *  N wall: Uniqlo · Sephora · Kruidvat
+ *  S wall: Decathlon · Rituals · Coolblue · Action
+ *  Food court balcony (0, 11.5) — between void and south stores
+ *  Secret stairs SE → helipad roof
+ */
 export const STORES: StoreDef[] = [
-	// ── Floor 0 ──────────────────────────────────────────
+	// ── Floor 0 north ────────────────────────────────────
 	{
 		id: 'zara',
 		name: 'ZARA',
@@ -74,7 +89,7 @@ export const STORES: StoreDef[] = [
 		name: 'H&M',
 		category: 'fashion',
 		floor: 0,
-		x: -10,
+		x: -8,
 		z: -18,
 		rotation: 0,
 		width: 10,
@@ -88,7 +103,7 @@ export const STORES: StoreDef[] = [
 		name: 'MEDIA\nWORLD',
 		category: 'tech',
 		floor: 0,
-		x: 4,
+		x: 6,
 		z: -18,
 		rotation: 0,
 		width: 12,
@@ -102,7 +117,7 @@ export const STORES: StoreDef[] = [
 		name: 'NIKE',
 		category: 'sport',
 		floor: 0,
-		x: 18,
+		x: 20,
 		z: -18,
 		rotation: 0,
 		width: 10,
@@ -111,12 +126,13 @@ export const STORES: StoreDef[] = [
 		accent: '#ffffff',
 		nodeId: 's_nike',
 	},
+	// ── Floor 0 south (shops east of utility strip) ───────
 	{
 		id: 'starbucks',
 		name: 'STARBUCKS',
 		category: 'food',
 		floor: 0,
-		x: -22,
+		x: -14,
 		z: 18,
 		rotation: Math.PI,
 		width: 8,
@@ -130,10 +146,10 @@ export const STORES: StoreDef[] = [
 		name: 'PRIMARK',
 		category: 'fashion',
 		floor: 0,
-		x: -8,
+		x: -2,
 		z: 18,
 		rotation: Math.PI,
-		width: 12,
+		width: 10,
 		depth: 6,
 		color: '#005eb8',
 		accent: '#ffd100',
@@ -144,7 +160,7 @@ export const STORES: StoreDef[] = [
 		name: 'APPLE',
 		category: 'tech',
 		floor: 0,
-		x: 8,
+		x: 12,
 		z: 18,
 		rotation: Math.PI,
 		width: 10,
@@ -158,7 +174,7 @@ export const STORES: StoreDef[] = [
 		name: 'IKEA',
 		category: 'home',
 		floor: 0,
-		x: 22,
+		x: 26,
 		z: 18,
 		rotation: Math.PI,
 		width: 10,
@@ -167,14 +183,14 @@ export const STORES: StoreDef[] = [
 		accent: '#ffdb00',
 		nodeId: 's_ikea',
 	},
-	// Side stores floor 0
+	// ── Floor 0 west / east sides ─────────────────────────
 	{
 		id: 'douglas',
 		name: 'DOUGLAS',
 		category: 'beauty',
 		floor: 0,
 		x: -30,
-		z: 0,
+		z: -8,
 		rotation: Math.PI / 2,
 		width: 8,
 		depth: 5,
@@ -196,6 +212,20 @@ export const STORES: StoreDef[] = [
 		accent: '#9b5de5',
 		nodeId: 's_game',
 	},
+	{
+		id: 'saucy',
+		name: 'SAUCY',
+		category: 'beauty',
+		floor: 0,
+		x: 30,
+		z: -10,
+		rotation: -Math.PI / 2,
+		width: 8,
+		depth: 5.5,
+		color: '#1a0510',
+		accent: '#ff2d6a',
+		nodeId: 's_saucy',
+	},
 
 	// ── Floor 1 ──────────────────────────────────────────
 	{
@@ -211,7 +241,7 @@ export const STORES: StoreDef[] = [
 		color: '#e30613',
 		accent: '#00a651',
 		hero: true,
-		/** Epic route ends under the hovering spaceship pad */
+		/** Epic route ends under the UFO (then near Kruidvat) */
 		nodeId: 'spaceship',
 	},
 	{
@@ -247,7 +277,7 @@ export const STORES: StoreDef[] = [
 		name: 'DECATHLON',
 		category: 'sport',
 		floor: 1,
-		x: -22,
+		x: -20,
 		z: 18,
 		rotation: Math.PI,
 		width: 12,
@@ -261,7 +291,7 @@ export const STORES: StoreDef[] = [
 		name: 'RITUALS',
 		category: 'beauty',
 		floor: 1,
-		x: -4,
+		x: -8,
 		z: 18,
 		rotation: Math.PI,
 		width: 8,
@@ -275,7 +305,7 @@ export const STORES: StoreDef[] = [
 		name: 'COOLBLUE',
 		category: 'tech',
 		floor: 1,
-		x: 12,
+		x: 10,
 		z: 18,
 		rotation: Math.PI,
 		width: 12,
@@ -289,7 +319,7 @@ export const STORES: StoreDef[] = [
 		name: 'ACTION',
 		category: 'home',
 		floor: 1,
-		x: 26,
+		x: 24,
 		z: 18,
 		rotation: Math.PI,
 		width: 8,
@@ -298,37 +328,22 @@ export const STORES: StoreDef[] = [
 		accent: '#ffffff',
 		nodeId: 's_action',
 	},
-	/** Adult novelty — floor 0 east wing, past Gamesman */
-	{
-		id: 'saucy',
-		name: 'SAUCY',
-		category: 'beauty',
-		floor: 0,
-		x: 28,
-		z: -8,
-		rotation: -Math.PI / 2,
-		width: 8,
-		depth: 5.5,
-		color: '#1a0510',
-		accent: '#ff2d6a',
-		nodeId: 's_saucy',
-	},
-	/** Open food court plaza — south of kiosk / atrium */
+	/** Food court — V1 south balcony strip (not overlapping store pods) */
 	{
 		id: 'foodcourt',
 		name: 'FOOD\nCOURT',
 		category: 'food',
-		floor: 0,
+		floor: 1,
 		x: 0,
-		z: 13.5,
+		z: 11.5,
 		rotation: Math.PI,
-		width: 16,
-		depth: 8,
+		width: 14,
+		depth: 5,
 		color: '#bf360c',
 		accent: '#ffcc02',
 		nodeId: 's_foodcourt',
 		utility: true,
-		blurb: 'Hangry zone · burgers · pizza · taco · soft serve · no diet zone',
+		blurb: 'V1 balkon · hangry zone · tussen void en zuidwinkels',
 	},
 	{
 		id: 'info',
@@ -336,7 +351,7 @@ export const STORES: StoreDef[] = [
 		category: 'services',
 		floor: 0,
 		x: 0,
-		z: 8,
+		z: 9,
 		rotation: Math.PI,
 		width: 4,
 		depth: 3,
@@ -345,38 +360,38 @@ export const STORES: StoreDef[] = [
 		nodeId: 'kiosk',
 	},
 
-	// ── Utilities (directory + inventory, no shop pod) ───
+	// ── Utilities (aligned with scene meshes) ────────────
 	{
 		id: 'toilets',
 		name: 'TOILETTEN',
 		category: 'utility',
 		floor: 0,
-		x: -28,
-		z: 15.5,
-		rotation: 0,
+		x: -30,
+		z: 12,
+		rotation: Math.PI / 2,
 		width: 8,
 		depth: 6,
 		color: '#263238',
 		accent: '#90caf9',
 		nodeId: 'u_toilets',
 		utility: true,
-		blurb: 'Heren · Dames · gender apart · wudu bij de ingang',
+		blurb: 'Westmuur · heren · dames · wudu',
 	},
 	{
 		id: 'prayer',
 		name: 'GEBEDSRUIMTE',
 		category: 'utility',
 		floor: 0,
-		x: -28,
-		z: 8,
-		rotation: 0,
+		x: -31.5,
+		z: -19.5,
+		rotation: Math.PI / 2,
 		width: 5.5,
 		depth: 4.2,
 		color: '#1b5e20',
 		accent: '#a5d6a7',
 		nodeId: 'u_prayer',
 		utility: true,
-		blurb: 'Stilte · respect · wudu ernaast',
+		blurb: 'NW-hoek · gebedsmuziek · Allahu Akbar · ayatollahs · wudu ernaast',
 	},
 	{
 		id: 'secret_stairs',
@@ -392,7 +407,7 @@ export const STORES: StoreDef[] = [
 		accent: '#ffc107',
 		nodeId: 'sec_f1',
 		utility: true,
-		blurb: 'Service only · dak / helipad · niet voor gasten (toch wel)',
+		blurb: 'SE service · dak / helipad',
 	},
 	{
 		id: 'helipad',
@@ -409,15 +424,15 @@ export const STORES: StoreDef[] = [
 		nodeId: 'helipad',
 		utility: true,
 		hero: true,
-		blurb: 'Dak landing zone · H-mark · via geheime trap',
+		blurb: 'Dak · via geheime trap',
 	},
 	{
 		id: 'beard_cave',
 		name: "BEARD-MAN'S CAVE",
 		category: 'utility',
 		floor: 0,
-		x: -33.2,
-		z: 18.5,
+		x: -33.5,
+		z: 20,
 		rotation: Math.PI / 2,
 		width: 4,
 		depth: 5,
@@ -425,15 +440,31 @@ export const STORES: StoreDef[] = [
 		accent: '#ffd700',
 		nodeId: 'u_beardcave',
 		utility: true,
-		blurb: 'Baard-dief hol · juwelen · goud · niet officieel op de plattegrond',
+		blurb: 'ZW-hoek · juwelen · goud · baard-dief hol',
+	},
+	{
+		id: 'island_hop',
+		name: 'ISLAND HOP\nTRAVEL',
+		category: 'services',
+		floor: 0,
+		x: -30,
+		z: 18,
+		rotation: Math.PI / 2,
+		width: 4,
+		depth: 3.8,
+		color: '#004d40',
+		accent: '#ffd54f',
+		nodeId: 's_islandhop',
+		utility: true,
+		blurb: 'Westmuur bij toiletten · Epstein Island · NDA desk',
 	},
 	{
 		id: 'protest',
 		name: 'PROTEST GROUPIES',
 		category: 'utility',
 		floor: 0,
-		x: -2,
-		z: -4.5,
+		x: 8,
+		z: 4,
 		rotation: 0,
 		width: 6,
 		depth: 6,
@@ -441,7 +472,39 @@ export const STORES: StoreDef[] = [
 		accent: '#ffeb3b',
 		nodeId: 'u_protest',
 		utility: true,
-		blurb: 'Angela Merkel (oud & dik) · LGBTQIA+ flags · Wir schaffen das',
+		blurb: 'Oost-atrium · Merkel · LGBTQIA+ · Wir schaffen das',
+	},
+	{
+		id: 'elevator',
+		name: 'GLAZEN LIFT',
+		category: 'utility',
+		floor: 0,
+		x: 16,
+		z: -8,
+		rotation: 0,
+		width: 2.4,
+		depth: 2.4,
+		color: '#b3e5fc',
+		accent: '#ffd700',
+		nodeId: 'elev_f0',
+		utility: true,
+		blurb: 'Hans · P1 garage ↔ V0 ↔ V1 ↔ DAK · stap in en wacht',
+	},
+	{
+		id: 'parking',
+		name: 'PARKEERGARAGE',
+		category: 'utility',
+		floor: 0,
+		x: 8,
+		z: 0,
+		rotation: 0,
+		width: 40,
+		depth: 30,
+		color: '#455a64',
+		accent: '#ffc107',
+		nodeId: 'u_parking',
+		utility: true,
+		blurb: "Ondergronds P1 · auto's · pillaren · via glazen lift",
 	},
 ];
 
@@ -455,5 +518,5 @@ export function shopStores(): StoreDef[] {
 }
 
 export function getHeroStore(): StoreDef {
-	return STORES.find((s) => s.hero)!;
+	return STORES.find((s) => s.hero && s.id === 'kruidvat')!;
 }
