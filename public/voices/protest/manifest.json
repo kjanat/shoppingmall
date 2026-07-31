@@ -1,0 +1,226 @@
+[
+  {
+    "id": "chant_01",
+    "file": "/voices/protest/chant_01.mp3",
+    "text": "Wir schaffen das!",
+    "label": "Wir schaffen das!",
+    "voice": "de-DE-ConradNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_02",
+    "file": "/voices/protest/chant_02.mp3",
+    "text": "WIR SCHAFFEN DAS!",
+    "label": "WIR SCHAFFEN DAS!",
+    "voice": "de-DE-KatjaNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_03",
+    "file": "/voices/protest/chant_03.mp3",
+    "text": "Wir schaffen das, wirklich!",
+    "label": "Wir schaffen das, wirklich!",
+    "voice": "de-DE-KillianNeural",
+    "kind": "merkel"
+  },
+  {
+    "id": "chant_04",
+    "file": "/voices/protest/chant_04.mp3",
+    "text": "Zusammen schaffen wir das!",
+    "label": "Zusammen schaffen wir das!",
+    "voice": "de-DE-SeraphinaMultilingualNeural",
+    "kind": "merkel"
+  },
+  {
+    "id": "chant_05",
+    "file": "/voices/protest/chant_05.mp3",
+    "text": "Mutti is watching!",
+    "label": "Mutti is watching!",
+    "voice": "de-AT-JonasNeural",
+    "kind": "merkel"
+  },
+  {
+    "id": "chant_06",
+    "file": "/voices/protest/chant_06.mp3",
+    "text": "Open borders, open hearts!",
+    "label": "Open borders, open hearts!",
+    "voice": "de-DE-FlorianMultilingualNeural",
+    "kind": "merkel"
+  },
+  {
+    "id": "chant_07",
+    "file": "/voices/protest/chant_07.mp3",
+    "text": "Refugees welcome!",
+    "label": "Refugees welcome!",
+    "voice": "en-US-JennyNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_08",
+    "file": "/voices/protest/chant_08.mp3",
+    "text": "Love is love!",
+    "label": "Love is love!",
+    "voice": "en-US-GuyNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_09",
+    "file": "/voices/protest/chant_09.mp3",
+    "text": "LGBTQIA plus rights!",
+    "label": "LGBTQIA plus rights!",
+    "voice": "en-GB-RyanNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_10",
+    "file": "/voices/protest/chant_10.mp3",
+    "text": "Climate now!",
+    "label": "Climate now!",
+    "voice": "en-GB-SoniaNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_11",
+    "file": "/voices/protest/chant_11.mp3",
+    "text": "No borders, no walls!",
+    "label": "No borders, no walls!",
+    "voice": "en-AU-NatashaNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_12",
+    "file": "/voices/protest/chant_12.mp3",
+    "text": "Solidarity forever!",
+    "label": "Solidarity forever!",
+    "voice": "en-IE-ConnorNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_13",
+    "file": "/voices/protest/chant_13.mp3",
+    "text": "Tax the rich! Not me though!",
+    "label": "Tax the rich! Not me though!",
+    "voice": "en-US-AriaNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_14",
+    "file": "/voices/protest/chant_14.mp3",
+    "text": "Free Palestine, free smoothies!",
+    "label": "Free Palestine, free smoothies!",
+    "voice": "en-US-GuyNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_15",
+    "file": "/voices/protest/chant_15.mp3",
+    "text": "Defund the food court!",
+    "label": "Defund the food court!",
+    "voice": "en-GB-ThomasNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_16",
+    "file": "/voices/protest/chant_16.mp3",
+    "text": "Oat milk is a human right!",
+    "label": "Oat milk is a human right!",
+    "voice": "en-CA-ClaraNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_17",
+    "file": "/voices/protest/chant_17.mp3",
+    "text": "Check your privilege and your receipt!",
+    "label": "Check your privilege and your receipt!",
+    "voice": "en-US-ChristopherNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_18",
+    "file": "/voices/protest/chant_18.mp3",
+    "text": "Smash the patriarchy after brunch!",
+    "label": "Smash the patriarchy after brunch!",
+    "voice": "en-GB-LibbyNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_19",
+    "file": "/voices/protest/chant_19.mp3",
+    "text": "Decolonize the escalator!",
+    "label": "Decolonize the escalator!",
+    "voice": "en-US-MichelleNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_20",
+    "file": "/voices/protest/chant_20.mp3",
+    "text": "Protect trans kids!",
+    "label": "Protect trans kids!",
+    "voice": "en-IN-NeerjaNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_21",
+    "file": "/voices/protest/chant_21.mp3",
+    "text": "I brought a drum and no rhythm!",
+    "label": "I brought a drum and no rhythm!",
+    "voice": "en-GB-RyanNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_22",
+    "file": "/voices/protest/chant_22.mp3",
+    "text": "Who has the aux?!",
+    "label": "Who has the aux?!",
+    "voice": "en-NZ-MollyNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_23",
+    "file": "/voices/protest/chant_23.mp3",
+    "text": "Late stage capitalism? In the mall?!",
+    "label": "Late stage capitalism? In the mall?!",
+    "voice": "en-US-AnaNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_24",
+    "file": "/voices/protest/chant_24.mp3",
+    "text": "My zodiac said to chant today!",
+    "label": "My zodiac said to chant today!",
+    "voice": "en-GB-MaisieNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_25",
+    "file": "/voices/protest/chant_25.mp3",
+    "text": "Die Lage ist ernst, aber wir schaffen das!",
+    "label": "Die Lage ist ernst, aber wir schaffen das!",
+    "voice": "de-CH-JanNeural",
+    "kind": "merkel"
+  },
+  {
+    "id": "chant_26",
+    "file": "/voices/protest/chant_26.mp3",
+    "text": "This sign is recycled!",
+    "label": "This sign is recycled!",
+    "voice": "en-US-AndrewMultilingualNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_27",
+    "file": "/voices/protest/chant_27.mp3",
+    "text": "I am the main character of this march!",
+    "label": "I am the main character of this march!",
+    "voice": "en-IE-EmilyNeural",
+    "kind": "crowd"
+  },
+  {
+    "id": "chant_28",
+    "file": "/voices/protest/chant_28.mp3",
+    "text": "Guys is this being filmed?!",
+    "label": "Guys is this being filmed?!",
+    "voice": "en-US-EricNeural",
+    "kind": "crowd"
+  }
+]
