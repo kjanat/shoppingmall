@@ -12,10 +12,27 @@ const CHANTS = [
 
 /** Allahu Trapbar clean instrumental (same track family as YT XoX5cxsN5-U) */
 const TRAPBAR_URL = '/prayer-music/allahu_trapbar.mp3';
+/** Estimated BPM of allahu_trapbar.mp3 (onset autocorrelation) */
+const TRAP_BPM = 108;
+const TRAP_BEAT = 60 / TRAP_BPM;
+/** Full sit↔doggy phrase length in beats (4 bars) */
+const POSE_PHRASE_BEATS = 16;
+
+/**
+ * The Screaming Sheep (Original Upload) — classic goat/sheep scream meme
+ * https://www.youtube.com/watch?v=SIaFtAKnqBU
+ */
+const GOAT_SCREAMS = [
+	'/prayer-music/goat_scream_main.mp3',
+	'/prayer-music/goat_scream_punch.mp3',
+	'/prayer-music/goat_scream_hit2.mp3',
+	'/prayer-music/goat_scream_original.mp3',
+	'/prayer-music/goat_scream_intro.mp3',
+];
 
 /**
  * Gebedsruimte — Allahu Trapbar loop + full-room chants + sacrificial goat mascot.
- * Spatial falloff so the rest of the mall only hears a soft murmur.
+ * Prayer poses lock to the trapbar BPM / playback clock.
  */
 export class PrayerRoom {
 	readonly group = new THREE.Group();
@@ -27,7 +44,19 @@ export class PrayerRoom {
 	private goat: THREE.Group | null = null;
 	private t = 0;
 	private chantCd = 1.2;
-	private bleatCd = 3.5;
+	private bleatCd = 2.2;
+	private lastScreamIdx = -1;
+	private screaming = false;
+	/** Trapbar media — playback time drives poses */
+	private trapSrc: {
+		getPlaybackTime: () => number;
+		duration: number;
+		createAnalyser: (n?: number) => AnalyserNode;
+		element?: HTMLAudioElement;
+	} | null = null;
+	private trapAnalyser: AnalyserNode | null = null;
+	private trapFreq = new Uint8Array(128);
+	private lastBeat = -1;
 
 	constructor() {
 		this.group.name = 'prayerRoom';
@@ -35,6 +64,8 @@ export class PrayerRoom {
 		this.build();
 		this.buildAyatollahs();
 		this.buildGoat();
+		// McD wrappers + energy-drink cans — only in this room (not mall-wide)
+		this.buildFloorLitter();
 	}
 
 	/** Wall AABBs for CollisionWorld — back + sides solid, south face open. */
@@ -52,31 +83,147 @@ export class PrayerRoom {
 	ensureAudio(): void {
 		if (this.audioStarted) return;
 		this.audioStarted = true;
+		spatial.ensure();
 
-		const stoppers: Array<() => void> = [];
+		// Warm goat scream buffers so first bleat isn't silent
+		for (const url of GOAT_SCREAMS) {
+			const a = new Audio(url);
+			a.preload = 'auto';
+			a.load();
+		}
 
-		// ── Allahu Trapbar (looped mp3, spatial) ──
-		void spatial
-			.playAt(
-				TRAPBAR_URL,
-				{ x: this.pos.x, y: 1.4, z: this.pos.z },
-				{ volume: 0.78, k: 0.038, maxDistance: 28, loop: true },
-			)
-			.then((src) => {
-				if (src) stoppers.push(() => src.stop());
+		// ── Allahu Trapbar via HTMLAudio + HRTF ──
+		// MediaElement is more reliable than decodeAudioData for long loops,
+		// and currentTime is the ground truth for pose sync.
+		const el = new Audio(TRAPBAR_URL);
+		el.loop = true;
+		el.preload = 'auto';
+		el.crossOrigin = 'anonymous';
+
+		const se = spatial.attachElementAt(
+			el,
+			{ x: this.pos.x, y: 1.5, z: this.pos.z },
+			{
+				// Loud enough to hear from atrium; soft falloff
+				volume: 1.0,
+				k: 0.012,
+				maxDistance: 52,
+				refDistance: 3.5,
+			},
+		);
+		this.trapSrc = se;
+		try {
+			this.trapAnalyser = se.createAnalyser(256);
+			this.trapFreq = new Uint8Array(this.trapAnalyser.frequencyBinCount);
+		} catch {
+			this.trapAnalyser = null;
+		}
+
+		const tryPlay = () => {
+			void el.play().catch((err) => {
+				console.warn('[PrayerRoom] trapbar play blocked:', err);
 			});
+		};
+		if (el.readyState >= 2) tryPlay();
+		else el.addEventListener('canplay', tryPlay, { once: true });
+		// Extra kick after a tick (iOS / delayed unlock)
+		window.setTimeout(tryPlay, 120);
 
 		// Soft crowd chants under the trap beat
 		const chants = spatial.startLoopAt(
 			{ x: this.pos.x, y: 1.3, z: this.pos.z },
 			(ctx, dest) => startAllahuLoop(ctx, dest),
-			{ volume: 0.28, k: 0.05, maxDistance: 20 },
+			{ volume: 0.28, k: 0.04, maxDistance: 28 },
 		);
-		stoppers.push(() => chants.stop());
 
 		this.stopAudio = () => {
-			for (const s of stoppers) s();
+			el.pause();
+			el.removeAttribute('src');
+			el.load();
+			this.trapSrc = null;
+			this.trapAnalyser = null;
+			chants.stop();
 		};
+
+		// Immediate first scream so you hear The Screaming Sheep original
+		window.setTimeout(() => this.playGoatScream(), 600);
+	}
+
+	/** Seconds into the trapbar loop (or free-run clock before audio ready) */
+	private musicTime(): number {
+		const t = this.trapSrc?.getPlaybackTime() ?? -1;
+		if (t >= 0) return t;
+		return this.t;
+	}
+
+	/** Bass energy 0..1 from trapbar analyser (kick proxy) */
+	private bassEnergy(): number {
+		if (!this.trapAnalyser) return 0;
+		this.trapAnalyser.getByteFrequencyData(this.trapFreq);
+		// Low bins ≈ kick / 808
+		let s = 0;
+		const n = Math.min(8, this.trapFreq.length);
+		for (let i = 0; i < n; i++) s += this.trapFreq[i];
+		return Math.min(1, (s / n / 255) * 1.4);
+	}
+
+	/**
+	 * Pose blend 0=kleermakerszit … 1=doggy, locked to trapbar bars.
+	 * Phrase = 16 beats (4 bars): sit · rise · doggy · fall.
+	 * personOffsetBeats keeps them on-grid but staggered by half-bars.
+	 */
+	private poseBlendFor(beat: number, personOffsetBeats: number, bass: number): number {
+		const phrase = ((beat + personOffsetBeats) % POSE_PHRASE_BEATS + POSE_PHRASE_BEATS)
+			% POSE_PHRASE_BEATS;
+		let base: number;
+		if (phrase < 6) {
+			base = 0; // bars 1–1.5: sit
+		} else if (phrase < 8) {
+			// half-bar rise into doggy (1 bar)
+			const u = (phrase - 6) / 2;
+			base = u * u * (3 - 2 * u);
+		} else if (phrase < 14) {
+			base = 1; // doggy
+		} else {
+			const u = (phrase - 14) / 2;
+			base = 1 - u * u * (3 - 2 * u);
+		}
+		// Kick thrusts while doggy-ish
+		const beatFrac = ((beat % 1) + 1) % 1;
+		const kickPulse = Math.exp(-beatFrac * 10); // sharp on every beat
+		const thrust = base > 0.35 ? kickPulse * (0.1 + bass * 0.22) : bass * 0.04;
+		return Math.min(1, base + thrust);
+	}
+
+	/** The Screaming Sheep (SIaFtAKnqBU) — spatial at goat */
+	private playGoatScream(): void {
+		if (!this.audioStarted || this.screaming) return;
+		let idx = Math.floor(Math.random() * GOAT_SCREAMS.length);
+		if (idx === this.lastScreamIdx && GOAT_SCREAMS.length > 1) {
+			idx = (idx + 1) % GOAT_SCREAMS.length;
+		}
+		this.lastScreamIdx = idx;
+		const url = GOAT_SCREAMS[idx];
+		this.screaming = true;
+
+		const gx = this.pos.x + (this.goat?.position.x ?? 0);
+		const gy = this.pos.y + 0.7;
+		const gz = this.pos.z + (this.goat?.position.z ?? 1.55);
+
+		void spatial
+			.playAt(url, { x: gx, y: gy, z: gz }, {
+				volume: 0.95,
+				k: 0.028,
+				maxDistance: 32,
+				refDistance: 2,
+			})
+			.finally(() => {
+				// full original is ~6s; shorter cuts free earlier via max
+				const unlockMs = url.includes('original') ? 6500 : 2000;
+				window.setTimeout(() => {
+					this.screaming = false;
+				}, unlockMs);
+			});
 	}
 
 	update(dt: number, listener: THREE.Vector3): void {
@@ -85,14 +232,64 @@ export class PrayerRoom {
 		this.chantCd -= dt;
 		this.bleatCd -= dt;
 
+		// ── Music clock (trapbar) ────────────────────────────
+		const musicT = this.musicTime();
+		const beat = musicT / TRAP_BEAT;
+		const bass = this.bassEnergy();
+		const beatIdx = Math.floor(beat);
+
+		// Bubbles + Allahu on the downbeat of every bar (beat 0 of 4)
+		const newBeat = beatIdx !== this.lastBeat;
+		if (newBeat) {
+			this.lastBeat = beatIdx;
+			const onBar = beatIdx % 4 === 0;
+			const onDrop = beatIdx % POSE_PHRASE_BEATS === 8; // enter doggy section
+			if (onBar || onDrop) {
+				// Staggered cascade of "Allahu Akbar" on the bar
+				const n = onDrop ? this.ayatollahs.length : 2 + Math.floor(Math.random() * 3);
+				const order = this.ayatollahs
+					.map((_, i) => i)
+					.sort(() => Math.random() - 0.5)
+					.slice(0, n);
+				for (let k = 0; k < order.length; k++) {
+					const a = this.ayatollahs[order[k]];
+					const line = onDrop
+						? 'Allahu Trapbar!'
+						: CHANTS[Math.floor(Math.random() * CHANTS.length)];
+					// 16th-note cascade within the bar
+					window.setTimeout(() => this.showBubble(a, line), k * (TRAP_BEAT * 250));
+				}
+			}
+			// Goat on phrase start / drop
+			if (
+				this.goat
+				&& this.bleatCd <= 0
+				&& (beatIdx % POSE_PHRASE_BEATS === 0 || beatIdx % POSE_PHRASE_BEATS === 8)
+				&& Math.random() < 0.55
+			) {
+				this.bleatCd = TRAP_BEAT * 12;
+				const lines = ['MEEEH!!!', '🐐 on beat', 'Allahu… mèèh', 'Trapbar!!'];
+				this.showBubble(
+					this.goat,
+					lines[Math.floor(Math.random() * lines.length)],
+				);
+				if (this.audioStarted) this.playGoatScream();
+			}
+		}
+
 		for (let i = 0; i < this.ayatollahs.length; i++) {
 			const a = this.ayatollahs[i];
 			const phase = (a.userData.phase as number) ?? i;
-			a.position.y = (a.userData.baseY as number) + Math.sin(this.t * 1.1 + phase) * 0.012;
-			if (a.userData.bow) {
-				const bow = Math.sin(this.t * 0.55 + phase) * 0.08;
-				a.rotation.x = 0.15 + Math.max(0, bow);
-			}
+			// Half-bar offsets so the row ripples but stays on the grid
+			const offsetBeats = (i % 4) * 2 + (phase % 1) * 0.15;
+			const blend = this.poseBlendFor(beat, offsetBeats, bass);
+			this.applyPrayerPose(a, blend);
+
+			const baseY = (a.userData.baseY as number) ?? 0.12;
+			// Kick-dip hips on the beat while doggy
+			const beatFrac = ((beat % 1) + 1) % 1;
+			const kickDip = blend * Math.exp(-beatFrac * 9) * 0.05;
+			a.position.y = baseY + Math.sin(this.t * 1.1 + phase) * 0.006 - blend * 0.06 - kickDip;
 			// Bubble lifetime
 			const life = a.userData.speechLife as number;
 			if (life > 0) {
@@ -111,8 +308,7 @@ export class PrayerRoom {
 				head.rotation.x = Math.sin(this.t * 2.4) * 0.12;
 				head.rotation.y = Math.sin(this.t * 0.7) * 0.18;
 			}
-			this.goat.position.y =
-				(this.goat.userData.baseY as number) + Math.sin(this.t * 3.2) * 0.01;
+			this.goat.position.y = (this.goat.userData.baseY as number) + Math.sin(this.t * 3.2) * 0.01;
 			const life = this.goat.userData.speechLife as number;
 			if (life > 0) {
 				this.goat.userData.speechLife = life - dt;
@@ -121,34 +317,8 @@ export class PrayerRoom {
 					if (sp) sp.visible = false;
 				}
 			}
-			if (this.bleatCd <= 0) {
-				this.bleatCd = 4 + Math.random() * 5;
-				const lines = ['MEEEH', 'Mèèèh!', '🐐', 'Allahu… mèèh', 'Trapbar!!'];
-				this.showBubble(
-					this.goat,
-					lines[Math.floor(Math.random() * lines.length)],
-				);
-			}
 		}
-
-		// Everyone chants — staggered bubbles so the room is full of Allahu Akbar
-		if (this.chantCd <= 0) {
-			this.chantCd = 0.55 + Math.random() * 0.75;
-			const n = Math.min(
-				this.ayatollahs.length,
-				2 + Math.floor(Math.random() * this.ayatollahs.length),
-			);
-			const order = this.ayatollahs
-				.map((_, i) => i)
-				.sort(() => Math.random() - 0.5)
-				.slice(0, n);
-			for (let k = 0; k < order.length; k++) {
-				const a = this.ayatollahs[order[k]];
-				const line = CHANTS[Math.floor(Math.random() * CHANTS.length)];
-				// slight stagger so they cascade
-				window.setTimeout(() => this.showBubble(a, line), k * 90);
-			}
-		}
+		// Chants + goat are beat-locked to the trapbar clock above
 	}
 
 	dispose(): void {
@@ -259,6 +429,494 @@ export class PrayerRoom {
 		);
 		sign.position.set(0, 2.8, 2.15);
 		this.group.add(sign);
+
+		// Qibla arrow + Mecca post-its on the walls
+		this.buildQiblaAndPostits();
+	}
+
+	/**
+	 * Fast-food chaos only among the congregation: McD bags, fries, cups,
+	 * crushed Red Bull / Monster / generic cans on the mats and floor.
+	 */
+	private buildFloorLitter(): void {
+		const rng = (s: number) => {
+			// tiny deterministic hash so reloads look the same
+			let x = Math.sin(s * 127.1) * 43758.5453;
+			return x - Math.floor(x);
+		};
+
+		// McD bag
+		const makeBag = (seed: number): THREE.Group => {
+			const g = new THREE.Group();
+			const red = this.track(
+				new THREE.MeshStandardMaterial({ color: 0xda291c, roughness: 0.85 }),
+			);
+			const yellow = this.track(
+				new THREE.MeshStandardMaterial({ color: 0xffc72c, roughness: 0.7 }),
+			);
+			const bag = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.12), red);
+			bag.position.y = 0.14;
+			g.add(bag);
+			// M arch as two yellow half-circles-ish boxes
+			const m1 = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.012, 4, 8, Math.PI), yellow);
+			m1.position.set(-0.03, 0.18, 0.065);
+			m1.rotation.x = Math.PI;
+			const m2 = m1.clone();
+			m2.position.x = 0.03;
+			g.add(m1, m2);
+			g.rotation.set(
+				(rng(seed) - 0.5) * 0.4,
+				rng(seed + 1) * Math.PI * 2,
+				(rng(seed + 2) - 0.5) * 0.5,
+			);
+			return g;
+		};
+
+		// Fries carton
+		const makeFries = (seed: number): THREE.Group => {
+			const g = new THREE.Group();
+			const red = this.track(
+				new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.8 }),
+			);
+			const fryM = this.track(
+				new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.75 }),
+			);
+			const box = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.1), red);
+			box.position.y = 0.07;
+			g.add(box);
+			for (let i = 0; i < 5; i++) {
+				const f = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.12, 0.018), fryM);
+				f.position.set(
+					(rng(seed + i * 3) - 0.5) * 0.08,
+					0.16 + rng(seed + i) * 0.04,
+					(rng(seed + i * 5) - 0.5) * 0.06,
+				);
+				f.rotation.z = (rng(seed + i * 7) - 0.5) * 0.4;
+				g.add(f);
+			}
+			g.rotation.y = rng(seed + 9) * Math.PI * 2;
+			g.rotation.z = (rng(seed + 10) - 0.5) * 0.6;
+			return g;
+		};
+
+		// Soft drink cup + straw
+		const makeCup = (seed: number): THREE.Group => {
+			const g = new THREE.Group();
+			const red = this.track(
+				new THREE.MeshStandardMaterial({ color: 0xb71c1c, roughness: 0.75 }),
+			);
+			const lidM = this.track(
+				new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6 }),
+			);
+			const strawM = this.track(
+				new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 }),
+			);
+			const cup = new THREE.Mesh(
+				new THREE.CylinderGeometry(0.045, 0.055, 0.16, 10),
+				red,
+			);
+			cup.position.y = 0.08;
+			g.add(cup);
+			const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 10), lidM);
+			lid.position.y = 0.17;
+			g.add(lid);
+			const straw = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14, 5), strawM);
+			straw.position.set(0.02, 0.24, 0);
+			straw.rotation.z = 0.15;
+			g.add(straw);
+			// tip over sometimes
+			if (rng(seed) > 0.45) {
+				g.rotation.z = Math.PI / 2 + (rng(seed + 1) - 0.5) * 0.3;
+				g.position.y = 0.05;
+			}
+			g.rotation.y = rng(seed + 2) * Math.PI * 2;
+			return g;
+		};
+
+		// Burger wrapper (flat crumpled disc/box)
+		const makeWrapper = (seed: number): THREE.Mesh => {
+			const paper = this.track(
+				new THREE.MeshStandardMaterial({
+					color: rng(seed) > 0.5 ? 0xfff8e1 : 0xffecb3,
+					roughness: 0.95,
+				}),
+			);
+			const w = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.01, 0.14), paper);
+			w.rotation.y = rng(seed) * Math.PI * 2;
+			w.rotation.z = (rng(seed + 1) - 0.5) * 0.4;
+			w.position.y = 0.02;
+			return w;
+		};
+
+		// Energy / soda can
+		type CanKind = 'redbull' | 'monster' | 'cola' | 'fanta' | 'generic';
+		const canColors: Record<CanKind, { body: number; accent: number; label: string }> = {
+			redbull: { body: 0x0033a0, accent: 0xc8102e, label: 'RED BULL' },
+			monster: { body: 0x111111, accent: 0x78be20, label: 'MONSTER' },
+			cola: { body: 0xb71c1c, accent: 0xffffff, label: 'COLA' },
+			fanta: { body: 0xef6c00, accent: 0xffe082, label: 'FANTA' },
+			generic: { body: 0x546e7a, accent: 0xcfd8dc, label: 'ENERGY' },
+		};
+		const makeCan = (seed: number, kind: CanKind): THREE.Group => {
+			const g = new THREE.Group();
+			const col = canColors[kind];
+			const body = new THREE.Mesh(
+				new THREE.CylinderGeometry(0.035, 0.035, 0.13, 12),
+				this.track(
+					new THREE.MeshStandardMaterial({
+						color: col.body,
+						metalness: 0.55,
+						roughness: 0.35,
+					}),
+				),
+			);
+			body.position.y = 0.065;
+			g.add(body);
+			const rim = new THREE.Mesh(
+				new THREE.CylinderGeometry(0.036, 0.036, 0.015, 12),
+				this.track(
+					new THREE.MeshStandardMaterial({
+						color: 0xc0c0c0,
+						metalness: 0.8,
+						roughness: 0.25,
+					}),
+				),
+			);
+			rim.position.y = 0.13;
+			g.add(rim);
+			// Label stripe
+			const stripe = new THREE.Mesh(
+				new THREE.BoxGeometry(0.072, 0.05, 0.01),
+				this.track(
+					new THREE.MeshStandardMaterial({
+						color: col.accent,
+						roughness: 0.5,
+						metalness: 0.2,
+					}),
+				),
+			);
+			stripe.position.set(0, 0.07, 0.032);
+			g.add(stripe);
+			// Crushed / lying
+			const crushed = rng(seed) > 0.55;
+			if (crushed) {
+				g.scale.set(1.15, 0.45, 1.1);
+				g.rotation.z = Math.PI / 2 + (rng(seed + 3) - 0.5) * 0.4;
+				g.position.y = 0.03;
+			} else if (rng(seed + 4) > 0.5) {
+				g.rotation.z = Math.PI / 2;
+				g.position.y = 0.035;
+			}
+			g.rotation.y = rng(seed + 5) * Math.PI * 2;
+			void col.label;
+			return g;
+		};
+
+		// Scatter inside room footprint (local space)
+		const spots: { x: number; z: number }[] = [];
+		for (let i = 0; i < 55; i++) {
+			spots.push({
+				x: (rng(i * 1.7) - 0.5) * 4.6,
+				z: (rng(i * 2.3 + 9) - 0.5) * 3.4,
+			});
+		}
+		// Extra pile near goat / entrance
+		for (let i = 0; i < 12; i++) {
+			spots.push({
+				x: (rng(100 + i) - 0.5) * 1.2,
+				z: 1.2 + rng(110 + i) * 0.7,
+			});
+		}
+
+		const kinds: CanKind[] = ['redbull', 'redbull', 'monster', 'cola', 'fanta', 'generic', 'redbull'];
+
+		for (let i = 0; i < spots.length; i++) {
+			const { x, z } = spots[i];
+			const roll = rng(i * 11.3);
+			let item: THREE.Object3D;
+			if (roll < 0.22) item = makeBag(i);
+			else if (roll < 0.4) item = makeFries(i + 50);
+			else if (roll < 0.55) item = makeCup(i + 90);
+			else if (roll < 0.68) item = makeWrapper(i + 130);
+			else item = makeCan(i + 170, kinds[i % kinds.length]);
+
+			item.position.x += x;
+			item.position.z += z;
+			// Rest on carpet / floor
+			if (!item.position.y) item.position.y = 0.02;
+			item.position.y += 0.11; // above floor slab
+			// Slight sink into mat look
+			item.position.y += rng(i + 200) * 0.02;
+			this.group.add(item);
+		}
+
+		// Dedicated Red Bull pyramid near back wall
+		for (let row = 0; row < 3; row++) {
+			for (let c = 0; c < 3 - row; c++) {
+				const can = makeCan(400 + row * 10 + c, 'redbull');
+				can.position.set(-1.8 + c * 0.09 + row * 0.04, 0.13 + row * 0.12, -1.55);
+				can.rotation.set(0, 0, 0);
+				can.scale.set(1, 1, 1);
+				this.group.add(can);
+			}
+		}
+	}
+
+	/**
+	 * Sticky notes + qibla pointer — Mecca direction (SE from mall NW corner),
+	 * hajj reminders, trapbar schedule, goat memo…
+	 */
+	private buildQiblaAndPostits(): void {
+		// Qibla board on back wall (toward “Mecca” — SE-ish in our joke map)
+		const qibla = this.makePostIt(
+			['🕋 QIBLA', '→ MEKKA', 'zuidoost', '(ongeveer)'],
+			'#fffde7',
+			'#b71c1c',
+			1.1,
+			0.95,
+		);
+		qibla.position.set(-0.9, 2.15, -1.91);
+		this.group.add(qibla);
+
+		// Big arrow under qibla
+		const arrow = this.makePostIt(['↘↘↘', 'DIT KANT OP', 'Kaaba vibes'], '#ffecb3', '#e65100', 0.85, 0.7);
+		arrow.position.set(0.15, 1.85, -1.91);
+		arrow.rotation.z = -0.08;
+		this.group.add(arrow);
+
+		type Note = {
+			lines: string[];
+			bg: string;
+			fg: string;
+			x: number;
+			y: number;
+			z: number;
+			ry: number;
+			rz: number;
+			w: number;
+			h: number;
+		};
+		const notes: Note[] = [
+			// Back wall scatter
+			{
+				lines: ['MEKKA', 'is die kant', 'niet de', 'Kruidvat'],
+				bg: '#e3f2fd',
+				fg: '#0d47a1',
+				x: 1.2,
+				y: 2.35,
+				z: -1.91,
+				ry: 0,
+				rz: 0.12,
+				w: 0.72,
+				h: 0.72,
+			},
+			{
+				lines: ['Hajj', '2026?', 'save €€€'],
+				bg: '#fce4ec',
+				fg: '#880e4f',
+				x: -1.85,
+				y: 1.55,
+				z: -1.91,
+				ry: 0,
+				rz: -0.15,
+				w: 0.65,
+				h: 0.6,
+			},
+			{
+				lines: ['Zemzem', 'uit de', 'automaat', '€1,50'],
+				bg: '#e8f5e9',
+				fg: '#1b5e20',
+				x: 1.9,
+				y: 1.7,
+				z: -1.91,
+				ry: 0,
+				rz: 0.06,
+				w: 0.68,
+				h: 0.68,
+			},
+			// Left wall
+			{
+				lines: ['📿 tasbih', 'kwijt bij', 'food court'],
+				bg: '#fff9c4',
+				fg: '#f57f17',
+				x: -2.61,
+				y: 2.2,
+				z: -0.8,
+				ry: Math.PI / 2,
+				rz: 0.1,
+				w: 0.7,
+				h: 0.65,
+			},
+			{
+				lines: ['Allahu', 'Trapbar', 'volume', 'MAX'],
+				bg: '#f3e5f5',
+				fg: '#4a148c',
+				x: -2.61,
+				y: 1.75,
+				z: 0.4,
+				ry: Math.PI / 2,
+				rz: -0.18,
+				w: 0.7,
+				h: 0.7,
+			},
+			{
+				lines: ['Geit Qurban', 'niet', 'aaien', '(bijt)'],
+				bg: '#efebe9',
+				fg: '#3e2723',
+				x: -2.61,
+				y: 1.35,
+				z: 1.2,
+				ry: Math.PI / 2,
+				rz: 0.05,
+				w: 0.65,
+				h: 0.65,
+			},
+			// Right wall
+			{
+				lines: ['Wudu', '→ WC', 'ernaast', 'voeten!'],
+				bg: '#e0f7fa',
+				fg: '#006064',
+				x: 2.61,
+				y: 2.1,
+				z: -0.6,
+				ry: -Math.PI / 2,
+				rz: -0.1,
+				w: 0.68,
+				h: 0.68,
+			},
+			{
+				lines: ['Kleermakerszit', '↔ doggy', 'op de beat', '108 BPM'],
+				bg: '#ffe0b2',
+				fg: '#e65100',
+				x: 2.61,
+				y: 1.6,
+				z: 0.5,
+				ry: -Math.PI / 2,
+				rz: 0.14,
+				w: 0.78,
+				h: 0.78,
+			},
+			{
+				lines: ['Telefoon', 'stil SVP', '(behalve', 'trapbar)'],
+				bg: '#c8e6c9',
+				fg: '#1b5e20',
+				x: 2.61,
+				y: 1.25,
+				z: 1.3,
+				ry: -Math.PI / 2,
+				rz: -0.07,
+				w: 0.7,
+				h: 0.7,
+			},
+			// Over entrance (facing corridor, +Z)
+			{
+				lines: ['🕌', 'SCHOENEN', 'UIT', 'pls'],
+				bg: '#ffcdd2',
+				fg: '#b71c1c',
+				x: -1.4,
+				y: 2.4,
+				z: 2.08,
+				ry: Math.PI,
+				rz: 0.08,
+				w: 0.7,
+				h: 0.7,
+			},
+			{
+				lines: ['MEKKA', '4500 km', 'die kant', '✈️'],
+				bg: '#fff8e1',
+				fg: '#ff6f00',
+				x: 1.3,
+				y: 2.35,
+				z: 2.08,
+				ry: Math.PI,
+				rz: -0.12,
+				w: 0.75,
+				h: 0.72,
+			},
+			{
+				lines: ['No selfies', 'met de', 'ayatollahs', 'thx'],
+				bg: '#e1bee7',
+				fg: '#4a148c',
+				x: 0.0,
+				y: 1.55,
+				z: 2.08,
+				ry: Math.PI,
+				rz: 0.04,
+				w: 0.72,
+				h: 0.7,
+			},
+		];
+
+		for (const n of notes) {
+			const mesh = this.makePostIt(n.lines, n.bg, n.fg, n.w, n.h);
+			mesh.position.set(n.x, n.y, n.z);
+			mesh.rotation.y = n.ry;
+			mesh.rotation.z = n.rz;
+			this.group.add(mesh);
+		}
+
+		// Cork strip under post-its on back wall
+		const cork = new THREE.Mesh(
+			new THREE.BoxGeometry(4.8, 1.4, 0.04),
+			this.track(
+				new THREE.MeshStandardMaterial({
+					color: 0xc4a574,
+					roughness: 0.95,
+					metalness: 0.05,
+				}),
+			),
+		);
+		cork.position.set(0, 1.95, -1.94);
+		this.group.add(cork);
+	}
+
+	/** Classic sticky note: paper color + sharpie text + slight curl shadow */
+	private makePostIt(
+		lines: string[],
+		bg: string,
+		fg: string,
+		worldW: number,
+		worldH: number,
+	): THREE.Mesh {
+		const c = document.createElement('canvas');
+		c.width = 256;
+		c.height = 256;
+		const ctx = c.getContext('2d')!;
+		// Paper
+		ctx.fillStyle = bg;
+		ctx.fillRect(0, 0, 256, 256);
+		// Soft shadow edge
+		ctx.fillStyle = 'rgba(0,0,0,0.08)';
+		ctx.fillRect(0, 240, 256, 16);
+		// Pin / tape
+		ctx.fillStyle = 'rgba(255,255,255,0.55)';
+		ctx.fillRect(100, 4, 56, 14);
+		ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+		ctx.lineWidth = 2;
+		ctx.strokeRect(4, 4, 248, 248);
+		// Text
+		ctx.fillStyle = fg;
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		const n = lines.length;
+		const fs = n <= 2 ? 36 : n === 3 ? 30 : 26;
+		ctx.font = `bold ${fs}px "Comic Sans MS", "Segoe Print", system-ui, sans-serif`;
+		lines.forEach((line, i) => {
+			const y = 128 + (i - (n - 1) / 2) * (fs + 8);
+			ctx.fillText(line, 128, y);
+		});
+		const tex = new THREE.CanvasTexture(c);
+		tex.colorSpace = THREE.SRGBColorSpace;
+		return new THREE.Mesh(
+			new THREE.PlaneGeometry(worldW, worldH),
+			this.track(
+				new THREE.MeshBasicMaterial({
+					map: tex,
+					toneMapped: false,
+					side: THREE.DoubleSide,
+				}),
+			),
+		);
 	}
 
 	/**
@@ -403,12 +1061,14 @@ export class PrayerRoom {
 		g.add(chest);
 
 		// Legs
-		for (const [lx, lz] of [
-			[0.16, 0.1],
-			[0.16, -0.1],
-			[-0.16, 0.1],
-			[-0.16, -0.1],
-		] as const) {
+		for (
+			const [lx, lz] of [
+				[0.16, 0.1],
+				[0.16, -0.1],
+				[-0.16, 0.1],
+				[-0.16, -0.1],
+			] as const
+		) {
 			const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.34, 6), dark);
 			leg.position.set(lx, 0.17, lz);
 			g.add(leg);
@@ -488,7 +1148,7 @@ export class PrayerRoom {
 		g.add(rope);
 
 		// Name plate
-		const plate = this.makeNamePlate('Geit Qurban', 'voor de ayatollahs');
+		const plate = this.makeNamePlate('Geit Qurban', 'Screaming Sheep · original');
 		plate.position.set(0, 1.05, 0);
 		plate.scale.set(1.0, 0.24, 1);
 		g.add(plate);
@@ -524,6 +1184,73 @@ export class PrayerRoom {
 		this.goat = g;
 	}
 
+	/**
+	 * blend 0 = kleermakerszit (cross-legged sit), 1 = doggy (all fours).
+	 * Uses rig parts stored on userData.
+	 */
+	private applyPrayerPose(fig: THREE.Group, blend: number): void {
+		const rig = fig.userData.rig as
+			| {
+				hips: THREE.Object3D;
+				torso: THREE.Object3D;
+				headG: THREE.Object3D;
+				lap: THREE.Object3D;
+				armL: THREE.Object3D;
+				armR: THREE.Object3D;
+				legL: THREE.Object3D;
+				legR: THREE.Object3D;
+				handL: THREE.Object3D;
+				handR: THREE.Object3D;
+				plate: THREE.Object3D;
+				speech: THREE.Object3D;
+			}
+			| undefined;
+		if (!rig) return;
+		const t = THREE.MathUtils.clamp(blend, 0, 1);
+		const L = (a: number, b: number) => a + (b - a) * t;
+
+		// Root pitch: sit upright → body over the mat (doggy)
+		fig.rotation.x = L(0.05, 0.95);
+
+		// Hips
+		rig.hips.position.set(0, L(0.28, 0.22), L(0.02, -0.05));
+		rig.hips.rotation.x = L(0, 0.15);
+		rig.hips.scale.set(L(1.15, 1.0), L(0.55, 0.7), L(1.0, 1.1));
+
+		// Lap only in sit (fade out for doggy)
+		rig.lap.visible = t < 0.85;
+		rig.lap.position.set(0, L(0.18, 0.12), L(0.22, -0.1));
+		rig.lap.scale.setScalar(L(1, 0.2));
+
+		// Torso
+		rig.torso.position.set(0, L(0.72, 0.55), L(0, 0.28));
+		rig.torso.rotation.x = L(0, -0.35);
+
+		// Head follows torso a bit
+		rig.headG.position.set(0, L(1.15, 0.95), L(0.02, 0.45));
+		rig.headG.rotation.x = L(0.1, -0.55);
+
+		// Arms: sleeves down in sit → planted forward as front legs in doggy
+		rig.armL.position.set(L(-0.28, -0.22), L(0.65, 0.35), L(0.08, 0.42));
+		rig.armR.position.set(L(0.28, 0.22), L(0.65, 0.35), L(0.08, 0.42));
+		rig.armL.rotation.set(L(0.35, 1.15), 0, L(-0.55, -0.2));
+		rig.armR.rotation.set(L(0.35, 1.15), 0, L(0.55, 0.2));
+		rig.handL.position.set(L(-0.38, -0.22), L(0.48, 0.12), L(0.18, 0.62));
+		rig.handR.position.set(L(0.38, 0.22), L(0.48, 0.12), L(0.18, 0.62));
+
+		// Legs: folded sit → extended back knees for doggy
+		rig.legL.position.set(L(-0.12, -0.14), L(0.2, 0.28), L(0.05, -0.35));
+		rig.legR.position.set(L(0.12, 0.14), L(0.2, 0.28), L(0.05, -0.35));
+		rig.legL.rotation.set(L(0.9, -0.55), 0, L(0.4, 0.15));
+		rig.legR.rotation.set(L(0.9, -0.55), 0, L(-0.4, -0.15));
+		rig.legL.scale.set(1, L(0.7, 1.1), 1);
+		rig.legR.scale.set(1, L(0.7, 1.1), 1);
+
+		// Labels float above whatever pose
+		rig.plate.position.set(0, L(1.65, 1.35), L(0.05, 0.2));
+		rig.speech.position.set(0, L(2.05, 1.7), L(0.1, 0.25));
+	}
+
 	private makeAyatollah(name: string, title: string, turbanColor: number): THREE.Group {
 		const g = new THREE.Group();
 		const skin = this.track(
@@ -539,75 +1266,86 @@ export class PrayerRoom {
 			new THREE.MeshStandardMaterial({ color: turbanColor, roughness: 0.85 }),
 		);
 
-		// Seated pose: lower body on mat
+		// Hips
 		const hips = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), robe);
 		hips.scale.set(1.15, 0.55, 1.0);
 		hips.position.set(0, 0.28, 0.02);
 		g.add(hips);
 
-		// Legs folded forward under robe
+		// Lap (sit-only silhouette)
 		const lap = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.4), robe);
 		lap.position.set(0, 0.18, 0.22);
 		g.add(lap);
 
-		// Torso / abaya
+		// Legs (folded sit → rear doggy)
+		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.32, 3, 6), robe);
+		const legR = legL.clone();
+		legL.position.set(-0.12, 0.2, 0.05);
+		legR.position.set(0.12, 0.2, 0.05);
+		legL.rotation.x = 0.9;
+		legR.rotation.x = 0.9;
+		legL.rotation.z = 0.4;
+		legR.rotation.z = -0.4;
+		g.add(legL, legR);
+
+		// Torso
 		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.45, 4, 8), robe);
 		torso.position.set(0, 0.72, 0);
 		g.add(torso);
 
-		// Wide sleeves
-		for (const side of [-1, 1] as const) {
-			const sleeve = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.32, 3, 6), robe);
-			sleeve.position.set(side * 0.28, 0.65, 0.08);
-			sleeve.rotation.z = side * 0.55;
-			sleeve.rotation.x = 0.35;
-			g.add(sleeve);
-			const hand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), skin);
-			hand.position.set(side * 0.38, 0.48, 0.18);
-			g.add(hand);
-		}
+		// Arms
+		const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.32, 3, 6), robe);
+		const armR = armL.clone();
+		armL.position.set(-0.28, 0.65, 0.08);
+		armR.position.set(0.28, 0.65, 0.08);
+		armL.rotation.z = -0.55;
+		armR.rotation.z = 0.55;
+		armL.rotation.x = 0.35;
+		armR.rotation.x = 0.35;
+		g.add(armL, armR);
+		const handL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), skin);
+		const handR = handL.clone();
+		handL.position.set(-0.38, 0.48, 0.18);
+		handR.position.set(0.38, 0.48, 0.18);
+		g.add(handL, handR);
 
-		// Head
+		// Head group (moves as unit)
+		const headG = new THREE.Group();
+		headG.position.set(0, 1.15, 0.02);
 		const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), skin);
-		head.position.set(0, 1.15, 0.02);
-		g.add(head);
-
-		// White beard — full, dignified
+		headG.add(head);
 		const beard = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.38, 8), beardM);
-		beard.position.set(0, 0.92, 0.1);
+		beard.position.set(0, -0.23, 0.08);
 		beard.rotation.x = Math.PI;
-		g.add(beard);
+		headG.add(beard);
 		const moustache = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.035, 0.05), beardM);
-		moustache.position.set(0, 1.08, 0.13);
-		g.add(moustache);
-
-		// Turban (amama) — layered
+		moustache.position.set(0, -0.07, 0.11);
+		headG.add(moustache);
 		const turbanBase = new THREE.Mesh(
 			new THREE.SphereGeometry(0.17, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
 			turbanM,
 		);
-		turbanBase.position.set(0, 1.22, 0);
-		g.add(turbanBase);
+		turbanBase.position.set(0, 0.07, -0.02);
+		headG.add(turbanBase);
 		const turbanTop = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), turbanM);
-		turbanTop.position.set(0, 1.32, -0.02);
+		turbanTop.position.set(0, 0.17, -0.04);
 		turbanTop.scale.set(1.05, 0.7, 1.05);
-		g.add(turbanTop);
-
-		// Soft closed eyes (prayer)
+		headG.add(turbanTop);
 		const lid = this.track(new THREE.MeshBasicMaterial({ color: 0x2c1810 }));
 		for (const sx of [-1, 1] as const) {
 			const eye = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.012, 0.02), lid);
-			eye.position.set(sx * 0.05, 1.17, 0.13);
-			g.add(eye);
+			eye.position.set(sx * 0.05, 0.02, 0.13);
+			headG.add(eye);
 		}
+		g.add(headG);
 
-		// Name plate — eervol
+		// Name plate
 		const plate = this.makeNamePlate(name, title);
 		plate.position.set(0, 1.65, 0.05);
 		plate.scale.set(1.15, 0.28, 1);
 		g.add(plate);
 
-		// Speech bubble (Allahu Akbar)
+		// Speech bubble
 		const sc = document.createElement('canvas');
 		sc.width = 320;
 		sc.height = 80;
@@ -629,6 +1367,20 @@ export class PrayerRoom {
 		g.userData.speechCtx = speechCtx;
 		g.userData.speechTex = speechTex;
 		g.userData.speechLife = 0;
+		g.userData.rig = {
+			hips,
+			torso,
+			headG,
+			lap,
+			armL,
+			armR,
+			legL,
+			legR,
+			handL,
+			handR,
+			plate,
+			speech,
+		};
 
 		return g;
 	}
@@ -673,127 +1425,6 @@ function roundRect(
 	ctx.arcTo(x, y + h, x, y, r);
 	ctx.arcTo(x, y, x + w, y, r);
 	ctx.closePath();
-}
-
-/** Soft ambient pad + slow Hijaz-ish melody — room "gebedsmuziek". */
-function startPrayerMusic(
-	ctx: AudioContext,
-	dest: AudioNode,
-): { stop: () => void } {
-	const master = ctx.createGain();
-	master.gain.value = 0.9;
-	master.connect(dest);
-
-	// Warm lowpass
-	const lp = ctx.createBiquadFilter();
-	lp.type = 'lowpass';
-	lp.frequency.value = 1400;
-	lp.Q.value = 0.7;
-	lp.connect(master);
-
-	// Continuous drone chord (root + fifth + octave)
-	const drones: OscillatorNode[] = [];
-	const droneGains: GainNode[] = [];
-	const roots = [110, 165, 220, 330]; // A2 cluster — calm
-	for (let i = 0; i < roots.length; i++) {
-		const o = ctx.createOscillator();
-		const g = ctx.createGain();
-		o.type = i % 2 === 0 ? 'sine' : 'triangle';
-		o.frequency.value = roots[i];
-		g.gain.value = i === 0 ? 0.07 : 0.035;
-		o.connect(g);
-		g.connect(lp);
-		o.start();
-		drones.push(o);
-		droneGains.push(g);
-	}
-
-	// Soft shimmer LFO on drone volume
-	const lfo = ctx.createOscillator();
-	const lfoG = ctx.createGain();
-	lfo.type = 'sine';
-	lfo.frequency.value = 0.08;
-	lfoG.gain.value = 0.012;
-	lfo.connect(lfoG);
-	for (const g of droneGains) lfoG.connect(g.gain);
-	lfo.start();
-
-	// Slow melodic phrase (Hijaz-flavoured: A Bb C# D E)
-	const scale = [220, 233, 277, 294, 330, 349, 415, 440];
-	let alive = true;
-	let melTimer: number | null = null;
-	const melody = () => {
-		if (!alive) return;
-		const steps = 6 + Math.floor(Math.random() * 5);
-		let t0 = ctx.currentTime + 0.05;
-		let noteIdx = 4;
-		for (let i = 0; i < steps; i++) {
-			noteIdx = Math.max(
-				0,
-				Math.min(scale.length - 1, noteIdx + (Math.random() < 0.5 ? -1 : 1) * (1 + Math.floor(Math.random() * 2))),
-			);
-			const freq = scale[noteIdx];
-			const dur = 0.45 + Math.random() * 0.55;
-			const o = ctx.createOscillator();
-			const g = ctx.createGain();
-			const f = ctx.createBiquadFilter();
-			o.type = 'sine';
-			o.frequency.setValueAtTime(freq, t0);
-			// slight portamento
-			if (i > 0) {
-				o.frequency.setValueAtTime(scale[Math.max(0, noteIdx - 1)], t0);
-				o.frequency.exponentialRampToValueAtTime(freq, t0 + 0.08);
-			}
-			f.type = 'lowpass';
-			f.frequency.value = 1800;
-			g.gain.setValueAtTime(0.0001, t0);
-			g.gain.exponentialRampToValueAtTime(0.055, t0 + 0.08);
-			g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-			o.connect(f);
-			f.connect(g);
-			g.connect(lp);
-			o.start(t0);
-			o.stop(t0 + dur + 0.05);
-			t0 += dur * 0.88;
-		}
-		melTimer = window.setTimeout(melody, 2800 + Math.random() * 2200);
-	};
-	melody();
-
-	// Soft "bell" accents every few bars
-	let bellTimer: number | null = null;
-	const bell = () => {
-		if (!alive) return;
-		const t0 = ctx.currentTime + 0.02;
-		const o = ctx.createOscillator();
-		const g = ctx.createGain();
-		o.type = 'sine';
-		o.frequency.setValueAtTime(660, t0);
-		o.frequency.exponentialRampToValueAtTime(440, t0 + 1.2);
-		g.gain.setValueAtTime(0.0001, t0);
-		g.gain.exponentialRampToValueAtTime(0.04, t0 + 0.02);
-		g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.4);
-		o.connect(g);
-		g.connect(lp);
-		o.start(t0);
-		o.stop(t0 + 1.5);
-		bellTimer = window.setTimeout(bell, 5000 + Math.random() * 4000);
-	};
-	bell();
-
-	return {
-		stop: () => {
-			alive = false;
-			if (melTimer !== null) clearTimeout(melTimer);
-			if (bellTimer !== null) clearTimeout(bellTimer);
-			try {
-				lfo.stop();
-				for (const o of drones) o.stop();
-			} catch {
-				/* */
-			}
-		},
-	};
 }
 
 /**

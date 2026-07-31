@@ -1,6 +1,10 @@
 /**
  * Live playlist player — survives Vite HMR + hard refresh via sessionStorage.
+ * When binaural is enabled, the element is routed through SpatialAudio HRTF
+ * at the booth position (headphones: DJ is "over there").
  */
+
+import { spatial, type SpatialElement } from './SpatialAudio';
 
 export type Track = { file: string; title: string; url: string; bytes: number };
 
@@ -42,6 +46,8 @@ export class DJPlayer {
 	onChange: ((info: { title: string; playing: boolean; index: number }) => void) | null = null;
 	private persistTimer: number | null = null;
 	private restored = false;
+	/** Binaural booth bus (null until first user gesture attaches it) */
+	private spatialEl: SpatialElement | null = null;
 
 	constructor() {
 		this.audio.volume = 0.55;
@@ -54,6 +60,28 @@ export class DJPlayer {
 		this.audio.addEventListener('timeupdate', () => this.checkpoint());
 		this.audio.addEventListener('pause', () => this.checkpoint());
 		this.audio.addEventListener('play', () => this.checkpoint());
+	}
+
+	/**
+	 * Route the deck through HRTF at the booth. Call after a user gesture
+	 * so AudioContext is running. Safe to call multiple times.
+	 */
+	enableBinauralBooth(pos: { x: number; y: number; z: number }): void {
+		spatial.ensure();
+		this.spatialEl = spatial.attachElementAt(this.audio, pos, {
+			volume: this.baseVolume,
+			k: 0.012,
+			maxDistance: 55,
+			refDistance: 3.5,
+		});
+		// Element level fixed; SpatialElement owns loudness
+		this.audio.volume = 1;
+		this.applyVolume();
+	}
+
+	/** Move the virtual booth (if Bartek ever relocates) */
+	setBoothPosition(x: number, y: number, z: number): void {
+		this.spatialEl?.setPosition(x, y, z);
 	}
 
 	/** Call once after first user gesture + playlist load */
@@ -166,8 +194,10 @@ export class DJPlayer {
 	}
 
 	/**
-	 * Afstands-falloff vanaf de DJ-booth: dichtbij = vol, verderop zakt de mix
-	 * weg. App voedt dit een paar keer per seconde met de luisteraarpositie.
+	 * Afstands-falloff vanaf de DJ-booth.
+	 * With binaural booth: SpatialElement.apply() already does quadratic
+	 * falloff from listener pose — this only multiplies the fader slightly
+	 * so UI distance still feels right if pose updates lag a frame.
 	 */
 	setDistanceGain(g: number): void {
 		this.distanceGain = Math.max(0.02, Math.min(1, g));
@@ -175,7 +205,13 @@ export class DJPlayer {
 	}
 
 	private applyVolume(): void {
-		this.audio.volume = Math.max(0, Math.min(1, this.baseVolume * this.distanceGain));
+		if (this.spatialEl) {
+			// HRTF path: base × mild distance on the WebAudio gain
+			this.spatialEl.setBaseVolume(this.baseVolume * this.distanceGain);
+			this.audio.volume = 1;
+		} else {
+			this.audio.volume = Math.max(0, Math.min(1, this.baseVolume * this.distanceGain));
+		}
 	}
 
 	async requestSong(query: string): Promise<{ ok: boolean; message: string; file?: string }> {

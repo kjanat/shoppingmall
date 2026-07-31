@@ -2,6 +2,7 @@ import { type ControlSettings, DEFAULT_SETTINGS } from '../player/Controls';
 
 const STORE_KEY = 'mallsim.controls.v1';
 const QUALITY_KEY = 'mallsim.quality.v1';
+const BINAURAL_KEY = 'mallsim.binaural.v1';
 
 export type QualityLevel = 'laag' | 'middel' | 'hoog';
 
@@ -11,6 +12,17 @@ function loadQuality(): QualityLevel {
 		return q === 'laag' || q === 'hoog' ? q : 'middel';
 	} catch {
 		return 'middel';
+	}
+}
+
+function loadBinaural(): boolean {
+	try {
+		const v = localStorage.getItem(BINAURAL_KEY);
+		// default ON — headphones get HRTF
+		if (v === null) return true;
+		return v !== '0' && v !== 'false';
+	} catch {
+		return true;
 	}
 }
 
@@ -29,11 +41,19 @@ export class SettingsPanel {
 	/** Grafische kwaliteit — de Pi trekt 'hoog' niet met schaduwen aan. */
 	private quality: QualityLevel = loadQuality();
 	private onQuality: ((q: QualityLevel) => void) | null = null;
+	/** HRTF binaural — headphones recommended */
+	private binaural = loadBinaural();
+	private onBinaural: ((on: boolean) => void) | null = null;
 
 	/** App meldt zich hier aan; krijgt meteen de opgeslagen stand. */
 	bindQuality(fn: (q: QualityLevel) => void): void {
 		this.onQuality = fn;
 		fn(this.quality);
+	}
+
+	bindBinaural(fn: (on: boolean) => void): void {
+		this.onBinaural = fn;
+		fn(this.binaural);
 	}
 
 	constructor(root: HTMLElement, onChange: (s: ControlSettings) => void) {
@@ -129,9 +149,17 @@ export class SettingsPanel {
           </select>
         </label>
 
+        <label class="settings-row">
+          <span>
+            <b>Binaural audio (HRTF)</b>
+            <small>3D-geluid via koptelefoon: links/rechts/achter/hoogte. Speakers = soft stereo.</small>
+          </span>
+          <input type="checkbox" id="set-binaural" />
+        </label>
+
         <div class="settings-keys">
           WASD lopen · Shift rennen · Space springen · Q/E draaien · R/F kijken ·
-          M kaart · Esc muis los
+          M kaart · Esc muis los · O besturing
         </div>
         <button type="button" class="settings-reset" id="settings-reset">Standaard herstellen</button>
       </div>
@@ -152,6 +180,18 @@ export class SettingsPanel {
 				/* private mode */
 			}
 			this.onQuality?.(this.quality);
+		});
+
+		const binauralCb = q<HTMLInputElement>('#set-binaural');
+		binauralCb.checked = this.binaural;
+		binauralCb.addEventListener('change', () => {
+			this.binaural = binauralCb.checked;
+			try {
+				localStorage.setItem(BINAURAL_KEY, this.binaural ? '1' : '0');
+			} catch {
+				/* */
+			}
+			this.onBinaural?.(this.binaural);
 		});
 
 		q('#settings-reset').addEventListener('click', () => {
@@ -209,6 +249,8 @@ export class SettingsPanel {
 		q<HTMLInputElement>('#set-sens').value = String(this.settings.sensitivity);
 		q<HTMLInputElement>('#set-invert').checked = this.settings.invertY;
 		q('#set-sens-out').textContent = `${this.settings.sensitivity.toFixed(1)}×`;
+		const bin = this.host.querySelector<HTMLInputElement>('#set-binaural');
+		if (bin) bin.checked = this.binaural;
 		// Sensitivity is meaningless without mouse look
 		q('#set-sens').closest('.settings-row')?.classList.toggle(
 			'settings-off',

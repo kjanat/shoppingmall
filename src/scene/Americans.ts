@@ -431,6 +431,75 @@ export class Americans {
 		}
 	}
 
+	/**
+	 * Mall cop open fire — panic nearby shoppers: scream, freeze, then flee path.
+	 * @returns names of sims that flinched (for status line)
+	 */
+	panicFromGunfire(
+		origin: THREE.Vector3,
+		radius = 10,
+	): { id: number; name: string }[] {
+		const hit: { id: number; name: string }[] = [];
+		const screams = [
+			'AAAAH!!',
+			'ACTIVE SHOOTER— wait that IS security',
+			"Don't shoot!!",
+			"I'm just shopping!!",
+			'Hands up… I mean bag up?',
+			'Why is this a thing',
+			'PRAIRIE LAKES NOOO',
+		];
+		for (const s of this.sims) {
+			if (Math.abs(s.pos.y - origin.y) > 3) continue;
+			const d = s.pos.distanceTo(origin);
+			if (d > radius) continue;
+			s.f.unhappiness = Math.min(100, s.f.unhappiness + 22 + Math.random() * 12);
+			s.f.mood = 'lost';
+			s.wait = Math.max(s.wait, 1.2 + Math.random());
+			// Shove them away from the muzzle
+			const away = s.pos.clone().sub(origin);
+			away.y = 0;
+			if (away.lengthSq() < 1e-4) away.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+			away.normalize().multiplyScalar(1.4 + Math.random());
+			const nx = s.pos.x + away.x;
+			const nz = s.pos.z + away.z;
+			const fixed = this.world.resolveCircle(nx, nz, s.pos.y, 0.35);
+			s.pos.x = fixed.x;
+			s.pos.z = fixed.z;
+			s.root.position.copy(s.pos);
+			// Clear path so they re-route next tick
+			s.path = [];
+			s.pathI = 0;
+			const line = screams[Math.floor(Math.random() * screams.length)];
+			const ctx = s.speechCtx;
+			ctx.clearRect(0, 0, 280, 72);
+			ctx.fillStyle = 'rgba(255,240,240,0.96)';
+			ctx.fillRect(6, 6, 268, 60);
+			ctx.strokeStyle = '#b91c1c';
+			ctx.lineWidth = 3;
+			ctx.strokeRect(6, 6, 268, 60);
+			ctx.fillStyle = '#7f1d1d';
+			ctx.font = '700 16px system-ui,sans-serif';
+			ctx.textAlign = 'center';
+			ctx.textBaseline = 'middle';
+			ctx.fillText(line, 140, 36);
+			s.speechTex.needsUpdate = true;
+			s.speech.visible = true;
+			(s.speech.material as THREE.SpriteMaterial).visible = true;
+			s.speechLife = 2.4 + Math.random();
+			this.paintLabel(s);
+			this.applyFaceMood(s);
+			hit.push({ id: s.f.id, name: s.f.name });
+		}
+		return hit;
+	}
+
+	/** All sim positions (same floor-ish) for threat scanning */
+	collectPositions(out: THREE.Vector3[]): void {
+		out.length = 0;
+		for (const s of this.sims) out.push(s.pos);
+	}
+
 	/** Alien lift — override root Y without breaking path pos permanently */
 	nudgeSimHeight(id: number, worldY: number): void {
 		const s = this.sims.find((x) => x.f.id === id);

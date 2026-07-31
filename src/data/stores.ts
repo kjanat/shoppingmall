@@ -391,7 +391,7 @@ export const STORES: StoreDef[] = [
 		accent: '#a5d6a7',
 		nodeId: 'u_prayer',
 		utility: true,
-		blurb: 'NW-hoek · gebedsmuziek · Allahu Akbar · ayatollahs · wudu ernaast',
+		blurb: 'NW-hoek · Allahu Trapbar · geit · ayatollahs · wudu ernaast',
 	},
 	{
 		id: 'secret_stairs',

@@ -32,9 +32,12 @@ import { MallRat } from '../scene/MallRat';
 import { Monkey } from '../scene/Monkey';
 import { PalmForest } from '../scene/Palms';
 import { ParkingGarage } from '../scene/ParkingGarage';
+import { Penguins } from '../scene/Penguins';
 import { PrayerRoom } from '../scene/PrayerRoom';
 import { ProtestGroupies } from '../scene/ProtestGroupies';
 import { Restrooms } from '../scene/Restrooms';
+import { ScrubberBuggy } from '../scene/ScrubberBuggy';
+import { SecurityGuards } from '../scene/SecurityGuards';
 import { ShopVoice } from '../scene/ShopVoice';
 import { Spaceship } from '../scene/Spaceship';
 import { StockDisplay } from '../scene/StockDisplay';
@@ -76,12 +79,19 @@ export class App {
 	private rat!: MallRat;
 	private cleaner!: CleaningCart;
 	private prayer = new PrayerRoom();
+	private penguins!: Penguins;
 	private restrooms = new Restrooms();
 	private helipad = new Helipad();
 	private foodCourt = new FoodCourt();
 	private elevator = new GlassElevator();
 	private parking = new ParkingGarage();
+	private security!: SecurityGuards;
 	private nearElevHint = false;
+	private nearSecurityHint = false;
+	private securityHitCd = 0;
+	/** Reused for binaural listener orientation */
+	private _fwd = new THREE.Vector3();
+	private _up = new THREE.Vector3();
 	/** Latched until you walk out of the cabin XZ */
 	private elevRiding = false;
 	private elevUi!: ElevatorPanel;
@@ -92,9 +102,11 @@ export class App {
 	private catwalk = new Catwalk();
 	private heli!: Helicopter;
 	private drone = new Drone();
+	private scrubber!: ScrubberBuggy;
 	private nearDroneHint = false;
-	/** Welk voertuig je bestuurt tijdens fly-mode */
-	private vehicle: 'drone' | 'heli' | null = null;
+	private nearScrubberHint = false;
+	/** Welk voertuig je bestuurt */
+	private vehicle: 'drone' | 'heli' | 'scrubber' | null = null;
 	/** reused each frame for the monkey's target list */
 	private simPositions: THREE.Vector3[] = [];
 	private djPlayer = new DJPlayer();
@@ -137,7 +149,10 @@ export class App {
 		this.thief = new BakerThief(this.world, this.beardCave);
 		this.rat = new MallRat(this.world);
 		this.cleaner = new CleaningCart(this.world);
+		this.scrubber = new ScrubberBuggy(this.world);
 		this.protest = new ProtestGroupies(this.world);
+		this.security = new SecurityGuards(this.world);
+		this.penguins = new Penguins(this.world, 12);
 
 		this.renderer = new THREE.WebGLRenderer({
 			// De composer doet al AA — canvas-MSAA erbovenop is puur dubbel werk
@@ -178,7 +193,10 @@ export class App {
 		this.scene.add(this.travel.group);
 		this.scene.add(this.rat.group);
 		this.scene.add(this.cleaner.group);
+		this.scene.add(this.scrubber.group);
+		this.scene.add(this.security.group);
 		this.scene.add(this.prayer.group);
+		this.scene.add(this.penguins.group);
 		this.scene.add(this.restrooms.group);
 		this.scene.add(this.helipad.group);
 		this.scene.add(this.foodCourt.group);
@@ -245,6 +263,25 @@ export class App {
 					'🐒💩 Aap gooit kak op de GEBEDSRUIMTE — je stond te ver weg',
 				);
 			}
+		});
+
+		// Hypersensitive mall cops — open fire → panic sims / graze player
+		this.security.setOpenFireCallback((msg) => this.ui.setStatus(msg));
+		this.security.setSimPanicCallback((origin, radius) => {
+			const hit = this.atmosphere.americans.panicFromGunfire(origin, radius);
+			if (hit.length > 0) {
+				this.score = Math.max(0, this.score - Math.min(12, hit.length * 2));
+				this.ui.setScore(this.score, this.metSims.size);
+			}
+		});
+		this.security.setPlayerHitCallback((dmg, who) => {
+			if (this.securityHitCd > 0) return;
+			this.securityHitCd = 0.6;
+			this.score = Math.max(0, this.score - dmg);
+			this.ui.setScore(this.score, this.metSims.size);
+			this.ui.setStatus(
+				`🚔💥 ${who} schoot je — "I felt threatened" (−${dmg})`,
+			);
 		});
 
 		this.director = new Director(this.camera);
@@ -374,6 +411,15 @@ export class App {
 			this.renderer.shadowMap.needsUpdate = true;
 			this.onResize();
 		});
+		// HRTF binaural on/off (koptelefoon)
+		this.settingsUi.bindBinaural((on) => {
+			spatial.setBinaural(on);
+			this.ui.setStatus(
+				on
+					? '🎧 Binaural HRTF AAN · draai je hoofd, geluid blijft in de wereld'
+					: '🔊 Binaural UIT · equalpower stereo',
+			);
+		});
 
 		window.addEventListener('resize', () => this.onResize());
 		window.addEventListener('keydown', (e) => {
@@ -426,11 +472,17 @@ export class App {
 			}
 			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper
 			if (e.key === 'e' || e.key === 'E') {
-				// Voertuigen eerst: uitstappen als je vliegt, instappen als je ernaast staat
-				if (this.player.flying) {
+				// Voertuigen eerst: uitstappen als je vliegt/rijdt
+				if (this.player.flying || this.vehicle === 'scrubber') {
 					this.exitVehicle();
 				} else if (this.tryOpenElevatorMenu()) {
 					// Hans floor picker — frees mouse without Esc
+				} else if (
+					!this.possessId && this.freeMove
+					&& this.scrubber.distanceTo(this.camera.position) < 3.5
+					&& this.camera.position.y < 4.5
+				) {
+					this.boardScrubber();
 				} else if (
 					!this.possessId && this.freeMove
 					&& this.drone.distanceTo(this.camera.position) < 3.2
@@ -468,15 +520,33 @@ export class App {
 		const unlock = () => {
 			this.atmosphere.americans.ensureAudio();
 			spatial.ensure();
+			// DJ booth → HRTF so the mix sits in world space
+			this.djPlayer.enableBinauralBooth({
+				x: this.djBartek.pos.x,
+				y: 1.55,
+				z: this.djBartek.pos.z,
+			});
 			this.prayer.ensureAudio();
 			this.protest.ensureAudio();
 			this.cleaner.ensureAudio();
-			// Resume DJ track after HMR / refresh (needs a user gesture for autoplay)
-			void this.djPlayer.restoreIfNeeded().then((ok) => {
-				if (ok && !this.restoredFromSave) {
-					this.ui.setStatus('♪ Muziek hervat (persist na reload)');
+			// Resume / start mall music after gesture
+			void (async () => {
+				const resumed = await this.djPlayer.restoreIfNeeded();
+				if (!resumed && !this.djPlayer.playing) {
+					const tracks = await this.djPlayer.refreshPlaylist();
+					const music = tracks.filter((t) => !/intro_voice|voice/i.test(t.file));
+					const list = music.length ? music : tracks;
+					if (list.length) {
+						const idx = this.djPlayer.tracks.findIndex((t) => t.file === list[0].file);
+						await this.djPlayer.playIndex(idx >= 0 ? idx : 0);
+					}
 				}
-			});
+				if (!this.restoredFromSave) {
+					this.ui.setStatus(
+						'♪ Muziek AAN · DJ-booth + gebedsruimte Trapbar · koptelefoon = binaural',
+					);
+				}
+			})();
 			window.removeEventListener('pointerdown', unlock);
 			window.removeEventListener('keydown', unlock);
 		};
@@ -680,6 +750,29 @@ export class App {
 			floor: this.player.flying ? 'lucht' : 'V0',
 		});
 
+		rows.push({
+			icon: '🧽',
+			name: 'Schoonmaak buggy #88',
+			doing: this.scrubber.statusLine,
+			floor: 'V0 · bij fontein/noord',
+		});
+
+		rows.push({
+			icon: '🐧',
+			name: `Pinguïns (${this.penguins.count})`,
+			doing: 'waddlen door de mall · noot noot',
+			floor: 'V0 · atrium / food court',
+		});
+
+		for (const g of this.security.roster) {
+			rows.push({
+				icon: '🚔',
+				name: g.name,
+				doing: `${g.state} · ${g.kills}× "felt threatened"`,
+				floor: g.floor,
+			});
+		}
+
 		return rows;
 	}
 
@@ -718,13 +811,43 @@ export class App {
 		);
 	}
 
-	/** E tijdens de vlucht: uitstappen. Drone parkeert; heli vliegt zelf terug. */
+	/** E naast de lege schoonmaak-buggy: instappen & racen. */
+	private boardScrubber(): void {
+		this.player.releaseLook();
+		this.vehicle = 'scrubber';
+		this.player.driving = true;
+		this.player.flying = false;
+		this.scrubber.board();
+		const seat = this.scrubber.getSeatPosition();
+		this.camera.position.copy(seat);
+		this.player.setHeading(this.scrubber.heading);
+		this.player.syncFromCamera();
+		// syncFromCamera clears driving? no - only feet/yaw. re-set driving
+		this.player.driving = true;
+		this.player.setHeading(this.scrubber.heading);
+		this.ui.setStatus(
+			'🧽 SCHOONMAAK BUGGY · WASD rijden · Shift = turbo · E = uitstappen · wet floor racing!',
+		);
+	}
+
+	/** E tijdens de vlucht/rit: uitstappen. */
 	private exitVehicle(): void {
 		const wasHeli = this.vehicle === 'heli';
+		const wasScrub = this.vehicle === 'scrubber';
 		this.vehicle = null;
 		this.player.flying = false;
+		this.player.driving = false;
 		this.player.flightProfile = 'drone';
 		const p = this.camera.position;
+
+		if (wasScrub) {
+			const exit = this.scrubber.release();
+			const ground = this.world.groundHeightAt(exit.x, exit.z, 0.5, 2);
+			this.camera.position.set(exit.x, ground + 1.6, exit.z);
+			this.player.syncFromCamera();
+			this.ui.setStatus('🧽 Uitgestapt — buggy blijft staan voor de volgende racer');
+			return;
+		}
 
 		if (wasHeli) {
 			// PRAIRIE 1 keert op de automaat terug naar het pad; jij valt eruit —
@@ -1405,14 +1528,92 @@ export class App {
 		this.updateElevatorRide();
 
 		this.rat.update(dt);
-		this.cleaner.update(dt, this.camera.position);
-		// Quadratic spatial listener follows camera
-		spatial.updateListener(
-			this.camera.position.x,
-			this.camera.position.y,
-			this.camera.position.z,
+		// Player scrubber: drive first so camera sticks before other systems
+		if (this.vehicle === 'scrubber' && this.scrubber.ridden) {
+			const seat = this.scrubber.update(dt, this.player.getDriveInput());
+			if (seat) {
+				this.camera.position.copy(seat);
+				this.player.setHeading(this.scrubber.heading);
+				this.player.driving = true;
+			}
+		} else {
+			this.scrubber.update(dt);
+		}
+		this.cleaner.update(
+			dt,
+			// Don't let Wei hunt you while you're racing his cousin-buggy
+			this.vehicle === 'scrubber' ? undefined : this.camera.position,
 		);
+		// Binaural listener: camera position + look/up for HRTF
+		{
+			const cam = this.camera;
+			cam.getWorldDirection(this._fwd);
+			this._up.set(0, 1, 0).applyQuaternion(cam.quaternion).normalize();
+			spatial.updateListener({
+				x: cam.position.x,
+				y: cam.position.y,
+				z: cam.position.z,
+				fx: this._fwd.x,
+				fy: this._fwd.y,
+				fz: this._fwd.z,
+				ux: this._up.x,
+				uy: this._up.y,
+				uz: this._up.z,
+			});
+		}
 		this.prayer.update(dt, this.camera.position);
+		this.penguins.update(dt);
+
+		// Mall security — feed every "threat" in the building
+		this.securityHitCd = Math.max(0, this.securityHitCd - dt);
+		{
+			const threats: { x: number; y: number; z: number; kind: string; weight: number }[] = [];
+			// Sims are walking bombs of suspicion
+			this.simPositions.length = 0;
+			for (const child of this.atmosphere.americans.group.children) {
+				if (!(child instanceof THREE.Object3D)) continue;
+				this.simPositions.push(child.position as THREE.Vector3);
+				threats.push({
+					x: child.position.x,
+					y: child.position.y + 1.4,
+					z: child.position.z,
+					kind: 'shopper',
+					weight: 0.9,
+				});
+			}
+			if (this.thief.active) {
+				const tp = this.thief.group.children[0]?.position ?? this.thief.group.position;
+				threats.push({
+					x: tp.x,
+					y: tp.y + 1.2,
+					z: tp.z,
+					kind: 'thief',
+					weight: 2.2,
+				});
+			}
+			threats.push({
+				x: this.monkey.group.position.x,
+				y: this.monkey.group.position.y + 0.8,
+				z: this.monkey.group.position.z,
+				kind: 'monkey',
+				weight: 1.6,
+			});
+			threats.push({
+				x: this.protest.pos.x,
+				y: 1.4,
+				z: this.protest.pos.z,
+				kind: 'protest',
+				weight: 1.3,
+			});
+			threats.push({
+				x: this.cleaner.pos.x,
+				y: this.cleaner.pos.y + 1.2,
+				z: this.cleaner.pos.z,
+				kind: 'cleaner',
+				weight: 0.7,
+			});
+			this.security.update(dt, this.camera.position, threats);
+		}
 
 		if (this.possessId !== null) {
 			const eye = this.atmosphere.americans.getSimEye(this.possessId);
@@ -1431,12 +1632,11 @@ export class App {
 		} else if (this.freeMove && this.player.enabled) {
 			this.player.update(dt);
 			// Keep glued after physics (belt/sim push can nudge feet)
-			if (this.elevRiding) {
+			if (this.elevRiding && !this.player.driving) {
 				this.player.setElevatorRide(this.elevator.cabinFloorY);
 			}
-			// Lopend: loopband-drift + niet ín Brad staan. Vliegend: skip beide —
-			// de muur-push zou je op hoogte tegen onzichtbare wanden drukken.
-			if (!this.player.flying) {
+			// Lopend: loopband-drift + niet ín Brad staan. Vliegend/rijdend: skip.
+			if (!this.player.flying && !this.player.driving) {
 				if (this.player.isGrounded && !this.elevRiding) {
 					const belt = this.walkways.beltVelocityAt(
 						this.camera.position.x,
@@ -1474,13 +1674,24 @@ export class App {
 		this.drone.followCamera(this.camera, dt);
 
 		// E-hint als je naast de geparkeerde drone staat
-		const nearDrone = !this.player.flying && this.freeMove
+		const nearDrone = !this.player.flying && !this.player.driving && this.freeMove
 			&& this.drone.distanceTo(this.camera.position) < 3.2;
 		if (nearDrone && !this.nearDroneHint) {
 			this.nearDroneHint = true;
 			this.ui.setStatus('🛸 Passagiersdrone — druk E om in te stappen');
 		} else if (!nearDrone && this.nearDroneHint) {
 			this.nearDroneHint = false;
+		}
+
+		// Empty scrubber rental
+		const nearScrub = !this.player.flying && !this.player.driving && this.freeMove
+			&& this.scrubber.distanceTo(this.camera.position) < 3.8
+			&& this.camera.position.y < 4.5;
+		if (nearScrub && !this.nearScrubberHint) {
+			this.nearScrubberHint = true;
+			this.ui.setStatus('🧽 SCHOONMAAK BUGGY #88 — leeg · E = instappen & racen (Shift = turbo)');
+		} else if (!nearScrub && this.nearScrubberHint) {
+			this.nearScrubberHint = false;
 		}
 
 		// Bewoners-dashboard: refresh 2×/s, only while open
@@ -1573,13 +1784,29 @@ export class App {
 				this.camera.position.x - this.prayer.pos.x,
 				this.camera.position.z - this.prayer.pos.z,
 			);
-			if (dPrayer < 7 && this.camera.position.y < 4 && !this.nearPrayerHint) {
+			if (dPrayer < 12 && this.camera.position.y < 4 && !this.nearPrayerHint) {
 				this.nearPrayerHint = true;
 				this.ui.setStatus(
-					'🕌 GEBEDSRUIMTE · ambient gebedsmuziek · iedereen: Allahu Akbar',
+					'🕌 GEBEDSRUIMTE · Allahu Trapbar ♪ (vol) · poses op de beat · geit',
 				);
-			} else if (dPrayer >= 10) {
+			} else if (dPrayer >= 16) {
 				this.nearPrayerHint = false;
+			}
+
+			// Security — if you're close enough to read the badge, you're already a threat
+			if (!this.nearSecurityHint) {
+				for (const g of this.security.roster) {
+					// roster has no positions — soft global intro once per area via first open fire is enough
+					void g;
+				}
+				// One-shot when first free-roaming near atrium
+				const dAtrium = Math.hypot(this.camera.position.x, this.camera.position.z);
+				if (dAtrium < 18 && this.freeMove) {
+					this.nearSecurityHint = true;
+					this.ui.setStatus(
+						'🚔 MALL SECURITY · hypersensitief · adem te hard = open vuur',
+					);
+				}
 			}
 
 			// Glass elevator (+ dak: wide radius because call pedestals sit off-shaft)
@@ -1600,8 +1827,8 @@ export class App {
 					inElev
 						? '🛗 GLAZEN LIFT · kijk Hans · E = kies verdieping'
 						: onRoofHint
-							? '🟢 GROENE KNOP / gele streep · E = roep Hans naar het dak'
-							: '🛗 GLAZEN LIFT · gele/blauwe knop of E naast schacht = roep lift',
+						? '🟢 GROENE KNOP / gele streep · E = roep Hans naar het dak'
+						: '🛗 GLAZEN LIFT · gele/blauwe knop of E naast schacht = roep lift',
 				);
 			} else if (dElevXZ >= elevHintLeave && !inElev) {
 				this.nearElevHint = false;

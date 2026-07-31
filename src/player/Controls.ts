@@ -150,6 +150,11 @@ export class PlayerControls {
 	flying = false;
 	/** Drone = wendbaar; heli = zwaarder en sneller (flight-sim-gevoel). */
 	flightProfile: 'drone' | 'heli' = 'drone';
+	/**
+	 * Riding a ground vehicle (scrubber buggy). Walk physics off;
+	 * only look + drive input axes are active.
+	 */
+	driving = false;
 
 	/** True while feet are on a surface (belts only convey grounded players). */
 	get isGrounded(): boolean {
@@ -243,10 +248,71 @@ export class PlayerControls {
 		this.dragging = false;
 	}
 
+	/**
+	 * Axes for vehicle arcade drive (scrubber buggy).
+	 * throttle: W/S, steer: A/D (or Q/E), boost: Shift.
+	 */
+	getDriveInput(): {
+		throttle: number;
+		steer: number;
+		boost: boolean;
+	} {
+		let throttle = this.axisY;
+		if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) throttle += 1;
+		if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) throttle -= 1;
+		let steer = 0;
+		// A/D (+ arrows). Q also steers left; E is reserved for exit vehicle.
+		if (this.keys.has('KeyA') || this.keys.has('ArrowLeft') || this.keys.has('KeyQ')) {
+			steer += 1;
+		}
+		if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) {
+			steer -= 1;
+		}
+		// stick X as steer when no keys
+		if (Math.abs(steer) < 0.05) steer = -this.axisX;
+		return {
+			throttle: THREE.MathUtils.clamp(throttle, -1, 1),
+			steer: THREE.MathUtils.clamp(steer, -1, 1),
+			boost: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'),
+		};
+	}
+
+	/** Snap look yaw to vehicle heading (call on board / each frame optional) */
+	setHeading(yaw: number): void {
+		this.yaw = yaw;
+		this.wrapYaw();
+	}
+
+	/** While driving: pitch look only; yaw is forced to vehicle heading by App */
+	private updateDriveLook(dt: number): void {
+		let tilt = 0;
+		if (this.keys.has('KeyR')) tilt += 1;
+		if (this.keys.has('KeyF')) tilt -= 1;
+		if (tilt !== 0) {
+			this.pitch = THREE.MathUtils.clamp(
+				this.pitch + tilt * PITCH_SPEED * dt,
+				-PITCH_MAX * 0.7,
+				PITCH_MAX * 0.55,
+			);
+		}
+		// Mouse look still adjusts pitch via pointermove (yaw ignored while driving)
+		this.cam.rotation.order = 'YXZ';
+		this.cam.rotation.set(this.pitch, this.yaw, 0);
+		this.vel.set(0, 0, 0);
+		this.vy = 0;
+		this.grounded = true;
+		this.jumpQueued = false;
+	}
+
 	update(dt: number): void {
 		if (!this.enabled) return;
 		if (this.flying) {
 			this.updateFlight(dt);
+			return;
+		}
+		// Ground vehicle: look only — ScrubberBuggy owns translation
+		if (this.driving) {
+			this.updateDriveLook(dt);
 			return;
 		}
 
@@ -527,10 +593,13 @@ export class PlayerControls {
 		}
 
 		const s = this.settings;
-		this.yaw -= dx * sens * s.sensitivity;
+		// Driving: pitch only — yaw is locked to the buggy heading
+		if (!this.driving) {
+			this.yaw -= dx * sens * s.sensitivity;
+			this.wrapYaw();
+		}
 		this.pitch -= dy * sens * s.sensitivity * (s.invertY ? -1 : 1);
 		this.pitch = THREE.MathUtils.clamp(this.pitch, -PITCH_MAX, PITCH_MAX);
-		this.wrapYaw();
 	};
 
 	/** Drone-vlucht: traag versnellen, muren tellen binnen, plafond via clamp. */
