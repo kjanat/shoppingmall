@@ -1,5 +1,10 @@
 /**
- * Client: ask OpenRouter (via /api/sim/chat) for a 2-line mall dialogue.
+ * Client: ask OpenRouter (via /api/sim/chat → @openrouter/sdk) for a 2-line mall dialogue.
+ *
+ * Browser supplies Broadcast optional trace data
+ * (https://openrouter.ai/docs/guides/features/broadcast):
+ *   - user       — stable per-browser end-user id (localStorage, ≤128)
+ *   - session_id — per-tab session for sticky routing + session grouping (≤256)
  */
 
 export type SimPersona = {
@@ -18,6 +23,51 @@ export type ChatExchange = { a: string; b: string };
 
 let inflight = 0;
 const MAX_INFLIGHT = 1;
+
+const SESSION_STORAGE_KEY = 'mallsim.openrouter.session';
+const USER_STORAGE_KEY = 'mallsim.openrouter.user';
+
+function newId(prefix: string): string {
+	const uuid = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+		? crypto.randomUUID()
+		: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+	return `${prefix}-${uuid}`;
+}
+
+/**
+ * Stable per-browser user id for OpenRouter Broadcast `user` (max 128 chars).
+ * Survives tabs/reloads; used for end-user analytics + abuse isolation.
+ */
+export function getMallUserId(): string {
+	try {
+		let id = localStorage.getItem(USER_STORAGE_KEY);
+		if (!id || id.length < 8) {
+			id = newId('user');
+			localStorage.setItem(USER_STORAGE_KEY, id);
+		}
+		return id.slice(0, 128);
+	} catch {
+		return `user-ephemeral-${Date.now().toString(36)}`.slice(0, 128);
+	}
+}
+
+/**
+ * Stable per-tab session id for OpenRouter `session_id` (max 256 chars).
+ * Survives HMR within the tab; new tab = new session.
+ */
+export function getMallSessionId(): string {
+	try {
+		let id = sessionStorage.getItem(SESSION_STORAGE_KEY);
+		if (!id || id.length < 8) {
+			id = newId('sess');
+			sessionStorage.setItem(SESSION_STORAGE_KEY, id);
+		}
+		return id.slice(0, 256);
+	} catch {
+		// private mode / no storage
+		return `sess-ephemeral-${Date.now().toString(36)}`.slice(0, 256);
+	}
+}
 
 /** Local fallback if OpenRouter is down — meaner when unhappy */
 export function localBanter(a: SimPersona, b: SimPersona): ChatExchange {
@@ -75,11 +125,22 @@ export async function fetchSimChat(
 ): Promise<ChatExchange> {
 	if (inflight >= MAX_INFLIGHT) return localBanter(a, b);
 	inflight++;
+	const sessionId = getMallSessionId();
+	const userId = getMallUserId();
 	try {
 		const res = await fetch('/api/sim/chat', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ a, b, context }),
+			body: JSON.stringify({
+				a,
+				b,
+				context,
+				// OpenRouter Broadcast optional trace data
+				user: userId,
+				userId,
+				sessionId,
+				session_id: sessionId,
+			}),
 		});
 		if (!res.ok) {
 			const err = await res.json().catch(() => ({}));

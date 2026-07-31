@@ -1,11 +1,12 @@
 /**
  * Vite dev middleware: DJ Bartek + mall sim brain.
  * - POST /api/tts          → ElevenLabs
- * - POST /api/sim/chat     → OpenRouter (sims talk to each other)
+ * - POST /api/sim/chat     → OpenRouter SDK (sims talk; Broadcast user/session/trace)
  * - GET  /api/dj/playlist  → list public/dj-music/*
  * - POST /api/dj/request   → YouTube API search + yt-dlp download
  * - GET  /api/dj/status    → health + key presence
  */
+import { OpenRouter } from '@openrouter/sdk';
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
@@ -209,44 +210,70 @@ function resolveOpenRouterKey(): string | null {
 }
 
 /**
- * OpenRouter app-attribution headers so usage shows as "Prairie Lakes Mall SIM"
- * (not "Unknown") on openrouter.ai rankings / activity.
+ * OpenRouter app attribution (rankings / activity dashboard).
  * Docs: https://openrouter.ai/docs/app-attribution
  *
- * Override via env:
- *   OPENROUTER_HTTP_REFERER  (required for rankings; localhost needs title too)
- *   OPENROUTER_APP_TITLE
- *   OPENROUTER_APP_CATEGORIES  (comma-separated, max 2 recognized marketplace tags)
+ * Env overrides:
+ *   OPENROUTER_HTTP_REFERER · OPENROUTER_APP_TITLE · OPENROUTER_APP_CATEGORIES
  */
-function openRouterAttributionHeaders(): Record<string, string> {
-	const referer = (
+function openRouterAppMeta(): {
+	httpReferer: string;
+	appTitle: string;
+	appCategories: string;
+} {
+	const httpReferer = (
 		process.env.OPENROUTER_HTTP_REFERER
 		|| process.env.OPENROUTER_SITE_URL
 		|| 'https://prairie-lakes-mall.local'
 	).trim();
-	const title = (
+	const appTitle = (
 		process.env.OPENROUTER_APP_TITLE
 		|| process.env.OPENROUTER_TITLE
 		|| 'Prairie Lakes Mall SIM'
 	).trim();
-	// marketplace: game + roleplay (NPC gossip / character chat)
-	const categories = (
+	const appCategories = (
 		process.env.OPENROUTER_APP_CATEGORIES
 		|| 'game,roleplay'
 	)
 		.trim()
 		.toLowerCase()
 		.replace(/\s+/g, '');
+	return { httpReferer, appTitle, appCategories };
+}
 
-	return {
-		// Primary app id for rankings
-		'HTTP-Referer': referer,
-		// Public display name (new + legacy)
-		'X-OpenRouter-Title': title,
-		'X-Title': title,
-		// Marketplace categories (up to 2 per request)
-		'X-OpenRouter-Categories': categories,
-	};
+/** Lazy singleton OpenRouter client with app attribution baked in */
+let openRouterClient: OpenRouter | null = null;
+function getOpenRouter(): OpenRouter | null {
+	const key = resolveOpenRouterKey();
+	if (!key) return null;
+	if (!openRouterClient) {
+		const meta = openRouterAppMeta();
+		openRouterClient = new OpenRouter({
+			apiKey: key,
+			httpReferer: meta.httpReferer,
+			appTitle: meta.appTitle,
+			appCategories: meta.appCategories,
+		});
+	}
+	return openRouterClient;
+}
+
+/**
+ * OpenRouter Broadcast optional trace fields
+ * https://openrouter.ai/docs/guides/features/broadcast
+ *   user       ≤128  end-user analytics + abuse isolation
+ *   session_id ≤256  sticky routing + session grouping
+ */
+function sanitizeUserId(raw: unknown): string | undefined {
+	if (typeof raw !== 'string') return undefined;
+	const cleaned = raw.trim().replace(/[^\w.:\-@/]/g, '').slice(0, 128);
+	return cleaned.length >= 4 ? cleaned : undefined;
+}
+
+function sanitizeSessionId(raw: unknown): string | undefined {
+	if (typeof raw !== 'string') return undefined;
+	const cleaned = raw.trim().replace(/[^\w.:\-@/]/g, '').slice(0, 256);
+	return cleaned.length >= 4 ? cleaned : undefined;
 }
 
 export type SimPersona = {
@@ -261,14 +288,19 @@ export type SimPersona = {
 	isMiss?: boolean;
 };
 
-/** Two mall guests exchange short lines via OpenRouter */
+/**
+ * Two mall guests exchange short lines via @openrouter/sdk.
+ * Browser supplies user + sessionId; we attach Broadcast `trace` metadata.
+ */
 async function simChatExchange(
 	a: SimPersona,
 	b: SimPersona,
 	context?: string,
+	sessionId?: string,
+	userId?: string,
 ): Promise<{ a: string; b: string } | { error: string }> {
-	const key = resolveOpenRouterKey();
-	if (!key) return { error: 'no_openrouter_key' };
+	const openrouter = getOpenRouter();
+	if (!openrouter) return { error: 'no_openrouter_key' };
 
 	// Grok only (no Google). Fast sassy default; override via OPENROUTER_MODEL
 	const model = process.env.OPENROUTER_MODEL?.trim() || 'x-ai/grok-4.20';
@@ -291,7 +323,7 @@ Regels:
 - Ze praten TEGEN elkaar, reageren op elkaars vibe
 `;
 
-	const user = `A: ${a.name} · mood=${a.mood} · "${a.lifeLine}" · → ${a.targetShop} · ☹${Math.round(a.unhappiness)}%${
+	const prompt = `A: ${a.name} · mood=${a.mood} · "${a.lifeLine}" · → ${a.targetShop} · ☹${Math.round(a.unhappiness)}%${
 		meanA ? ' · MEAN' : ''
 	}${a.partnerName ? ` · ❤️ ${a.partnerName}` : ''}${a.isKid ? ' · KID' : ''}${a.isBrad ? ' · BRAD' : ''}${
 		a.isMiss ? ' · HOT MISS' : ''
@@ -304,32 +336,62 @@ B: ${b.name} · mood=${b.mood} · "${b.lifeLine}" · → ${b.targetShop} · ☹$
 Context: ${context ?? 'corridor botsing'}
 1 zin A, 1 antwoord B. ${meanA || meanB ? 'ROAST mode.' : 'Normaal mall gezeur.'}`;
 
+	const ctxLabel = (context ?? 'corridor botsing').trim().slice(0, 64) || 'corridor';
+
 	try {
-		const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${key}`,
-				'Content-Type': 'application/json',
-				...openRouterAttributionHeaders(),
-			},
-			body: JSON.stringify({
+		const completion = await openrouter.chat.send({
+			chatRequest: {
 				model,
 				temperature: 1.05,
-				max_tokens: 100,
+				maxTokens: 100,
+				stream: false,
+				// Broadcast optional trace data
+				// https://openrouter.ai/docs/guides/features/broadcast
+				...(userId ? { user: userId } : {}),
+				...(sessionId ? { sessionId } : {}),
+				trace: {
+					traceName: 'Prairie Lakes Mall SIM',
+					spanName: 'sim-chat',
+					generationName: 'guest-banter',
+					additionalProperties: {
+						feature: 'sim-chat',
+						environment: process.env.NODE_ENV ?? 'development',
+						context: ctxLabel,
+						mean_mode: meanA || meanB,
+						unhappiness_a: Math.round(a.unhappiness),
+						unhappiness_b: Math.round(b.unhappiness),
+						persona_a: a.name.split(' ')[0] ?? a.name,
+						persona_b: b.name.split(' ')[0] ?? b.name,
+						is_kid_a: !!a.isKid,
+						is_kid_b: !!b.isKid,
+					},
+				},
 				messages: [
 					{ role: 'system', content: system },
-					{ role: 'user', content: user },
+					{ role: 'user', content: prompt },
 				],
-			}),
+			},
 		});
-		if (!res.ok) {
-			const err = await res.text();
-			return { error: `openrouter ${res.status}: ${err.slice(0, 200)}` };
+
+		// Non-streaming ChatResult
+		if (!('choices' in completion) || !completion.choices?.length) {
+			return { error: 'openrouter_empty_choices' };
 		}
-		const data = (await res.json()) as {
-			choices?: Array<{ message?: { content?: string } }>;
-		};
-		const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
+		const content = completion.choices[0]?.message?.content;
+		const raw = (
+			typeof content === 'string'
+				? content
+				: Array.isArray(content)
+				? content
+					.map((p) =>
+						typeof p === 'object' && p && 'text' in p
+							? String((p as { text?: string }).text ?? '')
+							: ''
+					)
+					.join('')
+				: ''
+		).trim();
+
 		// Prefer strict JSON; else scrape A:/B: style from freeform Grok
 		const m = raw.match(/\{[\s\S]*\}/);
 		if (m) {
@@ -530,8 +592,12 @@ function djMiddleware(): Connect.NextHandleFunction {
 					elevenlabs: hasKey,
 					youtubeApi: !!resolveYoutubeKey(),
 					openrouter: !!resolveOpenRouterKey(),
-					openrouterApp: openRouterAttributionHeaders()['X-OpenRouter-Title'],
-					openrouterCategories: openRouterAttributionHeaders()['X-OpenRouter-Categories'],
+					openrouterSdk: true,
+					openrouterApp: openRouterAppMeta().appTitle,
+					openrouterCategories: openRouterAppMeta().appCategories,
+					openrouterReferer: openRouterAppMeta().httpReferer,
+					/** Broadcast optional fields sent on /api/sim/chat */
+					openrouterBroadcast: ['user', 'session_id', 'trace'],
 					tracks: listPlaylist().length,
 					booth: 'DJ Bartek · Trap-gat · Prairie Lakes',
 					voice: process.env.ELEVENLABS_VOICE_ID?.trim() || 'pNInz6obpgDQGcFmaJgB',
@@ -544,15 +610,35 @@ function djMiddleware(): Connect.NextHandleFunction {
 					a?: SimPersona;
 					b?: SimPersona;
 					context?: string;
+					/** End-user id for OpenRouter Broadcast `user` (≤128) */
+					user?: string;
+					userId?: string;
+					user_id?: string;
+					/** Browser tab session for sticky routing + session grouping (≤256) */
+					sessionId?: string;
+					session_id?: string;
 				};
 				if (!body.a?.name || !body.b?.name) {
 					return json(res, 400, { error: 'a and b personas required' });
 				}
-				const result = await simChatExchange(body.a, body.b, body.context);
+				const sessionId = sanitizeSessionId(body.sessionId ?? body.session_id);
+				const userId = sanitizeUserId(body.user ?? body.userId ?? body.user_id);
+				const result = await simChatExchange(
+					body.a,
+					body.b,
+					body.context,
+					sessionId,
+					userId,
+				);
 				if ('error' in result) {
 					return json(res, 502, { ok: false, error: result.error });
 				}
-				return json(res, 200, { ok: true, ...result });
+				return json(res, 200, {
+					ok: true,
+					...result,
+					user: userId ?? null,
+					sessionId: sessionId ?? null,
+				});
 			}
 
 			if (url === '/api/dj/playlist' && req.method === 'GET') {
