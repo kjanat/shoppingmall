@@ -45,6 +45,14 @@ export const NODES: GraphNode[] = [
 	{ id: 's_douglas', x: -24, y: 0.15, z: 0 },
 	{ id: 's_game', x: 24, y: 0.15, z: 0 },
 	{ id: 's_saucy', x: 26, y: 0.15, z: -8, label: 'Saucy' },
+	{ id: 's_foodcourt', x: 0, y: 0.15, z: 13.5, label: 'Food court' },
+	// Utilities floor 0
+	{ id: 'u_toilets', x: -28, y: 0.15, z: 14, label: 'Toiletten' },
+	{ id: 'u_prayer', x: -28, y: 0.15, z: 8, label: 'Gebedsruimte' },
+	// Secret stairs floor 1 → roof helipad
+	{ id: 'sec_f1', x: 26, y: 6.15, z: 14, label: 'Geheime trap V1' },
+	{ id: 'sec_mid', x: 26, y: 10, z: 16, label: 'Geheime trap mid' },
+	{ id: 'helipad', x: 22, y: 13.65, z: 16, label: 'Helipad' },
 
 	// Escalator (east wing ONLY)
 	{ id: 'e0', x: 22, y: 0.15, z: 8, label: 'Roltrap beneden' },
@@ -142,6 +150,24 @@ export const EDGES: GraphEdge[] = [
 	// Saucy (floor 0 east, past Gamesman)
 	{ from: 's_game', to: 's_saucy' },
 	{ from: 'f0_ne', to: 's_saucy' },
+
+	// Food court (south plaza)
+	{ from: 'f0_s', to: 's_foodcourt' },
+	{ from: 'kiosk', to: 's_foodcourt' },
+	{ from: 'f0_se', to: 's_foodcourt' },
+	{ from: 'f0_sw', to: 's_foodcourt' },
+	{ from: 's_primark', to: 's_foodcourt' },
+
+	// Utilities west
+	{ from: 'f0_sw', to: 'u_toilets' },
+	{ from: 'f0_w', to: 'u_prayer' },
+	{ from: 'u_prayer', to: 'u_toilets' },
+
+	// Secret stairs → helipad (east, floor 1 up to roof)
+	{ from: 'f1_se', to: 'sec_f1' },
+	{ from: 's_action', to: 'sec_f1' },
+	{ from: 'sec_f1', to: 'sec_mid', cost: 1.1 },
+	{ from: 'sec_mid', to: 'helipad', cost: 1.1 },
 
 	// Stores floor 1
 	{ from: 'f1_ne', to: 's_kruidvat' },

@@ -5,13 +5,15 @@ export type StoreCategory =
 	| 'tech'
 	| 'home'
 	| 'sport'
-	| 'services';
+	| 'services'
+	| 'utility';
 
 export interface StoreDef {
 	id: string;
 	name: string;
 	category: StoreCategory;
-	floor: 0 | 1;
+	/** 0 = begane grond, 1 = verdieping 1, 2 = dak / helipad */
+	floor: 0 | 1 | 2;
 	/** World position of storefront center */
 	x: number;
 	z: number;
@@ -24,6 +26,13 @@ export interface StoreDef {
 	hero?: boolean;
 	/** Graph node id for entrance */
 	nodeId: string;
+	/**
+	 * Directory-only place (WC, gebed, helipad, geheime trap).
+	 * No shop pod mesh — already built elsewhere or pure destination.
+	 */
+	utility?: boolean;
+	/** Short blurb for the list detail panel */
+	blurb?: string;
 }
 
 export const CATEGORY_LABELS: Record<StoreCategory, string> = {
@@ -34,6 +43,13 @@ export const CATEGORY_LABELS: Record<StoreCategory, string> = {
 	home: 'Wonen',
 	sport: 'Sport',
 	services: 'Services',
+	utility: 'Utilities',
+};
+
+export const FLOOR_LABELS: Record<0 | 1 | 2, string> = {
+	0: 'Begane grond',
+	1: 'Verdieping 1',
+	2: 'Dak',
 };
 
 /** Night-neon mall store map. Kruidvat is the hero on floor 1. */
@@ -297,6 +313,23 @@ export const STORES: StoreDef[] = [
 		accent: '#ff2d6a',
 		nodeId: 's_saucy',
 	},
+	/** Open food court plaza — south of kiosk / atrium */
+	{
+		id: 'foodcourt',
+		name: 'FOOD\nCOURT',
+		category: 'food',
+		floor: 0,
+		x: 0,
+		z: 13.5,
+		rotation: Math.PI,
+		width: 16,
+		depth: 8,
+		color: '#bf360c',
+		accent: '#ffcc02',
+		nodeId: 's_foodcourt',
+		utility: true,
+		blurb: 'Hangry zone · burgers · pizza · taco · soft serve · no diet zone',
+	},
 	{
 		id: 'info',
 		name: 'INFO',
@@ -311,10 +344,82 @@ export const STORES: StoreDef[] = [
 		accent: '#0a0a12',
 		nodeId: 'kiosk',
 	},
+
+	// ── Utilities (directory + inventory, no shop pod) ───
+	{
+		id: 'toilets',
+		name: 'TOILETTEN',
+		category: 'utility',
+		floor: 0,
+		x: -28,
+		z: 15.5,
+		rotation: 0,
+		width: 8,
+		depth: 6,
+		color: '#263238',
+		accent: '#90caf9',
+		nodeId: 'u_toilets',
+		utility: true,
+		blurb: 'Heren · Dames · gender apart · wudu bij de ingang',
+	},
+	{
+		id: 'prayer',
+		name: 'GEBEDSRUIMTE',
+		category: 'utility',
+		floor: 0,
+		x: -28,
+		z: 8,
+		rotation: 0,
+		width: 5.5,
+		depth: 4.2,
+		color: '#1b5e20',
+		accent: '#a5d6a7',
+		nodeId: 'u_prayer',
+		utility: true,
+		blurb: 'Stilte · respect · wudu ernaast',
+	},
+	{
+		id: 'secret_stairs',
+		name: 'GEHEIME TRAP',
+		category: 'utility',
+		floor: 1,
+		x: 26,
+		z: 14,
+		rotation: Math.PI,
+		width: 3,
+		depth: 4,
+		color: '#37474f',
+		accent: '#ffc107',
+		nodeId: 'sec_f1',
+		utility: true,
+		blurb: 'Service only · dak / helipad · niet voor gasten (toch wel)',
+	},
+	{
+		id: 'helipad',
+		name: 'HELIPAD',
+		category: 'utility',
+		floor: 2,
+		x: 22,
+		z: 16,
+		rotation: 0,
+		width: 12,
+		depth: 12,
+		color: '#1a1a1a',
+		accent: '#f5c518',
+		nodeId: 'helipad',
+		utility: true,
+		hero: true,
+		blurb: 'Dak landing zone · H-mark · via geheime trap',
+	},
 ];
 
 export function getStore(id: string): StoreDef | undefined {
 	return STORES.find((s) => s.id === id);
+}
+
+/** Shops only (no utilities / kiosk) — for sim shopping routes */
+export function shopStores(): StoreDef[] {
+	return STORES.filter((s) => !s.utility && s.id !== 'info');
 }
 
 export function getHeroStore(): StoreDef {

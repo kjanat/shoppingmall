@@ -23,6 +23,8 @@ import { MallBuilder } from '../scene/MallBuilder';
 import { MallRat } from '../scene/MallRat';
 import { Monkey } from '../scene/Monkey';
 import { PalmForest } from '../scene/Palms';
+import { FoodCourt } from '../scene/FoodCourt';
+import { Helipad } from '../scene/Helipad';
 import { PrayerRoom } from '../scene/PrayerRoom';
 import { Restrooms } from '../scene/Restrooms';
 import { ShopVoice } from '../scene/ShopVoice';
@@ -57,6 +59,8 @@ export class App {
 	private rat!: MallRat;
 	private prayer = new PrayerRoom();
 	private restrooms = new Restrooms();
+	private helipad = new Helipad();
+	private foodCourt = new FoodCourt();
 	private bartekChat = new BartekChat();
 	private djBartek = new DJBartek();
 	private alienProbe = new AlienProbe();
@@ -132,8 +136,15 @@ export class App {
 		this.scene.add(this.rat.group);
 		this.scene.add(this.prayer.group);
 		this.scene.add(this.restrooms.group);
-		// WC walls block walking
-		for (const c of this.restrooms.getColliders()) {
+		this.scene.add(this.helipad.group);
+		this.scene.add(this.foodCourt.group);
+		// WC + gebedsruimte walls block walking
+		for (
+			const c of [
+				...this.restrooms.getColliders(),
+				...this.prayer.getColliders(),
+			]
+		) {
 			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
 				minY: -0.5,
 				maxY: 3.2,
@@ -629,8 +640,7 @@ export class App {
 
 	private onSelectStore(store: StoreDef): void {
 		this.currentStore = store;
-		const y = store.floor * 6 + 1.5;
-		const pos = new THREE.Vector3(store.x, y, store.z);
+		const pos = new THREE.Vector3(store.x, this.storeY(store), store.z);
 		this.director.focusStore(pos);
 
 		const path = this.pathfinder.findPath('kiosk', store.nodeId);
@@ -675,10 +685,21 @@ export class App {
 	}
 
 	private floorLabel(store: StoreDef): string {
+		if (store.id === 'helipad') return 'Geheime trap · dak · helipad 🚁';
+		if (store.id === 'secret_stairs') return 'Service trap V1 → dak';
+		if (store.id === 'toilets') return 'Begane grond · west · ♂♀';
+		if (store.id === 'prayer') return 'Begane grond · west · stilte';
 		if (store.nodeId === 'spaceship') {
 			return 'Loopband · roltrap · level 1 · aankomst';
 		}
+		if (store.floor === 2) return 'Dak';
 		return store.floor === 0 ? 'Begane grond · loopband' : 'Via roltrap · verdieping 1';
+	}
+
+	/** Eye-height Y for camera focus / confetti */
+	private storeY(store: StoreDef): number {
+		if (store.floor === 2) return 13.55 + 1.55;
+		return store.floor * 6 + 1.5;
 	}
 
 	private onArrive(store: StoreDef): void {
@@ -705,10 +726,8 @@ export class App {
 			);
 		} else {
 			this.ui.showArrive(store);
-			this.spawnConfetti(new THREE.Vector3(store.x, store.floor * 6 + 2, store.z));
-			this.player.lookAtPoint(
-				new THREE.Vector3(store.x, store.floor * 6 + 1.5, store.z),
-			);
+			this.spawnConfetti(new THREE.Vector3(store.x, this.storeY(store) + 0.5, store.z));
+			this.player.lookAtPoint(new THREE.Vector3(store.x, this.storeY(store), store.z));
 			this.ui.setStatus(`+50 · ${store.name.replace('\n', ' ')} OPEN · score ${this.score}`);
 			// Any named owner greets on arrival
 			void this.shopVoice.speak(store.id, undefined, { force: true, minGapMs: 0 });
@@ -966,7 +985,8 @@ export class App {
 		}
 
 		const eul = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
-		const floor: 0 | 1 = this.camera.position.y > 3.5 ? 1 : 0;
+		const floor: 0 | 1 | 2 =
+			this.camera.position.y >= 10 ? 2 : this.camera.position.y > 3.5 ? 1 : 0;
 		const targetStore = this.currentStore;
 		this.mapBlips.length = 0;
 		for (const child of this.atmosphere.americans.group.children) {

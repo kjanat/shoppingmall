@@ -180,7 +180,10 @@ const SHIRTS = [0x2c5aa0, 0xc0392b, 0x27ae60, 0xf39c12, 0x8e44ad, 0x1abc9c, 0xe7
 const PANTS = [0x2c3e50, 0x34495e, 0x5d4e37, 0x1a1a2e, 0x4a5568, 0x1e3a5f];
 const HAIR = [0x2c1810, 0x5c4033, 0xc4a35a, 0x888888, 0x1a1a1a, 0xd35400, 0xf5f5f5];
 
-const SHOPABLE = STORES.filter((s) => s.id !== 'info');
+// Sims can shop stores + food court (utility places like WC/helipad are out)
+const SHOPABLE = STORES.filter(
+	(s) => s.id !== 'info' && (!s.utility || s.id === 'foodcourt'),
+);
 
 function mulberry32(a: number) {
 	return function() {
@@ -722,21 +725,29 @@ export class Americans {
 		// A few Miss USA / pageant types (incl. Eva G.)
 		const isMiss = !isBrad && !isKid && (id === 1 || id === 3 || id === 7 || id === 11);
 		const missIdx = Math.floor(id / 2) % MISS_NAMES.length;
-		const thicc = isMiss ? 0.12 : isKid ? 0.15 : isBrad ? 0.9 : 0.3 + rng() * 0.7;
+		// Americans are HUNGRY — thicc by default (Miss stays slim)
+		const thicc = isMiss
+			? 0.1 + rng() * 0.08
+			: isKid
+				? 0.22 + rng() * 0.15
+				: isBrad
+					? 0.95
+					: 0.55 + rng() * 0.42;
 		const moodRoll = rng();
+		// More hangry energy in the mall
 		const mood: SimFactors['mood'] = isBrad
 			? 'on_mission'
 			: isMiss
-			? 'hyped'
-			: moodRoll < 0.2
-			? 'hangry'
-			: moodRoll < 0.4
-			? 'lost'
-			: moodRoll < 0.55
-			? 'hyped'
-			: moodRoll < 0.8
-			? 'chill'
-			: 'on_mission';
+				? 'hyped'
+				: moodRoll < 0.38
+					? 'hangry'
+					: moodRoll < 0.55
+						? 'lost'
+						: moodRoll < 0.68
+							? 'hyped'
+							: moodRoll < 0.85
+								? 'chill'
+								: 'on_mission';
 
 		const startShop = SHOPABLE[Math.floor(rng() * SHOPABLE.length)];
 		const meanings: LifeMeaning[] = [
@@ -782,15 +793,19 @@ export class Americans {
 			lifeMeaning,
 			lifeLine: isBrad
 				? 'Vitamines halen — voor zichzelf, eindelijk'
-				: lifeLines[lifeMeaning],
+				: mood === 'hangry'
+					? 'Mag ik al eten? Nu. Nu. NU.'
+					: lifeLines[lifeMeaning],
 			partnerId: null,
 			partnerName: null,
 			targetShop: '…',
 			targetShopId: '',
 			moneySpent: Math.floor(rng() * 40),
 			unhappiness: isMiss
-				? Math.floor(5 + rng() * 25)
-				: Math.floor(20 + rng() * 40 + (mood === 'hangry' ? 25 : 0)),
+				? Math.floor(8 + rng() * 30)
+				: Math.floor(
+						28 + rng() * 45 + (mood === 'hangry' ? 30 : 0) + thicc * 12,
+					),
 			bag: isBrad ? 'KRUIDVAT' : isMiss ? 'Sash' : rng() > 0.45 ? 'bag' : null,
 			shirt: isBrad
 				? 0xe30613
@@ -1249,15 +1264,23 @@ export class Americans {
 		const m = sim.f.lifeMeaning;
 		const prefer: Record<LifeMeaning, string[]> = {
 			love: ['saucy', 'rituals', 'douglas', 'sephora', 'zara'],
-			family: ['primark', 'ikea', 'action', 'starbucks'],
+			family: ['foodcourt', 'primark', 'ikea', 'action', 'starbucks'],
 			health: ['kruidvat', 'decathlon', 'rituals'],
-			joy: ['gamesman', 'saucy', 'starbucks', 'nike', 'primark'],
-			provide: ['ikea', 'action', 'coolblue', 'kruidvat'],
+			joy: ['foodcourt', 'gamesman', 'saucy', 'starbucks', 'nike'],
+			provide: ['foodcourt', 'ikea', 'action', 'coolblue', 'kruidvat'],
 			belong: ['zara', 'uniqlo', 'sephora', 'hm', 'saucy'],
 			create: ['apple', 'mediaworld', 'uniqlo', 'coolblue'],
 		};
-		if (sim.f.isBrad && Math.random() < 0.6) {
+		// Hangry → food court first, always
+		if (sim.f.mood === 'hangry' && Math.random() < 0.72) {
+			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? SHOPABLE[0];
+		}
+		if (sim.f.isBrad && Math.random() < 0.55) {
 			return SHOPABLE.find((s) => s.id === 'kruidvat') ?? SHOPABLE[0];
+		}
+		// Extra thicc people also drift toward grease
+		if (sim.f.thicc > 0.7 && Math.random() < 0.35) {
+			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? SHOPABLE[0];
 		}
 		const list = prefer[m];
 		if (Math.random() < 0.72) {
@@ -1269,6 +1292,15 @@ export class Americans {
 
 	private tick(sim: Sim, dt: number): void {
 		const f = sim.f;
+
+		// Hunger climbs — hangry cascade
+		if (!f.isMiss && Math.random() < dt * 0.08) {
+			f.unhappiness = Math.min(100, f.unhappiness + 0.4 + f.thicc * 0.3);
+			if (f.unhappiness > 60 && f.mood !== 'hangry' && Math.random() < 0.15) {
+				f.mood = 'hangry';
+				f.lifeLine = 'Mag ik al eten? Nu. Nu. NU.';
+			}
+		}
 
 		// Fart timer
 		f.fartCd -= dt;
@@ -1307,6 +1339,11 @@ export class Americans {
 			if (f.mood === 'hangry') f.unhappiness = Math.min(100, f.unhappiness + 4);
 			else if (sim.f.targetShopId === 'rituals') f.unhappiness = Math.max(0, f.unhappiness - 18);
 			else if (sim.f.targetShopId === 'kruidvat') f.unhappiness = Math.max(0, f.unhappiness - 12);
+			else if (sim.f.targetShopId === 'foodcourt') {
+				f.unhappiness = Math.max(0, f.unhappiness - 22);
+				if (f.mood === 'hangry') f.mood = 'chill';
+				f.lifeLine = 'Buik vol. Even overleven.';
+			}
 			else f.unhappiness = Math.max(0, f.unhappiness + Math.floor(Math.random() * 8) - 6);
 
 			this.spawnCoins(sim.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), spend);

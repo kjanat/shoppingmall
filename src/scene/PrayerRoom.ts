@@ -3,11 +3,12 @@ import { spatial } from '../audio/SpatialAudio';
 
 /**
  * Quiet gebedsruimte — soft loop with distance falloff (quadratic).
- * Respectful, small room near west stairs (not a joke room).
+ * Respectful, small room in the NW corner by the west stairs (not a joke room).
+ * Moved out of the west corridor: (-28, 8) is the middle of the catwalk now.
  */
 export class PrayerRoom {
 	readonly group = new THREE.Group();
-	readonly pos = new THREE.Vector3(-28, 0, 8);
+	readonly pos = new THREE.Vector3(-31.5, 0, -19.5);
 	private materials: THREE.Material[] = [];
 	private audioStarted = false;
 	private stopAudio: (() => void) | null = null;
@@ -16,6 +17,17 @@ export class PrayerRoom {
 		this.group.name = 'prayerRoom';
 		this.group.position.copy(this.pos);
 		this.build();
+	}
+
+	/** Wall AABBs for CollisionWorld — back + sides solid, south face open. */
+	getColliders(): { minX: number; maxX: number; minZ: number; maxZ: number; label: string }[] {
+		const cx = this.pos.x;
+		const cz = this.pos.z;
+		return [
+			{ minX: cx - 2.85, maxX: cx + 2.85, minZ: cz - 2.2, maxZ: cz - 1.85, label: 'prayer_back' },
+			{ minX: cx - 2.85, maxX: cx - 2.55, minZ: cz - 2.2, maxZ: cz + 2.1, label: 'prayer_w' },
+			{ minX: cx + 2.55, maxX: cx + 2.85, minZ: cz - 2.2, maxZ: cz + 2.1, label: 'prayer_e' },
+		];
 	}
 
 	/** Call after user gesture so AudioContext unlocks */

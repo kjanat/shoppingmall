@@ -1261,3 +1261,27 @@ body {
 .dj-chat-line.bartek b {
 	color: #f472b6;
 }
+
+.store-item.utility {
+	border-left: 3px solid #ffc107;
+}
+.store-item.utility .store-meta small {
+	color: #b45309;
+}
+.detail-blurb {
+	margin: 8px 0 6px;
+	font-size: 0.85rem;
+	color: var(--muted);
+	line-height: 1.35;
+}
+.detail-stock {
+	margin: 0 0 10px;
+	padding: 0 0 0 1.1em;
+	font-size: 0.8rem;
+	color: var(--text);
+	max-height: 140px;
+	overflow: auto;
+}
+.detail-stock li {
+	margin: 2px 0;
+}

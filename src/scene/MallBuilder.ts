@@ -147,7 +147,7 @@ export class MallBuilder {
 		f1Shape.lineTo(-MALL_W / 2, MALL_D / 2);
 		f1Shape.lineTo(-MALL_W / 2, -MALL_D / 2);
 
-		const addRectHole = (cx: number, cz: number, hw: number, hd: number) => {
+		const rectHole = (shape: THREE.Shape, cx: number, cz: number, hw: number, hd: number) => {
 			const h = new THREE.Path();
 			// Shape XZ after rotateX: path uses (x,z) as (x,y) of shape
 			h.moveTo(cx - hw, cz - hd);
@@ -155,8 +155,10 @@ export class MallBuilder {
 			h.lineTo(cx + hw, cz + hd);
 			h.lineTo(cx - hw, cz + hd);
 			h.lineTo(cx - hw, cz - hd);
-			f1Shape.holes.push(h);
+			shape.holes.push(h);
 		};
+		const addRectHole = (cx: number, cz: number, hw: number, hd: number) =>
+			rectHole(f1Shape, cx, cz, hw, hd);
 
 		// Center atrium
 		const aw = 16;
@@ -214,7 +216,18 @@ export class MallBuilder {
 				side: THREE.DoubleSide,
 			}),
 		);
-		const ceilShape = f1Shape.clone();
+		// Own shape — NOT f1Shape.clone(): the ceiling used to inherit the two
+		// stairwell holes (gaping holes above nothing) and lacked the one opening
+		// it actually needs, where the secret service stairs exit to the roof.
+		const ceilShape = new THREE.Shape();
+		ceilShape.moveTo(-MALL_W / 2, -MALL_D / 2);
+		ceilShape.lineTo(MALL_W / 2, -MALL_D / 2);
+		ceilShape.lineTo(MALL_W / 2, MALL_D / 2);
+		ceilShape.lineTo(-MALL_W / 2, MALL_D / 2);
+		ceilShape.lineTo(-MALL_W / 2, -MALL_D / 2);
+		rectHole(ceilShape, 0, 0, aw / 2, ad / 2);
+		// Secret stairs run (26, y6, z14) → (26, roof, z18); hole matches the ramp
+		rectHole(ceilShape, 26, 16.25, 1.5, 2.6);
 		const ceilGeo = new THREE.ExtrudeGeometry(ceilShape, {
 			depth: 0.25,
 			bevelEnabled: false,
@@ -618,7 +631,7 @@ export class MallBuilder {
 
 	private buildStores(): void {
 		for (const store of STORES) {
-			if (store.id === 'info') continue;
+			if (store.id === 'info' || store.utility) continue;
 			const pod = this.buildStorePod(store);
 			this.storeMeshes.set(store.id, pod);
 			this.group.add(pod);

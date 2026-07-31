@@ -1,5 +1,12 @@
 import { EDGES, NODES } from '../data/graph';
-import { CATEGORY_LABELS, type StoreCategory, type StoreDef, STORES } from '../data/stores';
+import {
+	CATEGORY_LABELS,
+	FLOOR_LABELS,
+	type StoreCategory,
+	type StoreDef,
+	STORES,
+} from '../data/stores';
+import { getInventory } from '../data/inventory';
 
 /** One dot on the map — a sim, mostly. */
 export type MapBlip = { x: number; z: number; floor: number };
@@ -8,10 +15,10 @@ export type MapState = {
 	x: number;
 	z: number;
 	yaw: number;
-	floor: 0 | 1;
+	floor: 0 | 1 | 2;
 	path: { x: number; y: number; z: number }[];
 	blips: MapBlip[];
-	target: { x: number; z: number; floor: 0 | 1; name: string } | null;
+	target: { x: number; z: number; floor: 0 | 1 | 2; name: string } | null;
 };
 
 const MALL_W = 72;
@@ -37,10 +44,12 @@ const VERTICALS = [
 ];
 
 /** Things worth walking to that aren't shops. */
-const LANDMARKS: { x: number; z: number; floor: 0 | 1; short: string; label: string }[] = [
-	{ x: -28, z: 4, floor: 0, short: '👗', label: 'CATWALK' },
+const LANDMARKS: { x: number; z: number; floor: 0 | 1 | 2; short: string; label: string }[] = [
+	{ x: -28, z: 3, floor: 0, short: '👗', label: 'CATWALK' },
 	{ x: 0, z: 0, floor: 0, short: '⛲', label: 'FONTEIN · GOD' },
 	{ x: 0, z: 0, floor: 1, short: '🛸', label: 'UFO · WEIDE' },
+	{ x: -31.5, z: -19.5, floor: 0, short: '🕌', label: 'GEBEDSRUIMTE' },
+	{ x: -28, z: 15.5, floor: 0, short: '🚻', label: 'WC' },
 ];
 
 function isTypingTarget(t: EventTarget | null): boolean {
@@ -103,7 +112,7 @@ export class KioskOverlay {
 	};
 	private zoom = 2;
 	private bigOpen = false;
-	private bigFloor: 0 | 1 = 0;
+	private bigFloor: 0 | 1 | 2 = 0;
 	private mapClock = 0;
 
 	constructor(root: HTMLElement, callbacks: UICallbacks) {
@@ -215,6 +224,7 @@ export class KioskOverlay {
             <div class="bigmap-tabs">
               <button type="button" class="bigmap-tab" data-floor="0">Begane grond</button>
               <button type="button" class="bigmap-tab" data-floor="1">Verdieping 1</button>
+              <button type="button" class="bigmap-tab" data-floor="2">Dak 🚁</button>
               <button type="button" class="btn ghost" id="bigmap-close">Sluiten (M)</button>
             </div>
           </header>
@@ -434,7 +444,8 @@ export class KioskOverlay {
 
 		this.root.querySelectorAll('.bigmap-tab').forEach((btn) => {
 			btn.addEventListener('click', () => {
-				this.bigFloor = (btn as HTMLElement).dataset.floor === '1' ? 1 : 0;
+				const f = Number((btn as HTMLElement).dataset.floor ?? 0);
+				this.bigFloor = f === 2 ? 2 : f === 1 ? 1 : 0;
 				this.renderBigTabs();
 				this.paintBigMap();
 			});
@@ -472,7 +483,7 @@ export class KioskOverlay {
 
 	private renderBigTabs(): void {
 		this.root.querySelectorAll('.bigmap-tab').forEach((btn) => {
-			const f = (btn as HTMLElement).dataset.floor === '1' ? 1 : 0;
+			const f = Number((btn as HTMLElement).dataset.floor ?? 0);
 			btn.classList.toggle('active', f === this.bigFloor);
 		});
 	}
@@ -599,7 +610,7 @@ export class KioskOverlay {
 	/** Everything in world units. `scale` converts px → world for line widths. */
 	private paintWorld(
 		ctx: CanvasRenderingContext2D,
-		floor: 0 | 1,
+		floor: 0 | 1 | 2,
 		scale: number,
 	): void {
 		const px = 1 / scale;
@@ -720,7 +731,7 @@ export class KioskOverlay {
 		cssW: number,
 		cssH: number,
 		scale: number,
-		floor: 0 | 1,
+		floor: 0 | 1 | 2,
 	): void {
 		const sx = (x: number) => cssW / 2 + x * scale;
 		const sy = (z: number) => cssH / 2 + z * scale;
@@ -853,6 +864,7 @@ export class KioskOverlay {
 			'food',
 			'sport',
 			'home',
+			'utility',
 		];
 		el.innerHTML = cats
 			.map(
@@ -876,7 +888,11 @@ export class KioskOverlay {
 			if (s.id === 'info') return false;
 			if (this.category !== 'all' && s.category !== this.category) return false;
 			if (!this.filter) return true;
-			return s.name.toLowerCase().includes(this.filter) || s.id.includes(this.filter);
+			const inv = getInventory(s.id);
+			const blob = `${s.name} ${s.id} ${s.blurb ?? ''} ${inv?.slogan ?? ''} ${
+				inv?.items.map((i) => i.name).join(' ') ?? ''
+			}`.toLowerCase();
+			return blob.includes(this.filter);
 		});
 
 		// Rituals near top when searching mom vibes isn't needed — just clean list
@@ -885,11 +901,13 @@ export class KioskOverlay {
 				(s) => `
       <button type="button" class="store-item ${this.selected?.id === s.id ? 'active' : ''} ${
 					s.hero ? 'hero' : ''
-				}" data-id="${s.id}">
+				} ${s.utility ? 'utility' : ''}" data-id="${s.id}">
         <span class="store-dot" style="background:${s.accent}"></span>
         <span class="store-meta">
           <strong>${s.name.replace('\n', ' ')}</strong>
-          <small>V${s.floor} · ${CATEGORY_LABELS[s.category]}${s.id === 'rituals' ? ' · ❤️ mama' : ''}</small>
+          <small>V${s.floor} · ${CATEGORY_LABELS[s.category]}${
+					s.utility ? ' · util' : ''
+				}${s.id === 'rituals' ? ' · ❤️ mama' : ''}${s.id === 'helipad' ? ' · 🚁' : ''}</small>
         </span>
       </button>`,
 			)
@@ -906,14 +924,32 @@ export class KioskOverlay {
 
 	private renderDetail(store: StoreDef): void {
 		this.elDetail.classList.remove('hidden', 'touring');
+		const inv = getInventory(store.id);
+		const stock =
+			inv && inv.items.length
+				? `<ul class="detail-stock">${inv.items
+						.slice(0, 8)
+						.map(
+							(i) =>
+								`<li>${i.name}${i.price > 0 ? ` · €${i.price}` : ''}</li>`,
+						)
+						.join('')}</ul>`
+				: '';
+		const blurb = store.blurb
+			? `<p class="detail-blurb">${store.blurb}</p>`
+			: inv?.slogan
+				? `<p class="detail-blurb">${inv.slogan}</p>`
+				: '';
 		this.elDetail.innerHTML = `
       <div class="detail-top">
         <div class="detail-swatch" style="background:${store.color};border-color:${store.accent}"></div>
         <div>
           <h2>${store.name.replace('\n', ' ')}</h2>
-          <p>Verdieping ${store.floor} · ${CATEGORY_LABELS[store.category]}</p>
+          <p>${FLOOR_LABELS[store.floor]} · ${CATEGORY_LABELS[store.category]}</p>
         </div>
       </div>
+      ${blurb}
+      ${stock}
       <div class="detail-actions">
         <button type="button" class="btn primary" id="btn-go">Start route (lopen)</button>
         <button type="button" class="btn ghost" id="btn-cancel">Annuleer</button>

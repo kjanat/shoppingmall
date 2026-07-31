@@ -8,7 +8,8 @@ import * as THREE from 'three';
  */
 const RUNWAY_X = -28;
 const START_Z = -3.5;
-const TIP_Z = 11;
+// Tip circle reaches TIP_Z + 2.55; the WC back wall starts at z 12.35 — keep clear
+const TIP_Z = 9.5;
 const DECK_Y = 0.34;
 const HALF_W = 1.35;
 
@@ -209,10 +210,11 @@ export class Catwalk {
 		look: { gown: number; hair: number; skin: number; name: string },
 		index: number,
 	): Model {
-		const skin = this.mat(look.skin, 0.75);
-		const gown = this.mat(look.gown, 0.55);
-		const hairMat = this.mat(look.hair, 0.8);
-		const heel = this.mat(0x1a1a1a, 0.35);
+		const skin = this.mat(look.skin, 0.72);
+		const gown = this.mat(look.gown, 0.42, 0.15);
+		const hairMat = this.mat(look.hair, 0.78);
+		const heel = this.mat(0x1a1a1a, 0.3, 0.3);
+		const gold = this.mat(0xd4af37, 0.25, 0.9);
 
 		const root = new THREE.Group();
 		root.position.set(RUNWAY_X, DECK_Y, START_Z);
@@ -222,21 +224,31 @@ export class Catwalk {
 		hips.position.y = 0.86;
 		root.add(hips);
 
+		// Pelvis — the sway needs mass to sell it
+		const pelvis = new THREE.Mesh(new THREE.SphereGeometry(0.185, 14, 10), gown);
+		pelvis.scale.set(1.2, 0.72, 1.0);
+		pelvis.position.y = 0.02;
+		hips.add(pelvis);
+
 		const makeLeg = (side: -1 | 1): THREE.Group => {
 			const leg = new THREE.Group();
-			leg.position.set(side * 0.06, 0, 0);
-			const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.4, 4, 7), skin);
-			thigh.position.y = -0.24;
+			leg.position.set(side * 0.085, 0, 0);
+			// Real thighs, not chopsticks — thick at the top, tapering down
+			const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.105, 0.34, 5, 9), skin);
+			thigh.position.set(0, -0.22, 0);
 			leg.add(thigh);
-			const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.34, 4, 7), skin);
-			shin.position.y = -0.62;
-			leg.add(shin);
+			const knee = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), skin);
+			knee.position.y = -0.46;
+			leg.add(knee);
+			const calf = new THREE.Mesh(new THREE.CapsuleGeometry(0.068, 0.28, 5, 8), skin);
+			calf.position.y = -0.63;
+			leg.add(calf);
 			// Stiletto
-			const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.22), heel);
-			shoe.position.set(0, -0.83, 0.04);
+			const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.055, 0.24), heel);
+			shoe.position.set(0, -0.83, 0.05);
 			leg.add(shoe);
-			const spike = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.1, 6), heel);
-			spike.position.set(0, -0.88, -0.05);
+			const spike = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.022, 0.11, 6), heel);
+			spike.position.set(0, -0.885, -0.05);
 			leg.add(spike);
 			hips.add(leg);
 			return leg;
@@ -248,27 +260,62 @@ export class Catwalk {
 		body.position.y = 0.9;
 		root.add(body);
 
-		// Gown: fitted bodice + flared skirt
-		const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.6, 14, 1, true), gown);
-		skirt.position.y = -0.62;
+		// Hourglass torso — one lathed profile: shoulder → bust → waist → hip
+		const profile: THREE.Vector2[] = [
+			new THREE.Vector2(0.001, 0.6),
+			new THREE.Vector2(0.055, 0.6), // neck
+			new THREE.Vector2(0.155, 0.52), // shoulders
+			new THREE.Vector2(0.19, 0.38), // bust
+			new THREE.Vector2(0.135, 0.24), // underbust
+			new THREE.Vector2(0.115, 0.1), // waist
+			new THREE.Vector2(0.2, -0.1), // hip flare
+			new THREE.Vector2(0.205, -0.16),
+			new THREE.Vector2(0.001, -0.16),
+		];
+		const torso = new THREE.Mesh(new THREE.LatheGeometry(profile, 18), gown);
+		torso.position.y = -0.6;
+		torso.castShadow = true;
+		body.add(torso);
+		// Bust — the lathe is radially symmetric, this pushes it forward
+		const bust = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 10), gown);
+		bust.scale.set(1.35, 0.75, 0.9);
+		bust.position.set(0, -0.2, 0.075);
+		body.add(bust);
+
+		// Gown skirt with a high slit: open arc, one thigh shows while she walks
+		const skirt = new THREE.Mesh(
+			new THREE.ConeGeometry(0.34, 0.72, 18, 1, true, Math.PI * 0.14, Math.PI * 1.72),
+			gown,
+		);
+		skirt.position.y = -0.68;
 		body.add(skirt);
-		const bodice = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.34, 5, 10), gown);
-		bodice.position.y = -0.2;
-		body.add(bodice);
-		const chest = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), gown);
-		chest.scale.set(1.15, 0.7, 0.85);
-		chest.position.set(0, -0.02, 0.03);
-		body.add(chest);
+
+		// Necklace + hoops
+		const necklace = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.009, 6, 14), gold);
+		necklace.position.set(0, 0.02, 0.045);
+		necklace.rotation.x = 1.25;
+		body.add(necklace);
 
 		const makeArm = (side: -1 | 1): THREE.Group => {
 			const arm = new THREE.Group();
-			arm.position.set(side * 0.16, 0.02, 0);
-			const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.038, 0.26, 4, 6), skin);
+			arm.position.set(side * 0.185, 0.0, 0);
+			const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.062, 8, 6), skin);
+			arm.add(shoulder);
+			const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.052, 0.24, 4, 7), skin);
 			upper.position.y = -0.17;
 			arm.add(upper);
-			const lower = new THREE.Mesh(new THREE.CapsuleGeometry(0.032, 0.24, 4, 6), skin);
-			lower.position.y = -0.44;
+			const lower = new THREE.Mesh(new THREE.CapsuleGeometry(0.042, 0.22, 4, 7), skin);
+			lower.position.y = -0.43;
 			arm.add(lower);
+			const hand = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), skin);
+			hand.scale.set(0.85, 1.15, 0.85);
+			hand.position.y = -0.58;
+			arm.add(hand);
+			// Gold bracelet
+			const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.048, 0.008, 6, 12), gold);
+			cuff.rotation.x = Math.PI / 2;
+			cuff.position.y = -0.5;
+			arm.add(cuff);
 			body.add(arm);
 			return arm;
 		};
@@ -283,21 +330,31 @@ export class Catwalk {
 		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.12, 8), skin);
 		neck.position.y = -0.14;
 		head.add(neck);
+		const dark = this.mat(0x141414, 0.3);
 		for (const side of [-1, 1] as const) {
-			const eye = new THREE.Mesh(
-				new THREE.SphereGeometry(0.022, 8, 6),
-				this.mat(0x141414, 0.3),
-			);
-			eye.position.set(side * 0.045, 0.02, 0.112);
+			const eye = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), dark);
+			eye.position.set(side * 0.048, 0.02, 0.112);
 			eye.scale.z = 0.5;
 			head.add(eye);
+			// Brow — makeup, not menace
+			const brow = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.008, 0.01), dark);
+			brow.position.set(side * 0.05, 0.055, 0.115);
+			brow.rotation.z = side * -0.18;
+			head.add(brow);
+			// Gold hoop
+			const hoop = new THREE.Mesh(
+				new THREE.TorusGeometry(0.022, 0.004, 6, 12),
+				this.mat(0xd4af37, 0.25, 0.9),
+			);
+			hoop.position.set(side * 0.12, -0.045, 0);
+			head.add(hoop);
 		}
 		const lips = new THREE.Mesh(
-			new THREE.SphereGeometry(0.028, 10, 8),
-			this.mat(0xc2185b, 0.4),
+			new THREE.SphereGeometry(0.03, 10, 8),
+			this.mat(0xc2185b, 0.35),
 		);
-		lips.scale.set(1.3, 0.6, 0.5);
-		lips.position.set(0, -0.05, 0.112);
+		lips.scale.set(1.4, 0.65, 0.5);
+		lips.position.set(0, -0.052, 0.114);
 		head.add(lips);
 
 		// Long hair, swings with the walk

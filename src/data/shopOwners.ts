@@ -221,6 +221,22 @@ export const SHOP_OWNERS: Record<string, ShopOwner> = {
 			'No judgment — only good lighting.',
 		],
 	},
+	foodcourt: {
+		storeId: 'foodcourt',
+		name: 'Chef Randy',
+		title: 'Grease captain',
+		meaning: 'Iedereen vol en stil krijgen',
+		shirt: 0xbf360c,
+		skin: 0xe8b896,
+		hair: 0x3e2723,
+		lang: 'nl',
+		lines: [
+			'Double thicc? Excellent choice, champ.',
+			'Fries are free with tears.',
+			'No salad. We ran out in 2009.',
+			'Next! Move, hangry people waiting.',
+		],
+	},
 };
 
 export function getOwner(storeId: string): ShopOwner | undefined {

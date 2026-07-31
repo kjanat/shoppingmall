@@ -32,6 +32,8 @@ export type Ramp = {
 };
 
 const FLOOR_H = 6;
+/** Walkable roof / helipad deck (matches Helipad.ROOF_Y) */
+const ROOF_H = 13.55;
 const MALL_W = 72;
 const MALL_D = 48;
 
@@ -67,7 +69,34 @@ export class CollisionWorld {
 			openMinZ: -14.6,
 			openMaxZ: -7.4,
 		},
+		// Secret service stairs floor1 → roof helipad (east)
+		{
+			minX: 24.7,
+			maxX: 27.3,
+			zBottom: 14,
+			zTop: 18,
+			yBottom: 6,
+			yTop: ROOF_H,
+			label: 'secret_stairs',
+			openMinZ: 14,
+			openMaxZ: 18.5,
+		},
 	];
+
+	/** Flat walkable roof patches */
+	readonly roofPads: { minX: number; maxX: number; minZ: number; maxZ: number; y: number }[] = [
+		{ minX: 4, maxX: 32, minZ: 5, maxZ: 23, y: ROOF_H },
+	];
+
+	/** Low platforms you can hop onto (deck top is the walkable surface). */
+	readonly platforms: { minX: number; maxX: number; minZ: number; maxZ: number; y: number; label: string }[] = [
+		// Catwalk deck incl. rounded tip — jump on, strut, jump off
+		{ minX: -29.5, maxX: -26.5, minZ: -4.7, maxZ: 12.05, y: 0.34, label: 'catwalk' },
+	];
+
+	/** Atrium hole in the floor-1 slab — jump the balustrade and you drop through. */
+	private static readonly VOID_X = 8;
+	private static readonly VOID_Z = 6;
 
 	constructor() {
 		this.buildMall();
@@ -116,7 +145,7 @@ export class CollisionWorld {
 
 		// Store: thin BACK wall only — open interior for stock + shopkeeper
 		for (const s of STORES) {
-			if (s.id === 'info') continue;
+			if (s.id === 'info' || s.utility) continue;
 			const y0 = s.floor * FLOOR_H;
 			const y1 = y0 + 4.5;
 			const roomDepth = s.depth * 0.92;
@@ -151,8 +180,9 @@ export class CollisionWorld {
 		//  floor-1 balcony at z≈16 is walkable again.)
 
 		// Catwalk deck (Fashion Week, floor 0 west in front of Douglas).
-		// maxY is above eye height on purpose — the player check passes camera Y.
-		this.add(-29.5, -26.5, -5.2, 12.6, { minY: -0.5, maxY: 2.2, label: 'catwalk' });
+		// maxY sits just under the deck top (0.34): standing ON the deck skips this
+		// box, standing on the floor bumps into the kerb — so you hop on, not clip in.
+		this.add(-29.5, -26.5, -5.2, 11.5, { minY: -0.5, maxY: 0.3, label: 'catwalk' });
 
 		// Aperol bar
 		this.add(-16, -12, 9, 11.5, { minY: -0.5, maxY: 3, label: 'aperol' });
@@ -169,12 +199,29 @@ export class CollisionWorld {
 	snapFloorY(x: number, z: number, y: number): number {
 		if (y > 0.4 && y < FLOOR_H - 0.4) {
 			for (const r of this.ramps) {
+				if (r.label === 'secret_stairs') continue;
 				if (x < r.minX - 1 || x > r.maxX + 1) continue;
 				if (z < Math.min(r.zBottom, r.zTop) - 1.5) continue;
 				if (z > Math.max(r.zBottom, r.zTop) + 1.5) continue;
 				return y;
 			}
 		}
+		// Mid secret stairs
+		if (y > FLOOR_H + 0.4 && y < ROOF_H - 0.4) {
+			for (const r of this.ramps) {
+				if (r.label !== 'secret_stairs') continue;
+				if (x < r.minX - 1 || x > r.maxX + 1) continue;
+				if (z < Math.min(r.zBottom, r.zTop) - 1.5) continue;
+				if (z > Math.max(r.zBottom, r.zTop) + 1.5) continue;
+				return y;
+			}
+		}
+		if (y >= 10) {
+			for (const p of this.roofPads) {
+				if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) return p.y;
+			}
+		}
+		if (y >= 10) return ROOF_H;
 		return y < 3.2 ? 0 : FLOOR_H;
 	}
 
@@ -188,7 +235,30 @@ export class CollisionWorld {
 	 * doesn't snap you to the deck above.
 	 */
 	groundHeightAt(x: number, z: number, currentY: number, step = 0.7): number {
-		const slab = currentY < 3.2 ? 0 : FLOOR_H;
+		// Roof deck first when you're up there
+		for (const p of this.roofPads) {
+			if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
+			if (Math.abs(p.y - currentY) <= step + 0.4 || currentY > FLOOR_H + 2) {
+				return p.y;
+			}
+		}
+
+		// Low platforms (catwalk deck): the top is floor while you're on/above it
+		for (const p of this.platforms) {
+			if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
+			if (currentY >= p.y - 0.35 && currentY < p.y + 2) return p.y;
+		}
+
+		// Over the atrium hole below roof height there is no floor-1 slab at all —
+		// cleared the balustrade? Then it's a 6 m drop to the fountain plaza.
+		if (
+			currentY < 10 && currentY > 0.3
+			&& Math.abs(x) < CollisionWorld.VOID_X && Math.abs(z) < CollisionWorld.VOID_Z
+		) {
+			return 0;
+		}
+
+		const slab = currentY < 3.2 ? 0 : currentY >= 10 ? ROOF_H : FLOOR_H;
 
 		for (const r of this.ramps) {
 			if (x < r.minX || x > r.maxX) continue;
@@ -203,6 +273,8 @@ export class CollisionWorld {
 			if (Math.abs(h - currentY) <= step) return h;
 			// Over the slab cut-out there is no floor: drop onto the flight
 			if (currentY > h && z >= r.openMinZ && z <= r.openMaxZ) return h;
+			// Secret stairs: always prefer incline when in the shaft
+			if (r.label === 'secret_stairs' && currentY > FLOOR_H - 0.5) return h;
 			// Otherwise this is solid slab (or you're walking underneath the flight)
 			return slab;
 		}
@@ -232,12 +304,16 @@ export class CollisionWorld {
 		radius: number,
 		iterations = 3,
 		climb = false,
+		airborne = false,
 	): { x: number; z: number } {
 		let px = x;
 		let pz = z;
 		for (let iter = 0; iter < iterations; iter++) {
 			for (const b of this.boxes) {
 				if (climb && b.climbable) continue;
+				// Mid-jump the void barrier doesn't exist — that's how you clear
+				// the balustrade. Gravity takes it from there.
+				if (airborne && (b.label === 'void_f1' || b.label === 'catwalk')) continue;
 				if (b.minY !== undefined && y + 0.3 < b.minY) continue;
 				if (b.maxY !== undefined && y > b.maxY) continue;
 
