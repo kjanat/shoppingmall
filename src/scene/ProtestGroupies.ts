@@ -2,6 +2,247 @@ import * as THREE from 'three';
 import { spatial } from '../audio/SpatialAudio';
 import type { CollisionWorld } from '../physics/Collision';
 
+/** Prebaked multi-voice chants (public/voices/protest/) — different speaker each clip */
+export type ProtestClip = {
+	id: string;
+	file: string;
+	text: string;
+	label: string;
+	voice: string;
+	kind: 'crowd' | 'merkel';
+};
+
+/**
+ * Hardcoded fallback if manifest fetch fails — matches prebaked files.
+ * Voices vary (DE/EN/AU/IE/NZ/IN) so the swarm doesn't sound like one person.
+ */
+export const PROTEST_CLIPS: ProtestClip[] = [
+	{
+		id: 'chant_01',
+		file: '/voices/protest/chant_01.mp3',
+		text: 'Wir schaffen das!',
+		label: 'Wir schaffen das!',
+		voice: 'de-DE-Conrad',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_02',
+		file: '/voices/protest/chant_02.mp3',
+		text: 'WIR SCHAFFEN DAS!',
+		label: 'WIR SCHAFFEN DAS!',
+		voice: 'de-DE-Katja',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_03',
+		file: '/voices/protest/chant_03.mp3',
+		text: 'Wir schaffen das, wirklich!',
+		label: 'Wir schaffen das, wirklich!',
+		voice: 'de-DE-Killian',
+		kind: 'merkel',
+	},
+	{
+		id: 'chant_04',
+		file: '/voices/protest/chant_04.mp3',
+		text: 'Zusammen schaffen wir das!',
+		label: 'Zusammen schaffen wir das!',
+		voice: 'de-DE-Seraphina',
+		kind: 'merkel',
+	},
+	{
+		id: 'chant_05',
+		file: '/voices/protest/chant_05.mp3',
+		text: 'Mutti is watching!',
+		label: 'Mutti is watching!',
+		voice: 'de-AT-Jonas',
+		kind: 'merkel',
+	},
+	{
+		id: 'chant_06',
+		file: '/voices/protest/chant_06.mp3',
+		text: 'Open borders, open hearts!',
+		label: 'Open borders, open hearts!',
+		voice: 'de-DE-Florian',
+		kind: 'merkel',
+	},
+	{
+		id: 'chant_07',
+		file: '/voices/protest/chant_07.mp3',
+		text: 'Refugees welcome!',
+		label: 'Refugees welcome!',
+		voice: 'en-US-Jenny',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_08',
+		file: '/voices/protest/chant_08.mp3',
+		text: 'Love is love!',
+		label: 'Love is love!',
+		voice: 'en-US-Guy',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_09',
+		file: '/voices/protest/chant_09.mp3',
+		text: 'LGBTQIA plus rights!',
+		label: 'LGBTQIA+ rights!',
+		voice: 'en-GB-Ryan',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_10',
+		file: '/voices/protest/chant_10.mp3',
+		text: 'Climate now!',
+		label: 'Climate now!',
+		voice: 'en-GB-Sonia',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_11',
+		file: '/voices/protest/chant_11.mp3',
+		text: 'No borders, no walls!',
+		label: 'No borders, no walls!',
+		voice: 'en-AU-Natasha',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_12',
+		file: '/voices/protest/chant_12.mp3',
+		text: 'Solidarity forever!',
+		label: 'Solidarity forever!',
+		voice: 'en-IE-Connor',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_13',
+		file: '/voices/protest/chant_13.mp3',
+		text: 'Tax the rich! Not me though!',
+		label: 'TAX THE RICH (not me)',
+		voice: 'en-US-Aria',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_14',
+		file: '/voices/protest/chant_14.mp3',
+		text: 'Free Palestine, free smoothies!',
+		label: 'Free Palestine free smoothies',
+		voice: 'en-US-Guy',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_15',
+		file: '/voices/protest/chant_15.mp3',
+		text: 'Defund the food court!',
+		label: 'Defund the food court',
+		voice: 'en-GB-Thomas',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_16',
+		file: '/voices/protest/chant_16.mp3',
+		text: 'Oat milk is a human right!',
+		label: 'Oat milk is a human right',
+		voice: 'en-CA-Clara',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_17',
+		file: '/voices/protest/chant_17.mp3',
+		text: 'Check your privilege and your receipt!',
+		label: 'Check your privilege',
+		voice: 'en-US-Christopher',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_18',
+		file: '/voices/protest/chant_18.mp3',
+		text: 'Smash the patriarchy after brunch!',
+		label: 'Smash the patriarchy after brunch',
+		voice: 'en-GB-Libby',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_19',
+		file: '/voices/protest/chant_19.mp3',
+		text: 'Decolonize the escalator!',
+		label: 'DECOLONIZE the escalator',
+		voice: 'en-US-Michelle',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_20',
+		file: '/voices/protest/chant_20.mp3',
+		text: 'Protect trans kids!',
+		label: 'Protect trans kids',
+		voice: 'en-IN-Neerja',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_21',
+		file: '/voices/protest/chant_21.mp3',
+		text: 'I brought a drum and no rhythm!',
+		label: 'I brought a drum and no rhythm',
+		voice: 'en-GB-Ryan',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_22',
+		file: '/voices/protest/chant_22.mp3',
+		text: 'Who has the aux?!',
+		label: 'Who has the aux??',
+		voice: 'en-NZ-Molly',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_23',
+		file: '/voices/protest/chant_23.mp3',
+		text: 'Late stage capitalism? In the mall?!',
+		label: 'Late-stage capitalism?? in the mall??',
+		voice: 'en-US-Ana',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_24',
+		file: '/voices/protest/chant_24.mp3',
+		text: 'My zodiac said to chant today!',
+		label: 'My zodiac said to chant today',
+		voice: 'en-GB-Maisie',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_25',
+		file: '/voices/protest/chant_25.mp3',
+		text: 'Die Lage ist ernst, aber wir schaffen das!',
+		label: 'Die Lage ist ernst, aber…',
+		voice: 'de-CH-Jan',
+		kind: 'merkel',
+	},
+	{
+		id: 'chant_26',
+		file: '/voices/protest/chant_26.mp3',
+		text: 'This sign is recycled!',
+		label: 'This sign is recycled!!',
+		voice: 'en-US-Andrew',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_27',
+		file: '/voices/protest/chant_27.mp3',
+		text: 'I am the main character of this march!',
+		label: 'I am the main character of this march',
+		voice: 'en-IE-Emily',
+		kind: 'crowd',
+	},
+	{
+		id: 'chant_28',
+		file: '/voices/protest/chant_28.mp3',
+		text: 'Guys is this being filmed?!',
+		label: 'Guys is this being filmed?',
+		voice: 'en-US-Eric',
+		kind: 'crowd',
+	},
+];
+
 type Protester = {
 	root: THREE.Group;
 	/** local pos relative to group (camp) */
@@ -24,69 +265,11 @@ type Protester = {
 	isMerkel?: boolean;
 	lineIdx: number;
 	legPhase: number;
+	/** Sticky voice identity: only play clips matching this voice key when possible */
+	voiceKey: string;
+	/** cooldown so one body doesn't spam audio */
+	voiceCd: number;
 };
-
-/** Dumb protest noise — loud, empty, endless */
-const CHANTS = [
-	'Wir schaffen das!',
-	'WIR SCHAFFEN DAS!!!',
-	'Refugees welcome 💚',
-	'Love is love 🌈',
-	'LGBTQIA+ rights!',
-	'Climate now!!',
-	'No borders no walls',
-	'Peace & tofu',
-	'Wir. Schaffen. Das.',
-	'Solidarity forever',
-	'Hope not hate 🌈',
-	'Trans rights are human rights',
-	// dumber
-	'TAX THE RICH (not me)',
-	'My therapist said protest more',
-	'Late-stage capitalism?? in the mall??',
-	'Free Palestine free smoothies',
-	'ACAB but like, politely',
-	'Defund the food court',
-	'Eat the rich (vegan tho)',
-	'This sign is recycled!!',
-	'I read half a tweet about this',
-	'Oat milk is a human right',
-	'Silence is violence (also loud is fine)',
-	'Check your privilege (and your receipt)',
-	'No ethical consumption under capitalism so… Primark',
-	'Boooo fossil fuels',
-	'Who wants hummus??',
-	'I am the main character of this march',
-	'Guys is this being filmed?',
-	'Wir schaffen das… right??',
-	'Mutual aid = group chat',
-	'Smash the patriarchy after brunch',
-	'My zodiac said to chant today',
-	'DECOLONIZE the escalator',
-	'This is literally 1984 (mall remix)',
-	'UwU no fascism',
-	'Be kind or else',
-	'I brought a drum and no rhythm',
-	'Who has the aux??',
-	'Land back / snack back',
-	'Protect trans kids protect my WiFi',
-	'Guillotine? soft launch',
-	'I googled "what is neoliberalism" once',
-];
-
-const MERKEL_LINES = [
-	'Wir schaffen das!',
-	'Wir schaffen das… wirklich.',
-	'Zusammen schaffen wir das.',
-	'Die Lage ist ernst, aber…',
-	'Ich sage nochmals: wir schaffen das!',
-	'Mutti is watching 👀',
-	'Bundeskanzlerin mode ON',
-	'Open borders, open hearts',
-	'Bitte nicht rennen — langsam swarm',
-	'The science is settled (on tofu)',
-	'I have a plan. It is: walk.',
-];
 
 const SIGN_LINES: [string, string][] = [
 	['WIR SCHAFFEN', 'DAS'],
@@ -119,6 +302,14 @@ export class ProtestGroupies {
 	private banner!: THREE.Mesh;
 	private merkelIdx = -1;
 	private world: CollisionWorld;
+	/** Live clip bank (manifest or hardcoded) */
+	private clips: ProtestClip[] = [...PROTEST_CLIPS];
+	private crowdClips: ProtestClip[] = PROTEST_CLIPS.filter((c) => c.kind === 'crowd');
+	private merkelClips: ProtestClip[] = PROTEST_CLIPS.filter((c) => c.kind === 'merkel');
+	/** Max concurrent spatial voices so the mall doesn't explode */
+	private activeVoices = 0;
+	private static readonly MAX_VOICES = 5;
+	private lastGlobalClip = -1;
 
 	constructor(world: CollisionWorld) {
 		this.world = world;
@@ -129,11 +320,16 @@ export class ProtestGroupies {
 		this.buildMerkel();
 		this.buildCrowd(12);
 		this.buildMegaphoneStand();
+		// Preload so first yell isn't silent
+		this.preloadClips();
+		void this.loadManifest();
 	}
 
 	ensureAudio(): void {
 		if (this.audioStarted) return;
 		this.audioStarted = true;
+		spatial.ensure();
+		// Soft ambient hum under the real voices (quieter now — voices carry the protest)
 		const handle = spatial.startLoopAt(
 			{ x: this.pos.x, y: 1.6, z: this.pos.z },
 			(ctx, dest) => {
@@ -152,28 +348,17 @@ export class ProtestGroupies {
 						o.frequency.setValueAtTime(notes[i], t0);
 						f.type = 'lowpass';
 						f.frequency.value = 1400;
-						const o2 = ctx.createOscillator();
-						const g2 = ctx.createGain();
-						o2.type = 'sawtooth';
-						o2.frequency.setValueAtTime(notes[i] * 1.005, t0);
 						g.gain.setValueAtTime(0.0001, t0);
-						g.gain.exponentialRampToValueAtTime(0.09, t0 + 0.03);
+						g.gain.exponentialRampToValueAtTime(0.04, t0 + 0.03);
 						g.gain.exponentialRampToValueAtTime(0.0001, t0 + durs[i]);
-						g2.gain.setValueAtTime(0.0001, t0);
-						g2.gain.exponentialRampToValueAtTime(0.035, t0 + 0.03);
-						g2.gain.exponentialRampToValueAtTime(0.0001, t0 + durs[i]);
 						o.connect(f);
 						f.connect(g);
 						g.connect(dest);
-						o2.connect(g2);
-						g2.connect(dest);
 						o.start(t0);
 						o.stop(t0 + durs[i] + 0.02);
-						o2.start(t0);
-						o2.stop(t0 + durs[i] + 0.02);
 						t0 += durs[i] * 0.95;
 					}
-					timer = window.setTimeout(phrase, 4200 + Math.random() * 2200);
+					timer = window.setTimeout(phrase, 5200 + Math.random() * 2200);
 				};
 				phrase();
 				return {
@@ -183,15 +368,114 @@ export class ProtestGroupies {
 					},
 				};
 			},
-			{ volume: 0.38, k: 0.05, maxDistance: 26 },
+			{ volume: 0.18, k: 0.05, maxDistance: 22 },
 		);
 		this.stopAudio = () => handle.stop();
+		// Kick a first wave so you hear them immediately
+		window.setTimeout(() => this.yellWave(4), 400);
+	}
+
+	private async loadManifest(): Promise<void> {
+		try {
+			const r = await fetch('/voices/protest/manifest.json');
+			if (!r.ok) return;
+			const data = (await r.json()) as ProtestClip[];
+			if (Array.isArray(data) && data.length > 0) {
+				this.clips = data;
+				this.crowdClips = data.filter((c) => c.kind !== 'merkel');
+				this.merkelClips = data.filter((c) => c.kind === 'merkel');
+				if (!this.merkelClips.length) this.merkelClips = this.crowdClips;
+				this.preloadClips();
+			}
+		} catch {
+			/* keep hardcoded bank */
+		}
+	}
+
+	private preloadClips(): void {
+		for (const c of this.clips) {
+			const a = new Audio(c.file);
+			a.preload = 'auto';
+			a.load();
+		}
+	}
+
+	/** Fire n people yelling with real multi-voice audio */
+	private yellWave(n: number): void {
+		if (!this.audioStarted || !this.people.length) return;
+		const order = this.people
+			.map((_, i) => i)
+			.sort(() => Math.random() - 0.5)
+			.slice(0, n);
+		for (let k = 0; k < order.length; k++) {
+			const p = this.people[order[k]];
+			window.setTimeout(() => this.yellFrom(p), k * 90 + Math.random() * 80);
+		}
+	}
+
+	private pickClip(p: Protester): ProtestClip {
+		const bank = p.isMerkel
+			? this.merkelClips.length
+				? this.merkelClips
+				: this.clips
+			: this.crowdClips.length
+			? this.crowdClips
+			: this.clips;
+		// Prefer a clip we didn't just use globally; rotate through voices
+		let idx = Math.floor(Math.random() * bank.length);
+		if (bank.length > 1 && idx === this.lastGlobalClip % bank.length) {
+			idx = (idx + 1 + Math.floor(Math.random() * (bank.length - 1))) % bank.length;
+		}
+		// Light sticky preference: same person often reuses their voiceKey subset
+		const sticky = bank.filter((c) =>
+			c.voice.includes(p.voiceKey) || p.voiceKey.includes(c.voice.split('-').pop() ?? '')
+		);
+		if (sticky.length && Math.random() < 0.55) {
+			return sticky[Math.floor(Math.random() * sticky.length)];
+		}
+		this.lastGlobalClip = idx;
+		return bank[idx];
+	}
+
+	private yellFrom(p: Protester): void {
+		if (p.voiceCd > 0) return;
+		if (this.activeVoices >= ProtestGroupies.MAX_VOICES) {
+			// Still show bubble without audio so the wall of text stays
+			const clip = this.pickClip(p);
+			this.showBubble(p, clip.label, !!p.isMerkel);
+			return;
+		}
+		const clip = this.pickClip(p);
+		p.voiceCd = 2.2 + Math.random() * 1.8;
+		this.showBubble(p, clip.label, !!p.isMerkel);
+		this.activeVoices++;
+		const wx = this.pos.x + p.x;
+		const wz = this.pos.z + p.z;
+		const vol = p.isMerkel ? 0.95 : 0.72 + Math.random() * 0.2;
+		void spatial
+			.playAt(
+				clip.file,
+				{ x: wx, y: 1.55, z: wz },
+				{
+					volume: vol,
+					k: 0.028,
+					maxDistance: 32,
+					refDistance: 2.2,
+				},
+			)
+			.finally(() => {
+				this.activeVoices = Math.max(0, this.activeVoices - 1);
+			});
 	}
 
 	update(dt: number, playerPos?: THREE.Vector3): void {
 		this.t += dt;
 		this.chantCd -= dt;
 		this.tickSwarm(dt, playerPos);
+
+		for (const p of this.people) {
+			p.voiceCd = Math.max(0, p.voiceCd - dt);
+		}
 
 		// Planted flags flutter (stay at camp)
 		for (let i = 0; i < this.plantedFlags.length; i++) {
@@ -207,23 +491,15 @@ export class ProtestGroupies {
 			this.banner.rotation.z = Math.sin(this.t * 1.3) * 0.04;
 		}
 
-		// Dumb overlapping chants — denser swarm noise
+		// Empowered overlapping chants — real multi-voice audio
 		if (this.chantCd <= 0) {
-			this.chantCd = 0.7 + Math.random() * 1.1;
-			const n = 3 + Math.floor(Math.random() * 4);
-			for (let k = 0; k < n; k++) {
-				const idx = Math.floor(Math.random() * this.people.length);
-				const p = this.people[idx];
-				const line = p.isMerkel
-					? MERKEL_LINES[Math.floor(Math.random() * MERKEL_LINES.length)]
-					: Math.random() < 0.22
-					? 'Wir schaffen das!'
-					: CHANTS[Math.floor(Math.random() * CHANTS.length)];
-				this.showBubble(p, line, !!p.isMerkel);
-			}
-			// Occasional full swarm echo
-			if (Math.random() < 0.28 && this.merkelIdx >= 0) {
-				this.showBubble(this.people[this.merkelIdx], 'WIR SCHAFFEN DAS!!!', true);
+			this.chantCd = 0.55 + Math.random() * 0.85;
+			const n = 2 + Math.floor(Math.random() * 4);
+			this.yellWave(n);
+			// Occasional full Merkel megaphone drop
+			if (Math.random() < 0.3 && this.merkelIdx >= 0) {
+				const m = this.people[this.merkelIdx];
+				window.setTimeout(() => this.yellFrom(m), 200);
 			}
 		}
 	}
@@ -844,6 +1120,9 @@ export class ProtestGroupies {
 			isMerkel: true,
 			lineIdx: -1,
 			legPhase: 0,
+			// Sticky German Mutti voice bank
+			voiceKey: 'Killian',
+			voiceCd: 0,
 		});
 	}
 
@@ -1072,6 +1351,29 @@ export class ProtestGroupies {
 			tag.position.set(0, 1.95, 0.12);
 			root.add(tag);
 
+			// Each body sticks to a different prebaked voice identity
+			const voiceKeys = [
+				'Conrad',
+				'Katja',
+				'Jenny',
+				'Guy',
+				'Ryan',
+				'Sonia',
+				'Natasha',
+				'Connor',
+				'Aria',
+				'Thomas',
+				'Clara',
+				'Libby',
+				'Michelle',
+				'Neerja',
+				'Molly',
+				'Ana',
+				'Maisie',
+				'Andrew',
+				'Emily',
+				'Eric',
+			];
 			this.group.add(root);
 			this.people.push({
 				root,
@@ -1093,6 +1395,8 @@ export class ProtestGroupies {
 				flag,
 				lineIdx: i,
 				legPhase: Math.random() * 10,
+				voiceKey: voiceKeys[i % voiceKeys.length],
+				voiceCd: 0,
 			});
 		}
 	}

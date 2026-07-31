@@ -208,6 +208,47 @@ function resolveOpenRouterKey(): string | null {
 	return key.length > 10 ? key : null;
 }
 
+/**
+ * OpenRouter app-attribution headers so usage shows as "Prairie Lakes Mall SIM"
+ * (not "Unknown") on openrouter.ai rankings / activity.
+ * Docs: https://openrouter.ai/docs/app-attribution
+ *
+ * Override via env:
+ *   OPENROUTER_HTTP_REFERER  (required for rankings; localhost needs title too)
+ *   OPENROUTER_APP_TITLE
+ *   OPENROUTER_APP_CATEGORIES  (comma-separated, max 2 recognized marketplace tags)
+ */
+function openRouterAttributionHeaders(): Record<string, string> {
+	const referer = (
+		process.env.OPENROUTER_HTTP_REFERER
+		|| process.env.OPENROUTER_SITE_URL
+		|| 'https://prairie-lakes-mall.local'
+	).trim();
+	const title = (
+		process.env.OPENROUTER_APP_TITLE
+		|| process.env.OPENROUTER_TITLE
+		|| 'Prairie Lakes Mall SIM'
+	).trim();
+	// marketplace: game + roleplay (NPC gossip / character chat)
+	const categories = (
+		process.env.OPENROUTER_APP_CATEGORIES
+		|| 'game,roleplay'
+	)
+		.trim()
+		.toLowerCase()
+		.replace(/\s+/g, '');
+
+	return {
+		// Primary app id for rankings
+		'HTTP-Referer': referer,
+		// Public display name (new + legacy)
+		'X-OpenRouter-Title': title,
+		'X-Title': title,
+		// Marketplace categories (up to 2 per request)
+		'X-OpenRouter-Categories': categories,
+	};
+}
+
 export type SimPersona = {
 	name: string;
 	mood: string;
@@ -269,8 +310,7 @@ Context: ${context ?? 'corridor botsing'}
 			headers: {
 				Authorization: `Bearer ${key}`,
 				'Content-Type': 'application/json',
-				'HTTP-Referer': 'http://localhost:5173',
-				'X-Title': 'Mall SIM · sim chat',
+				...openRouterAttributionHeaders(),
 			},
 			body: JSON.stringify({
 				model,
@@ -490,6 +530,8 @@ function djMiddleware(): Connect.NextHandleFunction {
 					elevenlabs: hasKey,
 					youtubeApi: !!resolveYoutubeKey(),
 					openrouter: !!resolveOpenRouterKey(),
+					openrouterApp: openRouterAttributionHeaders()['X-OpenRouter-Title'],
+					openrouterCategories: openRouterAttributionHeaders()['X-OpenRouter-Categories'],
 					tracks: listPlaylist().length,
 					booth: 'DJ Bartek · Trap-gat · Prairie Lakes',
 					voice: process.env.ELEVENLABS_VOICE_ID?.trim() || 'pNInz6obpgDQGcFmaJgB',

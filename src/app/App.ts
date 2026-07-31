@@ -18,9 +18,18 @@ import type { PersonRow } from '../scene/Americans';
 import { Atmosphere } from '../scene/Atmosphere';
 import { BeardCave } from '../scene/BeardCave';
 import { Catwalk } from '../scene/Catwalk';
+import { CityBirds } from '../scene/city/CityBirds';
+import { CityBuildings } from '../scene/city/CityBuildings';
+import { CityGarage } from '../scene/city/CityGarage';
+import { CityPark } from '../scene/city/CityPark';
+import { CityRoads } from '../scene/city/CityRoads';
+import { CitySky } from '../scene/city/CitySky';
+import { CityTheatre } from '../scene/city/CityTheatre';
+import { CityTraffic } from '../scene/city/CityTraffic';
 import { CleaningCart } from '../scene/CleaningCart';
 import { DiscoParty } from '../scene/Disco';
 import { BARTEK_LINES, DJBartek } from '../scene/DJBartek';
+import { DriveableCars } from '../scene/DriveableCars';
 import { Drone } from '../scene/Drone';
 import { FoodCourt } from '../scene/FoodCourt';
 import { GlassElevator } from '../scene/GlassElevator';
@@ -33,9 +42,11 @@ import { Monkey } from '../scene/Monkey';
 import { PalmForest } from '../scene/Palms';
 import { ParkingGarage } from '../scene/ParkingGarage';
 import { Penguins } from '../scene/Penguins';
+import { PoolPeople } from '../scene/PoolPeople';
 import { PrayerRoom } from '../scene/PrayerRoom';
 import { ProtestGroupies } from '../scene/ProtestGroupies';
 import { Restrooms } from '../scene/Restrooms';
+import { RoofIsland } from '../scene/RoofIsland';
 import { ScrubberBuggy } from '../scene/ScrubberBuggy';
 import { SecurityGuards } from '../scene/SecurityGuards';
 import { ShopVoice } from '../scene/ShopVoice';
@@ -68,6 +79,17 @@ export class App {
 	private mall = new MallBuilder();
 	private palms = new PalmForest();
 	private walkways = new MovingWalkways();
+	/** DE STAD — 8 modules buiten de muren + tropisch dakeiland met badgasten */
+	private cityBuildings = new CityBuildings();
+	private cityRoads = new CityRoads();
+	private cityTraffic = new CityTraffic(() => this.cityRoads.lightPhase);
+	private cityPark = new CityPark();
+	private cityTheatre = new CityTheatre();
+	private cityGarage = new CityGarage();
+	private citySky = new CitySky();
+	private cityBirds = new CityBirds();
+	private roofIsland = new RoofIsland();
+	private poolPeople = new PoolPeople();
 	private amenities = new Amenities();
 	private disco = new DiscoParty();
 	private stock = new StockDisplay();
@@ -103,10 +125,12 @@ export class App {
 	private heli!: Helicopter;
 	private drone = new Drone();
 	private scrubber!: ScrubberBuggy;
+	private driveCars!: DriveableCars;
 	private nearDroneHint = false;
 	private nearScrubberHint = false;
+	private nearCarHint = false;
 	/** Welk voertuig je bestuurt */
-	private vehicle: 'drone' | 'heli' | 'scrubber' | null = null;
+	private vehicle: 'drone' | 'heli' | 'scrubber' | 'car' | null = null;
 	/** reused each frame for the monkey's target list */
 	private simPositions: THREE.Vector3[] = [];
 	private djPlayer = new DJPlayer();
@@ -119,7 +143,8 @@ export class App {
 	private peopleRows: PersonRow[] = [];
 	private player!: PlayerControls;
 	private ui: KioskOverlay;
-	private clock = new THREE.Clock();
+	/** Replaces deprecated THREE.Clock — call update() once per frame */
+	private timer = new THREE.Timer();
 	private currentPath: GraphNode[] = [];
 	private currentStore: StoreDef | null = null;
 	private confetti: THREE.Points | null = null;
@@ -150,6 +175,7 @@ export class App {
 		this.rat = new MallRat(this.world);
 		this.cleaner = new CleaningCart(this.world);
 		this.scrubber = new ScrubberBuggy(this.world);
+		this.driveCars = new DriveableCars(this.world);
 		this.protest = new ProtestGroupies(this.world);
 		this.security = new SecurityGuards(this.world);
 		this.penguins = new Penguins(this.world, 12);
@@ -194,6 +220,7 @@ export class App {
 		this.scene.add(this.rat.group);
 		this.scene.add(this.cleaner.group);
 		this.scene.add(this.scrubber.group);
+		this.scene.add(this.driveCars.group);
 		this.scene.add(this.security.group);
 		this.scene.add(this.prayer.group);
 		this.scene.add(this.penguins.group);
@@ -201,6 +228,20 @@ export class App {
 		this.scene.add(this.helipad.group);
 		this.scene.add(this.foodCourt.group);
 		this.scene.add(this.elevator.group);
+
+		// ── DE STAD + het dakeiland ─────────────────────────
+		this.scene.add(this.cityBuildings.group);
+		this.scene.add(this.cityRoads.group);
+		this.scene.add(this.cityTraffic.group);
+		this.scene.add(this.cityPark.group);
+		this.scene.add(this.cityTheatre.group);
+		this.scene.add(this.cityGarage.group);
+		this.scene.add(this.citySky.group);
+		this.scene.add(this.cityBirds.group);
+		this.scene.add(this.roofIsland.group);
+		this.scene.add(this.poolPeople.group);
+		// Loopbaar dek: eiland-roofpad registreren zodat jij (en de drone) erop kunnen
+		this.world.roofPads.push(this.roofIsland.roofPad);
 		this.scene.add(this.parking.group);
 		// WC + gebedsruimte + cave + travel desk walls
 		for (
@@ -473,10 +514,19 @@ export class App {
 			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper
 			if (e.key === 'e' || e.key === 'E') {
 				// Voertuigen eerst: uitstappen als je vliegt/rijdt
-				if (this.player.flying || this.vehicle === 'scrubber') {
+				if (
+					this.player.flying
+					|| this.vehicle === 'scrubber'
+					|| this.vehicle === 'car'
+				) {
 					this.exitVehicle();
 				} else if (this.tryOpenElevatorMenu()) {
 					// Hans floor picker — frees mouse without Esc
+				} else if (
+					!this.possessId && this.freeMove
+					&& this.driveCars.nearestCar(this.camera.position, 4.5)
+				) {
+					this.boardCar();
 				} else if (
 					!this.possessId && this.freeMove
 					&& this.scrubber.distanceTo(this.camera.position) < 3.5
@@ -581,6 +631,8 @@ export class App {
 			(window as unknown as { mallsim: App }).mallsim = this;
 		}
 
+		// Page Visibility: avoid huge dt spikes after tab switch
+		this.timer.connect(document);
 		this.animate();
 	}
 
@@ -758,6 +810,17 @@ export class App {
 		});
 
 		rows.push({
+			icon: '🚗',
+			name: this.driveCars.activeName !== '—'
+				? this.driveCars.activeName
+				: "Huurauto's (P1)",
+			doing: this.driveCars.statusLine,
+			floor: this.driveCars.ridden
+				? (this.camera.position.y < -2 ? 'P1 garage' : 'stad')
+				: 'P1 · west exit → ring',
+		});
+
+		rows.push({
 			icon: '🐧',
 			name: `Pinguïns (${this.penguins.count})`,
 			doing: 'waddlen door de mall · noot noot',
@@ -830,15 +893,47 @@ export class App {
 		);
 	}
 
+	/** E naast huurauto in P1 (of geparkeerd in de stad). */
+	private boardCar(): void {
+		const slot = this.driveCars.nearestCar(this.camera.position, 4.5);
+		if (!slot || !this.driveCars.board(slot)) return;
+		this.player.releaseLook();
+		this.vehicle = 'car';
+		this.player.driving = true;
+		this.player.flying = false;
+		const seat = this.driveCars.getSeatPosition();
+		this.camera.position.copy(seat);
+		this.player.setHeading(this.driveCars.heading);
+		this.player.syncFromCamera();
+		this.player.driving = true;
+		this.player.setHeading(this.driveCars.heading);
+		this.ui.setStatus(
+			`🚗 ${this.driveCars.activeName} · WASD rijden · Shift = turbo · E = uit · west-exit → STAD`,
+		);
+	}
+
 	/** E tijdens de vlucht/rit: uitstappen. */
 	private exitVehicle(): void {
 		const wasHeli = this.vehicle === 'heli';
 		const wasScrub = this.vehicle === 'scrubber';
+		const wasCar = this.vehicle === 'car';
 		this.vehicle = null;
 		this.player.flying = false;
 		this.player.driving = false;
 		this.player.flightProfile = 'drone';
 		const p = this.camera.position;
+
+		if (wasCar) {
+			const exit = this.driveCars.release();
+			this.camera.position.set(exit.x, exit.y + 1.6, exit.z);
+			this.player.syncFromCamera();
+			this.ui.setStatus(
+				`🚗 Uitgestapt · ${
+					this.driveCars.activeName === '—' ? 'auto geparkeerd' : 'auto blijft hier'
+				} · E om weer in te stappen`,
+			);
+			return;
+		}
 
 		if (wasScrub) {
 			const exit = this.scrubber.release();
@@ -1512,9 +1607,12 @@ export class App {
 		cam.z = r.z;
 	}
 
-	private animate = (): void => {
+	private animate = (timestamp?: number): void => {
 		requestAnimationFrame(this.animate);
-		const dt = Math.min(this.clock.getDelta(), 0.05);
+		// THREE.Timer: update once per frame, then query delta/elapsed (stable multi-read)
+		this.timer.update(timestamp);
+		const dt = Math.min(this.timer.getDelta(), 0.05);
+		const elapsed = this.timer.getElapsed();
 
 		this.atmosphere.update(dt, this.camera.position);
 		this.pathMesh.update(dt);
@@ -1528,8 +1626,15 @@ export class App {
 		this.updateElevatorRide();
 
 		this.rat.update(dt);
-		// Player scrubber: drive first so camera sticks before other systems
-		if (this.vehicle === 'scrubber' && this.scrubber.ridden) {
+		// Player vehicles: drive first so camera sticks before other systems
+		if (this.vehicle === 'car' && this.driveCars.ridden) {
+			const seat = this.driveCars.update(dt, this.player.getDriveInput());
+			if (seat) {
+				this.camera.position.copy(seat);
+				this.player.setHeading(this.driveCars.heading);
+				this.player.driving = true;
+			}
+		} else if (this.vehicle === 'scrubber' && this.scrubber.ridden) {
 			const seat = this.scrubber.update(dt, this.player.getDriveInput());
 			if (seat) {
 				this.camera.position.copy(seat);
@@ -1541,8 +1646,10 @@ export class App {
 		}
 		this.cleaner.update(
 			dt,
-			// Don't let Wei hunt you while you're racing his cousin-buggy
-			this.vehicle === 'scrubber' ? undefined : this.camera.position,
+			// Don't let Wei hunt you while you're racing a vehicle
+			this.vehicle === 'scrubber' || this.vehicle === 'car'
+				? undefined
+				: this.camera.position,
 		);
 		// Binaural listener: camera position + look/up for HRTF
 		{
@@ -1653,13 +1760,26 @@ export class App {
 		}
 
 		this.updateConfetti(dt);
-		this.palms.update(this.clock.elapsedTime);
+		this.palms.update(elapsed);
 		this.walkways.update(dt);
-		this.amenities.update(dt, this.clock.elapsedTime);
+		this.amenities.update(dt, elapsed);
 		this.disco.update(dt);
-		this.spaceship.update(this.clock.elapsedTime);
-		this.djBartek.update(this.clock.elapsedTime, dt, this.djPlayer.playing);
+		this.spaceship.update(elapsed);
+		this.djBartek.update(elapsed, dt, this.djPlayer.playing);
 		this.alienProbe.update(dt);
+
+		// Outdoor city systems — verkeer, stoplichten, skyline, park, theater,
+		// outdoor garage, lucht, vogels, dakeiland + badgasten
+		this.cityRoads.update(dt, elapsed);
+		this.cityTraffic.update(dt, elapsed);
+		this.cityBuildings.update(dt, elapsed);
+		this.cityPark.update(dt, elapsed);
+		this.cityTheatre.update(dt, elapsed);
+		this.cityGarage.update(dt, elapsed);
+		this.citySky.update(dt, elapsed);
+		this.cityBirds.update(dt, elapsed);
+		this.roofIsland.update(dt, elapsed);
+		this.poolPeople.update(dt, elapsed);
 
 		// Feed the monkey its victim list, then let it aim
 		this.simPositions.length = 0;
@@ -1668,7 +1788,7 @@ export class App {
 		}
 		this.monkey.setSimPositions(this.simPositions);
 		this.monkey.update(dt);
-		this.catwalk.update(dt, this.clock.elapsedTime);
+		this.catwalk.update(dt, elapsed);
 		if (this.vehicle === 'heli') this.heli.followCamera(this.camera, dt);
 		else this.heli.update(dt);
 		this.drone.followCamera(this.camera, dt);
@@ -1692,6 +1812,18 @@ export class App {
 			this.ui.setStatus('🧽 SCHOONMAAK BUGGY #88 — leeg · E = instappen & racen (Shift = turbo)');
 		} else if (!nearScrub && this.nearScrubberHint) {
 			this.nearScrubberHint = false;
+		}
+
+		// Driveable cars (P1 garage / parked outside)
+		const nearCar = !this.player.flying && !this.player.driving && this.freeMove
+			&& !!this.driveCars.nearestCar(this.camera.position, 4.2);
+		if (nearCar && !this.nearCarHint) {
+			this.nearCarHint = true;
+			this.ui.setStatus(
+				'🚗 HUURAUTO · E = instappen · Shift = turbo · west-exit ramp → STAD',
+			);
+		} else if (!nearCar && this.nearCarHint) {
+			this.nearCarHint = false;
 		}
 
 		// Bewoners-dashboard: refresh 2×/s, only while open
@@ -1762,7 +1894,7 @@ export class App {
 			if (dProt < 7 && !this.nearProtestHint) {
 				this.nearProtestHint = true;
 				this.ui.setStatus(
-					'📢 MERKEL + LGBTQIA+ · „Wir schaffen das!“ · pride flags · Mutti lead',
+					'📢 PROTEST STEMPELT · 28 multi-voice chants · Wir schaffen das · Mutti lead',
 				);
 			} else if (dProt >= 9) {
 				this.nearProtestHint = false;

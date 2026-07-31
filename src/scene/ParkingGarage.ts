@@ -47,15 +47,16 @@ export class ParkingGarage {
 		ceil.position.y = 4.6;
 		this.group.add(ceil);
 
-		// Perimeter walls (open near elevator east)
+		// Perimeter walls (open near elevator east + west exit ramp to city)
 		const wallH = 4.4;
 		const walls: [number, number, number, number, number, number][] = [
 			// N
 			[0, wallH / 2, -20.8, 64, wallH, 0.35],
 			// S
 			[0, wallH / 2, 20.8, 64, wallH, 0.35],
-			// W
-			[-31.8, wallH / 2, 0, 0.35, wallH, 42],
+			// W — gap around z=0 for EXIT RAMP to outdoor city
+			[-31.8, wallH / 2, -14, 0.35, wallH, 14],
+			[-31.8, wallH / 2, 14, 0.35, wallH, 14],
 			// E (gap for elevator shaft around z=-8)
 			[31.8, wallH / 2, -14, 0.35, wallH, 14],
 			[31.8, wallH / 2, 10, 0.35, wallH, 20],
@@ -65,6 +66,65 @@ export class ParkingGarage {
 			m.position.set(x, y, z);
 			this.group.add(m);
 		}
+
+		// ── West exit ramp → outdoor city (local y 0 = world GARAGE_Y) ──
+		this.buildExitRamp(concrete, dark);
+	}
+
+	/** Ramp from P1 deck up to street level, heading west out of the mall */
+	private buildExitRamp(
+		concrete: THREE.Material,
+		dark: THREE.Material,
+	): void {
+		// Long rising slab: local x -30 → -46, y 0 → 6 (world -6 → 0)
+		const segs = 10;
+		for (let i = 0; i < segs; i++) {
+			const t0 = i / segs;
+			const t1 = (i + 1) / segs;
+			const x0 = -30 - t0 * 16;
+			const x1 = -30 - t1 * 16;
+			const y0 = t0 * 6.05;
+			const y1 = t1 * 6.05;
+			const midX = (x0 + x1) / 2;
+			const midY = (y0 + y1) / 2;
+			const len = Math.hypot(x1 - x0, y1 - y0);
+			const ang = Math.atan2(y1 - y0, x0 - x1); // pitch
+			const slab = new THREE.Mesh(new THREE.BoxGeometry(len, 0.28, 5.5), concrete);
+			slab.position.set(midX, midY + 0.05, 0);
+			slab.rotation.z = ang;
+			slab.receiveShadow = true;
+			this.group.add(slab);
+			// Side rails
+			for (const sz of [-2.9, 2.9]) {
+				const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.55, 0.12), dark);
+				rail.position.set(midX, midY + 0.4, sz);
+				rail.rotation.z = ang;
+				this.group.add(rail);
+			}
+		}
+		// Yellow EXIT arrows on first segments
+		const yellow = this.track(
+			new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }),
+		);
+		for (let i = 0; i < 4; i++) {
+			const t = (i + 0.5) / 8;
+			const x = -30 - t * 16;
+			const y = t * 6.05 + 0.2;
+			const arrow = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.45), yellow);
+			arrow.rotation.x = -Math.PI / 2;
+			arrow.rotation.z = Math.PI / 2; // point west
+			arrow.position.set(x, y, 0);
+			this.group.add(arrow);
+		}
+		// Sign at ramp mouth (inside garage)
+		const exitSign = this.makeTextPlane('← EXIT · STAD', 3.2, 0.7, '#b71c1c', '#fff');
+		exitSign.position.set(-28, 2.8, 0);
+		exitSign.rotation.y = Math.PI / 2;
+		this.group.add(exitSign);
+		const citySign = this.makeTextPlane('CITY RING →', 2.8, 0.55, '#0d47a1', '#fff');
+		citySign.position.set(-44, 7.2, 0); // near street level (local y≈6)
+		citySign.rotation.y = Math.PI / 2;
+		this.group.add(citySign);
 	}
 
 	private buildPillars(): void {
@@ -121,18 +181,17 @@ export class ParkingGarage {
 	}
 
 	private buildCars(): void {
-		const colors = [0xc62828, 0x1565c0, 0x212121, 0xf5f5f5, 0x2e7d32, 0x6a1b9a, 0xff8f00];
+		// Decorative parked cars only — player rentals live in DriveableCars
+		// (avoid overlapping the E-rent spots at ±15.6/-14, 5.2/-14, etc.)
+		const colors = [0x212121, 0xf5f5f5, 0xff8f00, 0x455a64, 0x5d4037];
 		const spots: [number, number, number][] = [
-			[-15.6, -14, 0.2],
-			[-10.4, -14, -0.1],
 			[-5.2, -14, 0.3],
 			[0, -14, 0],
 			[10.4, -14, 0.15],
-			[15.6, 14, Math.PI],
-			[5.2, 14, Math.PI + 0.1],
-			[-5.2, 14, Math.PI],
-			[-20.8, 14, Math.PI - 0.05],
 			[20.8, -14, 0],
+			[10.4, 14, Math.PI],
+			[0, 14, Math.PI],
+			[-20.8, 14, Math.PI - 0.05],
 		];
 		for (let i = 0; i < spots.length; i++) {
 			const [x, z, rot] = spots[i];

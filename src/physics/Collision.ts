@@ -305,6 +305,12 @@ export class CollisionWorld {
 	}
 
 	/**
+	 * 'mall' = clamp to mall footprint (default, sims + walkers).
+	 * 'city' = full outdoor world (±95 / ±75) for cars / fly-out.
+	 */
+	boundsMode: 'mall' | 'city' = 'mall';
+
+	/**
 	 * Resolve a circle (radius r) at (x,z) with optional y for floor-filtered boxes.
 	 * Returns corrected position. Multi-pass for corners.
 	 * `climb` skips the escalator/stairs volumes — the player walks up those.
@@ -320,12 +326,15 @@ export class CollisionWorld {
 	): { x: number; z: number } {
 		let px = x;
 		let pz = z;
+		const city = this.boundsMode === 'city';
 		for (let iter = 0; iter < iterations; iter++) {
 			for (const b of this.boxes) {
 				if (climb && b.climbable) continue;
 				// Mid-jump the void barrier doesn't exist — that's how you clear
 				// the balustrade. Gravity takes it from there.
 				if (airborne && (b.label === 'void_f1' || b.label === 'catwalk')) continue;
+				// Cars outside: skip interior mall wall boxes that only exist for foot traffic
+				if (city && y > -1 && b.label?.startsWith('store')) continue;
 				if (b.minY !== undefined && y + 0.3 < b.minY) continue;
 				if (b.maxY !== undefined && y > b.maxY) continue;
 
@@ -359,17 +368,23 @@ export class CollisionWorld {
 			}
 		}
 
-		// Keep inside mall footprint with margin
-		const m = 1.2;
-		const hw = MALL_W / 2 - m;
-		const hd = MALL_D / 2 - m;
-		px = Math.max(-hw, Math.min(hw, px));
-		pz = Math.max(-hd, Math.min(hd, pz));
+		if (city) {
+			// Full outdoor city world
+			px = Math.max(-95, Math.min(95, px));
+			pz = Math.max(-75, Math.min(75, pz));
+		} else {
+			// Keep inside mall footprint with margin
+			const m = 1.2;
+			const hw = MALL_W / 2 - m;
+			const hd = MALL_D / 2 - m;
+			px = Math.max(-hw, Math.min(hw, px));
+			pz = Math.max(-hd, Math.min(hd, pz));
+		}
 
-		// Floor-1 void eject — only when standing/walking.
+		// Floor-1 void eject — only when standing/walking (not cars at basement).
 		// Mid-jump (airborne) we MUST allow XZ over the hole so you can leap
 		// the balustrade and plummet to the fountain plaza.
-		if (!airborne && y > 4) {
+		if (!airborne && !city && y > 4) {
 			const inHole = Math.abs(px) < 8.2 && Math.abs(pz) < 6.2;
 			if (inHole) {
 				const toEdgeX = 8.4 - Math.abs(px);
