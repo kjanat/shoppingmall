@@ -27,7 +27,7 @@ export interface StoreDef {
 	/** Graph node id for entrance */
 	nodeId: string;
 	/**
-	 * Directory-only place (WC, gebed, helipad, geheime trap).
+	 * Directory-only place (WC, gebed, helipad, geheime trap, beard cave).
 	 * No shop pod mesh — already built elsewhere or pure destination.
 	 */
 	utility?: boolean;
@@ -410,6 +410,38 @@ export const STORES: StoreDef[] = [
 		utility: true,
 		hero: true,
 		blurb: 'Dak landing zone · H-mark · via geheime trap',
+	},
+	{
+		id: 'beard_cave',
+		name: "BEARD-MAN'S CAVE",
+		category: 'utility',
+		floor: 0,
+		x: -33.2,
+		z: 18.5,
+		rotation: Math.PI / 2,
+		width: 4,
+		depth: 5,
+		color: '#3e3429',
+		accent: '#ffd700',
+		nodeId: 'u_beardcave',
+		utility: true,
+		blurb: 'Baard-dief hol · juwelen · goud · niet officieel op de plattegrond',
+	},
+	{
+		id: 'protest',
+		name: 'PROTEST GROUPIES',
+		category: 'utility',
+		floor: 0,
+		x: -2,
+		z: -4.5,
+		rotation: 0,
+		width: 6,
+		depth: 6,
+		color: '#1565c0',
+		accent: '#ffeb3b',
+		nodeId: 'u_protest',
+		utility: true,
+		blurb: 'Angela Merkel (oud & dik) · LGBTQIA+ flags · Wir schaffen das',
 	},
 ];
 

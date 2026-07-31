@@ -32,5 +32,8 @@ export default defineConfig(({ mode }) => {
 			target: 'es2023',
 			chunkSizeWarningLimit: 1200,
 		},
+		preview: {
+			port: process.env.PORT ?? 5174,
+		},
 	};
 });

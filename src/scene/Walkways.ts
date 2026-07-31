@@ -3,7 +3,18 @@ import * as THREE from 'three';
 type Belt = {
 	mat: THREE.MeshStandardMaterial;
 	speed: number;
+	/** World-space footprint + drift for conveyance */
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+	y: number;
+	/** m/s along world X (both belts run east-west) */
+	driftX: number;
 };
+
+/** How fast a belt carries whoever stands on it (m/s). */
+const CONVEY_SPEED = 1.6;
 
 /**
  * Minimal loopbanden — brother was right, too many was ugly.
@@ -27,6 +38,19 @@ export class MovingWalkways {
 				b.mat.map.offset.y = (b.mat.map.offset.y + dt * b.speed) % 1;
 			}
 		}
+	}
+
+	/**
+	 * Drift for anyone standing on a belt at (x, y, z), else null.
+	 * The loopband finally carries the shitties instead of scrolling under them.
+	 */
+	beltVelocityAt(x: number, y: number, z: number): { x: number; z: number } | null {
+		for (const b of this.belts) {
+			if (Math.abs(y - b.y) > 1.2) continue;
+			if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
+			return { x: b.driftX, z: 0 };
+		}
+		return null;
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
@@ -93,6 +117,17 @@ export class MovingWalkways {
 		}
 
 		this.group.add(g);
-		this.belts.push({ mat: beltMat, speed: 0.35 });
+		// rotY ±π/2 turns local Z into world ∓X; scroll direction follows the sign
+		const dir = opts.rotY > 0 ? 1 : -1;
+		this.belts.push({
+			mat: beltMat,
+			speed: 0.35,
+			minX: opts.x - len / 2,
+			maxX: opts.x + len / 2,
+			minZ: opts.z - w / 2 - 0.1,
+			maxZ: opts.z + w / 2 + 0.1,
+			y: opts.y,
+			driftX: dir * CONVEY_SPEED,
+		});
 	}
 }

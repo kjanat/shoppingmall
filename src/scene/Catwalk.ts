@@ -44,8 +44,22 @@ const LOOKS: { gown: number; hair: number; skin: number; name: string }[] = [
 	{ gown: 0x43a047, hair: 0x111111, skin: 0xa9714b, name: 'Shaniqua' },
 ];
 
+const SPRITZ_COUNT = 90;
+const SPRITZ_GRAVITY = 7;
+
 export class Catwalk {
 	readonly group = new THREE.Group();
+	/**
+	 * Disco aan = show pauzeert de bubbels; disco uit = de dames sproeien
+	 * Aperol Spritz over het publiek tijdens de pose.
+	 */
+	partyMode = false;
+	private spritz!: THREE.Points;
+	private spritzVel = new Float32Array(SPRITZ_COUNT * 3);
+	private spritzLife = new Float32Array(SPRITZ_COUNT);
+	private spritzNext = 0;
+	private bottle!: THREE.Group;
+	private handPos = new THREE.Vector3();
 	private models: Model[] = [];
 	private materials: THREE.Material[] = [];
 	private spot: THREE.SpotLight;
@@ -70,10 +84,53 @@ export class Catwalk {
 		LOOKS.forEach((look, i) => this.models.push(this.buildModel(look, i)));
 		// First girl walks immediately, the rest wait their turn
 		this.models[0].phase = 'out';
+
+		this.buildSpritz();
+	}
+
+	/** Aperol spray rig: particle pool + the bottle that appears in her hand. */
+	private buildSpritz(): void {
+		const positions = new Float32Array(SPRITZ_COUNT * 3);
+		for (let i = 0; i < SPRITZ_COUNT; i++) positions[i * 3 + 1] = -100;
+		const geo = new THREE.BufferGeometry();
+		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+		const mat = this.track(
+			new THREE.PointsMaterial({
+				color: 0xff7a2d,
+				size: 0.09,
+				transparent: true,
+				opacity: 0.85,
+				depthWrite: false,
+			}),
+		);
+		this.spritz = new THREE.Points(geo, mat);
+		this.spritz.frustumCulled = false;
+		this.group.add(this.spritz);
+
+		this.bottle = new THREE.Group();
+		const glass = new THREE.Mesh(
+			new THREE.CylinderGeometry(0.035, 0.045, 0.16, 8),
+			this.mat(0xff7a2d, 0.25, 0.1),
+		);
+		this.bottle.add(glass);
+		const neck = new THREE.Mesh(
+			new THREE.CylinderGeometry(0.014, 0.02, 0.07, 8),
+			this.mat(0x2a5c2a, 0.4),
+		);
+		neck.position.y = 0.11;
+		this.bottle.add(neck);
+		this.bottle.visible = false;
+		this.group.add(this.bottle);
 	}
 
 	setAnnounceCallback(fn: (name: string) => void): void {
 		this.onAnnounce = fn;
+	}
+
+	/** Who is working the runway right now (dashboard). */
+	get nowOnStage(): { name: string; phase: Phase } | null {
+		const active = this.models.find((m) => m.phase !== 'wait');
+		return active ? { name: active.name, phase: active.phase } : null;
 	}
 
 	/** Where a spectator should stand to watch the show. */
@@ -94,7 +151,60 @@ export class Catwalk {
 			);
 		}
 
-		this.tickFlashes(dt, active?.phase === 'pose');
+		const posing = active?.phase === 'pose';
+		this.tickFlashes(dt, posing);
+		this.tickSpritz(dt, posing && !this.partyMode ? active ?? null : null);
+	}
+
+	/** Geen party? Dan Aperol. The posing girl sprays the front row. */
+	private tickSpritz(dt: number, sprayer: Model | null): void {
+		this.bottle.visible = sprayer !== null;
+
+		if (sprayer) {
+			// Parent the bottle INTO the outstretched hand so it follows the arm
+			if (this.bottle.parent !== sprayer.armL) {
+				sprayer.armL.add(this.bottle);
+				this.bottle.position.set(0, -0.58, 0.04);
+				this.bottle.rotation.z = -0.5;
+			}
+			this.bottle.getWorldPosition(this.handPos);
+
+			// A few drops per frame, lobbed toward the audience side
+			const pos = this.spritz.geometry.attributes.position as THREE.BufferAttribute;
+			const arr = pos.array as Float32Array;
+			for (let n = 0; n < 3; n++) {
+				const i = this.spritzNext;
+				this.spritzNext = (this.spritzNext + 1) % SPRITZ_COUNT;
+				arr[i * 3] = this.handPos.x;
+				arr[i * 3 + 1] = this.handPos.y + 0.12;
+				arr[i * 3 + 2] = this.handPos.z;
+				// Fan east toward the seats, with fizz
+				this.spritzVel[i * 3] = 1.6 + Math.random() * 1.8;
+				this.spritzVel[i * 3 + 1] = 2.2 + Math.random() * 1.4;
+				this.spritzVel[i * 3 + 2] = (Math.random() - 0.5) * 2.4;
+				this.spritzLife[i] = 1.4;
+			}
+		}
+
+		// Integrate the pool (cheap: fixed size, no allocation)
+		const pos = this.spritz.geometry.attributes.position as THREE.BufferAttribute;
+		const arr = pos.array as Float32Array;
+		let alive = false;
+		for (let i = 0; i < SPRITZ_COUNT; i++) {
+			if (this.spritzLife[i] <= 0) continue;
+			this.spritzLife[i] -= dt;
+			this.spritzVel[i * 3 + 1] -= SPRITZ_GRAVITY * dt;
+			arr[i * 3] += this.spritzVel[i * 3] * dt;
+			arr[i * 3 + 1] += this.spritzVel[i * 3 + 1] * dt;
+			arr[i * 3 + 2] += this.spritzVel[i * 3 + 2] * dt;
+			if (this.spritzLife[i] <= 0 || arr[i * 3 + 1] < 0.05) {
+				arr[i * 3 + 1] = -100;
+				this.spritzLife[i] = 0;
+			} else {
+				alive = true;
+			}
+		}
+		if (alive || sprayer) pos.needsUpdate = true;
 	}
 
 	dispose(): void {
@@ -168,7 +278,7 @@ export class Catwalk {
 		m.hips.rotation.z = Math.sin(p) * m.sway;
 		m.hips.rotation.y = Math.sin(p) * 0.12;
 		m.body.rotation.z = -Math.sin(p) * m.sway * 0.5;
-		m.body.position.y = 0.9 + Math.abs(Math.sin(p)) * 0.02;
+		m.body.position.y = 1.0 + Math.abs(Math.sin(p)) * 0.02;
 
 		m.armL.rotation.x = -swing * 0.5;
 		m.armR.rotation.x = swing * 0.5;
@@ -195,7 +305,7 @@ export class Catwalk {
 		m.hips.rotation.z = 0.16 * turn;
 		m.hips.rotation.y = 0;
 		m.body.rotation.z = -0.1 * turn;
-		m.body.position.y = 0.9;
+		m.body.position.y = 1.0;
 
 		// Hand on hip, other arm out
 		m.armR.rotation.x = -0.15;
@@ -220,14 +330,15 @@ export class Catwalk {
 		root.position.set(RUNWAY_X, DECK_Y, START_Z);
 		root.visible = false;
 
+		// Feet on the deck at root y=0; hip pivot 0.9 up; body origin at the waist.
 		const hips = new THREE.Group();
-		hips.position.y = 0.86;
+		hips.position.y = 0.9;
 		root.add(hips);
 
-		// Pelvis — the sway needs mass to sell it
+		// Pelvis — the sway needs mass to sell it, but it's a hip, not a balloon
 		const pelvis = new THREE.Mesh(new THREE.SphereGeometry(0.185, 14, 10), gown);
-		pelvis.scale.set(1.2, 0.72, 1.0);
-		pelvis.position.y = 0.02;
+		pelvis.scale.set(1.05, 0.62, 0.92);
+		pelvis.position.y = 0.06;
 		hips.add(pelvis);
 
 		const makeLeg = (side: -1 | 1): THREE.Group => {
@@ -257,29 +368,32 @@ export class Catwalk {
 		const legR = makeLeg(1);
 
 		const body = new THREE.Group();
-		body.position.y = 0.9;
+		body.position.y = 1.0;
 		root.add(body);
 
-		// Hourglass torso — one lathed profile: shoulder → bust → waist → hip
+		// Hourglass torso — one lathed profile IN BODY SPACE: waist at the origin,
+		// shoulders at +0.54, hip flare meeting the pelvis at −0.06. (First cut sat
+		// a half-metre low, parking the shoulder ring at hip height.)
+		// Bottom→top: lathe normals face outward this way round (top→down renders
+		// the surface inside-out and you look straight through the gown).
 		const profile: THREE.Vector2[] = [
-			new THREE.Vector2(0.001, 0.6),
-			new THREE.Vector2(0.055, 0.6), // neck
-			new THREE.Vector2(0.155, 0.52), // shoulders
-			new THREE.Vector2(0.19, 0.38), // bust
-			new THREE.Vector2(0.135, 0.24), // underbust
-			new THREE.Vector2(0.115, 0.1), // waist
-			new THREE.Vector2(0.2, -0.1), // hip flare
-			new THREE.Vector2(0.205, -0.16),
-			new THREE.Vector2(0.001, -0.16),
+			new THREE.Vector2(0.001, -0.12),
+			new THREE.Vector2(0.205, -0.12),
+			new THREE.Vector2(0.2, -0.06), // hip flare
+			new THREE.Vector2(0.115, 0.12), // waist
+			new THREE.Vector2(0.135, 0.28), // underbust
+			new THREE.Vector2(0.185, 0.4), // bust
+			new THREE.Vector2(0.155, 0.54), // shoulders
+			new THREE.Vector2(0.055, 0.62), // neck
+			new THREE.Vector2(0.001, 0.62),
 		];
 		const torso = new THREE.Mesh(new THREE.LatheGeometry(profile, 18), gown);
-		torso.position.y = -0.6;
 		torso.castShadow = true;
 		body.add(torso);
-		// Bust — the lathe is radially symmetric, this pushes it forward
+		// Bust — the lathe is radially symmetric, this pushes it forward. Subtle.
 		const bust = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 10), gown);
-		bust.scale.set(1.35, 0.75, 0.9);
-		bust.position.set(0, -0.2, 0.075);
+		bust.scale.set(1.15, 0.68, 0.8);
+		bust.position.set(0, 0.4, 0.095);
 		body.add(bust);
 
 		// Gown skirt with a high slit: open arc, one thigh shows while she walks
@@ -287,18 +401,18 @@ export class Catwalk {
 			new THREE.ConeGeometry(0.34, 0.72, 18, 1, true, Math.PI * 0.14, Math.PI * 1.72),
 			gown,
 		);
-		skirt.position.y = -0.68;
+		skirt.position.y = -0.42;
 		body.add(skirt);
 
 		// Necklace + hoops
 		const necklace = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.009, 6, 14), gold);
-		necklace.position.set(0, 0.02, 0.045);
+		necklace.position.set(0, 0.5, 0.055);
 		necklace.rotation.x = 1.25;
 		body.add(necklace);
 
 		const makeArm = (side: -1 | 1): THREE.Group => {
 			const arm = new THREE.Group();
-			arm.position.set(side * 0.185, 0.0, 0);
+			arm.position.set(side * 0.185, 0.52, 0);
 			const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.062, 8, 6), skin);
 			arm.add(shoulder);
 			const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.052, 0.24, 4, 7), skin);
@@ -323,7 +437,7 @@ export class Catwalk {
 		const armR = makeArm(1);
 
 		const head = new THREE.Group();
-		head.position.y = 0.28;
+		head.position.y = 0.78;
 		body.add(head);
 		const skull = new THREE.Mesh(new THREE.SphereGeometry(0.125, 14, 12), skin);
 		head.add(skull);

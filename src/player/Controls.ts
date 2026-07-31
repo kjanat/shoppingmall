@@ -141,6 +141,32 @@ export class PlayerControls {
 		return 0;
 	}
 
+	/** True while feet are on a surface (belts only convey grounded players). */
+	get isGrounded(): boolean {
+		return this.grounded;
+	}
+
+	/** Feet height in world units. */
+	get feetHeight(): number {
+		return this.feetY;
+	}
+
+	/** External displacement (moving walkway) — applied through collision. */
+	nudge(dx: number, dz: number): void {
+		const p = this.cam.position;
+		const solved = this.world.resolveCircle(
+			p.x + dx,
+			p.z + dz,
+			this.feetY,
+			RADIUS,
+			2,
+			true,
+			!this.grounded,
+		);
+		p.x = solved.x;
+		p.z = solved.z;
+	}
+
 	/** Adopt whatever the cinematic camera ended on. */
 	syncFromCamera(): void {
 		const e = new THREE.Euler().setFromQuaternion(this.cam.quaternion, 'YXZ');
@@ -257,7 +283,15 @@ export class PlayerControls {
 		const p = this.cam.position;
 		const wantX = p.x + this.vel.x * dt;
 		const wantZ = p.z + this.vel.z * dt;
-		const solved = this.world.resolveCircle(wantX, wantZ, this.feetY, RADIUS, 3, true);
+		const solved = this.world.resolveCircle(
+			wantX,
+			wantZ,
+			this.feetY,
+			RADIUS,
+			3,
+			true,
+			!this.grounded,
+		);
 		// Bleed off speed we lost to a wall so you slide instead of juddering
 		if (dt > 0) {
 			this.vel.x = (solved.x - p.x) / dt;

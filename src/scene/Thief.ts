@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '../physics/Collision';
+import { BeardCave } from './BeardCave';
 
 /**
  * Long baker-beard guy who sprints through after enough shop transactions
- * and yeets everyone's juwelen/goud (coin burst).
+ * and yeets everyone's juwelen/goud — then dumps it in Beard-man's Cave.
  */
 export class BakerThief {
 	readonly group = new THREE.Group();
@@ -14,9 +15,14 @@ export class BakerThief {
 	private i = 0;
 	private world: CollisionWorld;
 	private onLoot: ((pos: THREE.Vector3) => void) | null = null;
+	private onHome: ((pos: THREE.Vector3) => void) | null = null;
+	private caveHome = new THREE.Vector3(-33.2, 0, 18.5);
+	private homeReported = false;
+	private lingerT = 0;
 
-	constructor(world: CollisionWorld) {
+	constructor(world: CollisionWorld, cave?: BeardCave) {
 		this.world = world;
+		if (cave) this.caveHome.copy(cave.entrance);
 		this.mesh = this.build();
 		this.mesh.visible = false;
 		this.group.add(this.mesh);
@@ -26,23 +32,31 @@ export class BakerThief {
 		this.onLoot = cb;
 	}
 
-	/** Fire the heist across the mall */
+	/** Fired once when the thief reaches the cave with the sack */
+	setHomeCallback(cb: (pos: THREE.Vector3) => void): void {
+		this.onHome = cb;
+	}
+
+	/** Fire the heist across the mall → home to the cave */
 	trigger(): void {
 		this.active = true;
 		this.mesh.visible = true;
 		this.i = 0;
 		this.t = 0;
-		// Visible sprint path (avoid atrium void on floor 1)
+		this.homeReported = false;
+		this.lingerT = 0;
+		// Visible sprint path (avoid atrium void on floor 1), end at beard cave
 		this.path = [
-			new THREE.Vector3(-28, 0, 12),
-			new THREE.Vector3(-10, 0, 8),
-			new THREE.Vector3(10, 0, -6),
 			new THREE.Vector3(22, 0, 6),
+			new THREE.Vector3(10, 0, -6),
+			new THREE.Vector3(-10, 0, 8),
+			new THREE.Vector3(14, 0, 10),
 			new THREE.Vector3(22, 6, -4),
-			new THREE.Vector3(14, 6, -10),
 			new THREE.Vector3(0, 6, -12),
 			new THREE.Vector3(-14, 6, 10),
-			new THREE.Vector3(0, 6, 16),
+			new THREE.Vector3(-22, 0, 4),
+			new THREE.Vector3(-28, 0, 14),
+			this.caveHome.clone(),
 		];
 		this.mesh.position.copy(this.path[0]);
 		this.mesh.visible = true;
@@ -52,8 +66,17 @@ export class BakerThief {
 	update(dt: number): void {
 		if (!this.active || this.i >= this.path.length - 1) {
 			if (this.active && this.i >= this.path.length - 1) {
-				this.active = false;
-				this.mesh.visible = false;
+				if (!this.homeReported) {
+					this.homeReported = true;
+					this.mesh.position.copy(this.caveHome);
+					this.onHome?.(this.mesh.position.clone());
+				}
+				// Linger a beat in the cave, then vanish into the hoard
+				this.lingerT += dt;
+				if (this.lingerT > 1.4) {
+					this.active = false;
+					this.mesh.visible = false;
+				}
 			}
 			return;
 		}

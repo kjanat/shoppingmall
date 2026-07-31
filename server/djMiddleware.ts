@@ -353,8 +353,12 @@ function runYtDlpUrl(
 		const bin = findYtDlp();
 		const before = Date.now();
 		const outTpl = join(MUSIC_DIR, '%(title).80s.%(ext)s');
-		// Direct URL — no ytsearch. Prefer clients that work; cap long DJ sets.
+		// Direct URL — no ytsearch. Audio-only from the start: `-f bestaudio`
+		// stops yt-dlp from ever pulling a video stream just to strip it again,
+		// which is most of the download time and bandwidth.
 		const args = [
+			'-f',
+			'bestaudio/best',
 			'-x',
 			'--audio-format',
 			'mp3',
@@ -362,6 +366,19 @@ function runYtDlpUrl(
 			'5',
 			'--no-playlist',
 			'--no-warnings',
+			'--no-progress',
+			'--no-mtime',
+			'--no-part',
+			// Refuse absurd inputs instead of filling the disk: ≤ 100 MB and ≤ 15 min
+			'--max-filesize',
+			'100M',
+			'--match-filter',
+			'duration<=900',
+			// One retry, fail fast — the request endpoint already rate-limits
+			'--retries',
+			'1',
+			'--socket-timeout',
+			'15',
 			'-o',
 			outTpl,
 			// Prefer clients that still get media (ytsearch was the flaky bit)

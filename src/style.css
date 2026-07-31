@@ -828,6 +828,144 @@ body {
 	cursor: pointer;
 }
 
+/* Bewoners-dashboard (B) */
+
+.people-host {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	pointer-events: none;
+	z-index: 22;
+}
+
+.people-card {
+	width: min(560px, 94vw);
+	max-height: 84vh;
+	display: flex;
+	flex-direction: column;
+	padding: 16px;
+	border-radius: 16px;
+	background: var(--panel);
+	border: 1px solid var(--panel-border);
+	backdrop-filter: blur(20px);
+	box-shadow: 0 24px 60px rgba(5, 8, 18, 0.4);
+	pointer-events: auto;
+}
+
+.people-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	margin-bottom: 10px;
+}
+
+.people-head strong {
+	font-size: 1rem;
+}
+
+.people-head p {
+	margin-top: 2px;
+	font-family: var(--mono);
+	font-size: 0.7rem;
+	color: var(--muted);
+}
+
+.people-list {
+	overflow-y: auto;
+	min-height: 0;
+	scrollbar-width: thin;
+}
+
+.people-cast-label {
+	margin: 10px 0 4px;
+	font-family: var(--mono);
+	font-size: 0.62rem;
+	letter-spacing: 0.14em;
+	color: var(--muted);
+	text-transform: uppercase;
+}
+
+.pd-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 6px 8px;
+	border-radius: 10px;
+}
+
+.pd-row:nth-child(odd) {
+	background: rgba(15, 23, 42, 0.04);
+}
+
+.pd-mood {
+	font-size: 1.1rem;
+	flex-shrink: 0;
+}
+
+.pd-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.pd-main b {
+	display: block;
+	font-size: 0.8rem;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.pd-main small {
+	display: block;
+	font-size: 0.68rem;
+	color: var(--muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.pd-meta {
+	display: flex;
+	gap: 8px;
+	flex-shrink: 0;
+	font-family: var(--mono);
+	font-size: 0.66rem;
+	color: var(--muted);
+}
+
+.pd-floor {
+	color: var(--neon);
+	font-weight: 700;
+}
+
+.pd-follow {
+	flex-shrink: 0;
+	width: 26px;
+	height: 26px;
+	display: grid;
+	place-items: center;
+	border-radius: 8px;
+	border: 1px solid var(--panel-border);
+	background: rgba(29, 78, 216, 0.08);
+	cursor: pointer;
+	font-size: 0.8rem;
+}
+
+.pd-follow:hover {
+	background: var(--neon);
+}
+
+.people-foot {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--panel-border);
+	font-family: var(--mono);
+	font-size: 0.64rem;
+	color: var(--muted);
+	text-align: center;
+}
+
 /* Crosshair — only while the mouse is captured */
 
 .crosshair {

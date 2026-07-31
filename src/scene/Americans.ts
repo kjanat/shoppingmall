@@ -58,6 +58,21 @@ type Limb = {
 	foot: THREE.Mesh;
 };
 
+/** Dashboard row: who, where, and what they're doing right now. */
+export type PersonRow = {
+	id: number;
+	name: string;
+	x: number;
+	z: number;
+	floor: 0 | 1;
+	doing: string;
+	unhappiness: number;
+	moneySpent: number;
+	partnerName: string | null;
+	isKid: boolean;
+	dist: number;
+};
+
 const SKULL_OUT = new THREE.Vector3(0, 0, 1);
 
 /**
@@ -322,6 +337,48 @@ export class Americans {
 	}
 
 	dancing = false;
+
+	/** One dashboard row per shopper — where they are and what they're up to. */
+	getPeopleSnapshot(
+		playerPos: THREE.Vector3,
+		out: PersonRow[] = [],
+	): PersonRow[] {
+		out.length = 0;
+		for (const s of this.sims) {
+			const f = s.f;
+			let doing: string;
+			if (this.dancing) doing = '🕺 danst';
+			else if (s.speechLife > 0) doing = '💬 kletst';
+			else if (s.wait > 0) doing = `🛍 kijkt rond bij ${f.targetShop}`;
+			else doing = `🚶 → ${f.targetShop}`;
+			out.push({
+				id: f.id,
+				name: f.name,
+				x: s.pos.x,
+				z: s.pos.z,
+				floor: s.pos.y > 3 ? 1 : 0,
+				doing,
+				unhappiness: f.unhappiness,
+				moneySpent: f.moneySpent,
+				partnerName: f.partnerName,
+				isKid: !!f.isKid,
+				dist: s.pos.distanceTo(playerPos),
+			});
+		}
+		out.sort((a, b) => a.dist - b.dist);
+		return out;
+	}
+
+	/** Wired from App: world-space belt drift at a position, or null. */
+	private beltProvider:
+		| ((x: number, y: number, z: number) => { x: number; z: number } | null)
+		| null = null;
+
+	setBeltProvider(
+		fn: (x: number, y: number, z: number) => { x: number; z: number } | null,
+	): void {
+		this.beltProvider = fn;
+	}
 
 	setDancing(on: boolean): void {
 		this.dancing = on;
@@ -729,25 +786,25 @@ export class Americans {
 		const thicc = isMiss
 			? 0.1 + rng() * 0.08
 			: isKid
-				? 0.22 + rng() * 0.15
-				: isBrad
-					? 0.95
-					: 0.55 + rng() * 0.42;
+			? 0.22 + rng() * 0.15
+			: isBrad
+			? 0.95
+			: 0.55 + rng() * 0.42;
 		const moodRoll = rng();
 		// More hangry energy in the mall
 		const mood: SimFactors['mood'] = isBrad
 			? 'on_mission'
 			: isMiss
-				? 'hyped'
-				: moodRoll < 0.38
-					? 'hangry'
-					: moodRoll < 0.55
-						? 'lost'
-						: moodRoll < 0.68
-							? 'hyped'
-							: moodRoll < 0.85
-								? 'chill'
-								: 'on_mission';
+			? 'hyped'
+			: moodRoll < 0.38
+			? 'hangry'
+			: moodRoll < 0.55
+			? 'lost'
+			: moodRoll < 0.68
+			? 'hyped'
+			: moodRoll < 0.85
+			? 'chill'
+			: 'on_mission';
 
 		const startShop = SHOPABLE[Math.floor(rng() * SHOPABLE.length)];
 		const meanings: LifeMeaning[] = [
@@ -794,8 +851,8 @@ export class Americans {
 			lifeLine: isBrad
 				? 'Vitamines halen — voor zichzelf, eindelijk'
 				: mood === 'hangry'
-					? 'Mag ik al eten? Nu. Nu. NU.'
-					: lifeLines[lifeMeaning],
+				? 'Mag ik al eten? Nu. Nu. NU.'
+				: lifeLines[lifeMeaning],
 			partnerId: null,
 			partnerName: null,
 			targetShop: '…',
@@ -804,8 +861,8 @@ export class Americans {
 			unhappiness: isMiss
 				? Math.floor(8 + rng() * 30)
 				: Math.floor(
-						28 + rng() * 45 + (mood === 'hangry' ? 30 : 0) + thicc * 12,
-					),
+					28 + rng() * 45 + (mood === 'hangry' ? 30 : 0) + thicc * 12,
+				),
 			bag: isBrad ? 'KRUIDVAT' : isMiss ? 'Sash' : rng() > 0.45 ? 'bag' : null,
 			shirt: isBrad
 				? 0xe30613
@@ -1293,6 +1350,15 @@ export class Americans {
 	private tick(sim: Sim, dt: number): void {
 		const f = sim.f;
 
+		// Loopband conveys the shitties standing on it
+		if (this.beltProvider) {
+			const belt = this.beltProvider(sim.pos.x, sim.pos.y, sim.pos.z);
+			if (belt) {
+				sim.pos.x += belt.x * dt;
+				sim.pos.z += belt.z * dt;
+			}
+		}
+
 		// Hunger climbs — hangry cascade
 		if (!f.isMiss && Math.random() < dt * 0.08) {
 			f.unhappiness = Math.min(100, f.unhappiness + 0.4 + f.thicc * 0.3);
@@ -1336,15 +1402,19 @@ export class Americans {
 			const spend = 8 + Math.floor(Math.random() * 55);
 			f.moneySpent += spend;
 			// Open shops: shopping usually helps mood a bit
-			if (f.mood === 'hangry') f.unhappiness = Math.min(100, f.unhappiness + 4);
-			else if (sim.f.targetShopId === 'rituals') f.unhappiness = Math.max(0, f.unhappiness - 18);
-			else if (sim.f.targetShopId === 'kruidvat') f.unhappiness = Math.max(0, f.unhappiness - 12);
-			else if (sim.f.targetShopId === 'foodcourt') {
+			if (sim.f.targetShopId === 'foodcourt') {
 				f.unhappiness = Math.max(0, f.unhappiness - 22);
 				if (f.mood === 'hangry') f.mood = 'chill';
 				f.lifeLine = 'Buik vol. Even overleven.';
+			} else if (f.mood === 'hangry') {
+				f.unhappiness = Math.min(100, f.unhappiness + 4);
+			} else if (sim.f.targetShopId === 'rituals') {
+				f.unhappiness = Math.max(0, f.unhappiness - 18);
+			} else if (sim.f.targetShopId === 'kruidvat') {
+				f.unhappiness = Math.max(0, f.unhappiness - 12);
+			} else {
+				f.unhappiness = Math.max(0, f.unhappiness + Math.floor(Math.random() * 8) - 6);
 			}
-			else f.unhappiness = Math.max(0, f.unhappiness + Math.floor(Math.random() * 8) - 6);
 
 			this.spawnCoins(sim.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), spend);
 			this.transactionCount++;

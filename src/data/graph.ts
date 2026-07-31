@@ -49,6 +49,8 @@ export const NODES: GraphNode[] = [
 	// Utilities floor 0
 	{ id: 'u_toilets', x: -28, y: 0.15, z: 14, label: 'Toiletten' },
 	{ id: 'u_prayer', x: -28, y: 0.15, z: 8, label: 'Gebedsruimte' },
+	{ id: 'u_beardcave', x: -32.5, y: 0.15, z: 18.5, label: "Beard-man's Cave" },
+	{ id: 'u_protest', x: -2, y: 0.15, z: -4.5, label: 'Protest Groupies' },
 	// Secret stairs floor 1 → roof helipad
 	{ id: 'sec_f1', x: 26, y: 6.15, z: 14, label: 'Geheime trap V1' },
 	{ id: 'sec_mid', x: 26, y: 10, z: 16, label: 'Geheime trap mid' },
@@ -162,6 +164,14 @@ export const EDGES: GraphEdge[] = [
 	{ from: 'f0_sw', to: 'u_toilets' },
 	{ from: 'f0_w', to: 'u_prayer' },
 	{ from: 'u_prayer', to: 'u_toilets' },
+	{ from: 'u_toilets', to: 'u_beardcave' },
+	{ from: 'f0_sw', to: 'u_beardcave' },
+	{ from: 's_starbucks', to: 'u_beardcave' },
+
+	// Atrium protest picket
+	{ from: 'f0_c', to: 'u_protest' },
+	{ from: 'f0_n', to: 'u_protest' },
+	{ from: 'f0_w', to: 'u_protest' },
 
 	// Secret stairs → helipad (east, floor 1 up to roof)
 	{ from: 'f1_se', to: 'sec_f1' },

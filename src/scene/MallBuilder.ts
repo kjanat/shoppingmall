@@ -157,8 +157,7 @@ export class MallBuilder {
 			h.lineTo(cx - hw, cz - hd);
 			shape.holes.push(h);
 		};
-		const addRectHole = (cx: number, cz: number, hw: number, hd: number) =>
-			rectHole(f1Shape, cx, cz, hw, hd);
+		const addRectHole = (cx: number, cz: number, hw: number, hd: number) => rectHole(f1Shape, cx, cz, hw, hd);
 
 		// Center atrium
 		const aw = 16;

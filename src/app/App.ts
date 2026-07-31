@@ -14,18 +14,21 @@ import { PlayerControls } from '../player/Controls';
 import { createComposer } from '../post/Composer';
 import { AlienProbe } from '../scene/AlienProbe';
 import { Amenities } from '../scene/Amenities';
+import type { PersonRow } from '../scene/Americans';
 import { Atmosphere } from '../scene/Atmosphere';
+import { BeardCave } from '../scene/BeardCave';
 import { Catwalk } from '../scene/Catwalk';
 import { DiscoParty } from '../scene/Disco';
 import { BARTEK_LINES, DJBartek } from '../scene/DJBartek';
+import { FoodCourt } from '../scene/FoodCourt';
+import { Helipad } from '../scene/Helipad';
 import { setupLighting } from '../scene/Lighting';
 import { MallBuilder } from '../scene/MallBuilder';
 import { MallRat } from '../scene/MallRat';
 import { Monkey } from '../scene/Monkey';
 import { PalmForest } from '../scene/Palms';
-import { FoodCourt } from '../scene/FoodCourt';
-import { Helipad } from '../scene/Helipad';
 import { PrayerRoom } from '../scene/PrayerRoom';
+import { ProtestGroupies } from '../scene/ProtestGroupies';
 import { Restrooms } from '../scene/Restrooms';
 import { ShopVoice } from '../scene/ShopVoice';
 import { Spaceship } from '../scene/Spaceship';
@@ -34,9 +37,12 @@ import { BakerThief } from '../scene/Thief';
 import { MovingWalkways } from '../scene/Walkways';
 import { DJOverlay } from '../ui/DJOverlay';
 import { KioskOverlay, type MapBlip } from '../ui/KioskOverlay';
+import { type CastRow, PeopleDashboard } from '../ui/PeopleDashboard';
 import { SettingsPanel } from '../ui/SettingsPanel';
+import { loadGame, pathToPersist, saveGame } from './GamePersist';
 
 const PLAYER_RADIUS = 0.4;
+const PERSIST_EVERY = 0.75; // seconds
 
 export class App {
 	private renderer: THREE.WebGLRenderer;
@@ -56,6 +62,8 @@ export class App {
 	private stock = new StockDisplay();
 	private spaceship = new Spaceship();
 	private thief: BakerThief;
+	private beardCave = new BeardCave();
+	private protest = new ProtestGroupies();
 	private rat!: MallRat;
 	private prayer = new PrayerRoom();
 	private restrooms = new Restrooms();
@@ -73,6 +81,9 @@ export class App {
 	private djUi!: DJOverlay;
 	private youssefHint = false;
 	private settingsUi!: SettingsPanel;
+	private peopleUi!: PeopleDashboard;
+	private peopleT = 0;
+	private peopleRows: PersonRow[] = [];
 	private player!: PlayerControls;
 	private ui: KioskOverlay;
 	private clock = new THREE.Clock();
@@ -92,12 +103,15 @@ export class App {
 	private possessId: number | null = null;
 	private thiefFiredAt = 0;
 	private nearDjHint = false;
+	private nearProtestHint = false;
 	private bartekSpeaking = false;
 	private crowdCheerCd = 0;
+	private persistT = 0;
+	private restoredFromSave = false;
 
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
 		this.atmosphere = new Atmosphere(this.world);
-		this.thief = new BakerThief(this.world);
+		this.thief = new BakerThief(this.world, this.beardCave);
 		this.rat = new MallRat(this.world);
 
 		this.renderer = new THREE.WebGLRenderer({
@@ -133,16 +147,19 @@ export class App {
 		this.scene.add(this.spaceship.group);
 		this.scene.add(this.atmosphere.group);
 		this.scene.add(this.thief.group);
+		this.scene.add(this.beardCave.group);
+		this.scene.add(this.protest.group);
 		this.scene.add(this.rat.group);
 		this.scene.add(this.prayer.group);
 		this.scene.add(this.restrooms.group);
 		this.scene.add(this.helipad.group);
 		this.scene.add(this.foodCourt.group);
-		// WC + gebedsruimte walls block walking
+		// WC + gebedsruimte + cave walls block walking
 		for (
 			const c of [
 				...this.restrooms.getColliders(),
 				...this.prayer.getColliders(),
+				...this.beardCave.getColliders(),
 			]
 		) {
 			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
@@ -155,6 +172,11 @@ export class App {
 		this.scene.add(this.djBartek.group);
 		this.scene.add(this.alienProbe.group);
 		this.alienProbe.bind(this.atmosphere.americans);
+		// Sims ride the loopband too
+		this.atmosphere.americans.setBeltProvider((x, y, z) => this.walkways.beltVelocityAt(x, y, z));
+
+		// Bewoners-dashboard (B): everyone in the mall, live; 👁 = guest view
+		this.peopleUi = new PeopleDashboard(uiRoot, (id) => this.enterPossess(id));
 
 		// Fashion Week runway, floor 0 west (in front of Douglas)
 		this.scene.add(this.catwalk.group);
@@ -206,11 +228,13 @@ export class App {
 			this.ui.setStatus(
 				`Kassa ${ownerHint} · checkout #${count} · muntjes → verkoper 💰`,
 			);
-			// Every 5 checkouts → baard-dief (slow heist)
+			// Every 5 checkouts → baard-dief (slow heist → cave)
 			if (count > 0 && count % 5 === 0 && count !== this.thiefFiredAt) {
 				this.thiefFiredAt = count;
 				this.thief.trigger();
-				this.ui.setStatus(`🧔 BAARD-DIEF (langzaam) pakt juwelen! (txn ${count})`);
+				this.ui.setStatus(
+					`🧔 BAARD-DIEF pakt juwelen → Beard-man's Cave! (txn ${count})`,
+				);
 				this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 2, 0)));
 			}
 		});
@@ -218,6 +242,12 @@ export class App {
 			this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 1.5, 0)));
 			this.score = Math.max(0, this.score - 15);
 			this.ui.setScore(this.score, this.metSims.size);
+		});
+		this.thief.setHomeCallback((pos) => {
+			this.beardCave.pulseLoot();
+			this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+			this.spawnConfetti(this.beardCave.lootCenter.clone().add(new THREE.Vector3(0, 0.8, 0)));
+			this.ui.setStatus('💀 BAARD-DIEF dumpte de juwelen in de cave · goud glimt');
 		});
 
 		this.ui = new KioskOverlay(uiRoot, {
@@ -314,9 +344,12 @@ export class App {
 			this.atmosphere.americans.ensureAudio();
 			spatial.ensure();
 			this.prayer.ensureAudio();
+			this.protest.ensureAudio();
 			// Resume DJ track after HMR / refresh (needs a user gesture for autoplay)
 			void this.djPlayer.restoreIfNeeded().then((ok) => {
-				if (ok) this.ui.setStatus('♪ Muziek hervat (persist na reload)');
+				if (ok && !this.restoredFromSave) {
+					this.ui.setStatus('♪ Muziek hervat (persist na reload)');
+				}
 			});
 			window.removeEventListener('pointerdown', unlock);
 			window.removeEventListener('keydown', unlock);
@@ -324,15 +357,28 @@ export class App {
 		window.addEventListener('pointerdown', unlock);
 		window.addEventListener('keydown', unlock);
 
-		this.director.playIntro(() => {
-			this.ui.hideBoot();
-			this.ui.setStatus('Klik = muis vangen · WASD lopen · Shift rennen · M = kaart');
-			this.ui.setScore(this.score, this.metSims.size);
-			// Hand control to player
-			this.freeMove = true;
-			this.player.enabled = true;
-			this.player.syncFromCamera();
+		// Save on tab hide / unload so HMR hard-reloads keep state
+		window.addEventListener('pagehide', () => this.persistNow());
+		window.addEventListener('beforeunload', () => this.persistNow());
+		document.addEventListener('visibilitychange', () => {
+			if (document.visibilityState === 'hidden') this.persistNow();
 		});
+
+		const saved = loadGame();
+		if (saved?.freeMove) {
+			// Skip intro cinematic — drop back where you were
+			this.restoreGame(saved);
+		} else {
+			this.director.playIntro(() => {
+				this.ui.hideBoot();
+				this.ui.setStatus('Klik = muis vangen · WASD lopen · Shift rennen · M = kaart');
+				this.ui.setScore(this.score, this.metSims.size);
+				this.freeMove = true;
+				this.player.enabled = true;
+				this.player.syncFromCamera();
+				this.persistNow();
+			});
+		}
 
 		// Dev-only handle for poking at the sim from the console / smoke tests
 		if (import.meta.env.DEV) {
@@ -340,6 +386,77 @@ export class App {
 		}
 
 		this.animate();
+	}
+
+	/** Snapshot player + progress into sessionStorage */
+	private persistNow(): void {
+		if (!this.freeMove && !this.restoredFromSave) return;
+		const e = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
+		saveGame({
+			x: this.camera.position.x,
+			y: this.camera.position.y,
+			z: this.camera.position.z,
+			yaw: e.y,
+			pitch: e.x,
+			score: this.score,
+			metSims: [...this.metSims],
+			freeMove: this.freeMove,
+			storeId: this.currentStore?.id ?? null,
+			path: pathToPersist(this.currentPath),
+			thiefFiredAt: this.thiefFiredAt,
+			disco: this.disco.active === true,
+		});
+	}
+
+	private restoreGame(saved: NonNullable<ReturnType<typeof loadGame>>): void {
+		this.restoredFromSave = true;
+		this.score = saved.score ?? 0;
+		this.metSims = new Set(saved.metSims ?? []);
+		this.thiefFiredAt = saved.thiefFiredAt ?? 0;
+		this.freeMove = true;
+
+		if (saved.storeId) {
+			const store = getStore(saved.storeId);
+			if (store) {
+				this.currentStore = store;
+				if (saved.path?.length) {
+					this.currentPath = saved.path.map(
+						(p) =>
+							({
+								id: p.id ?? '',
+								x: p.x,
+								y: p.y,
+								z: p.z,
+							}) as GraphNode,
+					);
+					this.pathMesh.setPath(this.currentPath);
+				}
+			}
+		}
+
+		// Seat camera before player.sync so feet/yaw match
+		this.camera.position.set(saved.x, saved.y, saved.z);
+		this.camera.rotation.order = 'YXZ';
+		this.camera.rotation.set(saved.pitch, saved.yaw, 0);
+
+		this.ui.hideBoot();
+		this.ui.setScore(this.score, this.metSims.size);
+		this.ui.setStatus(
+			`↻ Hervat · (${saved.x.toFixed(1)}, ${saved.y.toFixed(1)}, ${saved.z.toFixed(1)}) · ★ ${this.score}`,
+		);
+
+		this.player.enabled = true;
+		this.player.syncFromCamera();
+
+		if (saved.disco) {
+			// Toggle on if it was on (toggle flips from false → true)
+			if (!this.disco.active) {
+				this.disco.toggle();
+				this.atmosphere.americans.setDancing(true);
+			}
+		}
+
+		// Yellow route tape stays if we had a path; no need to re-enter touring mode
 	}
 
 	/** Dev helper: drop the player somewhere and re-seat the controller. */
@@ -378,6 +495,54 @@ export class App {
 		});
 	}
 
+	/** The mall's fixed cast for the bewoners-dashboard. */
+	private buildCastRows(): CastRow[] {
+		const rows: CastRow[] = [];
+
+		const stage = this.catwalk.nowOnStage;
+		rows.push({
+			icon: '👗',
+			name: stage ? stage.name : 'Catwalk',
+			doing: stage
+				? (stage.phase === 'pose'
+					? (this.catwalk.partyMode ? 'poseert voor de fotografen' : 'poseert + Aperol-spray 🍹')
+					: 'werkt de runway')
+				: 'wacht op de volgende show',
+			floor: 'V0 · west',
+		});
+
+		rows.push({
+			icon: '🧔',
+			name: 'Baard-dief',
+			doing: this.thief.active ? 'JUWELEN HEIST — onderweg!' : 'ligt op de loer',
+			floor: this.thief.active ? 'in de mall' : 'grot',
+		});
+
+		const monkeyFloor = this.monkey.group.position.y > 3 ? 'V1' : 'V0';
+		rows.push({
+			icon: '🐒',
+			name: 'De aap',
+			doing: 'zit in de atrium-palmen · J = uitdagen',
+			floor: monkeyFloor,
+		});
+
+		rows.push({
+			icon: '🎧',
+			name: 'DJ Bartek',
+			doing: this.djPlayer.playing ? 'draait — booth E = verzoekjes' : 'staat stil achter de decks',
+			floor: 'trap-gat',
+		});
+
+		rows.push({
+			icon: '🛸',
+			name: 'UFO',
+			doing: 'hangt boven de weide',
+			floor: 'atrium',
+		});
+
+		return rows;
+	}
+
 	private togglePossess(force?: boolean): void {
 		const want = force === undefined ? this.possessId === null : force;
 		if (!want) {
@@ -389,6 +554,12 @@ export class App {
 			this.ui.setStatus('Geen sim dichtbij — loop dichterbij en druk V');
 			return;
 		}
+		this.enterPossess(id);
+	}
+
+	/** Ride along inside a specific sim (V = nearest, dashboard = any). */
+	private enterPossess(id: number): void {
+		this.exitPossess();
 		this.possessId = id;
 		this.atmosphere.americans.setSimVisible(id, false);
 		this.freeMove = false;
@@ -420,6 +591,8 @@ export class App {
 		const on = this.disco.toggle();
 		this.atmosphere.americans.setDancing(on);
 		this.atmosphere.americans.ensureAudio();
+		// Party aan = spuit dicht; party uit = Aperol over het publiek
+		this.catwalk.partyMode = on;
 		this.ui.setStatus(
 			on
 				? '🕺 HARDCORE MALL SET — 150BPM · boom-bam-bam-boom · mate ya'
@@ -884,6 +1057,8 @@ export class App {
 		this.atmosphere.update(dt);
 		this.pathMesh.update(dt);
 		this.thief.update(dt);
+		this.beardCave.update(dt);
+		this.protest.update(dt);
 		this.rat.update(dt);
 		// Quadratic spatial listener follows camera
 		spatial.updateListener(
@@ -909,6 +1084,15 @@ export class App {
 			}
 		} else if (this.freeMove && this.player.enabled) {
 			this.player.update(dt);
+			// The loopband carries you while you stand on it
+			if (this.player.isGrounded) {
+				const belt = this.walkways.beltVelocityAt(
+					this.camera.position.x,
+					this.player.feetHeight,
+					this.camera.position.z,
+				);
+				if (belt) this.player.nudge(belt.x * dt, belt.z * dt);
+			}
 			// Soft separate from nearby sims so you don't stand inside Brad
 			this.pushPlayerFromSims(0.9);
 		} else {
@@ -933,6 +1117,14 @@ export class App {
 		this.monkey.setSimPositions(this.simPositions);
 		this.monkey.update(dt);
 		this.catwalk.update(dt, this.clock.elapsedTime);
+
+		// Bewoners-dashboard: refresh 2×/s, only while open
+		this.peopleT += dt;
+		if (this.peopleT > 0.5 && this.peopleUi.isOpen) {
+			this.peopleT = 0;
+			this.atmosphere.americans.getPeopleSnapshot(this.camera.position, this.peopleRows);
+			this.peopleUi.update(this.peopleRows, this.buildCastRows());
+		}
 		this.shopVoice.update(dt);
 		this.tickBartekDrama(dt);
 		// Auto-greet Youssef when you walk into Kruidvat
@@ -982,11 +1174,21 @@ export class App {
 			} else if (!atDj) {
 				this.nearDjHint = false;
 			}
+
+			// Protest picket — Wir schaffen das
+			const dProt = this.camera.position.distanceTo(this.protest.pos);
+			if (dProt < 7 && !this.nearProtestHint) {
+				this.nearProtestHint = true;
+				this.ui.setStatus(
+					'📢 MERKEL + LGBTQIA+ · „Wir schaffen das!“ · pride flags · Mutti lead',
+				);
+			} else if (dProt >= 9) {
+				this.nearProtestHint = false;
+			}
 		}
 
 		const eul = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
-		const floor: 0 | 1 | 2 =
-			this.camera.position.y >= 10 ? 2 : this.camera.position.y > 3.5 ? 1 : 0;
+		const floor: 0 | 1 | 2 = this.camera.position.y >= 10 ? 2 : this.camera.position.y > 3.5 ? 1 : 0;
 		const targetStore = this.currentStore;
 		this.mapBlips.length = 0;
 		for (const child of this.atmosphere.americans.group.children) {
@@ -1012,6 +1214,13 @@ export class App {
 				}
 				: null,
 		});
+
+		// Persist position + score for HMR / reload
+		this.persistT += dt;
+		if (this.persistT >= PERSIST_EVERY) {
+			this.persistT = 0;
+			this.persistNow();
+		}
 
 		this.composer.render(dt);
 	};

@@ -1,12 +1,6 @@
 import { EDGES, NODES } from '../data/graph';
-import {
-	CATEGORY_LABELS,
-	FLOOR_LABELS,
-	type StoreCategory,
-	type StoreDef,
-	STORES,
-} from '../data/stores';
 import { getInventory } from '../data/inventory';
+import { CATEGORY_LABELS, FLOOR_LABELS, type StoreCategory, type StoreDef, STORES } from '../data/stores';
 
 /** One dot on the map — a sim, mostly. */
 export type MapBlip = { x: number; z: number; floor: number };
@@ -899,15 +893,15 @@ export class KioskOverlay {
 		this.elList.innerHTML = items
 			.map(
 				(s) => `
-      <button type="button" class="store-item ${this.selected?.id === s.id ? 'active' : ''} ${
-					s.hero ? 'hero' : ''
-				} ${s.utility ? 'utility' : ''}" data-id="${s.id}">
+      <button type="button" class="store-item ${this.selected?.id === s.id ? 'active' : ''} ${s.hero ? 'hero' : ''} ${
+					s.utility ? 'utility' : ''
+				}" data-id="${s.id}">
         <span class="store-dot" style="background:${s.accent}"></span>
         <span class="store-meta">
           <strong>${s.name.replace('\n', ' ')}</strong>
-          <small>V${s.floor} · ${CATEGORY_LABELS[s.category]}${
-					s.utility ? ' · util' : ''
-				}${s.id === 'rituals' ? ' · ❤️ mama' : ''}${s.id === 'helipad' ? ' · 🚁' : ''}</small>
+          <small>V${s.floor} · ${CATEGORY_LABELS[s.category]}${s.utility ? ' · util' : ''}${
+					s.id === 'rituals' ? ' · ❤️ mama' : ''
+				}${s.id === 'helipad' ? ' · 🚁' : ''}</small>
         </span>
       </button>`,
 			)
@@ -925,21 +919,21 @@ export class KioskOverlay {
 	private renderDetail(store: StoreDef): void {
 		this.elDetail.classList.remove('hidden', 'touring');
 		const inv = getInventory(store.id);
-		const stock =
-			inv && inv.items.length
-				? `<ul class="detail-stock">${inv.items
-						.slice(0, 8)
-						.map(
-							(i) =>
-								`<li>${i.name}${i.price > 0 ? ` · €${i.price}` : ''}</li>`,
-						)
-						.join('')}</ul>`
-				: '';
+		const stock = inv && inv.items.length
+			? `<ul class="detail-stock">${
+				inv.items
+					.slice(0, 8)
+					.map(
+						(i) => `<li>${i.name}${i.price > 0 ? ` · €${i.price}` : ''}</li>`,
+					)
+					.join('')
+			}</ul>`
+			: '';
 		const blurb = store.blurb
 			? `<p class="detail-blurb">${store.blurb}</p>`
 			: inv?.slogan
-				? `<p class="detail-blurb">${inv.slogan}</p>`
-				: '';
+			? `<p class="detail-blurb">${inv.slogan}</p>`
+			: '';
 		this.elDetail.innerHTML = `
       <div class="detail-top">
         <div class="detail-swatch" style="background:${store.color};border-color:${store.accent}"></div>
