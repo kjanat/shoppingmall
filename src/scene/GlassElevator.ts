@@ -1,16 +1,13 @@
 import * as THREE from 'three';
 import { speakLine } from '@/audio/ElevenVoice';
+import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
-import { at, pick } from '@/util/rand';
+import { pick } from '@/util/rand';
 
-/** Parking garage deck */
-const FLOOR_B = -6.0;
-const FLOOR0 = 0.05;
-const FLOOR1 = 6.05;
-/** Roof deck (matches Helipad.ROOF_Y / Collision ROOF_H) */
-const FLOOR2 = 13.95;
-/** P1 → V0 → V1 → dak → back down */
-const STOPS = [FLOOR_B, FLOOR0, FLOOR1, FLOOR2] as const;
+const FLOOR_B = levelY('p1');
+const FLOOR0 = levelY('v0');
+
+const FLOOR2 = levelY('roof');
 const CABIN_H = 2.55;
 const CABIN_W = 2.0;
 const CABIN_D = 2.0;
@@ -24,11 +21,11 @@ const HANS_GREET = [
 	'Mooie glazen lift, hè? Niet tegen de ruit leunen.',
 	'Stap in. Garage, winkels of dak — Hans regelt het.',
 ];
-const HANS_LINES: Record<0 | 1 | 2 | 3, string[]> = {
-	0: ["Parkeergarage. Let op auto's.", 'P1 garage. Ticket bij de kiosk.', 'Ondergronds. Lift terug is hier.'],
-	1: ['Begane grond. Let op de stap.', 'Begane grond. Deuren open.', 'Begane grond. Prettige dag verder.'],
-	2: ['Verdieping één. Kruidvat is links.', 'Eerste verdieping. Deuren open.', 'Verdieping één. Food court op het balkon.'],
-	3: ['Dak. Helipad en frisse lucht.', 'Dak. Niet van de rand vallen.', 'Dakterras. Helikopter is die kant op.'],
+const HANS_LINES: Record<LevelId, string[]> = {
+	p1: ["Parkeergarage. Let op auto's.", 'P1 garage. Ticket bij de kiosk.', 'Ondergronds. Lift terug is hier.'],
+	v0: ['Begane grond. Let op de stap.', 'Begane grond. Deuren open.', 'Begane grond. Prettige dag verder.'],
+	v1: ['Verdieping één. Kruidvat is links.', 'Eerste verdieping. Deuren open.', 'Verdieping één. Food court op het balkon.'],
+	roof: ['Dak. Helipad en frisse lucht.', 'Dak. Niet van de rand vallen.', 'Dakterras. Helikopter is die kant op.'],
 };
 
 /**
@@ -51,8 +48,7 @@ export class GlassElevator {
 	/** wait at floor before next trip */
 	private waitT = 2.5;
 	private t = 0;
-	/** index into STOPS — start at V0 */
-	private stopIdx = 1;
+	private stop: LevelId = 'v0';
 	/** +1 up, -1 down (empty auto mode) */
 	private travelDir = 1;
 	/** When true, doors stay open until player picks a floor */
@@ -91,9 +87,8 @@ export class GlassElevator {
 		this.onLine = cb;
 	}
 
-	/** Current stop index 0=P1 … 3=DAK */
-	get currentStop(): number {
-		return this.stopIdx;
+	get currentStop(): LevelId {
+		return this.stop;
 	}
 
 	get isMoving(): boolean {
@@ -109,25 +104,18 @@ export class GlassElevator {
 	 * Player picked a floor from Hans' menu.
 	 * @returns false if already there or invalid
 	 */
-	requestFloor(stopIdx: number): boolean {
-		const stopY = STOPS[stopIdx];
-		if (stopY === undefined) return false;
+	requestFloor(id: LevelId): boolean {
+		const stopY = levelY(id);
 		if (Math.abs(stopY - this.cabinY) < 0.2) {
 			this.hansSay('Je bent er al, baas.', true);
 			return false;
 		}
-		this.stopIdx = stopIdx;
+		this.stop = id;
 		this.targetY = stopY;
 		this.holdForCall = false;
 		this.waitT = 0;
 		this.moving = true;
-		const labels = [
-			'Naar de parkeergarage. Deuren sluiten.',
-			'Naar begane grond. Deuren sluiten.',
-			'Naar verdieping één. Deuren sluiten.',
-			'Naar het dak. Deuren sluiten.',
-		];
-		this.hansSay(labels[stopIdx] ?? 'Deuren sluiten.', true);
+		this.hansSay(`Naar ${level(id).name.toLowerCase()}. Deuren sluiten.`, true);
 		return true;
 	}
 
@@ -150,7 +138,7 @@ export class GlassElevator {
 	}
 
 	/** Result of looking at elevator controls (FPS reticle). */
-	getLookHit(camera: THREE.PerspectiveCamera, maxDist = 5.5): { kind: 'hans' | 'panel' | 'call'; floorIdx?: number } | null {
+	getLookHit(camera: THREE.PerspectiveCamera, maxDist = 5.5): { kind: 'hans' | 'panel' | 'call'; level?: LevelId } | null {
 		this.raycaster.setFromCamera(this.ndc, camera);
 		this.raycaster.far = maxDist;
 		const hits = this.raycaster.intersectObjects(this.interactables, true);
@@ -159,7 +147,7 @@ export class GlassElevator {
 			while (o) {
 				const k = o.userData['elevInteract'];
 				if (k === 'call') {
-					return { kind: 'call', floorIdx: o.userData['elevFloor'] };
+					return { kind: 'call', level: o.userData['elevFloor'] as LevelId };
 				}
 				if (k === 'hans') return { kind: 'hans' };
 				if (k === 'panel') return { kind: 'panel' };
@@ -193,32 +181,30 @@ export class GlassElevator {
 	 * Summon cabin to a landing (outside call button).
 	 * Does not open the destination menu — just brings Hans here.
 	 */
-	callToFloor(stopIdx: number): boolean {
-		const stopY = STOPS[stopIdx];
-		if (stopY === undefined) return false;
+	callToFloor(id: LevelId): boolean {
+		const stopY = levelY(id);
 		// Already here and idle → open doors
 		if (!this.moving && Math.abs(stopY - this.cabinY) < 0.25) {
 			this.waitT = Math.max(this.waitT, 3);
 			this.holdForCall = false;
-			this.hansSay(pick(HANS_LINES[stopIdx as 0 | 1 | 2 | 3]), true);
+			this.hansSay(pick(HANS_LINES[id]), true);
 			return true;
 		}
-		this.stopIdx = stopIdx;
+		this.stop = id;
 		this.targetY = stopY;
 		this.holdForCall = false;
 		this.waitT = 0;
 		this.moving = true;
-		const names = ['parkeergarage', 'begane grond', 'verdieping één', 'dak'];
-		this.hansSay(`Ik kom eraan — ${names[stopIdx]}.`, true);
+		this.hansSay(`Ik kom eraan — ${level(id).name.toLowerCase()}.`, true);
 		return true;
 	}
 
-	private tagInteract(obj: THREE.Object3D, kind: string, floorIdx?: number): void {
+	private tagInteract(obj: THREE.Object3D, kind: string, id?: LevelId): void {
 		obj.userData['elevInteract'] = kind;
-		if (floorIdx !== undefined) obj.userData['elevFloor'] = floorIdx;
+		if (id !== undefined) obj.userData['elevFloor'] = id;
 		obj.traverse((c) => {
 			c.userData['elevInteract'] = kind;
-			if (floorIdx !== undefined) c.userData['elevFloor'] = floorIdx;
+			if (id !== undefined) c.userData['elevFloor'] = id;
 		});
 		this.interactables.push(obj);
 	}
@@ -308,11 +294,12 @@ export class GlassElevator {
 				this.waitT -= dt;
 				if (this.waitT <= 0) {
 					// Empty auto-cycle only when nobody is riding
-					const next = this.stopIdx + this.travelDir;
-					if (next >= STOPS.length - 1) this.travelDir = -1;
+					const next = levelIndex(this.stop) + this.travelDir;
+					if (next >= LEVELS.length - 1) this.travelDir = -1;
 					if (next <= 0) this.travelDir = 1;
-					this.stopIdx = THREE.MathUtils.clamp(this.stopIdx + this.travelDir, 0, STOPS.length - 1);
-					this.targetY = at(STOPS, this.stopIdx);
+					const i = THREE.MathUtils.clamp(levelIndex(this.stop) + this.travelDir, 0, LEVELS.length - 1);
+					this.stop = levelAtIndex(i) ?? this.stop;
+					this.targetY = levelY(this.stop);
 					this.moving = true;
 				}
 			}
@@ -327,10 +314,9 @@ export class GlassElevator {
 					this.cabinY = this.targetY;
 					this.moving = false;
 					this.waitT = 3.2 + Math.random() * 1.5;
-					this.stopIdx = this.nearestStopIdx(this.cabinY);
+					this.stop = levelAt(this.cabinY);
 					if (inside || near) {
-						const floor = this.stopIdx as 0 | 1 | 2 | 3;
-						this.hansSay(pick(HANS_LINES[floor]), true);
+						this.hansSay(pick(HANS_LINES[this.stop]), true);
 						// Offer next choice if still aboard
 						if (inside) this.holdForCall = true;
 					}
@@ -352,19 +338,6 @@ export class GlassElevator {
 		// Floor indicator
 		const fl = this.cabinY < -2 ? 'P1' : this.cabinY > 10 ? 'DAK' : this.cabinY > 3 ? 'V1' : 'V0';
 		this.paintSign(fl, this.waitT > 0 ? 'OPEN' : '▲▼');
-	}
-
-	private nearestStopIdx(y: number): number {
-		let best = 0;
-		let bestD = Infinity;
-		STOPS.forEach((stopY, i) => {
-			const d = Math.abs(stopY - y);
-			if (d < bestD) {
-				bestD = d;
-				best = i;
-			}
-		});
-		return best;
 	}
 
 	/** Bubble always; ElevenLabs when quota allows (no browser robot voice). */
@@ -485,11 +458,9 @@ export class GlassElevator {
 			}),
 		);
 		const garagePadMat = this.track(new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.85 }));
-		const stopYs = [FLOOR_B, FLOOR0, FLOOR1, FLOOR2];
-		const codes = ['P1', 'V0', 'V1', 'DAK'];
-		stopYs.forEach((y, floorIdx) => {
-			const isRoof = y > 10;
-			const isGarage = y < -1;
+		for (const { id, y, code } of LEVELS) {
+			const isRoof = id === 'roof';
+			const isGarage = id === 'p1';
 			const pad = new THREE.Mesh(
 				new THREE.BoxGeometry(isRoof || isGarage ? 5.5 : 2.6, 0.12, isRoof || isGarage ? 5.5 : 1.0),
 				isRoof ? roofPadMat : isGarage ? garagePadMat : padMat,
@@ -499,8 +470,8 @@ export class GlassElevator {
 
 			if (isRoof) {
 				// Two stations: at shaft + midway to helipad (helipad is ~24 m north)
-				this.buildRoofCallStation(floorIdx, 2.6, 2.8, true);
-				this.buildRoofCallStation(floorIdx, 2.0, 12.5, false);
+				this.buildRoofCallStation(id, 2.6, 2.8, true);
+				this.buildRoofCallStation(id, 2.0, 12.5, false);
 				this.buildRoofWalkway();
 			} else {
 				// Compact landing call plate (P1 / V0 / V1)
@@ -517,13 +488,13 @@ export class GlassElevator {
 				);
 				btn.position.set(1.4, y + 1.25, 1.2);
 				this.group.add(btn);
-				this.tagInteract(btn, 'call', floorIdx);
-				const label = this.makeCallSign(at(codes, floorIdx), 1.1, 0.55);
+				this.tagInteract(btn, 'call', id);
+				const label = this.makeCallSign(code, 1.1, 0.55);
 				label.position.set(1.4, y + 1.75, 1.28);
 				this.group.add(label);
-				this.tagInteract(label, 'call', floorIdx);
+				this.tagInteract(label, 'call', id);
 			}
-		});
+		}
 
 		// Soft light in shaft
 		const light = new THREE.PointLight(0xe3f2fd, 2.2, 14, 2);
@@ -564,7 +535,7 @@ export class GlassElevator {
 	 * Tall green call pedestal on the dak.
 	 * @param localX/localZ relative to shaft center (group origin)
 	 */
-	private buildRoofCallStation(floorIdx: number, localX: number, localZ: number, primary: boolean): void {
+	private buildRoofCallStation(id: LevelId, localX: number, localZ: number, primary: boolean): void {
 		const station = new THREE.Group();
 		station.position.set(localX, FLOOR2, localZ);
 
@@ -612,8 +583,8 @@ export class GlassElevator {
 		btn.position.set(0, 2.95, 0.22);
 		btn.rotation.x = Math.PI / 2;
 		station.add(btn);
-		this.tagInteract(btn, 'call', floorIdx);
-		this.tagInteract(housing, 'call', floorIdx);
+		this.tagInteract(btn, 'call', id);
+		this.tagInteract(housing, 'call', id);
 		this.roofCallBtns.push(btn);
 
 		// Dome cap on button
@@ -621,7 +592,7 @@ export class GlassElevator {
 		dome.position.set(0, 2.95, 0.36);
 		dome.rotation.x = Math.PI / 2;
 		station.add(dome);
-		this.tagInteract(dome, 'call', floorIdx);
+		this.tagInteract(dome, 'call', id);
 		this.roofCallBtns.push(dome);
 
 		// GEEN beacon-PointLight (emissive dome gloeit al — en elke light telt op
@@ -630,13 +601,13 @@ export class GlassElevator {
 		const sign = this.makeCallSign('GROENE KNOP · E', 1.6, 0.55);
 		sign.position.set(0, 1.7, 0.7);
 		station.add(sign);
-		this.tagInteract(sign, 'call', floorIdx);
+		this.tagInteract(sign, 'call', id);
 
 		const sp = this.makeCallSprite(primary ? '🟢 LIFT · E' : '🟢 ROEP LIFT · E');
 		sp.position.set(0, 3.9, 0);
 		sp.scale.set(2.4, 0.65, 1);
 		station.add(sp);
-		this.tagInteract(sp, 'call', floorIdx);
+		this.tagInteract(sp, 'call', id);
 
 		// Yellow hazard ring
 		const ring = new THREE.Mesh(

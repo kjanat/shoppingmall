@@ -1,9 +1,10 @@
 import * as THREE from 'three';
+import { levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
 import { at } from '@/util/rand';
 
 /** World Y of the parking deck (one storey under V0) */
-export const GARAGE_Y = -6.0;
+export const GARAGE_Y = levelY('p1');
 
 /**
  * Underground parking garage — grey concrete, pillars, bays, a few cars.

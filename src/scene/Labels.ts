@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { level, levelY } from '@/data/levels';
 import type { StoreDef } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
 
@@ -11,7 +12,7 @@ export class StoreLabels {
 		for (const store of stores) {
 			if (store.id === 'info') continue;
 			const sprite = this.makeLabel(store);
-			const y = store.floor * 6 + 5.0;
+			const y = levelY(store.level) + 5.0;
 			sprite.position.set(store.x, y, store.z);
 			const pull = 2.2;
 			sprite.position.x += Math.sin(store.rotation) * pull;
@@ -48,7 +49,7 @@ export class StoreLabels {
 
 		ctx.fillStyle = store.hero ? 'rgba(255,255,255,0.85)' : '#64748b';
 		ctx.font = '500 20px system-ui, sans-serif';
-		ctx.fillText(`Level ${store.floor}`, 256, 88);
+		ctx.fillText(level(store.level).code, 256, 88);
 
 		const tex = new THREE.CanvasTexture(canvas);
 		tex.colorSpace = THREE.SRGBColorSpace;

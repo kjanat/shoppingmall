@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { levelAt } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
 
 /**
@@ -106,7 +107,7 @@ export class DJBartek {
 	inRange(worldPos: THREE.Vector3): boolean {
 		const dx = worldPos.x - this.pos.x;
 		const dz = worldPos.z - this.pos.z;
-		return Math.hypot(dx, dz) < this.interactR && worldPos.y < 3.5;
+		return Math.hypot(dx, dz) < this.interactR && levelAt(worldPos.y) === 'v0';
 	}
 
 	update(t: number, dt: number, musicOn: boolean): void {

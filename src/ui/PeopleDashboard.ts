@@ -1,3 +1,4 @@
+import { level } from '@/data/levels';
 import type { PersonRow } from '@/scene/Americans';
 import { qs } from '@/util/dom';
 
@@ -74,7 +75,7 @@ export class PeopleDashboard {
           <small>${esc(r.doing)}</small>
         </span>
         <span class="pd-meta">
-          <span class="pd-floor">V${r.floor}</span>
+          <span class="pd-floor">${level(r.level).code}</span>
           <span>€${Math.round(r.moneySpent)}</span>
           <span>${Math.round(r.dist)} m</span>
         </span>

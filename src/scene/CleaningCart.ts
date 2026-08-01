@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
+import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
@@ -102,7 +103,7 @@ export class CleaningCart {
 		// Soft hunt: even a little in the way → drift onto your path
 		let hunting = false;
 		let huntYaw: number | null = null;
-		if (playerPos && playerPos.y < 5) {
+		if (playerPos && levelAt(playerPos.y) === 'v0') {
 			const dx = playerPos.x - p.x;
 			const dz = playerPos.z - p.z;
 			const dist = Math.hypot(dx, dz);
@@ -126,7 +127,7 @@ export class CleaningCart {
 
 		this.blockedThisFrame = false;
 		// Don't drive through the player — bounce the cart back a bit
-		if (playerPos && playerPos.y < 5) {
+		if (playerPos && levelAt(playerPos.y) === 'v0') {
 			const sep = this.world.separate(p.x, p.z, playerPos.x, playerPos.z, this.radius + 0.45);
 			const pushX = (sep.ax - p.x) * 0.9;
 			const pushZ = (sep.az - p.z) * 0.9;
@@ -203,7 +204,7 @@ export class CleaningCart {
 	/** Same floor + close enough that Wei cares */
 	private isPlayerInWay(player: THREE.Vector3): boolean {
 		// Camera sits ~1.6m; floor 0 is y < ~4
-		if (player.y > 4.5) return false;
+		if (levelAt(player.y) !== 'v0') return false;
 		const dist = this.distTo(player);
 		if (dist > 5.5) return false;
 		// Always angry when basically on top of the cart

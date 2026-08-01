@@ -1,10 +1,9 @@
 import * as THREE from 'three';
+import { levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
 import { at } from '@/util/rand';
 
-/** Dekhoogte — zelfde als het helipad-dek (zie Helipad.ROOF_Y), hier hard
- *  gecodeerd omdat het contract zegt: alleen 'three' importeren. */
-const DECK_Y = 13.95;
+const DECK_Y = levelY('roof');
 
 /**
  * Tropisch dakeiland op het westelijke mall-dak. Zwembad in nierboonvorm,

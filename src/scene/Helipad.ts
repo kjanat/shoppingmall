@@ -1,10 +1,11 @@
 import * as THREE from 'three';
+import { levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
 // Ceiling slab tops out at 13.75 (y 13.5 + 0.25 extrude) — the deck used to sit
-// AT 13.4…13.575, i.e. embedded inside the slab. Deck top now lands at 13.95.
-export const ROOF_Y = 13.95;
+// AT 13.4…13.575, i.e. embedded inside the slab.
+export const ROOF_Y = levelY('roof');
 
 /**
  * Secret service stairs (V1 → dak) + helicopter landing pad on the roof.

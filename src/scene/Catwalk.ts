@@ -12,7 +12,7 @@ const RUNWAY_X = -28;
 const START_Z = -3.5;
 // Tip circle reaches TIP_Z + 2.55; the WC back wall starts at z 12.35 — keep clear
 const TIP_Z = 9.5;
-const DECK_Y = 0.34;
+const PODIUM_Y = 0.34;
 const HALF_W = 1.35;
 
 const WALK_SPEED = 1.15;
@@ -79,7 +79,7 @@ export class Catwalk {
 
 		this.spot = new THREE.SpotLight(0xffffff, 90, 26, Math.PI * 0.16, 0.45, 1.4);
 		this.spot.position.set(RUNWAY_X, 7.4, TIP_Z - 4);
-		this.spotTarget.position.set(RUNWAY_X, DECK_Y, START_Z);
+		this.spotTarget.position.set(RUNWAY_X, PODIUM_Y, START_Z);
 		this.group.add(this.spot, this.spotTarget);
 		this.spot.target = this.spotTarget;
 
@@ -142,7 +142,7 @@ export class Catwalk {
 		// Spotlight rides the girl who is currently working
 		const active = this.models.find((m) => m.phase !== 'wait');
 		if (active) {
-			this.spotTarget.position.set(RUNWAY_X + Math.sin(t * 0.6) * 0.5, DECK_Y + 0.9, active.z);
+			this.spotTarget.position.set(RUNWAY_X + Math.sin(t * 0.6) * 0.5, PODIUM_Y + 0.9, active.z);
 		}
 
 		const posing = active?.phase === 'pose';
@@ -285,14 +285,14 @@ export class Catwalk {
 		m.head.rotation.y = Math.sin(p * 0.5) * 0.12;
 		m.hair.rotation.z = -Math.sin(p) * 0.14;
 
-		m.root.position.set(RUNWAY_X, DECK_Y, m.z);
+		m.root.position.set(RUNWAY_X, PODIUM_Y, m.z);
 	}
 
 	/** End of the runway: stop, hand on hip, quarter turn, look back. */
 	private pose(m: Model, t: number): void {
 		const turn = Math.min(1, t / 0.7);
 		const back = t > POSE_TIME * 0.6 ? Math.min(1, (t - POSE_TIME * 0.6) / 0.6) : 0;
-		m.root.position.set(RUNWAY_X, DECK_Y, m.z);
+		m.root.position.set(RUNWAY_X, PODIUM_Y, m.z);
 		m.root.rotation.y = turn * 0.5 - back * 1.1;
 
 		m.legL.rotation.x = 0.08;
@@ -321,7 +321,7 @@ export class Catwalk {
 		const gold = this.mat(0xd4af37, 0.25, 0.9);
 
 		const root = new THREE.Group();
-		root.position.set(RUNWAY_X, DECK_Y, START_Z);
+		root.position.set(RUNWAY_X, PODIUM_Y, START_Z);
 		root.visible = false;
 
 		// Feet on the deck at root y=0; hip pivot 0.9 up; body origin at the waist.
@@ -491,8 +491,11 @@ export class Catwalk {
 	// ── set dressing ───────────────────────────────────────
 
 	private buildRunway(): void {
-		const deck = new THREE.Mesh(new THREE.BoxGeometry(HALF_W * 2, DECK_Y, TIP_Z - START_Z + 2.4), this.mat(0xf7f5f2, 0.25, 0.15));
-		deck.position.set(RUNWAY_X, DECK_Y / 2, (START_Z + TIP_Z) / 2);
+		const deck = new THREE.Mesh(
+			new THREE.BoxGeometry(HALF_W * 2, PODIUM_Y, TIP_Z - START_Z + 2.4),
+			this.mat(0xf7f5f2, 0.25, 0.15),
+		);
+		deck.position.set(RUNWAY_X, PODIUM_Y / 2, (START_Z + TIP_Z) / 2);
 		deck.receiveShadow = true;
 		this.group.add(deck);
 
@@ -500,12 +503,12 @@ export class Catwalk {
 		const strip = this.track(new THREE.MeshBasicMaterial({ color: 0xff4fa3, toneMapped: false }));
 		for (const side of [-1, 1] as const) {
 			const led = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, TIP_Z - START_Z + 2.4), strip);
-			led.position.set(RUNWAY_X + side * (HALF_W - 0.02), DECK_Y - 0.03, (START_Z + TIP_Z) / 2);
+			led.position.set(RUNWAY_X + side * (HALF_W - 0.02), PODIUM_Y - 0.03, (START_Z + TIP_Z) / 2);
 			this.group.add(led);
 		}
 		// Rounded tip
-		const tip = new THREE.Mesh(new THREE.CylinderGeometry(HALF_W, HALF_W, DECK_Y, 20), this.mat(0xf7f5f2, 0.25, 0.15));
-		tip.position.set(RUNWAY_X, DECK_Y / 2, TIP_Z + 1.2);
+		const tip = new THREE.Mesh(new THREE.CylinderGeometry(HALF_W, HALF_W, PODIUM_Y, 20), this.mat(0xf7f5f2, 0.25, 0.15));
+		tip.position.set(RUNWAY_X, PODIUM_Y / 2, TIP_Z + 1.2);
 		this.group.add(tip);
 	}
 

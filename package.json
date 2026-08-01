@@ -7,7 +7,7 @@
 		"build": "tsc && bun build.ts",
 		"build:static": "tsc && bun build.ts --static",
 		"dev": "bun --hot server/main.ts",
-		"fmt": "dprint fmt .",
+		"fmt": "run lint --fix; dprint fmt .",
 		"lint": "biome check",
 		"start": "dist/mall",
 		"typecheck": "tsc --noEmit"

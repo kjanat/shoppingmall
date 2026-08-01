@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { type LevelId, levelAt, levelY } from '@/data/levels';
 import { getOwner } from '@/data/shopOwners';
 import { STORES, type StoreDef } from '@/data/stores';
 import { Pathfinder } from '@/path/Pathfinder';
@@ -59,7 +60,7 @@ export type PersonRow = {
 	name: string;
 	x: number;
 	z: number;
-	floor: 0 | 1;
+	level: LevelId;
 	doing: string;
 	unhappiness: number;
 	moneySpent: number;
@@ -192,7 +193,7 @@ function shopEntrance(s: StoreDef): THREE.Vector3 {
 	const pull = 3.5;
 	const x = s.x + Math.sin(s.rotation) * pull;
 	const z = s.z + Math.cos(s.rotation) * pull;
-	return new THREE.Vector3(x, s.floor * 6, z);
+	return new THREE.Vector3(x, levelY(s.level), z);
 }
 
 /**
@@ -335,7 +336,7 @@ export class Americans {
 				name: f.name,
 				x: s.pos.x,
 				z: s.pos.z,
-				floor: s.pos.y > 3 ? 1 : 0,
+				level: levelAt(s.pos.y),
 				doing,
 				unhappiness: f.unhappiness,
 				moneySpent: f.moneySpent,
@@ -1280,11 +1281,11 @@ export class Americans {
 		const nodes = this.pathfinder.findPath(fromStoreNode, toNode);
 		if (nodes.length >= 2) {
 			sim.path = nodes.map((n) => {
-				const y = n.y < 3 ? 0 : 6;
+				const y = levelY(levelAt(n.y));
 				return new THREE.Vector3(n.x, y, n.z);
 			});
 			sim.path = sim.path.map((p) => {
-				if (p.y > 3 && Math.abs(p.x) < 8 && Math.abs(p.z) < 6) {
+				if (levelAt(p.y) === 'v1' && Math.abs(p.x) < 8 && Math.abs(p.z) < 6) {
 					return new THREE.Vector3(p.x >= 0 ? 10 : -10, 6, p.z);
 				}
 				return p;

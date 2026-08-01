@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
@@ -209,7 +210,7 @@ export class Monkey {
 		const origin = this.group.position;
 		const player = this.camera.position;
 		const pd = origin.distanceTo(player);
-		if (pd < PLAYER_RANGE && player.y < 5.5) return player;
+		if (pd < PLAYER_RANGE && levelAt(player.y) === 'v0') return player;
 		// Far: stare at the prayer room while plotting
 		return PRAYER_POS;
 	}
@@ -222,7 +223,7 @@ export class Monkey {
 		const origin = this.group.position;
 		const player = this.camera.position;
 		const pd = origin.distanceTo(player);
-		const playerInRange = pd < PLAYER_RANGE && player.y < 5.5;
+		const playerInRange = pd < PLAYER_RANGE && levelAt(player.y) === 'v0';
 
 		this.pendingAtPlayer = false;
 		this.pendingAtPrayer = false;
@@ -330,7 +331,7 @@ export class Monkey {
 			if (p.atPrayer) {
 				const dx = pos.x - PRAYER_POS.x;
 				const dz = pos.z - PRAYER_POS.z;
-				if (dx * dx + dz * dz < 9 && pos.y < 3.2) {
+				if (dx * dx + dz * dz < 9 && levelAt(pos.y) === 'v0') {
 					this.land(p, 'prayer', pos);
 					continue;
 				}

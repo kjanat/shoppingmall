@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
 import { at } from '@/util/rand';
 
@@ -12,7 +13,7 @@ import { at } from '@/util/rand';
  * een persoonlijkheid is. Het vaandel zegt AL ZUT. Niemand weet waarom.
  */
 
-const DECK_Y = 13.95;
+const DECK_Y = levelY('roof');
 const WATER_Y = 13.75;
 
 // Aanname: het zwembad zit rond het midden van het dek (x -32..-6, z -20..20),

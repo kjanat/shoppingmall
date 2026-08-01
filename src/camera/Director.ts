@@ -1,6 +1,7 @@
 import gsap from 'gsap';
 import * as THREE from 'three';
 import type { GraphNode } from '@/data/graph';
+import { levelAt, levelY } from '@/data/levels';
 import { at } from '@/util/rand';
 
 export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
@@ -69,7 +70,7 @@ export class Director {
 		if (toCenter.lengthSq() < 0.01) toCenter.set(0, 0, 1);
 		toCenter.normalize();
 		const stand = pos.clone().addScaledVector(toCenter, 6);
-		stand.y = pos.y < 3 ? EYE : 6 + EYE;
+		stand.y = levelY(levelAt(pos.y)) + EYE;
 		const target = pos.clone();
 		target.y = stand.y;
 

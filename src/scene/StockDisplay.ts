@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
+import { levelY } from '@/data/levels';
 import { STORES, type StoreDef } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
 import { at } from '@/util/rand';
-
-const FLOOR_H = 6;
 
 /**
  * Stock lives in the OPEN room (between door z≈0 and back wall z≈-depth).
@@ -51,7 +50,7 @@ export class StockDisplay {
 
 	private buildStoreStock(store: StoreDef, items: StockItem[], slogan: string): void {
 		const g = new THREE.Group();
-		g.position.set(store.x, store.floor * FLOOR_H, store.z);
+		g.position.set(store.x, levelY(store.level), store.z);
 		g.rotation.y = store.rotation;
 		g.name = `stock_${store.id}`;
 

@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import { levelY } from '@/data/levels';
 import { getOwner } from '@/data/shopOwners';
 import { STORES, type StoreDef } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
 import { at } from '@/util/rand';
 
-const FLOOR_H = 6;
+/** One storey, straight from the deck heights. */
+const FLOOR_H = levelY('v1') - levelY('v0');
 const MALL_W = 72;
 const MALL_D = 48;
 
@@ -627,7 +629,7 @@ export class MallBuilder {
 	private buildStorePod(store: StoreDef): THREE.Group {
 		const g = new THREE.Group();
 		g.name = `store_${store.id}`;
-		g.position.set(store.x, store.floor * FLOOR_H, store.z);
+		g.position.set(store.x, levelY(store.level), store.z);
 		g.rotation.y = store.rotation;
 
 		const w = store.width;

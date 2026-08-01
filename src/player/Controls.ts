@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { type LevelId, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 
 export const EYE = 1.68;
@@ -132,10 +133,8 @@ export class PlayerControls {
 	}
 
 	/** Which deck the player is standing on (for the minimap). */
-	get floor(): 0 | 1 | 2 {
-		if (this.feetY >= 10) return 2;
-		if (this.feetY > 3) return 1;
-		return 0;
+	get level(): LevelId {
+		return levelAt(this.feetY);
 	}
 
 	/**

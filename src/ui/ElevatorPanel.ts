@@ -1,33 +1,22 @@
+import { LEVELS, type LevelId } from '@/data/levels';
 import { qs } from '@/util/dom';
-
-export type ElevStopChoice = {
-	idx: number;
-	code: string;
-	label: string;
-	hint: string;
-};
-
-export const ELEV_MENU_STOPS: ElevStopChoice[] = [
-	{ idx: 0, code: 'P1', label: 'Parkeergarage', hint: "Ondergronds · auto's" },
-	{ idx: 1, code: 'V0', label: 'Begane grond', hint: 'Winkels · kiosk' },
-	{ idx: 2, code: 'V1', label: 'Verdieping 1', hint: 'Kruidvat · food court' },
-	{ idx: 3, code: 'DAK', label: 'Dak', hint: 'Helipad · uitzicht' },
-];
 
 /**
  * Popup when you're in the glass elevator — pick a floor for Hans.
- * Uses event delegation so repaints don't kill clicks.
+ * The buttons are the decks themselves, so this list can't drift from the
+ * stops the cabin actually serves. Event delegation, so repaints don't kill
+ * clicks.
  */
 export class ElevatorPanel {
 	private host: HTMLElement;
 	private card!: HTMLElement;
 	private btns!: HTMLElement;
 	private open = false;
-	private onPick: (idx: number) => void;
-	private currentIdx = 1;
-	private lastPaintedIdx = -999;
+	private onPick: (id: LevelId) => void;
+	private current: LevelId = 'v0';
+	private lastPainted: LevelId | null = null;
 
-	constructor(root: HTMLElement, onPick: (idx: number) => void) {
+	constructor(root: HTMLElement, onPick: (id: LevelId) => void) {
 		this.onPick = onPick;
 		this.host = document.createElement('div');
 		this.host.className = 'elev-host';
@@ -41,8 +30,8 @@ export class ElevatorPanel {
 		return this.open;
 	}
 
-	show(currentStopIdx: number): void {
-		this.currentIdx = currentStopIdx;
+	show(current: LevelId): void {
+		this.current = current;
 		this.open = true;
 		this.card.classList.remove('hidden');
 		this.host.style.pointerEvents = 'auto';
@@ -55,26 +44,36 @@ export class ElevatorPanel {
 		this.host.style.pointerEvents = 'none';
 	}
 
-	setCurrent(idx: number): void {
-		if (idx === this.currentIdx && idx === this.lastPaintedIdx) return;
-		this.currentIdx = idx;
+	setCurrent(id: LevelId): void {
+		if (id === this.current && id === this.lastPainted) return;
+		this.current = id;
 		if (this.open) this.paintButtons(false);
 	}
 
 	private paintButtons(force: boolean): void {
-		if (!force && this.currentIdx === this.lastPaintedIdx) return;
-		this.lastPaintedIdx = this.currentIdx;
-		this.btns.innerHTML = ELEV_MENU_STOPS.map((s) => {
-			const here = s.idx === this.currentIdx;
+		if (!force && this.current === this.lastPainted) return;
+		this.lastPainted = this.current;
+		this.btns.innerHTML = LEVELS.map((l) => {
+			const here = l.id === this.current;
 			return `
-        <button type="button" class="elev-btn${here ? ' elev-here' : ''}" data-idx="${s.idx}">
-          <span class="elev-code">${s.code}</span>
+        <button type="button" class="elev-btn${here ? ' elev-here' : ''}" data-level="${l.id}">
+          <span class="elev-code">${l.code}</span>
           <span class="elev-meta">
-            <b>${s.label}</b>
-            <small>${here ? 'Je bent hier' : s.hint}</small>
+            <b>${l.name}</b>
+            <small>${here ? 'Je bent hier' : l.hint}</small>
           </span>
         </button>`;
 		}).join('');
+	}
+
+	/** The deck a button stands for, or null when the click missed one. */
+	private pickedLevel(e: Event): LevelId | null {
+		const el = (e.target as HTMLElement | null)?.closest?.('.elev-btn') as HTMLElement | null;
+		if (!el || !this.open) return null;
+		const id = el.dataset['level'];
+		const found = LEVELS.find((l) => l.id === id);
+		if (!found || found.id === this.current) return null;
+		return found.id;
 	}
 
 	private mount(): void {
@@ -99,12 +98,8 @@ export class ElevatorPanel {
 			(e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				const el = (e.target as HTMLElement | null)?.closest?.('.elev-btn') as HTMLElement | null;
-				if (!el || !this.open) return;
-				const idx = Number(el.dataset['idx']);
-				if (!Number.isFinite(idx)) return;
-				if (idx === this.currentIdx) return;
-				this.onPick(idx);
+				const id = this.pickedLevel(e);
+				if (id) this.onPick(id);
 			},
 			true,
 		);
@@ -114,12 +109,10 @@ export class ElevatorPanel {
 			'mousedown',
 			(e) => {
 				e.stopPropagation();
-				const el = (e.target as HTMLElement | null)?.closest?.('.elev-btn') as HTMLElement | null;
-				if (!el || !this.open) return;
-				const idx = Number(el.dataset['idx']);
-				if (!Number.isFinite(idx) || idx === this.currentIdx) return;
+				const id = this.pickedLevel(e);
+				if (!id) return;
 				e.preventDefault();
-				this.onPick(idx);
+				this.onPick(id);
 			},
 			true,
 		);

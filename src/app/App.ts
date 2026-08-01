@@ -6,6 +6,7 @@ import { fetchDjStatus, playBoothFile, speakLine } from '@/audio/ElevenVoice';
 import { spatial } from '@/audio/SpatialAudio';
 import { Director } from '@/camera/Director';
 import type { GraphNode } from '@/data/graph';
+import { level, levelAt, levelY } from '@/data/levels';
 import { getKruidvat, getStore, type StoreDef } from '@/data/stores';
 import { Pathfinder } from '@/path/Pathfinder';
 import { PathMesh } from '@/path/PathMesh';
@@ -418,13 +419,12 @@ export class App {
 			this.ui.setStatus(`🛗 HANS · ${text}`);
 		});
 		// Floor picker (only after E on Hans/knoppen — frees mouse then)
-		this.elevUi = new ElevatorPanel(uiRoot, (idx) => {
-			const ok = this.elevator.requestFloor(idx);
+		this.elevUi = new ElevatorPanel(uiRoot, (id) => {
+			const ok = this.elevator.requestFloor(id);
 			if (ok) {
 				this.elevUi.hide();
 				this.elevator.holdForPassenger(false);
-				const names = ['P1 garage', 'begane grond', 'verdieping 1', 'het dak'];
-				this.ui.setStatus(`🛗 Hans rijdt naar ${names[idx] ?? '…'}`);
+				this.ui.setStatus(`🛗 Hans rijdt naar ${level(id).name.toLowerCase()}`);
 			} else {
 				this.ui.setStatus('🛗 Hans: je bent er al — kies een andere');
 			}
@@ -525,7 +525,7 @@ export class App {
 					!this.possessId &&
 					this.freeMove &&
 					this.scrubber.distanceTo(this.camera.position) < 3.5 &&
-					this.camera.position.y < 4.5
+					levelAt(this.camera.position.y) === 'v0'
 				) {
 					this.boardScrubber();
 				} else if (!this.possessId && this.freeMove && this.drone.distanceTo(this.camera.position) < 3.2) {
@@ -707,7 +707,7 @@ export class App {
 			y: this.camera.position.y,
 			z: this.camera.position.z,
 			yaw: this.player.heading,
-			floor: this.player.floor,
+			level: this.player.level,
 			freeMove: this.freeMove,
 		};
 	}
@@ -754,7 +754,7 @@ export class App {
 			floor: this.thief.active ? 'in de mall' : 'grot',
 		});
 
-		const monkeyFloor = this.monkey.group.position.y > 3 ? 'V1' : 'V0';
+		const monkeyFloor = level(levelAt(this.monkey.group.position.y)).code;
 		rows.push({
 			icon: '🐒',
 			name: 'De aap',
@@ -801,7 +801,11 @@ export class App {
 			icon: '🚗',
 			name: this.driveCars.activeName !== '—' ? this.driveCars.activeName : "Huurauto's (P1)",
 			doing: this.driveCars.statusLine,
-			floor: this.driveCars.ridden ? (this.camera.position.y < -2 ? 'P1 garage' : 'stad') : 'P1 · west exit → ring',
+			floor: this.driveCars.ridden
+				? levelAt(this.camera.position.y) === 'p1'
+					? `${level('p1').code} garage`
+					: 'stad'
+				: 'P1 · west exit → ring',
 		});
 
 		rows.push({
@@ -1182,7 +1186,13 @@ export class App {
 		const dx = this.camera.position.x - this.djBartek.pos.x;
 		const dz = this.camera.position.z - this.djBartek.pos.z;
 		const dist = Math.hypot(dx, dz);
-		if (dist < 18 && this.camera.position.y < 4 && this.djBartek.dramaCd <= 0 && !this.bartekSpeaking && !this.djUi.isOpen()) {
+		if (
+			dist < 18 &&
+			levelAt(this.camera.position.y) === 'v0' &&
+			this.djBartek.dramaCd <= 0 &&
+			!this.bartekSpeaking &&
+			!this.djUi.isOpen()
+		) {
 			this.djBartek.dramaCd = 18 + Math.random() * 22;
 			void this.bartekSpeak(pick(BARTEK_LINES.drama));
 		}
@@ -1267,14 +1277,13 @@ export class App {
 		if (store.nodeId === 'spaceship') {
 			return 'Loopband · roltrap · level 1 · aankomst';
 		}
-		if (store.floor === 2) return 'Dak';
-		return store.floor === 0 ? 'Begane grond · loopband' : 'Via roltrap · verdieping 1';
+		if (store.level === 'roof') return 'Dak';
+		return store.level === 'v0' ? 'Begane grond · loopband' : 'Via roltrap · verdieping 1';
 	}
 
 	/** Eye-height Y for camera focus / confetti */
 	private storeY(store: StoreDef): number {
-		if (store.floor === 2) return 13.55 + 1.55;
-		return store.floor * 6 + 1.5;
+		return levelY(store.level) + 1.5;
 	}
 
 	private onArrive(store: StoreDef): void {
@@ -1487,13 +1496,10 @@ export class App {
 		if (!this.freeMove || this.possessId !== null || this.player.flying) return false;
 		const hit = this.elevator.getLookHit(this.camera, 10);
 		const inCab = this.elevator.contains(this.camera.position.x, this.camera.position.z, 0.2);
-		const names = ['P1 garage', 'begane grond', 'V1', 'dak'];
-
 		const distXZ = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
-		const floorHere = this.elevatorFloorFromY(this.player.feetHeight);
+		const here = levelAt(this.player.feetHeight);
 		// Dak has a second call pedestal ~12 m toward the helipad — wider radius
-		const onRoof = floorHere === 3;
-		const nearShaft = distXZ < (onRoof ? 14 : 4.5);
+		const nearShaft = distXZ < (here === 'roof' ? 14 : 4.5);
 
 		// Inside Hans / panel → menu
 		if (hit?.kind === 'hans' || hit?.kind === 'panel' || (inCab && hit?.kind === 'call')) {
@@ -1509,29 +1515,19 @@ export class App {
 		}
 
 		// Outside call button OR proximity on landing
-		const callFloor = hit?.kind === 'call' && hit.floorIdx !== undefined ? hit.floorIdx : floorHere;
-		if ((hit?.kind === 'call' || (nearShaft && !inCab)) && callFloor !== null) {
-			const floorName = names[callFloor] ?? '…';
-			this.elevator.callToFloor(callFloor);
-			this.ui.setStatus(`🛗 Hans komt naar ${floorName} — even wachten`);
+		const callLevel = hit?.kind === 'call' ? (hit.level ?? here) : here;
+		if (hit?.kind === 'call' || (nearShaft && !inCab)) {
+			this.elevator.callToFloor(callLevel);
+			this.ui.setStatus(`🛗 Hans komt naar ${level(callLevel).name.toLowerCase()} — even wachten`);
 			return true;
 		}
 
 		return false;
 	}
 
-	/** Map feet Y to elevator stop index */
-	private elevatorFloorFromY(feetY: number): number | null {
-		if (feetY < -2) return 0; // P1
-		if (feetY < 3) return 1; // V0
-		if (feetY < 10) return 2; // V1
-		if (feetY >= 10) return 3; // dak
-		return null;
-	}
-
 	private pushPlayerFromSims(minDist: number): void {
 		const cam = this.camera.position;
-		const playerFloor = cam.y < 4 ? 0 : 6;
+		const playerFloor = levelY(levelAt(cam.y));
 		const group = this.atmosphere.americans.group;
 		for (const child of group.children) {
 			if (!(child instanceof THREE.Object3D)) continue;
@@ -1542,7 +1538,7 @@ export class App {
 			cam.z = sep.az;
 		}
 		// Wei Chen scrubber is solid — don't walk through the cart
-		if (cam.y < 4) {
+		if (levelAt(cam.y) === 'v0') {
 			const sep = this.world.separate(cam.x, cam.z, this.cleaner.pos.x, this.cleaner.pos.z, PLAYER_RADIUS + this.cleaner.radius);
 			cam.x = sep.ax;
 			cam.z = sep.az;
@@ -1769,7 +1765,7 @@ export class App {
 			!this.player.driving &&
 			this.freeMove &&
 			this.scrubber.distanceTo(this.camera.position) < 3.8 &&
-			this.camera.position.y < 4.5;
+			levelAt(this.camera.position.y) === 'v0';
 		if (nearScrub && !this.nearScrubberHint) {
 			this.nearScrubberHint = true;
 			this.ui.setStatus('🧽 SCHOONMAAK BUGGY #88 — leeg · E = instappen & racen (Shift = turbo)');
@@ -1799,7 +1795,7 @@ export class App {
 		// Auto-greet Youssef when you walk into Kruidvat
 		void this.shopVoice.greetIfNear('kruidvat', this.camera.position, 6.5);
 		const dYoussef = this.shopVoice.distanceTo('kruidvat', this.camera.position);
-		if (dYoussef < 7 && this.camera.position.y > 4 && !this.youssefHint) {
+		if (dYoussef < 7 && levelAt(this.camera.position.y) === 'v1' && !this.youssefHint) {
 			this.youssefHint = true;
 			this.ui.setStatus('💊 Youssef Benali (Kruidvat) · druk E om te praten');
 		} else if (dYoussef > 10) {
@@ -1870,7 +1866,7 @@ export class App {
 
 			// Gebedsruimte — music + Allahu Akbar wall
 			const dPrayer = Math.hypot(this.camera.position.x - this.prayer.pos.x, this.camera.position.z - this.prayer.pos.z);
-			if (dPrayer < 12 && this.camera.position.y < 4 && !this.nearPrayerHint) {
+			if (dPrayer < 12 && levelAt(this.camera.position.y) === 'v0' && !this.nearPrayerHint) {
 				this.nearPrayerHint = true;
 				this.ui.setStatus('🕌 GEBEDSRUIMTE · Allahu Trapbar ♪ (vol) · poses op de beat · geit');
 			} else if (dPrayer >= 16) {
@@ -1893,7 +1889,7 @@ export class App {
 
 			// Glass elevator (+ dak: wide radius because call pedestals sit off-shaft)
 			const dElevXZ = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
-			const onRoofHint = this.player.feetHeight >= 10;
+			const onRoofHint = this.player.level === 'roof';
 			const elevHintR = onRoofHint ? 16 : 5;
 			const elevHintLeave = onRoofHint ? 20 : 7;
 			const inElev = this.elevator.contains(this.camera.position.x, this.camera.position.z);
@@ -1912,28 +1908,27 @@ export class App {
 		}
 
 		const eul = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
-		const floor: 0 | 1 | 2 = this.camera.position.y >= 10 ? 2 : this.camera.position.y > 3.5 ? 1 : 0;
 		const targetStore = this.currentStore;
 		this.mapBlips.length = 0;
 		for (const child of this.atmosphere.americans.group.children) {
 			this.mapBlips.push({
 				x: child.position.x,
 				z: child.position.z,
-				floor: child.position.y > 3.5 ? 1 : 0,
+				level: levelAt(child.position.y),
 			});
 		}
 		this.ui.updateMap({
 			x: this.camera.position.x,
 			z: this.camera.position.z,
 			yaw: eul.y,
-			floor,
+			level: levelAt(this.camera.position.y),
 			path: this.currentPath.map((n) => ({ x: n.x, y: n.y, z: n.z })),
 			blips: this.mapBlips,
 			target: targetStore
 				? {
 						x: targetStore.x,
 						z: targetStore.z,
-						floor: targetStore.floor,
+						level: targetStore.level,
 						name: targetStore.name.replace('\n', ' '),
 					}
 				: null,

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
+import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
@@ -149,7 +150,7 @@ export class SecurityGuards {
 			name: g.name,
 			state: g.state === 'firing' ? '🔫 OPENT VUUR' : g.state === 'alert' ? '⚠ hyperalert' : 'patrol',
 			kills: g.kills,
-			floor: g.root.position.y > 3 ? 'V1' : 'V0',
+			floor: level(levelAt(g.root.position.y)).code,
 		}));
 	}
 

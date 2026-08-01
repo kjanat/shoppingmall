@@ -1,3 +1,4 @@
+import { levelY } from '@/data/levels';
 import { STORES } from '@/data/stores';
 
 export type AABB = {
@@ -31,11 +32,10 @@ export type Ramp = {
 	openMaxZ: number;
 };
 
-const FLOOR_H = 6;
-/** Walkable roof / helipad deck (matches Helipad.ROOF_Y) */
-const ROOF_H = 13.95;
-/** Underground parking deck */
-const BASEMENT_H = -6;
+/** One storey */
+const FLOOR_H = levelY('v1') - levelY('v0');
+const ROOF_H = levelY('roof');
+const BASEMENT_H = levelY('p1');
 const MALL_W = 72;
 const MALL_D = 48;
 
@@ -175,7 +175,7 @@ export class CollisionWorld {
 		// Store: thin BACK wall only — open interior for stock + shopkeeper
 		for (const s of STORES) {
 			if (s.id === 'info' || s.utility) continue;
-			const y0 = s.floor * FLOOR_H;
+			const y0 = levelY(s.level);
 			const y1 = y0 + 4.5;
 			const roomDepth = s.depth * 0.92;
 			const backCx = s.x - Math.sin(s.rotation) * roomDepth;

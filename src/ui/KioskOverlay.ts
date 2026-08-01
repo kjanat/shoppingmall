@@ -1,20 +1,21 @@
 import { EDGES, NODES } from '@/data/graph';
 import { getInventory } from '@/data/inventory';
-import { CATEGORY_LABELS, FLOOR_LABELS, getKruidvat, STORES, type StoreCategory, type StoreDef } from '@/data/stores';
+import { type LevelId, level, levelAt } from '@/data/levels';
+import { CATEGORY_LABELS, getKruidvat, STORES, type StoreCategory, type StoreDef } from '@/data/stores';
 import { qs } from '@/util/dom';
 import { at } from '@/util/rand';
 
 /** One dot on the map — a sim, mostly. */
-export type MapBlip = { x: number; z: number; floor: number };
+export type MapBlip = { x: number; z: number; level: LevelId };
 
 export type MapState = {
 	x: number;
 	z: number;
 	yaw: number;
-	floor: 0 | 1 | 2;
+	level: LevelId;
 	path: { x: number; y: number; z: number }[];
 	blips: MapBlip[];
-	target: { x: number; z: number; floor: 0 | 1 | 2; name: string } | null;
+	target: { x: number; z: number; level: LevelId; name: string } | null;
 };
 
 const MALL_W = 72;
@@ -28,9 +29,9 @@ const CORRIDORS = EDGES.flatMap((e) => {
 	const a = NODE_BY_ID.get(e.from);
 	const b = NODE_BY_ID.get(e.to);
 	if (!a || !b) return [];
-	const fa = a.y > 3 ? 1 : 0;
-	if (fa !== (b.y > 3 ? 1 : 0)) return [];
-	return [{ floor: fa as 0 | 1, ax: a.x, az: a.z, bx: b.x, bz: b.z }];
+	const la = levelAt(a.y);
+	if (la !== levelAt(b.y)) return [];
+	return [{ level: la, ax: a.x, az: a.z, bx: b.x, bz: b.z }];
 });
 
 /** Escalator + stairs, so the map actually shows how to reach floor 1. */
@@ -40,12 +41,12 @@ const VERTICALS = [
 ];
 
 /** Things worth walking to that aren't shops. */
-const LANDMARKS: { x: number; z: number; floor: 0 | 1 | 2; short: string; label: string }[] = [
-	{ x: -28, z: 3, floor: 0, short: '👗', label: 'CATWALK' },
-	{ x: 0, z: 0, floor: 0, short: '⛲', label: 'FONTEIN · GOD' },
-	{ x: 0, z: 0, floor: 1, short: '🛸', label: 'UFO · WEIDE' },
-	{ x: -31.5, z: -19.5, floor: 0, short: '🕌', label: 'GEBEDSRUIMTE' },
-	{ x: -28, z: 15.5, floor: 0, short: '🚻', label: 'WC' },
+const LANDMARKS: { x: number; z: number; level: LevelId; short: string; label: string }[] = [
+	{ x: -28, z: 3, level: 'v0', short: '👗', label: 'CATWALK' },
+	{ x: 0, z: 0, level: 'v0', short: '⛲', label: 'FONTEIN · GOD' },
+	{ x: 0, z: 0, level: 'v1', short: '🛸', label: 'UFO · WEIDE' },
+	{ x: -31.5, z: -19.5, level: 'v0', short: '🕌', label: 'GEBEDSRUIMTE' },
+	{ x: -28, z: 15.5, level: 'v0', short: '🚻', label: 'WC' },
 ];
 
 function isTypingTarget(t: EventTarget | null): boolean {
@@ -57,6 +58,15 @@ function isTypingTarget(t: EventTarget | null): boolean {
 function shortName(store: StoreDef): string {
 	return store.name.replace('\n', ' ');
 }
+
+/** Which deck a big-map tab stands for; the markup carries the id. */
+function tabLevel(btn: HTMLElement): LevelId {
+	const id = btn.dataset['level'];
+	return LANDMARK_LEVELS.find((l) => l === id) ?? 'v0';
+}
+
+/** Decks the big map can show, in tab order. */
+const LANDMARK_LEVELS = ['v0', 'v1', 'roof'] as const satisfies readonly LevelId[];
 
 export type UICallbacks = {
 	onSelectStore: (store: StoreDef) => void;
@@ -100,14 +110,14 @@ export class KioskOverlay {
 		x: 0,
 		z: 10,
 		yaw: 0,
-		floor: 0,
+		level: 'v0',
 		path: [],
 		blips: [],
 		target: null,
 	};
 	private zoom = 2;
 	private bigOpen = false;
-	private bigFloor: 0 | 1 | 2 = 0;
+	private bigLevel: LevelId = 'v0';
 	private mapClock = 0;
 
 	constructor(root: HTMLElement, callbacks: UICallbacks) {
@@ -221,9 +231,9 @@ export class KioskOverlay {
               <p>Jij bent de pijl. Geel = route. <b>⇅</b> = roltrap/trap naar de andere verdieping.</p>
             </div>
             <div class="bigmap-tabs">
-              <button type="button" class="bigmap-tab" data-floor="0">Begane grond</button>
-              <button type="button" class="bigmap-tab" data-floor="1">Verdieping 1</button>
-              <button type="button" class="bigmap-tab" data-floor="2">Dak 🚁</button>
+              <button type="button" class="bigmap-tab" data-level="v0">Begane grond</button>
+              <button type="button" class="bigmap-tab" data-level="v1">Verdieping 1</button>
+              <button type="button" class="bigmap-tab" data-level="roof">Dak 🚁</button>
               <button type="button" class="btn ghost" id="bigmap-close">Sluiten (M)</button>
             </div>
           </header>
@@ -423,7 +433,7 @@ export class KioskOverlay {
 		this.bigOpen = open;
 		this.elBigMap.classList.toggle('hidden', !open);
 		if (open) {
-			this.bigFloor = this.map.floor;
+			this.bigLevel = this.map.level;
 			this.renderBigTabs();
 			this.paintBigMap();
 		}
@@ -443,8 +453,7 @@ export class KioskOverlay {
 
 		this.root.querySelectorAll<HTMLElement>('.bigmap-tab').forEach((btn) => {
 			btn.addEventListener('click', () => {
-				const f = Number(btn.dataset['floor'] ?? 0);
-				this.bigFloor = f === 2 ? 2 : f === 1 ? 1 : 0;
+				this.bigLevel = tabLevel(btn);
 				this.renderBigTabs();
 				this.paintBigMap();
 			});
@@ -482,8 +491,7 @@ export class KioskOverlay {
 
 	private renderBigTabs(): void {
 		this.root.querySelectorAll<HTMLElement>('.bigmap-tab').forEach((btn) => {
-			const f = Number(btn.dataset['floor'] ?? 0);
-			btn.classList.toggle('active', f === this.bigFloor);
+			btn.classList.toggle('active', tabLevel(btn) === this.bigLevel);
 		});
 	}
 
@@ -525,7 +533,7 @@ export class KioskOverlay {
 		const cy = size / 2;
 		const r = size / 2 - 3;
 		const scale = at(ZOOM_STEPS, this.zoom);
-		const floor = this.map.floor;
+		const lvl = this.map.level;
 
 		ctx.save();
 		ctx.beginPath();
@@ -540,7 +548,7 @@ export class KioskOverlay {
 		ctx.rotate(this.map.yaw);
 		ctx.scale(scale, scale);
 		ctx.translate(-this.map.x, -this.map.z);
-		this.paintWorld(ctx, floor, scale);
+		this.paintWorld(ctx, lvl, scale);
 		ctx.restore();
 
 		// Upright labels for whatever is close by
@@ -549,7 +557,7 @@ export class KioskOverlay {
 		ctx.textBaseline = 'middle';
 		const reach = (r - 8) / scale;
 		for (const s of STORES) {
-			if (s.id === 'info' || s.floor !== floor) continue;
+			if (s.id === 'info' || s.level !== lvl) continue;
 			if (Math.abs(s.x - this.map.x) > reach || Math.abs(s.z - this.map.z) > reach) continue;
 			const { sx, sy } = this.project(s.x, s.z, cx, cy, scale);
 			ctx.fillStyle = s.hero ? '#5eead4' : 'rgba(226,232,240,0.8)';
@@ -563,7 +571,7 @@ export class KioskOverlay {
 		}
 		ctx.font = '11px system-ui, sans-serif';
 		for (const l of LANDMARKS) {
-			if (l.floor !== floor) continue;
+			if (l.level !== lvl) continue;
 			const { sx, sy } = this.project(l.x, l.z, cx, cy, scale);
 			ctx.fillText(l.short, sx, sy);
 		}
@@ -648,7 +656,7 @@ export class KioskOverlay {
 		ctx.fillRect(-29.4, -10.9, 1.8, 1.8); // glijbaantoren
 	}
 
-	private paintWorld(ctx: CanvasRenderingContext2D, floor: 0 | 1 | 2, scale: number): void {
+	private paintWorld(ctx: CanvasRenderingContext2D, lvl: LevelId, scale: number): void {
 		const px = 1 / scale;
 		ctx.lineJoin = 'round';
 		ctx.lineCap = 'round';
@@ -661,7 +669,7 @@ export class KioskOverlay {
 		ctx.strokeRect(-MALL_W / 2, -MALL_D / 2, MALL_W, MALL_D);
 
 		// DAK: eigen laag — geen V1-gangen maar helipad, eiland, trapgat en lift
-		if (floor === 2) {
+		if (lvl === 'roof') {
 			this.paintRoofLayer(ctx, px);
 			return;
 		}
@@ -671,14 +679,14 @@ export class KioskOverlay {
 		ctx.lineWidth = 3.4 * px;
 		ctx.beginPath();
 		for (const c of CORRIDORS) {
-			if (c.floor !== floor) continue;
+			if (c.level !== lvl) continue;
 			ctx.moveTo(c.ax, c.az);
 			ctx.lineTo(c.bx, c.bz);
 		}
 		ctx.stroke();
 
 		// Atrium: fountain downstairs, open void upstairs
-		if (floor === 0) {
+		if (lvl === 'v0') {
 			ctx.beginPath();
 			ctx.arc(0, 0, 2.6, 0, Math.PI * 2);
 			ctx.fillStyle = 'rgba(56,189,248,0.35)';
@@ -695,7 +703,7 @@ export class KioskOverlay {
 
 		// Stores
 		for (const s of STORES) {
-			if (s.id === 'info' || s.floor !== floor) continue;
+			if (s.id === 'info' || s.level !== lvl) continue;
 			const x0 = s.x - s.width / 2;
 			const z0 = s.z - s.depth / 2;
 			ctx.fillStyle = s.hero ? 'rgba(0,166,81,0.55)' : 'rgba(148,163,184,0.28)';
@@ -724,8 +732,7 @@ export class KioskOverlay {
 					const a = path[i - 1];
 					const b = path[i];
 					if (!a || !b) continue;
-					const segFloor = (a.y + b.y) / 2 > 3 ? 1 : 0;
-					const here = segFloor === floor;
+					const here = levelAt((a.y + b.y) / 2) === lvl;
 					if ((pass === 0) === here) continue;
 					ctx.moveTo(a.x, a.z);
 					ctx.lineTo(b.x, b.z);
@@ -747,7 +754,7 @@ export class KioskOverlay {
 		// Sims
 		ctx.fillStyle = 'rgba(248,250,252,0.75)';
 		for (const b of this.map.blips) {
-			if ((b.floor > 3 ? 1 : b.floor) !== floor) continue;
+			if (b.level !== lvl) continue;
 			ctx.beginPath();
 			ctx.arc(b.x, b.z, 0.55, 0, Math.PI * 2);
 			ctx.fill();
@@ -756,7 +763,7 @@ export class KioskOverlay {
 		// Destination
 		const t = this.map.target;
 		if (t) {
-			ctx.strokeStyle = t.floor === floor ? '#f43f5e' : 'rgba(244,63,94,0.4)';
+			ctx.strokeStyle = t.level === lvl ? '#f43f5e' : 'rgba(244,63,94,0.4)';
 			ctx.lineWidth = 2 * px;
 			ctx.beginPath();
 			ctx.arc(t.x, t.z, 2.4, 0, Math.PI * 2);
@@ -769,14 +776,14 @@ export class KioskOverlay {
 	}
 
 	/** North-up labels for the big plan, in screen space so text stays crisp. */
-	private paintBigLabels(ctx: CanvasRenderingContext2D, cssW: number, cssH: number, scale: number, floor: 0 | 1 | 2): void {
+	private paintBigLabels(ctx: CanvasRenderingContext2D, cssW: number, cssH: number, scale: number, lvl: LevelId): void {
 		const sx = (x: number) => cssW / 2 + x * scale;
 		const sy = (z: number) => cssH / 2 + z * scale;
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 
 		for (const s of STORES) {
-			if (s.id === 'info' || s.floor !== floor) continue;
+			if (s.id === 'info' || s.level !== lvl) continue;
 			ctx.fillStyle = s.hero ? '#5eead4' : 'rgba(241,245,249,0.92)';
 			ctx.font = `${s.hero ? 700 : 600} 11px ui-monospace, monospace`;
 			ctx.fillText(shortName(s), sx(s.x), sy(s.z));
@@ -793,7 +800,7 @@ export class KioskOverlay {
 		ctx.fillText('KIOSK · START', sx(0), sy(12.4));
 
 		for (const l of LANDMARKS) {
-			if (l.floor !== floor) continue;
+			if (l.level !== lvl) continue;
 			ctx.font = '14px system-ui, sans-serif';
 			ctx.fillStyle = '#fff';
 			ctx.fillText(l.short, sx(l.x), sy(l.z));
@@ -821,12 +828,12 @@ export class KioskOverlay {
 		ctx.save();
 		ctx.translate(cssW / 2, cssH / 2);
 		ctx.scale(scale, scale);
-		this.paintWorld(ctx, this.bigFloor, scale);
+		this.paintWorld(ctx, this.bigLevel, scale);
 		ctx.restore();
-		this.paintBigLabels(ctx, cssW, cssH, scale, this.bigFloor);
+		this.paintBigLabels(ctx, cssW, cssH, scale, this.bigLevel);
 
 		// You are here — only on the deck you're standing on
-		if (this.bigFloor === this.map.floor) {
+		if (this.bigLevel === this.map.level) {
 			const sx = cssW / 2 + this.map.x * scale;
 			const sy = cssH / 2 + this.map.z * scale;
 			this.drawArrow(ctx, sx, sy, -this.map.yaw, 9);
@@ -834,7 +841,7 @@ export class KioskOverlay {
 			ctx.fillStyle = 'rgba(226,232,240,0.75)';
 			ctx.font = '600 12px ui-monospace, monospace';
 			ctx.textAlign = 'left';
-			ctx.fillText(`Je staat op V${this.map.floor} — neem de roltrap (⇅) om hier te komen`, 14, cssH - 14);
+			ctx.fillText(`Je staat op ${level(this.map.level).code} — neem de roltrap (⇅) om hier te komen`, 14, cssH - 14);
 		}
 	}
 
@@ -858,8 +865,8 @@ export class KioskOverlay {
 	}
 
 	private paintMapChrome(): void {
-		const floorText =
-			this.map.floor === 2 ? 'DAK · HELIPAD & ISLAND' : this.map.floor === 0 ? 'V0 · BEGANE GROND' : 'V1 · VERDIEPING 1';
+		const here = level(this.map.level);
+		const floorText = `${here.code} · ${here.name.toUpperCase()}`;
 		if (this.elMapFloor.textContent !== floorText) {
 			this.elMapFloor.textContent = floorText;
 		}
@@ -868,7 +875,7 @@ export class KioskOverlay {
 		let foot = '<b>M</b> = grote plattegrond';
 		if (t) {
 			const d = Math.round(Math.hypot(t.x - this.map.x, t.z - this.map.z));
-			foot = t.floor === this.map.floor ? `→ ${t.name} · ${d} m` : `→ ${t.name} · ${d} m · <b>⇅ V${t.floor}</b>`;
+			foot = t.level === this.map.level ? `→ ${t.name} · ${d} m` : `→ ${t.name} · ${d} m · <b>⇅ ${level(t.level).code}</b>`;
 		}
 		if (this.elMapFoot.innerHTML !== foot) this.elMapFoot.innerHTML = foot;
 	}
@@ -927,7 +934,7 @@ export class KioskOverlay {
         <span class="store-dot" style="background:${s.accent}"></span>
         <span class="store-meta">
           <strong>${s.name.replace('\n', ' ')}</strong>
-          <small>V${s.floor} · ${CATEGORY_LABELS[s.category]}${s.utility ? ' · util' : ''}${
+          <small>${level(s.level).code} · ${CATEGORY_LABELS[s.category]}${s.utility ? ' · util' : ''}${
 						s.id === 'rituals' ? ' · ❤️ mama' : ''
 					}${s.id === 'helipad' ? ' · 🚁' : ''}</small>
         </span>
@@ -962,7 +969,7 @@ export class KioskOverlay {
         <div class="detail-swatch" style="background:${store.color};border-color:${store.accent}"></div>
         <div>
           <h2>${store.name.replace('\n', ' ')}</h2>
-          <p>${FLOOR_LABELS[store.floor]} · ${CATEGORY_LABELS[store.category]}</p>
+          <p>${level(store.level).name} · ${CATEGORY_LABELS[store.category]}</p>
         </div>
       </div>
       ${blurb}

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
+import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
@@ -294,7 +295,7 @@ export class ProtestGroupies {
 		// Soft pull swarm toward player when nearby (zombie mall brains)
 		let attractX = cx;
 		let attractZ = cz;
-		if (playerPos && playerPos.y < 4.5) {
+		if (playerPos && levelAt(playerPos.y) === 'v0') {
 			const pwx = playerPos.x - this.pos.x;
 			const pwz = playerPos.z - this.pos.z;
 			const pd = Math.hypot(pwx - cx, pwz - cz);

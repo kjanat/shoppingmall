@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { GARAGE_Y } from './ParkingGarage';
@@ -74,7 +75,7 @@ export class DriveableCars {
 	get statusLine(): string {
 		if (this.ridden && this.active) {
 			const turbo = Math.abs(this.speed) > MAX_SPEED + 1 ? ' · TURBO' : '';
-			const where = this.pos.y < -2 ? 'P1' : 'STAD';
+			const where = levelAt(this.pos.y) === 'p1' ? level('p1').code : 'STAD';
 			return `${this.active.name} · ${this.speedKmh.toFixed(0)} km/u · ${where}${turbo}`;
 		}
 		return `${this.cars.length} huurauto's · E = instappen (P1)`;

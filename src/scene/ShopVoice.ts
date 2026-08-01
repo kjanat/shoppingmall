@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { speakLine } from '@/audio/ElevenVoice';
+import { levelAt } from '@/data/levels';
 import { getOwner, type ShopOwner } from '@/data/shopOwners';
 import { STORES } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
@@ -183,10 +184,9 @@ export class ShopVoice {
 	async greetIfNear(storeId: string, player: THREE.Vector3, radius = 5.5): Promise<boolean> {
 		if (this.greeted.has(storeId)) return false;
 		if (this.distanceTo(storeId, player) > radius) return false;
-		// Floor check: kruidvat is floor 1
+		// Don't greet through the floor
 		const store = STORES.find((s) => s.id === storeId);
-		if (store && store.floor === 1 && player.y < 4) return false;
-		if (store && store.floor === 0 && player.y > 4) return false;
+		if (store && levelAt(player.y) !== store.level) return false;
 
 		this.greeted.add(storeId);
 		const owner = getOwner(storeId);
@@ -212,8 +212,7 @@ export class ShopVoice {
 		for (const id of this.keepers.keys()) {
 			const d = this.distanceTo(id, player);
 			const store = STORES.find((s) => s.id === id);
-			if (store?.floor === 1 && player.y < 4) continue;
-			if (store?.floor === 0 && player.y > 4.5) continue;
+			if (store && levelAt(player.y) !== store.level) continue;
 			if (d < bestD) {
 				bestD = d;
 				best = id;
