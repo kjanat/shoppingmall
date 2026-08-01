@@ -1,4 +1,4 @@
-import { env } from 'bun';
+import { env } from 'node:process';
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
 import { BartekChat } from '@/audio/BartekChat';
