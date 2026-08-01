@@ -9,9 +9,10 @@ RUN bun install --frozen-lockfile
 COPY build.ts index.html tsconfig.json ./
 COPY server ./server
 COPY src ./src
-# The favicon is bundled (hashed) from index.html; the rest of public/ is
-# served as-is at runtime
-COPY public/favicon.svg ./public/favicon.svg
+# The bundler reaches into public/: the favicon is hashed into index.html and
+# the voice manifests are JSON imports. Whole dir, so a new import can't fail
+# the build on a copy line nobody remembered to extend. dj-music is .dockerignored.
+COPY public ./public
 RUN bun run build
 
 # ── runtime: ./mall ──────────────────────────────────────────────────────
