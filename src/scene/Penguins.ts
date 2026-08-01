@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { pick } from '@/util/rand';
+import { tagLevelCulled } from '@/util/visibility';
 
 type Penguin = {
 	root: THREE.Group;
@@ -247,6 +248,7 @@ export class Penguins {
 		plate.position.set(0, 0.95, 0);
 		plate.scale.set(0.9, 0.22, 1);
 		root.add(plate);
+		tagLevelCulled(plate);
 
 		// Speech
 		const sc = document.createElement('canvas');
@@ -259,13 +261,18 @@ export class Penguins {
 			new THREE.SpriteMaterial({
 				map: speechTex,
 				transparent: true,
-				depthTest: false,
+				depthTest: true,
 			}),
 		);
 		speech.scale.set(1.1, 0.32, 1);
-		speech.position.set(0, 1.15, 0);
 		speech.visible = false;
-		root.add(speech);
+		// Two owners of one flag, so they get one each: the cull pass drives the
+		// anchor, the chirp timer keeps driving the sprite.
+		const speechAnchor = new THREE.Group();
+		speechAnchor.position.set(0, 1.15, 0);
+		speechAnchor.add(speech);
+		root.add(speechAnchor);
+		tagLevelCulled(speechAnchor);
 
 		// Start pos around atrium
 		const a = (i / 10) * Math.PI * 2 + Math.random();
@@ -315,7 +322,7 @@ export class Penguins {
 		ctx.fillText(text, 128, 32);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {

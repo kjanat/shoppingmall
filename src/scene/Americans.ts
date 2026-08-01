@@ -122,6 +122,8 @@ type Sim = {
 	squeakT: number;
 	/** side offset when walking as couple (−1 / +1) */
 	coupleSide: number;
+	/** dt banked while throttled off-level, spent whole on the next real tick */
+	lag: number;
 };
 
 const FIRST = [
@@ -248,6 +250,9 @@ export class Americans {
 	private static readonly SPEECH_RANGE = 16;
 	/** Max distance for LLM gossip (same floor only) */
 	private static readonly GOSSIP_RANGE = 12;
+	/** Sims on a deck the player is not on tick once every N frames */
+	private static readonly OFF_LEVEL_EVERY = 4;
+	private frame = 0;
 
 	constructor(world: CollisionWorld, count = 20) {
 		this.world = world;
@@ -554,16 +559,27 @@ export class Americans {
 
 	update(dt: number, playerPos?: THREE.Vector3): void {
 		if (playerPos) this.listener = playerPos;
+		this.frame++;
 		if (this.dancing) {
 			for (const s of this.sims) {
 				this.tickDance(s, dt);
 				this.tickFace(s, dt);
 				this.cullSpeechVisibility(s);
+				s.lag = 0;
 			}
 		} else {
+			const viewer = this.listener ? levelAt(this.listener.y) : null;
 			for (const s of this.sims) {
-				this.tick(s, dt);
-				this.tickFace(s, dt);
+				s.lag += dt;
+				// Another deck: at best a silhouette across the atrium, so pay for it
+				// every 4th frame. Staggered by id so one bucket lands per frame
+				// instead of the whole crowd hitching together.
+				if (viewer && levelAt(s.pos.y) !== viewer && (this.frame + s.f.id) % Americans.OFF_LEVEL_EVERY !== 0) continue;
+				// Full banked dt, never the frame's dt: routes must not run slow.
+				const step = s.lag;
+				s.lag = 0;
+				this.tick(s, step);
+				this.tickFace(s, step);
 				this.cullSpeechVisibility(s);
 			}
 			this.resolveAgents();
@@ -578,7 +594,7 @@ export class Americans {
 	private isNearListener(pos: THREE.Vector3, range = Americans.SPEECH_RANGE): boolean {
 		const L = this.listener;
 		if (!L) return false;
-		if (Math.abs(pos.y - L.y) > 2.5) return false; // other floor
+		if (levelAt(pos.y) !== levelAt(L.y)) return false; // other deck
 		const dx = pos.x - L.x;
 		const dz = pos.z - L.z;
 		return dx * dx + dz * dz <= range * range;
@@ -1201,6 +1217,7 @@ export class Americans {
 			bubbleCd: 1 + rng() * 4,
 			squeakT: 0,
 			coupleSide: 0,
+			lag: 0,
 		};
 
 		this.assignNextShop(sim);
@@ -1397,6 +1414,21 @@ export class Americans {
 			return;
 		}
 
+		// Retire every waypoint already reached, in one call. A throttled sim carries
+		// several frames of travel per tick, and spending that whole slice on a
+		// waypoint hand-off would let it fall behind the sims ticking every frame.
+		while (sim.pathI < sim.path.length) {
+			const wp = sim.path[sim.pathI];
+			if (!wp) break;
+			const wx = wp.x - sim.pos.x;
+			const wz = wp.z - sim.pos.z;
+			if (wx * wx + wz * wz >= 0.16) break;
+			sim.pathI++;
+			// snap Y when changing floors via escalator/stairs nodes
+			const nextNode = sim.path[sim.pathI];
+			if (nextNode) sim.pos.y = nextNode.y;
+		}
+
 		if (sim.pathI >= sim.path.length) {
 			// Arrived at OPEN shop — spend money + coin particles + happier (verkoper!)
 			const spend = 8 + Math.floor(Math.random() * 55);
@@ -1440,14 +1472,6 @@ export class Americans {
 		const to = target.clone().sub(sim.pos);
 		to.y = 0;
 		const dist = to.length();
-
-		if (dist < 0.4) {
-			sim.pathI++;
-			// snap Y when changing floors via escalator/stairs nodes
-			const nextNode = sim.path[sim.pathI];
-			if (nextNode) sim.pos.y = nextNode.y;
-			return;
-		}
 
 		// ── THE VECTOR ──────────────────────────────────────
 		const dir = to.normalize();

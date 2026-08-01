@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelAt } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
+import { tagLevelCulled } from '@/util/visibility';
 
 /**
  * DJ Bartek — booth at the west stair gap (st0).
@@ -42,6 +43,7 @@ export class DJBartek {
 
 		this.nameSprite = this.makeNamePlate();
 		this.group.add(this.nameSprite);
+		tagLevelCulled(this.nameSprite);
 
 		const sc = document.createElement('canvas');
 		sc.width = 420;
@@ -54,7 +56,7 @@ export class DJBartek {
 				new THREE.SpriteMaterial({
 					map: this.speechTex,
 					transparent: true,
-					depthTest: false,
+					depthTest: true,
 					visible: false,
 				}),
 			),
@@ -63,6 +65,9 @@ export class DJBartek {
 		this.speechSprite.position.set(0, 3.55, 0.3);
 		this.speechSprite.visible = false;
 		this.group.add(this.speechSprite);
+		// Safe to let the cull own `visible`: the material flag above is what
+		// actually gates the bubble between lines.
+		tagLevelCulled(this.speechSprite);
 	}
 
 	/** Show floating speech bubble above Bartek while he talks */
@@ -388,7 +393,7 @@ export class DJBartek {
 		ctx.fillText('groupies · E · mic · props', 160, 70);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })));
+		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
 		sp.scale.set(2.4, 0.72, 1);
 		sp.position.set(0, 2.9, 0.2);
 		return sp;

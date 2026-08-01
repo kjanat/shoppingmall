@@ -4,6 +4,7 @@ import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
+import { tagLevelCulled } from '@/util/visibility';
 
 type GuardState = 'patrol' | 'alert' | 'firing';
 
@@ -565,6 +566,7 @@ export class SecurityGuards {
 		nameSp.position.set(0, 2.05, 0);
 		nameSp.scale.set(1.4, 0.28, 1);
 		root.add(nameSp);
+		tagLevelCulled(nameSp);
 
 		// Speech bubble
 		const sc = document.createElement('canvas');
@@ -577,13 +579,17 @@ export class SecurityGuards {
 			new THREE.SpriteMaterial({
 				map: speechTex,
 				transparent: true,
-				depthTest: false,
+				depthTest: true,
 			}),
 		);
 		speech.scale.set(2.2, 0.5, 1);
 		speech.position.set(0, 2.35, 0);
 		speech.visible = false;
-		root.add(speech);
+		// The deck cull owns the holder's `visible`, so `speechLife` keeps owning the sprite's.
+		const speechHolder = new THREE.Group();
+		speechHolder.add(speech);
+		root.add(speechHolder);
+		tagLevelCulled(speechHolder);
 
 		this.group.add(root);
 
@@ -628,7 +634,7 @@ export class SecurityGuards {
 		ctx.fillText(text, 160, 32);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {

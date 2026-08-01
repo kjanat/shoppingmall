@@ -3,6 +3,7 @@ import { speakLine } from '@/audio/ElevenVoice';
 import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
 import { pick } from '@/util/rand';
+import { tagLevelCulled } from '@/util/visibility';
 
 const FLOOR_B = levelY('p1');
 const FLOOR0 = levelY('v0');
@@ -608,6 +609,8 @@ export class GlassElevator {
 		sp.scale.set(2.4, 0.65, 1);
 		station.add(sp);
 		this.tagInteract(sp, 'call', id);
+		// The station is bolted to the dak, unlike the cabin, so it can be culled
+		tagLevelCulled(sp);
 
 		// Yellow hazard ring
 		const ring = new THREE.Mesh(
@@ -679,7 +682,7 @@ export class GlassElevator {
 			new THREE.SpriteMaterial({
 				map: tex,
 				transparent: true,
-				depthTest: false,
+				depthTest: true,
 				toneMapped: false,
 			}),
 		);
@@ -852,7 +855,7 @@ export class GlassElevator {
 		ctx.fillText('Glazen lift · V0 ↔ V1', 128, 50);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(1.2, 0.3, 1);
 		sp.position.set(0, 2.05, 0);
 		g.add(sp);
@@ -864,6 +867,8 @@ export class GlassElevator {
 		this.speechCtx = ctx2d(sc);
 		this.speechTex = new THREE.CanvasTexture(sc);
 		this.speechTex.colorSpace = THREE.SRGBColorSpace;
+		// depthTest stays off: the bubble sits 2.47 m up in a 2.55 m cabin, so the
+		// chrome ceiling would slice the top line off for everyone riding along
 		this.speech = new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: this.speechTex,
@@ -916,7 +921,7 @@ export class GlassElevator {
 			new THREE.SpriteMaterial({
 				map: this.signTex,
 				transparent: true,
-				depthTest: false,
+				depthTest: true,
 			}),
 		);
 		this.signSprite.scale.set(0.9, 0.34, 1);

@@ -4,6 +4,7 @@ import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
+import { tagLevelCulled } from '@/util/visibility';
 
 /**
  * Pre-generated ElevenLabs Chinese scolds. Straight from the manifest the
@@ -540,6 +541,7 @@ export class CleaningCart {
 		name.position.set(0, 2.05, 0);
 		name.scale.set(1.5, 0.32, 1);
 		g.add(name);
+		tagLevelCulled(name);
 
 		// Speech bubble
 		const sc = document.createElement('canvas');
@@ -552,13 +554,18 @@ export class CleaningCart {
 			new THREE.SpriteMaterial({
 				map: this.speechTex,
 				transparent: true,
-				depthTest: false,
+				depthTest: true,
 			}),
 		);
 		this.speech.scale.set(1.7, 0.44, 1);
 		this.speech.position.set(0, 2.4, 0);
 		this.speech.visible = false;
-		g.add(this.speech);
+		// The bubble's own `visible` is the say/expire timer's, so the deck cull
+		// gets a holder to switch instead of fighting over the same flag.
+		const speechHolder = new THREE.Group();
+		speechHolder.add(this.speech);
+		g.add(speechHolder);
+		tagLevelCulled(speechHolder);
 
 		// Trailing wet-floor A-sign (hinged behind cart)
 		this.wetSign = new THREE.Group();
@@ -647,6 +654,6 @@ export class CleaningCart {
 		ctx.fillText(text, w / 2, h / 2);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }

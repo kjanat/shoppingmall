@@ -378,6 +378,6 @@ export class ScrubberBuggy {
 
 	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
 		const tex = this.makePlate(text, bg, '#fff', w, h);
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }

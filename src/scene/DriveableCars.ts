@@ -296,7 +296,7 @@ export class DriveableCars {
 		ctx.fillText(text, 160, 32);
 		const tex = new THREE.CanvasTexture(canvas);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(2.4, 0.5, 1);
 		return sp;
 	}

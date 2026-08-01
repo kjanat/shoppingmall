@@ -64,6 +64,7 @@ import { KioskOverlay, type MapBlip } from '@/ui/KioskOverlay';
 import { type CastRow, PeopleDashboard } from '@/ui/PeopleDashboard';
 import { SettingsPanel } from '@/ui/SettingsPanel';
 import { at, pick } from '@/util/rand';
+import { cullByLevel } from '@/util/visibility';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
 
 const PLAYER_RADIUS = 0.4;
@@ -1941,6 +1942,9 @@ export class App {
 			this.persistT = 0;
 			this.persistNow();
 		}
+
+		// Last thing before the draw: every update() above has moved something
+		cullByLevel(this.player.level);
 
 		this.composer.render(dt);
 	};

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { cp } from 'node:fs/promises';
 /**
  * Production build. Same settings, two targets — CI picks the second:
  *
@@ -8,37 +9,34 @@
  * The Pages build has no /api, so DJ Bartek and the voices are dead there.
  * `bun run build` runs tsc first — the bundler does not typecheck.
  */
-import { cp } from 'node:fs/promises';
+import { $, argv, build, env } from 'bun';
 
-await Bun.$`rm -rf dist`.cwd(import.meta.dir);
+await $`rm -rf dist`.cwd(import.meta.dir);
 
-const pages = !!Bun.env['GITHUB_ACTIONS'] || Bun.argv.includes('--static');
+const pages = !!env['GITHUB_ACTIONS'] || argv.includes('--static');
 
 const shared = {
 	minify: true,
 	root: '.',
 	publicPath: '/',
 	define: {
-		'env.NODE_ENV': '"production"',
+		'env.NODE_ENV': JSON.stringify('production'),
 	},
 } as const;
 
 const [out1, out2] = await Promise.all([
-	Bun.build({
+	build({
 		...shared,
 		entrypoints: ['index.html'],
 		outdir: 'dist/static',
 		target: 'browser',
 		sourcemap: 'linked',
 	}),
-	Bun.build({
+	build({
 		...shared,
 		entrypoints: ['server/main.ts'],
 		compile: { outfile: 'dist/mall' },
 		target: 'bun',
-		// Goes into the binary, zstd'd, so stack traces point at source.
-		// Bun writes loose .map copies next to it too; nothing reads those
-		// and the image doesn't copy them.
 		sourcemap: 'inline',
 	}),
 ]);
@@ -48,9 +46,6 @@ for (const artifact of [out1.outputs, out2.outputs].flat()) {
 	console.log(`${kb} KB  ${artifact.kind.padEnd(11)} ${artifact.path.replace(process.cwd(), '.')}`);
 }
 
-// Pages has no server, so public/ ships inside the artifact. The binary reads
-// it from the working directory instead, so there is nothing to copy there.
-// The music directory stays out: 115 MB, and it's a bind mount in the container.
 if (pages) {
 	await cp('public', 'dist/static', {
 		recursive: true,

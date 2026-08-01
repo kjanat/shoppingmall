@@ -4,6 +4,7 @@ import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
+import { tagLevelCulled } from '@/util/visibility';
 import MANIFEST from '$/public/voices/protest/manifest.json' with { type: 'json' };
 
 /** Prebaked multi-voice chants (public/voices/protest/) — different speaker each clip */
@@ -806,6 +807,7 @@ export class ProtestGroupies {
 		nameSp.position.set(0, 2.45, 0.1);
 		nameSp.scale.set(1.6, 0.32, 1);
 		root.add(nameSp);
+		tagLevelCulled(nameSp);
 
 		// Speech bubble
 		const sc = document.createElement('canvas');
@@ -818,13 +820,17 @@ export class ProtestGroupies {
 			new THREE.SpriteMaterial({
 				map: speechTex,
 				transparent: true,
-				depthTest: false,
+				depthTest: true,
 			}),
 		);
 		speech.scale.set(2.4, 0.6, 1);
 		speech.position.set(0, 2.75, 0);
 		speech.visible = false;
-		root.add(speech);
+		// The deck cull owns the holder's `visible`, so `speechLife` keeps owning the sprite's.
+		const speechHolder = new THREE.Group();
+		speechHolder.add(speech);
+		root.add(speechHolder);
+		tagLevelCulled(speechHolder);
 
 		// Abandoned crate at camp (Mutti left the stage)
 		const crate = new THREE.Mesh(
@@ -1057,17 +1063,22 @@ export class ProtestGroupies {
 				new THREE.SpriteMaterial({
 					map: speechTex,
 					transparent: true,
-					depthTest: false,
+					depthTest: true,
 				}),
 			);
 			speech.scale.set(1.9, 0.48, 1);
 			speech.position.set(0, 2.35, 0);
 			speech.visible = false;
-			root.add(speech);
+			// The deck cull owns the holder's `visible`, so `speechLife` keeps owning the sprite's.
+			const speechHolder = new THREE.Group();
+			speechHolder.add(speech);
+			root.add(speechHolder);
+			tagLevelCulled(speechHolder);
 
 			const tag = this.makeNameTag(i);
 			tag.position.set(0, 1.95, 0.12);
 			root.add(tag);
+			tagLevelCulled(tag);
 
 			// Each body sticks to a different prebaked voice identity
 			const voiceKeys = [
@@ -1165,7 +1176,7 @@ export class ProtestGroupies {
 		ctx.fillText(text, w / 2, h / 2);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(0.85, 0.22, 1);
 		return sp;
 	}

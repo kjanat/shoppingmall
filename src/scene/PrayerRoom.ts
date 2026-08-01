@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
+import { tagLevelCulled } from '@/util/visibility';
 
 /** Chant lines shown above everyone in the room */
 const CHANTS = ['Allahu Akbar!', 'Allahu Akbar!!', 'الله أكبر', 'Allahu Trapbar!', 'ALLAHU AKBAR'];
@@ -1093,6 +1094,7 @@ export class PrayerRoom {
 		plate.position.set(0, 1.05, 0);
 		plate.scale.set(1.0, 0.24, 1);
 		g.add(plate);
+		tagLevelCulled(plate);
 
 		// Speech bubble
 		const sc = document.createElement('canvas');
@@ -1105,13 +1107,18 @@ export class PrayerRoom {
 			new THREE.SpriteMaterial({
 				map: speechTex,
 				transparent: true,
-				depthTest: false,
+				depthTest: true,
 			}),
 		);
 		speech.scale.set(1.6, 0.4, 1);
-		speech.position.set(0, 1.25, 0);
 		speech.visible = false;
-		g.add(speech);
+		// The anchor carries the deck culling, not the sprite: `speech.visible`
+		// is the bubble's own lifetime and cullByLevel would overwrite it.
+		const speechAnchor = new THREE.Group();
+		speechAnchor.position.set(0, 1.25, 0);
+		speechAnchor.add(speech);
+		g.add(speechAnchor);
+		tagLevelCulled(speechAnchor);
 		g.userData['speech'] = speech;
 		g.userData['speechCtx'] = speechCtx;
 		g.userData['speechTex'] = speechTex;
@@ -1274,6 +1281,7 @@ export class PrayerRoom {
 		plate.position.set(0, 1.65, 0.05);
 		plate.scale.set(1.15, 0.28, 1);
 		g.add(plate);
+		tagLevelCulled(plate);
 
 		// Speech bubble
 		const sc = document.createElement('canvas');
@@ -1286,13 +1294,19 @@ export class PrayerRoom {
 			new THREE.SpriteMaterial({
 				map: speechTex,
 				transparent: true,
-				depthTest: false,
+				depthTest: true,
 			}),
 		);
 		speech.scale.set(1.9, 0.48, 1);
-		speech.position.set(0, 2.05, 0.1);
 		speech.visible = false;
-		g.add(speech);
+		// The anchor carries the deck culling, not the sprite: `speech.visible`
+		// is the bubble's own lifetime and cullByLevel would overwrite it. The
+		// pose rig drives the anchor, so the bubble still rides the pose.
+		const speechAnchor = new THREE.Group();
+		speechAnchor.position.set(0, 2.05, 0.1);
+		speechAnchor.add(speech);
+		g.add(speechAnchor);
+		tagLevelCulled(speechAnchor);
 		g.userData['speech'] = speech;
 		g.userData['speechCtx'] = speechCtx;
 		g.userData['speechTex'] = speechTex;
@@ -1309,7 +1323,7 @@ export class PrayerRoom {
 			handL,
 			handR,
 			plate,
-			speech,
+			speech: speechAnchor,
 		};
 
 		return g;
@@ -1334,7 +1348,7 @@ export class PrayerRoom {
 		ctx.fillText(title, 160, 56);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }
 

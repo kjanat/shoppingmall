@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { tagLevelCulled } from '@/util/visibility';
 
 /**
  * Shady travel desk next to Beard-man's Cave (juwelen lair).
@@ -210,6 +211,7 @@ export class TravelAgency {
 		name.position.set(0, 2.05, 0);
 		name.scale.set(1.3, 0.28, 1);
 		g.add(name);
+		tagLevelCulled(name);
 
 		this.agentRoot = g;
 		this.group.add(g);
@@ -468,11 +470,13 @@ export class TravelAgency {
 		main.position.set(1.7, 2.55, 0);
 		main.scale.set(3.2, 0.45, 1);
 		this.group.add(main);
+		tagLevelCulled(main);
 
 		const sub = this.makeSprite('vlakbij de juwelen-cave  ·  cash only  ·  NDA at desk', '#b71c1c', 420, 48);
 		sub.position.set(1.7, 2.2, 0);
 		sub.scale.set(2.6, 0.32, 1);
 		this.group.add(sub);
+		tagLevelCulled(sub);
 
 		// Floor A-board
 		const board = new THREE.Mesh(
@@ -503,6 +507,6 @@ export class TravelAgency {
 		ctx.fillText(text, w / 2, h / 2);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { level, levelY } from '@/data/levels';
 import type { StoreDef } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
+import { tagLevelCulled } from '@/util/visibility';
 
 /** Clean mall directory labels — white pills, no neon pulse. */
 export class StoreLabels {
@@ -18,10 +19,15 @@ export class StoreLabels {
 			sprite.position.x += Math.sin(store.rotation) * pull;
 			sprite.position.z += Math.cos(store.rotation) * pull;
 			this.group.add(sprite);
+			tagLevelCulled(sprite);
 		}
 
-		this.group.add(this.makeFloorBadge('GROUND FLOOR', 0, 0.4, 0, '#334155'));
-		this.group.add(this.makeFloorBadge('LEVEL 1', 0, 6.4, 0, '#1e40af'));
+		const ground = this.makeFloorBadge('GROUND FLOOR', 0, 0.4, 0, '#334155');
+		const first = this.makeFloorBadge('LEVEL 1', 0, 6.4, 0, '#1e40af');
+		this.group.add(ground, first);
+		tagLevelCulled(ground);
+		tagLevelCulled(first);
+		// Hangs in the atrium void between two decks, so it belongs to neither.
 		this.group.add(this.makeFloorBadge('YOU ARE HERE', 0, 3.5, 10, '#dc2626'));
 	}
 
@@ -88,7 +94,7 @@ export class StoreLabels {
 		const mat = new THREE.SpriteMaterial({
 			map: tex,
 			transparent: true,
-			depthTest: false,
+			depthTest: true,
 			depthWrite: false,
 		});
 		const sprite = new THREE.Sprite(mat);

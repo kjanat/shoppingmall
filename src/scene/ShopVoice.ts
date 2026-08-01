@@ -4,6 +4,7 @@ import { levelAt } from '@/data/levels';
 import { getOwner, type ShopOwner } from '@/data/shopOwners';
 import { STORES } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
+import { tagLevelCulled } from '@/util/visibility';
 
 type KeeperSpeech = {
 	storeId: string;
@@ -47,15 +48,19 @@ export class ShopVoice {
 		const mat = new THREE.SpriteMaterial({
 			map: tex,
 			transparent: true,
-			depthTest: false,
+			depthTest: true,
 			visible: false,
 		});
 		this.materials.push(mat);
 		const sprite = new THREE.Sprite(mat);
 		sprite.scale.set(2.8, 0.7, 1);
-		sprite.position.set(0, 2.55, 0.2);
 		sprite.visible = false;
-		group.add(sprite);
+		// The bubble's own `visible` is the talk timer's; the level cull gets the anchor.
+		const anchor = new THREE.Group();
+		anchor.position.set(0, 2.55, 0.2);
+		anchor.add(sprite);
+		group.add(anchor);
+		tagLevelCulled(anchor);
 		this.keepers.set(storeId, {
 			storeId,
 			group,
