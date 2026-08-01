@@ -1,4 +1,3 @@
-import { env } from 'node:process';
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
 import { BartekChat } from '@/audio/BartekChat';
@@ -619,8 +618,10 @@ export class App {
 			});
 		}
 
-		// Dev-only handle for poking at the sim from the console / smoke tests
-		if (env.NODE_ENV !== 'production') {
+		// Dev-only handle for poking at the sim from the console / smoke tests.
+		// import.meta.hot is only set by the dev server's HMR graph and is
+		// tree-shaken out of a build, so this never ships.
+		if (import.meta.hot) {
 			window.mallsim = this;
 		}
 
