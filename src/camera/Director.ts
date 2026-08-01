@@ -1,7 +1,7 @@
-import type { GraphNode } from '@/data/graph';
-import { at } from '@/util/rand';
 import gsap from 'gsap';
 import * as THREE from 'three';
+import type { GraphNode } from '@/data/graph';
+import { at } from '@/util/rand';
 
 export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
 

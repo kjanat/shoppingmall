@@ -1,6 +1,7 @@
-import type { CollisionWorld } from '@/physics/Collision';
-import { pick } from '@/util/rand';
 import * as THREE from 'three';
+import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
+import { pick } from '@/util/rand';
 
 type Penguin = {
 	root: THREE.Group;
@@ -48,7 +49,6 @@ export class Penguins {
 	private world: CollisionWorld;
 	private birds: Penguin[] = [];
 	private materials: THREE.Material[] = [];
-	private t = 0;
 	private chirpCd = 2;
 
 	constructor(world: CollisionWorld, count = 10) {
@@ -72,7 +72,6 @@ export class Penguins {
 	}
 
 	update(dt: number): void {
-		this.t += dt;
 		this.chirpCd -= dt;
 
 		for (const p of this.birds) {
@@ -253,7 +252,7 @@ export class Penguins {
 		const sc = document.createElement('canvas');
 		sc.width = 200;
 		sc.height = 56;
-		const speechCtx = sc.getContext('2d')!;
+		const speechCtx = ctx2d(sc);
 		const speechTex = new THREE.CanvasTexture(sc);
 		speechTex.colorSpace = THREE.SRGBColorSpace;
 		const speech = new THREE.Sprite(
@@ -303,7 +302,7 @@ export class Penguins {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 64;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.strokeStyle = '#7dd3fc';

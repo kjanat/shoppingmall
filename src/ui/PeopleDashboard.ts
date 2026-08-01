@@ -1,4 +1,5 @@
 import type { PersonRow } from '@/scene/Americans';
+import { qs } from '@/util/dom';
 
 /** Non-shopper rows: dief, aap, DJ, catwalk-dame — the mall's fixed cast. */
 export type CastRow = {
@@ -119,12 +120,12 @@ export class PeopleDashboard {
         <footer class="people-foot"><b>B</b> = openen/sluiten · 👁 = meekijken</footer>
       </div>
     `;
-		this.card = this.host.querySelector('#people-card')!;
-		this.listEl = this.host.querySelector('#people-list')!;
-		this.castEl = this.host.querySelector('#people-cast')!;
-		this.summaryEl = this.host.querySelector('#people-summary')!;
+		this.card = qs(this.host, '#people-card');
+		this.listEl = qs(this.host, '#people-list');
+		this.castEl = qs(this.host, '#people-cast');
+		this.summaryEl = qs(this.host, '#people-summary');
 
-		this.host.querySelector('#people-close')!.addEventListener('click', () => {
+		qs(this.host, '#people-close').addEventListener('click', () => {
 			this.toggle(false);
 		});
 

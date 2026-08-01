@@ -1,6 +1,6 @@
+import * as THREE from 'three';
 import type { GraphNode } from '@/data/graph';
 import { at } from '@/util/rand';
-import * as THREE from 'three';
 
 /**
  * Solid mall-directory floor path — yellow tape style.

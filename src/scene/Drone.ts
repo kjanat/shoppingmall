@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /**
  * Passagiersdrone — stap in (E) en vlieg. De camera zit in het bolletje;
@@ -153,7 +154,7 @@ export class Drone {
 		const c = document.createElement('canvas');
 		c.width = 128;
 		c.height = 48;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#ffd400';
 		ctx.fillRect(0, 0, 128, 48);
 		ctx.fillStyle = '#111';

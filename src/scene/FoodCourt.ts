@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /**
  * Open food court — floor 1, south balcony over the atrium.
@@ -239,7 +240,7 @@ export class FoodCourt {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 100;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = `#${bg.toString(16).padStart(6, '0')}`;
 		ctx.fillRect(0, 0, 320, 100);
 		ctx.fillStyle = `#${fg.toString(16).padStart(6, '0')}`;
@@ -260,7 +261,7 @@ export class FoodCourt {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 128;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#bf360c';
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.fillStyle = '#ffcc02';

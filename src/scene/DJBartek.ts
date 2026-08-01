@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /**
  * DJ Bartek — booth at the west stair gap (st0).
@@ -44,7 +45,7 @@ export class DJBartek {
 		const sc = document.createElement('canvas');
 		sc.width = 420;
 		sc.height = 110;
-		this.speechCtx = sc.getContext('2d')!;
+		this.speechCtx = ctx2d(sc);
 		this.speechTex = new THREE.CanvasTexture(sc);
 		this.speechTex.colorSpace = THREE.SRGBColorSpace;
 		this.speechSprite = new THREE.Sprite(
@@ -85,9 +86,9 @@ export class DJBartek {
 		let line1 = '';
 		let line2 = '';
 		for (const word of words) {
-			const test = (line1 ? line1 + ' ' : '') + word;
+			const test = line1 ? `${line1} ${word}` : word;
 			if (ctx.measureText(test).width < w - 40 && !line2) line1 = test;
-			else line2 = (line2 ? line2 + ' ' : '') + word;
+			else line2 = line2 ? `${line2} ${word}` : word;
 		}
 		if (line2) {
 			ctx.fillText(line1.slice(0, 42), w / 2, h / 2 - 14);
@@ -194,7 +195,7 @@ export class DJBartek {
 			const c = document.createElement('canvas');
 			c.width = 128;
 			c.height = 40;
-			const ctx = c.getContext('2d')!;
+			const ctx = ctx2d(c);
 			ctx.fillStyle = '#ec4899';
 			ctx.fillRect(0, 0, 128, 40);
 			ctx.fillStyle = '#fff';
@@ -374,7 +375,7 @@ export class DJBartek {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 96;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = 'rgba(15,23,42,0.92)';
 		ctx.fillRect(0, 0, 320, 96);
 		ctx.fillStyle = '#f472b6';
@@ -398,7 +399,7 @@ export class DJBartek {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 256;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 512, 256);
 		ctx.fillStyle = fg;

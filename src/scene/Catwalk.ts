@@ -1,5 +1,6 @@
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 /**
  * Prairie Lakes Fashion Week: a runway in front of Douglas on the ground floor.
@@ -82,7 +83,9 @@ export class Catwalk {
 		this.group.add(this.spot, this.spotTarget);
 		this.spot.target = this.spotTarget;
 
-		LOOKS.forEach((look, i) => this.models.push(this.buildModel(look, i)));
+		LOOKS.forEach((look, i) => {
+			this.models.push(this.buildModel(look, i));
+		});
 		// First girl walks immediately, the rest wait their turn
 		at(this.models, 0).phase = 'out';
 
@@ -555,7 +558,7 @@ export class Catwalk {
 		const canvas = document.createElement('canvas');
 		canvas.width = 512;
 		canvas.height = 256;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		const grad = ctx.createLinearGradient(0, 0, 512, 256);
 		grad.addColorStop(0, '#ff4fa3');
 		grad.addColorStop(1, '#7c3aed');

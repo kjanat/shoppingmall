@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 import { ROOF_Y } from './Helipad';
 
 type HeliState = 'parked' | 'spinup' | 'takeoff' | 'cruise' | 'approach' | 'land' | 'spindown';
@@ -289,7 +290,7 @@ export class Helicopter {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 192;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.clearRect(0, 0, 512, 192);
 		// wit plaatje met afgeronde hoeken + rode bies
 		const r = 26;

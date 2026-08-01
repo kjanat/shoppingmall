@@ -1,5 +1,6 @@
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 /** Dekhoogte — zelfde als het helipad-dek (zie Helipad.ROOF_Y), hier hard
  *  gecodeerd omdat het contract zegt: alleen 'three' importeren. */
@@ -85,7 +86,7 @@ export class RoofIsland {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
-		draw(c.getContext('2d')!, w, h);
+		draw(ctx2d(c), w, h);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
 		this.textures.push(tex);
@@ -221,14 +222,15 @@ export class RoofIsland {
 		}
 
 		// De buis: CatmullRom-krul van platform naar het diepe
-		const curve = (this.slideCurve = new THREE.CatmullRomCurve3([
+		const curve = new THREE.CatmullRomCurve3([
 			new THREE.Vector3(-27.7, DECK_Y + 3.8, -10),
 			new THREE.Vector3(-26.2, DECK_Y + 3.1, -8.6),
 			new THREE.Vector3(-24.4, DECK_Y + 2.4, -7.8),
 			new THREE.Vector3(-22.8, DECK_Y + 1.7, -6.0),
 			new THREE.Vector3(-22.6, DECK_Y + 1.0, -3.6),
 			new THREE.Vector3(-22.3, DECK_Y + 0.2, 0.9),
-		]));
+		]);
+		this.slideCurve = curve;
 		const tube = new THREE.Mesh(
 			this.geo(new THREE.TubeGeometry(curve, 48, 0.5, 10, false)),
 			this.track(new THREE.MeshStandardMaterial({ color: 0xffca28, roughness: 0.35, side: THREE.DoubleSide })),

@@ -1,7 +1,8 @@
-import type { CollisionWorld } from '@/physics/Collision';
-import { at } from '@/util/rand';
 import * as THREE from 'three';
-import { BeardCave } from './BeardCave';
+import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
+import type { BeardCave } from './BeardCave';
 
 /**
  * Long baker-beard guy who sprints through after enough shop transactions
@@ -147,7 +148,7 @@ export class BakerThief {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 64;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = 'rgba(0,0,0,0.85)';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#ffd700';

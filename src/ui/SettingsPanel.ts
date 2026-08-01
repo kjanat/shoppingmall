@@ -1,4 +1,5 @@
 import { type ControlSettings, DEFAULT_SETTINGS } from '@/player/Controls';
+import { qs } from '@/util/dom';
 
 const STORE_KEY = 'mallsim.controls.v1';
 const QUALITY_KEY = 'mallsim.quality.v1';
@@ -165,8 +166,8 @@ export class SettingsPanel {
       </div>
     `;
 
-		this.card = this.host.querySelector('#settings-card')!;
-		const q = <T extends HTMLElement>(sel: string) => this.host.querySelector<T>(sel)!;
+		this.card = qs(this.host, '#settings-card');
+		const q = <T extends HTMLElement>(sel: string) => qs<T>(this.host, sel);
 
 		q('#settings-btn').addEventListener('click', () => this.toggle());
 		q('#settings-close').addEventListener('click', () => this.toggle(false));
@@ -242,7 +243,7 @@ export class SettingsPanel {
 	}
 
 	private sync(): void {
-		const q = <T extends HTMLElement>(sel: string) => this.host.querySelector<T>(sel)!;
+		const q = <T extends HTMLElement>(sel: string) => qs<T>(this.host, sel);
 		q<HTMLInputElement>('#set-turnkeys').checked = this.settings.turnWithKeys;
 		q<HTMLInputElement>('#set-mouselook').checked = this.settings.mouseLook;
 		q<HTMLInputElement>('#set-lefty').checked = this.settings.lookButton === 2;

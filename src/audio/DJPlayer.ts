@@ -4,7 +4,7 @@
  * at the booth position (headphones: DJ is "over there").
  */
 
-import { spatial, type SpatialElement } from './SpatialAudio';
+import { type SpatialElement, spatial } from './SpatialAudio';
 
 export type Track = {
 	file: string;

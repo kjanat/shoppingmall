@@ -1,6 +1,7 @@
-import { spatial } from '@/audio/SpatialAudio';
-import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
+import { spatial } from '@/audio/SpatialAudio';
+import { ctx2d } from '@/util/dom';
+import { at, pick } from '@/util/rand';
 
 /** Chant lines shown above everyone in the room */
 const CHANTS = ['Allahu Akbar!', 'Allahu Akbar!!', 'الله أكبر', 'Allahu Trapbar!', 'ALLAHU AKBAR'];
@@ -38,7 +39,6 @@ export class PrayerRoom {
 	private ayatollahs: THREE.Group[] = [];
 	private goat: THREE.Group | null = null;
 	private t = 0;
-	private chantCd = 1.2;
 	private bleatCd = 2.2;
 	private lastScreamIdx = -1;
 	private screaming = false;
@@ -227,7 +227,6 @@ export class PrayerRoom {
 	update(dt: number, listener: THREE.Vector3): void {
 		void listener;
 		this.t += dt;
-		this.chantCd -= dt;
 		this.bleatCd -= dt;
 
 		// ── Music clock (trapbar) ────────────────────────────
@@ -403,7 +402,7 @@ export class PrayerRoom {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 96;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#1b5e20';
 		ctx.fillRect(0, 0, 320, 96);
 		ctx.fillStyle = '#fff';
@@ -432,7 +431,7 @@ export class PrayerRoom {
 	private buildFloorLitter(): void {
 		const rng = (s: number) => {
 			// tiny deterministic hash so reloads look the same
-			let x = Math.sin(s * 127.1) * 43758.5453;
+			const x = Math.sin(s * 127.1) * 43758.5453;
 			return x - Math.floor(x);
 		};
 
@@ -834,7 +833,7 @@ export class PrayerRoom {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 256;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		// Paper
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 256, 256);
@@ -1099,7 +1098,7 @@ export class PrayerRoom {
 		const sc = document.createElement('canvas');
 		sc.width = 320;
 		sc.height = 80;
-		const speechCtx = sc.getContext('2d')!;
+		const speechCtx = ctx2d(sc);
 		const speechTex = new THREE.CanvasTexture(sc);
 		speechTex.colorSpace = THREE.SRGBColorSpace;
 		const speech = new THREE.Sprite(
@@ -1283,7 +1282,7 @@ export class PrayerRoom {
 		const sc = document.createElement('canvas');
 		sc.width = 320;
 		sc.height = 80;
-		const speechCtx = sc.getContext('2d')!;
+		const speechCtx = ctx2d(sc);
 		const speechTex = new THREE.CanvasTexture(sc);
 		speechTex.colorSpace = THREE.SRGBColorSpace;
 		const speech = new THREE.Sprite(
@@ -1323,7 +1322,7 @@ export class PrayerRoom {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 80;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = 'rgba(27,94,32,0.88)';
 		ctx.fillRect(0, 0, 320, 80);
 		ctx.strokeStyle = '#a5d6a7';
@@ -1378,7 +1377,7 @@ function startAllahuLoop(ctx: AudioContext, dest: AudioNode): { stop: () => void
 				t += dur;
 				continue;
 			}
-			const fund = basePitch * pm * Math.pow(2, detuneCents / 1200);
+			const fund = basePitch * pm * 2 ** (detuneCents / 1200);
 			// Carrier saw through formant bandpasses ≈ vowel
 			const o = ctx.createOscillator();
 			o.type = 'sawtooth';

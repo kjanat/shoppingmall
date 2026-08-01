@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { speakLine } from '../audio/ElevenVoice';
-import { getOwner, type ShopOwner } from '../data/shopOwners';
-import { STORES } from '../data/stores';
+import { speakLine } from '@/audio/ElevenVoice';
+import { getOwner, type ShopOwner } from '@/data/shopOwners';
+import { STORES } from '@/data/stores';
+import { ctx2d } from '@/util/dom';
 
 type KeeperSpeech = {
 	storeId: string;
@@ -39,7 +40,7 @@ export class ShopVoice {
 		const c = document.createElement('canvas');
 		c.width = 400;
 		c.height = 100;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
 		const mat = new THREE.SpriteMaterial({
@@ -131,9 +132,9 @@ export class ShopVoice {
 		let l1 = '';
 		let l2 = '';
 		for (const word of words) {
-			const t = (l1 ? l1 + ' ' : '') + word;
+			const t = l1 ? `${l1} ${word}` : word;
 			if (ctx.measureText(t).width < w - 48 && !l2) l1 = t;
-			else l2 = (l2 ? l2 + ' ' : '') + word;
+			else l2 = l2 ? `${l2} ${word}` : word;
 		}
 		if (l2) {
 			ctx.fillText(l1.slice(0, 44), w / 2, 58);

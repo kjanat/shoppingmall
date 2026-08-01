@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /**
  * The ultimate mall ending: a chrome saucer hovering above the landing pad.
@@ -213,7 +214,7 @@ export class Spaceship {
 		const canvas = document.createElement('canvas');
 		canvas.width = 256;
 		canvas.height = 128;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		ctx.fillStyle = '#1e3a5f';
 		ctx.fillRect(0, 0, 256, 128);
 		ctx.fillStyle = '#f5c518';
@@ -276,7 +277,7 @@ export class Spaceship {
 		const canvas = document.createElement('canvas');
 		canvas.width = 512;
 		canvas.height = 128;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		ctx.fillStyle = 'rgba(15,23,42,0.9)';
 		roundRect(ctx, 8, 16, 496, 96, 16);
 		ctx.fill();

@@ -39,7 +39,10 @@ body {
 
 #canvas-root canvas {
 	display: block;
+	/* biome-ignore lint/complexity/noImportantStyles: three.js writes width and
+	   height inline on the canvas from setSize, and inline beats every selector */
 	width: 100% !important;
+	/* biome-ignore lint/complexity/noImportantStyles: same, see width */
 	height: 100% !important;
 }
 
@@ -50,15 +53,10 @@ body {
 	pointer-events: none;
 }
 
-#ui-root button,
-#ui-root input,
-#ui-root .panel,
-#ui-root .arrive,
-#ui-root .boot {
-	pointer-events: auto;
-}
-
 .hidden {
+	/* biome-ignore lint/complexity/noImportantStyles: has to beat the display
+	   each component sets on itself, and there is no selector for "whatever
+	   this element already is" */
 	display: none !important;
 }
 
@@ -1055,6 +1053,8 @@ body {
 	pointer-events: none;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: pairs this with `.btn.tile i`
+   on the trailing `i` alone; a reticle dot is never inside a kiosk button */
 .crosshair i {
 	width: 6px;
 	height: 6px;
@@ -1600,4 +1600,17 @@ body {
 	font-size: 0.7rem;
 	color: #64748b;
 	text-align: center;
+}
+
+/* ── Click-through ────────────────────────────────── */
+
+/* #ui-root is pointer-events: none so the canvas gets the mouse; these take it
+   back. Last in the file because it outranks every component rule above on
+   specificity anyway, and reading it earlier suggests otherwise. */
+#ui-root button,
+#ui-root input,
+#ui-root .panel,
+#ui-root .arrive,
+#ui-root .boot {
+	pointer-events: auto;
 }

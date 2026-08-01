@@ -1,4 +1,5 @@
 import type { Track } from '@/audio/DJPlayer';
+import { qs } from '@/util/dom';
 
 /**
  * Request desk UI for DJ Bartek.
@@ -65,20 +66,20 @@ export class DJOverlay {
       </div>
     `;
 		parent.appendChild(this.root);
-		this.input = this.root.querySelector('#dj-query')!;
-		this.list = this.root.querySelector('#dj-list')!;
-		this.status = this.root.querySelector('#dj-status')!;
-		this.now = this.root.querySelector('#dj-now')!;
-		this.chat = this.root.querySelector('#dj-chat')!;
+		this.input = qs<HTMLInputElement>(this.root, '#dj-query');
+		this.list = qs(this.root, '#dj-list');
+		this.status = qs(this.root, '#dj-status');
+		this.now = qs(this.root, '#dj-now');
+		this.chat = qs(this.root, '#dj-chat');
 
-		this.root.querySelector('#dj-close')!.addEventListener('click', () => this.hide());
-		this.root.querySelector('#dj-go')!.addEventListener('click', () => this.submit());
-		this.root.querySelector('#dj-play')!.addEventListener('click', () => this.onPlay?.());
-		this.root.querySelector('#dj-pause')!.addEventListener('click', () => this.onPause?.());
-		this.root.querySelector('#dj-next')!.addEventListener('click', () => this.onNext?.());
-		this.root.querySelector('#dj-probe')!.addEventListener('click', () => this.onProbe?.());
-		this.root.querySelector('#dj-greet')!.addEventListener('click', () => this.onGreet?.());
-		this.root.querySelector('#dj-rat')!.addEventListener('click', () => this.onRat?.());
+		qs(this.root, '#dj-close').addEventListener('click', () => this.hide());
+		qs(this.root, '#dj-go').addEventListener('click', () => this.submit());
+		qs(this.root, '#dj-play').addEventListener('click', () => this.onPlay?.());
+		qs(this.root, '#dj-pause').addEventListener('click', () => this.onPause?.());
+		qs(this.root, '#dj-next').addEventListener('click', () => this.onNext?.());
+		qs(this.root, '#dj-probe').addEventListener('click', () => this.onProbe?.());
+		qs(this.root, '#dj-greet').addEventListener('click', () => this.onGreet?.());
+		qs(this.root, '#dj-rat').addEventListener('click', () => this.onRat?.());
 		const mic = this.root.querySelector('#dj-mic') as HTMLButtonElement;
 		mic.addEventListener('pointerdown', (e) => {
 			e.preventDefault();

@@ -1,5 +1,6 @@
-import { pickWith } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { pickWith } from '@/util/rand';
 
 /**
  * Skyline rond de mall — een ring laagpoly torens buiten de ringweg.
@@ -274,7 +275,7 @@ export class CityBuildings {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 512;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		const bg = ctx.createLinearGradient(0, 0, 0, 512);
 		bg.addColorStop(0, '#0d1019');
 		bg.addColorStop(1, '#141827');

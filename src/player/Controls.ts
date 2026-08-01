@@ -1,5 +1,5 @@
-import type { CollisionWorld } from '@/physics/Collision';
 import * as THREE from 'three';
+import type { CollisionWorld } from '@/physics/Collision';
 
 export const EYE = 1.68;
 
@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: ControlSettings = {
 
 function isTypingTarget(t: EventTarget | null): boolean {
 	const el = t as HTMLElement | null;
-	if (!el || !el.tagName) return false;
+	if (!el?.tagName) return false;
 	const tag = el.tagName;
 	return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true;
 }

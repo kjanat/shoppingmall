@@ -1,6 +1,6 @@
+import * as THREE from 'three';
 import { ShittyDiscoMusic } from '@/audio/ShittyDisco';
 import { at } from '@/util/rand';
-import * as THREE from 'three';
 
 /**
  * Dance party: arcade neon comeback + disco balls + shitty funny music.
@@ -176,7 +176,7 @@ export class DiscoParty {
 		if (!this.active) return;
 		this.t += dt;
 		// Pulse with the boom-bam-bam-boom (~118bpm)
-		const beat = Math.pow(Math.max(0, Math.sin(this.t * Math.PI * (118 / 60) * 2)), 4);
+		const beat = Math.max(0, Math.sin(this.t * Math.PI * (118 / 60) * 2)) ** 4;
 		this.lights.forEach((l, i) => {
 			// Dim base + soft beat flash — not a nuclear flashbang
 			l.intensity = 2.8 + beat * 3.2 + Math.sin(this.t * 2 + i) * 0.6;

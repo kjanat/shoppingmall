@@ -45,6 +45,15 @@ export class ShittyDiscoMusic {
 		}
 	}
 
+	/**
+	 * The graph the voices play into. tick() already returns before this can
+	 * be null, so it narrows once here instead of in all seven of them.
+	 */
+	private get graph(): { ctx: AudioContext; master: GainNode } {
+		if (!this.ctx || !this.master) throw new Error('disco voice before ensure()');
+		return { ctx: this.ctx, master: this.master };
+	}
+
 	private tick(): void {
 		if (!this.ctx || !this.master || !this.playing) return;
 		const t = this.ctx.currentTime;
@@ -93,7 +102,7 @@ export class ShittyDiscoMusic {
 
 	/** Classic yodel: pure-ish tone with vibrato + formant */
 	private yodelNote(t: number, freq: number, dur: number): void {
-		const ctx = this.ctx!;
+		const { ctx, master } = this.graph;
 		const o = ctx.createOscillator();
 		const o2 = ctx.createOscillator();
 		const g = ctx.createGain();
@@ -118,7 +127,7 @@ export class ShittyDiscoMusic {
 		o.connect(f);
 		o2.connect(f);
 		f.connect(g);
-		g.connect(this.master!);
+		g.connect(master);
 		lfo.start(t);
 		o.start(t);
 		o2.start(t);
@@ -128,7 +137,7 @@ export class ShittyDiscoMusic {
 	}
 
 	private hardKick(t: number, vol: number): void {
-		const ctx = this.ctx!;
+		const { ctx, master } = this.graph;
 		const o = ctx.createOscillator();
 		const g = ctx.createGain();
 		o.type = 'sine';
@@ -138,7 +147,7 @@ export class ShittyDiscoMusic {
 		g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
 		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
 		o.connect(g);
-		g.connect(this.master!);
+		g.connect(master);
 		o.start(t);
 		o.stop(t + 0.28);
 		const c = ctx.createOscillator();
@@ -150,13 +159,13 @@ export class ShittyDiscoMusic {
 		cg.gain.exponentialRampToValueAtTime(0.1, t + 0.002);
 		cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
 		c.connect(cg);
-		cg.connect(this.master!);
+		cg.connect(master);
 		c.start(t);
 		c.stop(t + 0.05);
 	}
 
 	private reverseBass(t: number): void {
-		const ctx = this.ctx!;
+		const { ctx, master } = this.graph;
 		const o = ctx.createOscillator();
 		const g = ctx.createGain();
 		const f = ctx.createBiquadFilter();
@@ -171,13 +180,13 @@ export class ShittyDiscoMusic {
 		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
 		o.connect(f);
 		f.connect(g);
-		g.connect(this.master!);
+		g.connect(master);
 		o.start(t);
 		o.stop(t + 0.13);
 	}
 
 	private screech(t: number): void {
-		const ctx = this.ctx!;
+		const { ctx, master } = this.graph;
 		const o = ctx.createOscillator();
 		const g = ctx.createGain();
 		o.type = 'square';
@@ -187,13 +196,13 @@ export class ShittyDiscoMusic {
 		g.gain.exponentialRampToValueAtTime(0.04, t + 0.02);
 		g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
 		o.connect(g);
-		g.connect(this.master!);
+		g.connect(master);
 		o.start(t);
 		o.stop(t + 0.36);
 	}
 
 	private noiseBurst(t: number, dur: number, hp: number, vol: number): void {
-		const ctx = this.ctx!;
+		const { ctx, master } = this.graph;
 		const bufferSize = Math.floor(ctx.sampleRate * dur);
 		const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
 		const data = buffer.getChannelData(0);
@@ -209,13 +218,13 @@ export class ShittyDiscoMusic {
 		g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 		noise.connect(f);
 		f.connect(g);
-		g.connect(this.master!);
+		g.connect(master);
 		noise.start(t);
 		noise.stop(t + dur + 0.01);
 	}
 
 	private beep(t: number, freq: number, dur: number, type: OscillatorType, vol: number): void {
-		const ctx = this.ctx!;
+		const { ctx, master } = this.graph;
 		const o = ctx.createOscillator();
 		const g = ctx.createGain();
 		o.type = type;
@@ -224,13 +233,13 @@ export class ShittyDiscoMusic {
 		g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
 		g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 		o.connect(g);
-		g.connect(this.master!);
+		g.connect(master);
 		o.start(t);
 		o.stop(t + dur + 0.02);
 	}
 
 	private mateYa(t: number): void {
-		const ctx = this.ctx!;
+		const { ctx, master } = this.graph;
 		const o1 = ctx.createOscillator();
 		const g1 = ctx.createGain();
 		o1.type = 'sawtooth';
@@ -240,7 +249,7 @@ export class ShittyDiscoMusic {
 		g1.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
 		g1.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
 		o1.connect(g1);
-		g1.connect(this.master!);
+		g1.connect(master);
 		o1.start(t);
 		o1.stop(t + 0.13);
 		const o2 = ctx.createOscillator();
@@ -252,7 +261,7 @@ export class ShittyDiscoMusic {
 		g2.gain.exponentialRampToValueAtTime(0.07, t + 0.15);
 		g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
 		o2.connect(g2);
-		g2.connect(this.master!);
+		g2.connect(master);
 		o2.start(t + 0.13);
 		o2.stop(t + 0.34);
 	}

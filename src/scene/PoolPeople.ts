@@ -1,5 +1,6 @@
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 /**
  * PoolPeople: badgasten voor het dakeiland.
@@ -513,7 +514,7 @@ export class PoolPeople {
 		const canvas = document.createElement('canvas');
 		canvas.width = 256;
 		canvas.height = 160;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		ctx.fillStyle = '#f2e8d5';
 		ctx.fillRect(0, 0, 256, 160);
 		ctx.strokeStyle = '#1b2a6b';

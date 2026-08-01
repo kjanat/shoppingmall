@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import type { CollisionWorld } from '../physics/Collision';
+import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
 import { Americans } from './Americans';
 
 /**
@@ -31,7 +32,7 @@ export class Atmosphere {
 			const canvas = document.createElement('canvas');
 			canvas.width = 512;
 			canvas.height = 256;
-			const ctx = canvas.getContext('2d')!;
+			const ctx = ctx2d(canvas);
 			ctx.fillStyle = ad.bg;
 			ctx.fillRect(0, 0, 512, 256);
 			ctx.strokeStyle = ad.color;

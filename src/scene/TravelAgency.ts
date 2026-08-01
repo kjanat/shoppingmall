@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /**
  * Shady travel desk next to Beard-man's Cave (juwelen lair).
@@ -264,7 +265,7 @@ export class TravelAgency {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 384;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		// Sky
 		const sky = ctx.createLinearGradient(0, 0, 0, 280);
 		sky.addColorStop(0, '#0277bd');
@@ -340,7 +341,7 @@ export class TravelAgency {
 		const c = document.createElement('canvas');
 		c.width = 384;
 		c.height = 256;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 384, 256);
 		ctx.strokeStyle = fg;
@@ -496,7 +497,7 @@ export class TravelAgency {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = '#fff';

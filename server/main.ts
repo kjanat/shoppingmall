@@ -4,11 +4,12 @@
  *   prod  dist/mall                  same import, baked into the binary
  * public/ is read from the working directory in both.
  */
-import index from '$/index.html';
+
 import { readdir } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
-import { handleApi } from './api.ts';
 import { link } from 'ansispeck';
+import index from '$/index.html';
+import { handleApi } from './api.ts';
 
 const PUBLIC = resolve('public');
 const notFound = () => new Response('not found', { status: 404 });

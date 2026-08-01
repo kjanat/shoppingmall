@@ -74,6 +74,12 @@ export class SpatialAudio {
 		return this.ctx;
 	}
 
+	/** The spatial bus, which ensure() creates together with the context. */
+	private get bus(): GainNode {
+		if (!this.master) throw new Error('spatial bus used before ensure()');
+		return this.master;
+	}
+
 	/** Toggle HRTF ↔ equalpower; live sources reconfigure */
 	setBinaural(on: boolean): void {
 		this.binaural = on;
@@ -158,7 +164,7 @@ export class SpatialAudio {
 			buffer = urlOrBuffer;
 		}
 		const binaural = opts.binaural ?? this.binaural;
-		const src = new SpatialSource(ctx, this.master!, buffer, pos, {
+		const src = new SpatialSource(ctx, this.bus, buffer, pos, {
 			volume: opts.volume ?? 0.8,
 			refDistance: opts.refDistance ?? 2.5,
 			maxDistance: opts.maxDistance ?? 28,
@@ -192,7 +198,7 @@ export class SpatialAudio {
 	): SpatialLoop {
 		const ctx = this.ensure();
 		const binaural = opts.binaural ?? this.binaural;
-		const loop = new SpatialLoop(ctx, this.master!, pos, {
+		const loop = new SpatialLoop(ctx, this.bus, pos, {
 			volume: opts.volume ?? 0.55,
 			k: opts.k ?? 0.05,
 			maxDistance: opts.maxDistance ?? 22,
@@ -228,7 +234,7 @@ export class SpatialAudio {
 			return existing;
 		}
 		const binaural = opts.binaural ?? this.binaural;
-		const se = new SpatialElement(ctx, this.master!, el, pos, {
+		const se = new SpatialElement(ctx, this.bus, el, pos, {
 			volume: opts.volume ?? 0.7,
 			k: opts.k ?? 0.012,
 			maxDistance: opts.maxDistance ?? 55,

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 type Belt = {
 	mat: THREE.MeshStandardMaterial;
@@ -69,7 +70,7 @@ export class MovingWalkways {
 		const canvas = document.createElement('canvas');
 		canvas.width = 64;
 		canvas.height = 256;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		ctx.fillStyle = '#3a3f48';
 		ctx.fillRect(0, 0, 64, 256);
 		for (let i = 0; i < 16; i++) {

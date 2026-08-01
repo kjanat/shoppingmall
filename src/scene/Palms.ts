@@ -32,7 +32,9 @@ export class PalmForest {
 			[-12, 0, 0],
 			[12, 0, 0],
 		];
-		f0.forEach(([x, y, z], i) => this.plant(x, y, z, 0.7 + (i % 3) * 0.08, i * 0.7));
+		f0.forEach(([x, y, z], i) => {
+			this.plant(x, y, z, 0.7 + (i % 3) * 0.08, i * 0.7);
+		});
 
 		// Floor 1 balcony palms
 		const f1: [number, number, number][] = [
@@ -47,7 +49,9 @@ export class PalmForest {
 			[-10, 6, 0],
 			[10, 6, 2],
 		];
-		f1.forEach(([x, y, z], i) => this.plant(x, y, z, 0.65 + (i % 4) * 0.06, i * 0.9 + 3));
+		f1.forEach(([x, y, z], i) => {
+			this.plant(x, y, z, 0.65 + (i % 4) * 0.06, i * 0.9 + 3);
+		});
 
 		// Balcony accents (not mid-void)
 		this.plant(14, 6, -12, 0.9, 5);

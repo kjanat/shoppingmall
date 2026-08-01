@@ -1,3 +1,5 @@
+import { qs } from '@/util/dom';
+
 export type ElevStopChoice = {
 	idx: number;
 	code: string;
@@ -88,8 +90,8 @@ export class ElevatorPanel {
         <footer class="elev-foot">Klik een verdieping · deuren sluiten</footer>
       </div>
     `;
-		this.card = this.host.querySelector('#elev-card')!;
-		this.btns = this.host.querySelector('#elev-btns')!;
+		this.card = qs(this.host, '#elev-card');
+		this.btns = qs(this.host, '#elev-btns');
 
 		// Single delegated handler — survives repaints
 		this.btns.addEventListener(

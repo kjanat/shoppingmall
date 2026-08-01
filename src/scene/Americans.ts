@@ -1,10 +1,11 @@
-import { at, pick, pickWith } from '@/util/rand';
 import * as THREE from 'three';
-import { getOwner } from '../data/shopOwners';
-import { type StoreDef, STORES } from '../data/stores';
-import { Pathfinder } from '../path/Pathfinder';
-import type { CollisionWorld } from '../physics/Collision';
-import { fetchSimChat, type SimPersona } from '../sim/SimChat';
+import { getOwner } from '@/data/shopOwners';
+import { STORES, type StoreDef } from '@/data/stores';
+import { Pathfinder } from '@/path/Pathfinder';
+import type { CollisionWorld } from '@/physics/Collision';
+import { fetchSimChat, type SimPersona } from '@/sim/SimChat';
+import { ctx2d } from '@/util/dom';
+import { at, pick, pickWith } from '@/util/rand';
 
 export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
 
@@ -177,8 +178,9 @@ const HAIR = [0x2c1810, 0x5c4033, 0xc4a35a, 0x888888, 0x1a1a1a, 0xd35400, 0xf5f5
 const SHOPABLE = STORES.filter((s) => s.id !== 'info' && (!s.utility || s.id === 'foodcourt'));
 
 function mulberry32(a: number) {
-	return function () {
-		let t = (a += 0x6d2b79f5);
+	return () => {
+		a += 0x6d2b79f5;
+		let t = a;
 		t = Math.imul(t ^ (t >>> 15), t | 1);
 		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
 		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -1137,7 +1139,7 @@ export class Americans {
 		const labelCanvas = document.createElement('canvas');
 		labelCanvas.width = 320;
 		labelCanvas.height = 120;
-		const labelCtx = labelCanvas.getContext('2d')!;
+		const labelCtx = ctx2d(labelCanvas);
 		const labelTex = new THREE.CanvasTexture(labelCanvas);
 		labelTex.colorSpace = THREE.SRGBColorSpace;
 		const label = new THREE.Sprite(
@@ -1158,7 +1160,7 @@ export class Americans {
 		const speechCanvas = document.createElement('canvas');
 		speechCanvas.width = 280;
 		speechCanvas.height = 72;
-		const speechCtx = speechCanvas.getContext('2d')!;
+		const speechCtx = ctx2d(speechCanvas);
 		const speechTex = new THREE.CanvasTexture(speechCanvas);
 		speechTex.colorSpace = THREE.SRGBColorSpace;
 		// depthTest AAN: met false zag je vanaf het dak alle tekstballonnen van
@@ -1271,7 +1273,7 @@ export class Americans {
 		// Partner follows lead (lower id is lead)
 		if (sim.f.partnerId !== null && sim.f.id > sim.f.partnerId) {
 			const lead = this.sims.find((s) => s.f.id === sim.f.partnerId);
-			if (lead && lead.f.targetShopId) {
+			if (lead?.f.targetShopId) {
 				sim.f.targetShop = lead.f.targetShop;
 				sim.f.targetShopId = lead.f.targetShopId;
 				sim.path = lead.path.map((p) => p.clone());

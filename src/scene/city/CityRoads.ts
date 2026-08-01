@@ -1,5 +1,6 @@
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 /**
  * Rechthoekige ringweg om de mall. Vier stroken asfalt, vier zebrapaden,
@@ -124,7 +125,7 @@ export class CityRoads {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 128;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#26282c';
 		ctx.fillRect(0, 0, 256, 128);
 		// Vlekjes — asfalt zonder textuur is gewoon een sombere plane

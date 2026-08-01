@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /**
  * Baard-dief hideout — rocky west-wall cave stuffed with juwelen & goud.
@@ -360,7 +361,7 @@ export class BeardCave {
 			const c = document.createElement('canvas');
 			c.width = 512;
 			c.height = 256;
-			const ctx = c.getContext('2d')!;
+			const ctx = ctx2d(c);
 			ctx.fillStyle = bg;
 			ctx.fillRect(0, 0, 512, 256);
 			ctx.strokeStyle = fg;

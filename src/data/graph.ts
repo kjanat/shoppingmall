@@ -6,9 +6,12 @@ export interface GraphNode {
 	label?: string;
 }
 
+/** Every id in NODES, so a typo in EDGES is a compile error and not a dead route. */
+export type NodeId = (typeof NODES)[number]['id'];
+
 export interface GraphEdge {
-	from: string;
-	to: string;
+	from: NodeId;
+	to: NodeId;
 	/** Multiplier for distance cost (escalator slightly higher) */
 	cost?: number;
 }
@@ -19,7 +22,7 @@ export interface GraphEdge {
  *
  * Layout mirrors stores.ts (clean zones, no SW pile-up).
  */
-export const NODES: GraphNode[] = [
+export const NODES = [
 	// ── Floor 0 spine ────────────────────────────────────
 	{ id: 'kiosk', x: 0, y: 0.15, z: 9, label: 'Je bent hier' },
 	{ id: 'f0_s', x: 0, y: 0.15, z: 6 },
@@ -96,7 +99,7 @@ export const NODES: GraphNode[] = [
 	{ id: 'sec_f1', x: 26, y: 6.15, z: 14, label: 'Geheime trap V1' },
 	{ id: 'sec_mid', x: 26, y: 10, z: 16, label: 'Geheime trap mid' },
 	{ id: 'helipad', x: 22, y: 13.65, z: 16, label: 'Helipad' },
-];
+] as const satisfies readonly GraphNode[];
 
 export const EDGES: GraphEdge[] = [
 	// ── Floor 0 grid ─────────────────────────────────────

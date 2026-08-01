@@ -1,7 +1,8 @@
-import { getOwner } from '@/data/shopOwners';
-import { type StoreDef, STORES } from '@/data/stores';
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { getOwner } from '@/data/shopOwners';
+import { STORES, type StoreDef } from '@/data/stores';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 const FLOOR_H = 6;
 const MALL_W = 72;
@@ -33,7 +34,7 @@ function makeTextTexture(
 	const canvas = document.createElement('canvas');
 	canvas.width = w;
 	canvas.height = h;
-	const ctx = canvas.getContext('2d')!;
+	const ctx = ctx2d(canvas);
 
 	ctx.fillStyle = opts.bg ?? '#111118';
 	ctx.fillRect(0, 0, w, h);
@@ -95,7 +96,9 @@ export class MallBuilder {
 				obj.geometry.dispose();
 			}
 		});
-		this.materials.forEach((m) => m.dispose());
+		this.materials.forEach((m) => {
+			m.dispose();
+		});
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
@@ -116,7 +119,7 @@ export class MallBuilder {
 		const tileCanvas = document.createElement('canvas');
 		tileCanvas.width = 256;
 		tileCanvas.height = 256;
-		const tctx = tileCanvas.getContext('2d')!;
+		const tctx = ctx2d(tileCanvas);
 		tctx.fillStyle = '#e8e0d4';
 		tctx.fillRect(0, 0, 256, 256);
 		tctx.strokeStyle = '#d0c8ba';
@@ -584,7 +587,7 @@ export class MallBuilder {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 64;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = opts.kind === 'escalator' ? '#1565c0' : '#5d4037';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#fff';
@@ -719,7 +722,7 @@ export class MallBuilder {
 		const openCanvas = document.createElement('canvas');
 		openCanvas.width = 256;
 		openCanvas.height = 96;
-		const octx = openCanvas.getContext('2d')!;
+		const octx = ctx2d(openCanvas);
 		octx.fillStyle = '#15803d';
 		octx.fillRect(0, 0, 256, 96);
 		octx.fillStyle = '#fff';
@@ -917,7 +920,7 @@ export class MallBuilder {
 		const pc = document.createElement('canvas');
 		pc.width = 320;
 		pc.height = 96;
-		const pctx = pc.getContext('2d')!;
+		const pctx = ctx2d(pc);
 		pctx.fillStyle = '#0f172a';
 		pctx.fillRect(0, 0, 320, 96);
 		pctx.fillStyle = isBoss && owner ? '#4ade80' : '#38bdf8';

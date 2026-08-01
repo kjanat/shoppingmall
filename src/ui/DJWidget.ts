@@ -1,4 +1,5 @@
 import type { DJPlayer } from '@/audio/DJPlayer';
+import { qs } from '@/util/dom';
 
 /**
  * Permanente mini-player, altijd in beeld: play/pauze, volgende, volume en een
@@ -39,21 +40,21 @@ export class DJWidget {
       <input type="range" id="djw-vol" min="0" max="1" step="0.05" title="Volume" />
       <button type="button" id="djw-req" title="Verzoekje (opent de booth)">➕</button>
     `;
-		this.titleEl = this.host.querySelector('#djw-title')!;
-		this.playBtn = this.host.querySelector('#djw-play')!;
-		const vol = this.host.querySelector<HTMLInputElement>('#djw-vol')!;
+		this.titleEl = qs(this.host, '#djw-title');
+		this.playBtn = qs(this.host, '#djw-play');
+		const vol = qs<HTMLInputElement>(this.host, '#djw-vol');
 		vol.value = '0.55';
 
 		this.playBtn.addEventListener('click', () => {
 			void this.player.toggle();
 		});
-		this.host.querySelector('#djw-next')!.addEventListener('click', () => {
+		qs(this.host, '#djw-next').addEventListener('click', () => {
 			this.player.next();
 		});
 		vol.addEventListener('input', () => {
 			this.player.setVolume(Number(vol.value));
 		});
-		this.host.querySelector('#djw-req')!.addEventListener('click', () => {
+		qs(this.host, '#djw-req').addEventListener('click', () => {
 			this.onOpenBooth();
 		});
 	}

@@ -1,6 +1,6 @@
+import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
 import { at, pick } from '@/util/rand';
-import * as THREE from 'three';
 
 /**
  * Mall rat — scurries like the baard-dief, but smaller & more often.

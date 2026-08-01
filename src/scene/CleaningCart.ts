@@ -1,7 +1,8 @@
+import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
 import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
-import * as THREE from 'three';
 
 /** Pre-generated ElevenLabs Chinese scolds (public/voices/wei/) */
 export const WEI_YELLS: { file: string; text: string; label: string }[] = [
@@ -549,7 +550,7 @@ export class CleaningCart {
 		const sc = document.createElement('canvas');
 		sc.width = 280;
 		sc.height = 72;
-		this.speechCtx = sc.getContext('2d')!;
+		this.speechCtx = ctx2d(sc);
 		this.speechTex = new THREE.CanvasTexture(sc);
 		this.speechTex.colorSpace = THREE.SRGBColorSpace;
 		this.speech = new THREE.Sprite(
@@ -616,7 +617,7 @@ export class CleaningCart {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.strokeStyle = fg;
@@ -641,7 +642,7 @@ export class CleaningCart {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = '#fff';

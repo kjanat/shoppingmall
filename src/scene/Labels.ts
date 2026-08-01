@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import type { StoreDef } from '../data/stores';
+import type { StoreDef } from '@/data/stores';
+import { ctx2d } from '@/util/dom';
 
 /** Clean mall directory labels — white pills, no neon pulse. */
 export class StoreLabels {
@@ -28,7 +29,7 @@ export class StoreLabels {
 		const canvas = document.createElement('canvas');
 		canvas.width = 512;
 		canvas.height = 128;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 
 		ctx.fillStyle = store.hero ? 'rgba(227, 6, 19, 0.95)' : 'rgba(255, 255, 255, 0.94)';
 		roundRect(ctx, 8, 20, 496, 88, 16);
@@ -67,7 +68,7 @@ export class StoreLabels {
 		const canvas = document.createElement('canvas');
 		canvas.width = 512;
 		canvas.height = 80;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		ctx.fillStyle = 'rgba(255,255,255,0.9)';
 		roundRect(ctx, 40, 10, 432, 60, 12);
 		ctx.fill();

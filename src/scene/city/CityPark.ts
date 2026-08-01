@@ -1,5 +1,6 @@
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 /**
  * Stadspark op het NW-blok buiten de ringweg (x −90..−56, z −70..−40).
@@ -102,7 +103,7 @@ export class CityPark {
 		const c = document.createElement('canvas');
 		c.width = W;
 		c.height = H;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#47793d';
 		ctx.fillRect(0, 0, W, H);
 		// Grasvlekjes — een effen groen vlak heet een biljartlaken, geen park

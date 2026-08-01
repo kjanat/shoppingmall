@@ -1,3 +1,5 @@
+import type { NodeId } from './graph';
+
 export type StoreCategory = 'beauty' | 'fashion' | 'food' | 'tech' | 'home' | 'sport' | 'services' | 'utility';
 
 export interface StoreDef {
@@ -15,9 +17,10 @@ export interface StoreDef {
 	depth: number;
 	color: string;
 	accent: string;
+	/** Bigger facade, red fill, accent on the shopfront. Not "the main route". */
 	hero?: boolean;
 	/** Graph node id for entrance */
-	nodeId: string;
+	nodeId: NodeId;
 	/**
 	 * Directory-only place (WC, gebed, helipad, geheime trap, beard cave).
 	 * No shop pod mesh — already built elsewhere or pure destination.
@@ -509,6 +512,12 @@ export function shopStores(): StoreDef[] {
 	return STORES.filter((s) => !s.utility && s.id !== 'info');
 }
 
-export function getHeroStore(): StoreDef {
-	return STORES.find((s) => s.hero && s.id === 'kruidvat')!;
+/**
+ * Where the kiosk's main button walks you. Kruidvat by name, not by `hero`:
+ * that flag is facade styling and two stores carry it.
+ */
+export function getKruidvat(): StoreDef {
+	const store = STORES.find((s) => s.id === 'kruidvat');
+	if (!store) throw new Error('no kruidvat in STORES');
+	return store;
 }

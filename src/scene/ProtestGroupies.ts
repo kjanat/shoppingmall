@@ -1,7 +1,8 @@
+import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
 import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
-import * as THREE from 'three';
 
 /** Prebaked multi-voice chants (public/voices/protest/) — different speaker each clip */
 export type ProtestClip = {
@@ -664,7 +665,7 @@ export class ProtestGroupies {
 		const c = document.createElement('canvas');
 		c.width = 768;
 		c.height = 192;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		// Progress pride stripe base
 		const cols = ['#e40303', '#ff8c00', '#ffed00', '#008026', '#24408e', '#732982'];
 		cols.forEach((col, i) => {
@@ -821,7 +822,7 @@ export class ProtestGroupies {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 160;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 
 		const stripes = (cols: string[]) => {
 			const h = 160 / cols.length;
@@ -1061,7 +1062,7 @@ export class ProtestGroupies {
 		const sc = document.createElement('canvas');
 		sc.width = 360;
 		sc.height = 90;
-		const speechCtx = sc.getContext('2d')!;
+		const speechCtx = ctx2d(sc);
 		const speechTex = new THREE.CanvasTexture(sc);
 		speechTex.colorSpace = THREE.SRGBColorSpace;
 		const speech = new THREE.Sprite(
@@ -1136,7 +1137,7 @@ export class ProtestGroupies {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 160;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#000';
 		ctx.fillRect(0, 0, 256, 53);
 		ctx.fillStyle = '#DD0000';
@@ -1300,7 +1301,7 @@ export class ProtestGroupies {
 			const sc = document.createElement('canvas');
 			sc.width = 320;
 			sc.height = 80;
-			const speechCtx = sc.getContext('2d')!;
+			const speechCtx = ctx2d(sc);
 			const speechTex = new THREE.CanvasTexture(sc);
 			speechTex.colorSpace = THREE.SRGBColorSpace;
 			const speech = new THREE.Sprite(
@@ -1373,7 +1374,7 @@ export class ProtestGroupies {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 176;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		const bgs = ['#ffffff', '#fff59d', '#e3f2fd', '#f3e5f5', '#e8f5e9'];
 		ctx.fillStyle = at(bgs, seed);
 		ctx.fillRect(0, 0, 256, 176);
@@ -1405,7 +1406,7 @@ export class ProtestGroupies {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg.startsWith('#') || bg.startsWith('rgb') ? bg : bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = '#fff';

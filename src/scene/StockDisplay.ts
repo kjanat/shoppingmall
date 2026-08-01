@@ -1,7 +1,8 @@
-import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
-import { type StoreDef, STORES } from '@/data/stores';
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
+import { STORES, type StoreDef } from '@/data/stores';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 const FLOOR_H = 6;
 
@@ -224,7 +225,7 @@ export class StockDisplay {
 		const canvas = document.createElement('canvas');
 		canvas.width = 512;
 		canvas.height = 128;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		ctx.fillStyle = '#111';
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.fillStyle = color.startsWith('#') ? color : '#ffffff';

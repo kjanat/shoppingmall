@@ -1,7 +1,8 @@
+import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
 import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
-import * as THREE from 'three';
 
 type GuardState = 'patrol' | 'alert' | 'firing';
 
@@ -568,7 +569,7 @@ export class SecurityGuards {
 		const sc = document.createElement('canvas');
 		sc.width = 360;
 		sc.height = 80;
-		const speechCtx = sc.getContext('2d')!;
+		const speechCtx = ctx2d(sc);
 		const speechTex = new THREE.CanvasTexture(sc);
 		speechTex.colorSpace = THREE.SRGBColorSpace;
 		const speech = new THREE.Sprite(
@@ -613,7 +614,7 @@ export class SecurityGuards {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 64;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
 		ctx.strokeStyle = '#f5c518';

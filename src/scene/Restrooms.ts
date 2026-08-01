@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /**
  * Mall toilets next to the gebedsruimte (not inside it).
@@ -214,7 +215,7 @@ export class Restrooms {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 64;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#0d47a1';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#fff';
@@ -323,7 +324,7 @@ export class Restrooms {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 96;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 256, 96);
 		ctx.fillStyle = '#fff';
@@ -354,7 +355,7 @@ export class Restrooms {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 96;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#111827';
 		ctx.fillRect(0, 0, 512, 96);
 		ctx.fillStyle = '#22c55e';
@@ -385,7 +386,7 @@ export class Restrooms {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 140;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 320, 140);
 		ctx.fillStyle = '#ffffff';
@@ -408,7 +409,7 @@ export class Restrooms {
 		const c = document.createElement('canvas');
 		c.width = 128;
 		c.height = 128;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 128, 128);
 		ctx.fillStyle = '#fff';
@@ -439,7 +440,7 @@ export class Restrooms {
 		const c = document.createElement('canvas');
 		c.width = 160;
 		c.height = 200;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 160, 200);
 		ctx.fillStyle = '#fff';

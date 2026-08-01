@@ -1,4 +1,4 @@
-import { EDGES, type GraphNode, NODES } from '@/data/graph';
+import { EDGES, type GraphNode, NODES, type NodeId } from '@/data/graph';
 
 interface Link {
 	to: string;
@@ -13,24 +13,26 @@ export class Pathfinder {
 		for (const n of NODES) this.nodes.set(n.id, n);
 
 		const add = (from: string, to: string, cost: number) => {
-			if (!this.adj.has(from)) this.adj.set(from, []);
-			this.adj.get(from)!.push({ to, cost });
+			const links = this.adj.get(from) ?? [];
+			links.push({ to, cost });
+			this.adj.set(from, links);
 		};
 
 		for (const e of EDGES) {
-			const a = this.nodes.get(e.from)!;
-			const b = this.nodes.get(e.to)!;
+			const a = this.nodes.get(e.from);
+			const b = this.nodes.get(e.to);
+			if (!a || !b) continue;
 			const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) * (e.cost ?? 1);
 			add(e.from, e.to, dist);
 			add(e.to, e.from, dist);
 		}
 	}
 
-	getNode(id: string): GraphNode | undefined {
+	getNode(id: NodeId): GraphNode | undefined {
 		return this.nodes.get(id);
 	}
 
-	findPath(startId: string, goalId: string): GraphNode[] {
+	findPath(startId: NodeId, goalId: NodeId): GraphNode[] {
 		if (startId === goalId) {
 			const n = this.nodes.get(startId);
 			return n ? [n] : [];
@@ -81,16 +83,18 @@ export class Pathfinder {
 	}
 
 	private h(a: string, b: string): number {
-		const na = this.nodes.get(a)!;
-		const nb = this.nodes.get(b)!;
+		const na = this.nodes.get(a);
+		const nb = this.nodes.get(b);
+		// Unknown id: unreachable, so A* never picks it as the next best node.
+		if (!na || !nb) return Infinity;
 		return Math.hypot(na.x - nb.x, na.y - nb.y, na.z - nb.z);
 	}
 
 	private reconstruct(came: Map<string, string>, current: string): GraphNode[] {
-		const path = [this.nodes.get(current)!];
-		while (came.has(current)) {
-			current = came.get(current)!;
-			path.unshift(this.nodes.get(current)!);
+		const path: GraphNode[] = [];
+		for (let id: string | undefined = current; id !== undefined; id = came.get(id)) {
+			const node = this.nodes.get(id);
+			if (node) path.unshift(node);
 		}
 		return path;
 	}

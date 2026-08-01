@@ -1,6 +1,7 @@
-import { speakLine } from '@/audio/ElevenVoice';
-import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
+import { speakLine } from '@/audio/ElevenVoice';
+import { ctx2d } from '@/util/dom';
+import { at, pick } from '@/util/rand';
 
 /** Parking garage deck */
 const FLOOR_B = -6.0;
@@ -673,7 +674,7 @@ export class GlassElevator {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 160;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#0d47a1';
 		ctx.fillRect(0, 0, 512, 160);
 		ctx.strokeStyle = '#ffd700';
@@ -702,7 +703,7 @@ export class GlassElevator {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 128;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = 'rgba(0,100,0,0.92)';
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.strokeStyle = '#ffd700';
@@ -881,7 +882,7 @@ export class GlassElevator {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 64;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = 'rgba(13,21,69,0.9)';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#ffd700';
@@ -901,7 +902,7 @@ export class GlassElevator {
 		const sc = document.createElement('canvas');
 		sc.width = 320;
 		sc.height = 80;
-		this.speechCtx = sc.getContext('2d')!;
+		this.speechCtx = ctx2d(sc);
 		this.speechTex = new THREE.CanvasTexture(sc);
 		this.speechTex.colorSpace = THREE.SRGBColorSpace;
 		this.speech = new THREE.Sprite(
@@ -927,7 +928,7 @@ export class GlassElevator {
 		const c = document.createElement('canvas');
 		c.width = 384;
 		c.height = 96;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#0d47a1';
 		ctx.fillRect(0, 0, 384, 96);
 		ctx.fillStyle = '#fff';
@@ -949,7 +950,7 @@ export class GlassElevator {
 		const sc = document.createElement('canvas');
 		sc.width = 256;
 		sc.height = 96;
-		this.signCtx = sc.getContext('2d')!;
+		this.signCtx = ctx2d(sc);
 		this.signTex = new THREE.CanvasTexture(sc);
 		this.signTex.colorSpace = THREE.SRGBColorSpace;
 		this.signSprite = new THREE.Sprite(

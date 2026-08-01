@@ -1,6 +1,7 @@
 import { EDGES, NODES } from '@/data/graph';
 import { getInventory } from '@/data/inventory';
-import { CATEGORY_LABELS, FLOOR_LABELS, type StoreCategory, type StoreDef, STORES } from '@/data/stores';
+import { CATEGORY_LABELS, FLOOR_LABELS, getKruidvat, STORES, type StoreCategory, type StoreDef } from '@/data/stores';
+import { qs } from '@/util/dom';
 import { at } from '@/util/rand';
 
 /** One dot on the map — a sim, mostly. */
@@ -49,7 +50,7 @@ const LANDMARKS: { x: number; z: number; floor: 0 | 1 | 2; short: string; label:
 
 function isTypingTarget(t: EventTarget | null): boolean {
 	const el = t as HTMLElement | null;
-	if (!el || !el.tagName) return false;
+	if (!el?.tagName) return false;
 	return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
 }
 
@@ -243,23 +244,23 @@ export class KioskOverlay {
       </div>
     `;
 
-		this.elBoot = this.root.querySelector('#boot')!;
-		this.elHud = this.root.querySelector('#hud')!;
-		this.elSearch = this.root.querySelector('#search')!;
-		this.elList = this.root.querySelector('#store-list')!;
-		this.elDetail = this.root.querySelector('#detail')!;
-		this.elStatus = this.root.querySelector('#status')!;
-		this.elArrive = this.root.querySelector('#arrive')!;
-		this.elMinimap = this.root.querySelector('#minimap')!;
-		this.elMapFloor = this.root.querySelector('#minimap-floor')!;
-		this.elMapFoot = this.root.querySelector('#minimap-foot')!;
-		this.elBigMap = this.root.querySelector('#bigmap')!;
-		this.elBigCanvas = this.root.querySelector('#bigmap-canvas')!;
-		this.elCrosshair = this.root.querySelector('#crosshair')!;
-		this.elSteps = this.root.querySelector('#steps')!;
-		this.elScore = this.root.querySelector('#score')!;
-		this.elNearby = this.root.querySelector('#nearby-sim')!;
-		this.elPossessBanner = this.root.querySelector('#possess-banner')!;
+		this.elBoot = qs(this.root, '#boot');
+		this.elHud = qs(this.root, '#hud');
+		this.elSearch = qs<HTMLInputElement>(this.root, '#search');
+		this.elList = qs(this.root, '#store-list');
+		this.elDetail = qs(this.root, '#detail');
+		this.elStatus = qs(this.root, '#status');
+		this.elArrive = qs(this.root, '#arrive');
+		this.elMinimap = qs<HTMLCanvasElement>(this.root, '#minimap');
+		this.elMapFloor = qs(this.root, '#minimap-floor');
+		this.elMapFoot = qs(this.root, '#minimap-foot');
+		this.elBigMap = qs(this.root, '#bigmap');
+		this.elBigCanvas = qs<HTMLCanvasElement>(this.root, '#bigmap-canvas');
+		this.elCrosshair = qs(this.root, '#crosshair');
+		this.elSteps = qs(this.root, '#steps');
+		this.elScore = qs(this.root, '#score');
+		this.elNearby = qs(this.root, '#nearby-sim');
+		this.elPossessBanner = qs(this.root, '#possess-banner');
 
 		this.renderCats();
 		this.renderList();
@@ -270,41 +271,41 @@ export class KioskOverlay {
 			this.renderList();
 		});
 
-		this.root.querySelector('#btn-kruidvat')!.addEventListener('click', () => {
-			const k = STORES.find((s) => s.id === 'kruidvat')!;
+		qs(this.root, '#btn-kruidvat').addEventListener('click', () => {
+			const k = getKruidvat();
 			this.selectStore(k);
 			this.callbacks.onStartRoute(k);
 		});
 
-		this.root.querySelector('#btn-home')!.addEventListener('click', () => {
+		qs(this.root, '#btn-home').addEventListener('click', () => {
 			this.callbacks.onHome();
 		});
 
-		this.root.querySelector('#btn-possess')!.addEventListener('click', () => {
+		qs(this.root, '#btn-possess').addEventListener('click', () => {
 			this.callbacks.onPossess();
 		});
-		this.root.querySelector('#btn-disco')!.addEventListener('click', () => {
+		qs(this.root, '#btn-disco').addEventListener('click', () => {
 			this.callbacks.onDisco();
 		});
-		this.root.querySelector('#btn-money')!.addEventListener('click', () => {
+		qs(this.root, '#btn-money').addEventListener('click', () => {
 			this.callbacks.onGiveMoney();
 		});
-		this.root.querySelector('#btn-thief')!.addEventListener('click', () => {
+		qs(this.root, '#btn-thief').addEventListener('click', () => {
 			this.callbacks.onSummonThief();
 		});
-		this.root.querySelector('#btn-mood-up')!.addEventListener('click', () => {
+		qs(this.root, '#btn-mood-up').addEventListener('click', () => {
 			this.callbacks.onMood(-15);
 		});
-		this.root.querySelector('#btn-mood-down')!.addEventListener('click', () => {
+		qs(this.root, '#btn-mood-down').addEventListener('click', () => {
 			this.callbacks.onMood(15);
 		});
 
-		this.root.querySelector('#btn-replay')!.addEventListener('click', () => {
+		qs(this.root, '#btn-replay').addEventListener('click', () => {
 			this.hideArrive();
 			this.callbacks.onReplay();
 		});
 
-		this.root.querySelector('#btn-done')!.addEventListener('click', () => {
+		qs(this.root, '#btn-done').addEventListener('click', () => {
 			this.hideArrive();
 			this.callbacks.onHome();
 		});
@@ -352,8 +353,8 @@ export class KioskOverlay {
 
 	showArrive(store: StoreDef): void {
 		this.elArrive.classList.remove('hidden');
-		const title = this.root.querySelector('#arrive-title')!;
-		const msg = this.root.querySelector('#arrive-msg')!;
+		const title = qs(this.root, '#arrive-title');
+		const msg = qs(this.root, '#arrive-msg');
 		title.textContent = store.name.replace('\n', ' ');
 		if (store.id === 'kruidvat') {
 			msg.textContent = 'Je staat bij Kruidvat. Shampoo voor je moeder, vitamines, klaar. Fijne shopping.';
@@ -429,7 +430,7 @@ export class KioskOverlay {
 	}
 
 	private wireMap(): void {
-		const on = (sel: string, fn: () => void) => this.root.querySelector(sel)!.addEventListener('click', fn);
+		const on = (sel: string, fn: () => void) => qs(this.root, sel).addEventListener('click', fn);
 
 		on('#map-in', () => this.setZoom(this.zoom + 1));
 		on('#map-out', () => this.setZoom(this.zoom - 1));
@@ -955,13 +956,12 @@ export class KioskOverlay {
 	private renderDetail(store: StoreDef): void {
 		this.elDetail.classList.remove('hidden', 'touring');
 		const inv = getInventory(store.id);
-		const stock =
-			inv && inv.items.length
-				? `<ul class="detail-stock">${inv.items
-						.slice(0, 8)
-						.map((i) => `<li>${i.name}${i.price > 0 ? ` · €${i.price}` : ''}</li>`)
-						.join('')}</ul>`
-				: '';
+		const stock = inv?.items.length
+			? `<ul class="detail-stock">${inv.items
+					.slice(0, 8)
+					.map((i) => `<li>${i.name}${i.price > 0 ? ` · €${i.price}` : ''}</li>`)
+					.join('')}</ul>`
+			: '';
 		const blurb = store.blurb
 			? `<p class="detail-blurb">${store.blurb}</p>`
 			: inv?.slogan
@@ -982,10 +982,10 @@ export class KioskOverlay {
         <button type="button" class="btn ghost" id="btn-cancel">Annuleer</button>
       </div>
     `;
-		this.elDetail.querySelector('#btn-go')!.addEventListener('click', () => {
+		qs(this.elDetail, '#btn-go').addEventListener('click', () => {
 			this.callbacks.onStartRoute(store);
 		});
-		this.elDetail.querySelector('#btn-cancel')!.addEventListener('click', () => {
+		qs(this.elDetail, '#btn-cancel').addEventListener('click', () => {
 			this.clearSelection();
 			this.callbacks.onCancel();
 		});

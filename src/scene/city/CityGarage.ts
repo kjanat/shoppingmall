@@ -1,5 +1,6 @@
-import { at, pickWith } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { at, pickWith } from '@/util/rand';
 
 /**
  * Parkeergarage op het ZO-blok (x 56..86, z 44..68). Vier open parkeerdekken
@@ -201,7 +202,7 @@ export class CityGarage {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 384;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#0a49b8';
 		ctx.fillRect(0, 0, 256, 384);
 		ctx.strokeStyle = '#f4f6f8';

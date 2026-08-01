@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import type { CollisionWorld } from '../physics/Collision';
+import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
 import { GARAGE_Y } from './ParkingGarage';
 import type { DriveInput } from './ScrubberBuggy';
 
@@ -259,7 +260,7 @@ export class DriveableCars {
 		const canvas = document.createElement('canvas');
 		canvas.width = 320;
 		canvas.height = 64;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
 		ctx.strokeStyle = '#ffc107';
@@ -282,7 +283,7 @@ export class DriveableCars {
 		const canvas = document.createElement('canvas');
 		canvas.width = 320;
 		canvas.height = 64;
-		const ctx = canvas.getContext('2d')!;
+		const ctx = ctx2d(canvas);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
 		ctx.strokeStyle = '#ffc107';

@@ -1,5 +1,6 @@
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 /**
  * Ringweg-verkeer: veertien burgerauto's en zes taxi's die eeuwig met de klok
@@ -231,7 +232,7 @@ export class CityTraffic {
 		const c = document.createElement('canvas');
 		c.width = 128;
 		c.height = 44;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#f7c500';
 		ctx.fillRect(0, 0, 128, 44);
 		ctx.strokeStyle = '#111';

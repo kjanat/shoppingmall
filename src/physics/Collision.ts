@@ -370,8 +370,8 @@ export class CollisionWorld {
 				// Closest point on AABB to circle center
 				const cx = Math.max(b.minX, Math.min(px, b.maxX));
 				const cz = Math.max(b.minZ, Math.min(pz, b.maxZ));
-				let dx = px - cx;
-				let dz = pz - cz;
+				const dx = px - cx;
+				const dz = pz - cz;
 				const d2 = dx * dx + dz * dz;
 
 				// Center inside box → push to nearest face

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import type { CollisionWorld } from '../physics/Collision';
+import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
 
 /** Arcade drive input from the player */
 export type DriveInput = {
@@ -180,7 +181,7 @@ export class ScrubberBuggy {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 64;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
 		ctx.strokeStyle = '#ffeb3b';
@@ -360,7 +361,7 @@ export class ScrubberBuggy {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = fg;

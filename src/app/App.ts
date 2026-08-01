@@ -1,10 +1,12 @@
+import type { EffectComposer } from 'postprocessing';
+import * as THREE from 'three';
 import { BartekChat } from '@/audio/BartekChat';
 import { DJPlayer } from '@/audio/DJPlayer';
 import { fetchDjStatus, playBoothFile, speakLine } from '@/audio/ElevenVoice';
 import { spatial } from '@/audio/SpatialAudio';
 import { Director } from '@/camera/Director';
 import type { GraphNode } from '@/data/graph';
-import { getStore, type StoreDef } from '@/data/stores';
+import { getKruidvat, getStore, type StoreDef } from '@/data/stores';
 import { Pathfinder } from '@/path/Pathfinder';
 import { PathMesh } from '@/path/PathMesh';
 import { CollisionWorld } from '@/physics/Collision';
@@ -16,6 +18,7 @@ import type { PersonRow } from '@/scene/Americans';
 import { Atmosphere } from '@/scene/Atmosphere';
 import { BeardCave } from '@/scene/BeardCave';
 import { Catwalk } from '@/scene/Catwalk';
+import { CleaningCart } from '@/scene/CleaningCart';
 import { CityBirds } from '@/scene/city/CityBirds';
 import { CityBuildings } from '@/scene/city/CityBuildings';
 import { CityGarage } from '@/scene/city/CityGarage';
@@ -24,7 +27,6 @@ import { CityRoads } from '@/scene/city/CityRoads';
 import { CitySky } from '@/scene/city/CitySky';
 import { CityTheatre } from '@/scene/city/CityTheatre';
 import { CityTraffic } from '@/scene/city/CityTraffic';
-import { CleaningCart } from '@/scene/CleaningCart';
 import { DiscoParty } from '@/scene/Disco';
 import { BARTEK_LINES, DJBartek } from '@/scene/DJBartek';
 import { DriveableCars } from '@/scene/DriveableCars';
@@ -60,8 +62,6 @@ import { KioskOverlay, type MapBlip } from '@/ui/KioskOverlay';
 import { type CastRow, PeopleDashboard } from '@/ui/PeopleDashboard';
 import { SettingsPanel } from '@/ui/SettingsPanel';
 import { at, pick } from '@/util/rand';
-import type { EffectComposer } from 'postprocessing';
-import * as THREE from 'three';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
 
 const PLAYER_RADIUS = 0.4;
@@ -381,7 +381,7 @@ export class App {
 			onCancel: () => this.onCancel(),
 			onHome: () => this.onHome(),
 			onReplay: () => {
-				const store = this.currentStore ?? getStore('kruidvat')!;
+				const store = this.currentStore ?? getKruidvat();
 				this.onStartRoute(store);
 			},
 			onPossess: () => this.togglePossess(),
@@ -476,7 +476,7 @@ export class App {
 				return;
 			}
 			if (e.key === 'k' || e.key === 'K') {
-				this.onStartRoute(getStore('kruidvat')!);
+				this.onStartRoute(getKruidvat());
 			}
 			if (e.key === 'Escape') {
 				if (this.djUi.isOpen()) {
@@ -1542,10 +1542,10 @@ export class App {
 		}
 
 		// Outside call button OR proximity on landing
-		if (hit?.kind === 'call' || (nearShaft && !inCab && floorHere !== null)) {
-			const floorIdx = hit?.kind === 'call' && hit.floorIdx !== undefined ? hit.floorIdx : floorHere!;
-			const floorName = names[floorIdx] ?? '…';
-			this.elevator.callToFloor(floorIdx);
+		const callFloor = hit?.kind === 'call' && hit.floorIdx !== undefined ? hit.floorIdx : floorHere;
+		if ((hit?.kind === 'call' || (nearShaft && !inCab)) && callFloor !== null) {
+			const floorName = names[callFloor] ?? '…';
+			this.elevator.callToFloor(callFloor);
 			this.ui.setStatus(`🛗 Hans komt naar ${floorName} — even wachten`);
 			return true;
 		}

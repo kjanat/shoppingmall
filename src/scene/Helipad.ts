@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
 // Ceiling slab tops out at 13.75 (y 13.5 + 0.25 extrude) — the deck used to sit
@@ -61,7 +62,7 @@ export class Helipad {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 96;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#b71c1c';
 		ctx.fillRect(0, 0, 256, 96);
 		ctx.fillStyle = '#ffc107';
@@ -245,7 +246,7 @@ export class Helipad {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 128;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = 'rgba(15,23,42,0.92)';
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.strokeStyle = '#f5c518';
@@ -271,7 +272,7 @@ export class Helipad {
 		const c2 = document.createElement('canvas');
 		c2.width = 512;
 		c2.height = 160;
-		const ctx2 = c2.getContext('2d')!;
+		const ctx2 = ctx2d(c2);
 		ctx2.fillStyle = '#1b5e20';
 		ctx2.fillRect(0, 0, 512, 160);
 		ctx2.strokeStyle = '#00e676';

@@ -1,6 +1,7 @@
-import type { CollisionWorld } from '@/physics/Collision';
-import { at, pick } from '@/util/rand';
 import * as THREE from 'three';
+import type { CollisionWorld } from '@/physics/Collision';
+import { ctx2d } from '@/util/dom';
+import { at, pick } from '@/util/rand';
 
 const GRAVITY = 18;
 /** seconds of flight the monkey aims for — a proper lob, not a bullet */
@@ -375,7 +376,7 @@ export class Monkey {
 		const c = document.createElement('canvas');
 		c.width = 128;
 		c.height = 128;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.clearRect(0, 0, 128, 128);
 		// Irregular dung puddle — several overlapping blobs
 		const blobs = 7 + Math.floor(Math.random() * 5);
@@ -450,7 +451,7 @@ export class Monkey {
 			const c = document.createElement('canvas');
 			c.width = 256;
 			c.height = 192;
-			const ctx = c.getContext('2d')!;
+			const ctx = ctx2d(c);
 			this.paintFaceGoo(ctx, 256, 192);
 			this.faceTex = new THREE.CanvasTexture(c);
 			this.faceTex.colorSpace = THREE.SRGBColorSpace;
@@ -469,7 +470,7 @@ export class Monkey {
 			this.faceSplat.position.set(0.02, -0.04, -0.28);
 			this.camera.add(this.faceSplat);
 		} else if (this.faceTex) {
-			const ctx = (this.faceTex.image as HTMLCanvasElement).getContext('2d')!;
+			const ctx = ctx2d(this.faceTex.image as HTMLCanvasElement);
 			this.paintFaceGoo(ctx, 256, 192);
 			this.faceTex.needsUpdate = true;
 		}
@@ -499,7 +500,7 @@ export class Monkey {
 		}
 		if (this.yellTex) {
 			const c = this.yellTex.image as HTMLCanvasElement;
-			const ctx = c.getContext('2d')!;
+			const ctx = ctx2d(c);
 			ctx.clearRect(0, 0, 512, 128);
 			ctx.fillStyle = 'rgba(0,0,0,0.55)';
 			ctx.beginPath();

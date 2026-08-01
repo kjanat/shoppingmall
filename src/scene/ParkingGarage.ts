@@ -1,5 +1,6 @@
-import { at } from '@/util/rand';
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
+import { at } from '@/util/rand';
 
 /** World Y of the parking deck (one storey under V0) */
 export const GARAGE_Y = -6.0;
@@ -290,7 +291,7 @@ export class ParkingGarage {
 		const c = document.createElement('canvas');
 		c.width = 512;
 		c.height = 128;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.fillStyle = fg;

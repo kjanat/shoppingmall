@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ctx2d } from '@/util/dom';
 
 /**
  * Fountain (particles), monkey in tree, Aperol Spritz bar.
@@ -88,7 +89,7 @@ export class Amenities {
 		const c = document.createElement('canvas');
 		c.width = 256;
 		c.height = 64;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#1565c0';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#fff';
@@ -142,7 +143,7 @@ export class Amenities {
 		const c = document.createElement('canvas');
 		c.width = 320;
 		c.height = 80;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = '#ff6b35';
 		ctx.fillRect(0, 0, 320, 80);
 		ctx.fillStyle = '#fff';
@@ -199,7 +200,7 @@ export class Amenities {
 		const c = document.createElement('canvas');
 		c.width = 128;
 		c.height = 40;
-		const ctx = c.getContext('2d')!;
+		const ctx = ctx2d(c);
 		ctx.fillStyle = 'rgba(0,0,0,0.7)';
 		ctx.fillRect(0, 0, 128, 40);
 		ctx.fillStyle = '#fff';

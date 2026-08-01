@@ -8,11 +8,12 @@
  * - POST /api/dj/request   → YouTube API search + yt-dlp download
  * - GET  /api/dj/status    → health + key presence
  */
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
-import { OpenRouter } from '@openrouter/sdk';
+
 import { mkdir } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
+import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import { OpenRouter } from '@openrouter/sdk';
 
 /** Music library. public/ is read from the working directory, like public/ in main.ts. */
 const MUSIC_DIR = resolve('public/dj-music');
@@ -174,7 +175,8 @@ async function elevenLabsTts(text: string, voiceId?: string, lang?: string): Pro
 		'IKne3meq5aSn9XLyUdCD';
 
 	// The SDK reads ELEVENLABS_API_KEY itself
-	if (!elevenClient) elevenClient = new ElevenLabsClient();
+	elevenClient ??= new ElevenLabsClient();
+	const client = elevenClient;
 
 	const request: ElevenLabs.StreamTextToSpeechRequest = {
 		text: text.slice(0, 800),
@@ -194,7 +196,7 @@ async function elevenLabsTts(text: string, voiceId?: string, lang?: string): Pro
 	// syllables while the rest is still generating. withRawResponse keeps the
 	// headers reachable — that's where billing (character-cost) and debug ids live.
 	const convert = (payload: typeof request & { languageCode?: string }) =>
-		elevenClient!.textToSpeech.stream(voice, payload).withRawResponse();
+		client.textToSpeech.stream(voice, payload).withRawResponse();
 
 	// Multilingual language hint when supported; can 400 on some accounts —
 	// retry bare only for that, not for auth/quota (would double-spend).
