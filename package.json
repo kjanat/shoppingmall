@@ -9,7 +9,7 @@
 		"dev": "bun --hot server/main.ts",
 		"fmt": "dprint fmt .",
 		"lint": "biome check",
-		"start": "cd dist/server && NODE_ENV=production bun main.js",
+		"start": "dist/mall",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

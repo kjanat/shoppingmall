@@ -1,7 +1,8 @@
 /**
  * The whole server: bundled game + /api, dev and production.
- *   dev   bun --hot server/main.ts     (HMR, bundles on demand)
- *   prod  bun build --target=bun       (index.html resolves to a prebuilt manifest)
+ *   dev   bun --hot server/main.ts   bundles index.html on demand, HMR
+ *   prod  dist/mall                  same import, baked into the binary
+ * public/ is read from the working directory in both.
  */
 import index from '$/index.html';
 import { readdir } from 'node:fs/promises';
@@ -9,7 +10,7 @@ import { join, resolve, sep } from 'node:path';
 import { handleApi } from './api.ts';
 import { link } from 'ansispeck';
 
-const PUBLIC = resolve(import.meta.dir, '../public');
+const PUBLIC = resolve('public');
 const notFound = () => new Response('not found', { status: 404 });
 
 async function serveStatic(req: Request): Promise<Response> {
@@ -66,7 +67,7 @@ const server = Bun.serve({
 	port: Bun.env['PORT'] ?? 5174,
 	hostname: '0.0.0.0',
 	idleTimeout: 60,
-	development: Bun.env['NODE_ENV'] !== 'production' && { hmr: true, console: true },
+	development: process.env.NODE_ENV !== 'production' && { hmr: true, console: true },
 
 	routes: {
 		...(await publicRoutes()),

@@ -10,47 +10,50 @@
  */
 import { cp } from 'node:fs/promises';
 
+await Bun.$`rm -rf dist`.cwd(import.meta.dir);
+
 const pages = !!Bun.env['GITHUB_ACTIONS'] || Bun.argv.includes('--static');
 
 const shared = {
 	minify: true,
-	sourcemap: 'linked',
+	root: '.',
+	publicPath: '/',
 	define: {
 		'process.env.NODE_ENV': '"production"',
 	},
 } as const;
 
-const out = pages
-	? await Bun.build({
-			...shared,
-			entrypoints: ['index.html'],
-			outdir: 'dist/pages',
-		})
-	: await Bun.build({
-			...shared,
-			// index.html rides along via the import in server/main.ts
-			entrypoints: ['server/main.ts'],
-			outdir: 'dist/server',
-			target: 'bun',
-			naming: {
-				// Flat, because the HTML entry's [dir] is `..` relative to server/ —
-				// it would be written over the source index.html. Chunks and assets
-				// keep the default content hash.
-				entry: '[name].[ext]',
-			},
-		});
+const [out1, out2] = await Promise.all([
+	Bun.build({
+		...shared,
+		entrypoints: ['index.html'],
+		outdir: 'dist/static',
+		target: 'browser',
+		sourcemap: 'linked',
+	}),
+	Bun.build({
+		...shared,
+		entrypoints: ['server/main.ts'],
+		compile: { outfile: 'dist/mall' },
+		target: 'bun',
+		// Goes into the binary, zstd'd, so stack traces point at source.
+		// Bun writes loose .map copies next to it too; nothing reads those
+		// and the image doesn't copy them.
+		sourcemap: 'inline',
+	}),
+]);
 
-for (const artifact of out.outputs) {
+for (const artifact of [out1.outputs, out2.outputs].flat()) {
 	const kb = (artifact.size / 1024).toFixed(1).padStart(9);
 	console.log(`${kb} KB  ${artifact.kind.padEnd(11)} ${artifact.path.replace(process.cwd(), '.')}`);
 }
 
-// Both targets ship public/ so the output runs on its own: Pages has no server
-// to hand it out, and the server resolves it one level above the bundle — same
-// spot as in the repo. Minus the crates: 115 MB that live outside the build
-// (a bind mount in the container).
-await cp('public', pages ? 'dist/pages' : 'dist/public', {
-	recursive: true,
-	filter: (src) => !src.includes('public/dj-music'),
-});
-console.log(`           public/     → ./dist/${pages ? 'pages' : 'public'}  (minus dj-music)`);
+// Pages has no server, so public/ ships inside the artifact. The binary reads
+// it from the working directory instead, so there is nothing to copy there.
+// The music directory stays out: 115 MB, and it's a bind mount in the container.
+if (pages) {
+	await cp('public', 'dist/static', {
+		recursive: true,
+		filter: (src) => !src.includes('public/dj-music'),
+	});
+}

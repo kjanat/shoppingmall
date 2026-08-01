@@ -1,4 +1,4 @@
-# Live container: built assets via `vite preview` + DJ API, behind traefik.
+# Live container: the compiled binary (game + DJ API), behind traefik.
 COMPOSE := docker compose
 
 .PHONY: help live build up restart stop logs ps sh
