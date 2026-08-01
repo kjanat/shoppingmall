@@ -1480,8 +1480,12 @@ export class Americans {
 		sim.velocity.copy(dir).multiplyScalar(spd);
 		const prevX = sim.pos.x;
 		const prevZ = sim.pos.z;
-		sim.pos.x += sim.velocity.x * dt;
-		sim.pos.z += sim.velocity.z * dt;
+		// Never step past the waypoint. An off-level sim spends up to four frames
+		// of dt in one call, and at the 0.05 s dt ceiling that is further than the
+		// 0.4 m retire radius: it would stride over the node, turn, stride back.
+		const advance = Math.min(spd * dt, dist);
+		sim.pos.x += dir.x * advance;
+		sim.pos.z += dir.z * advance;
 		// Climb only on escalator/stairs; otherwise hard floor snap
 		if (Math.abs(target.y - sim.pos.y) > 0.5) {
 			sim.pos.y = THREE.MathUtils.lerp(sim.pos.y, target.y, Math.min(1, dt * 2.5));
