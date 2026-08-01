@@ -65,8 +65,9 @@ export function labelTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
 }
 
 export type FitOptions = {
-	/** Font stack and weight, without the size. */
+	/** Family stack only. The weight is separate: CSS wants it before the size. */
 	font?: string;
+	weight?: string;
 	/** Starting size in design pixels; shrinks from here. */
 	size?: number;
 	/** Never go below this, clip instead. */
@@ -91,7 +92,10 @@ export function fitText(
 	box: { x: number; y: number; w: number; h: number },
 	opts: FitOptions = {},
 ): number {
-	const font = opts.font ?? '700 system-ui, sans-serif';
+	// Order matters: `58px 700 system-ui` is invalid and canvas silently falls
+	// back to 10px sans-serif, which is how every label ended up microscopic.
+	const family = opts.font ?? 'system-ui, sans-serif';
+	const weight = opts.weight ?? '700';
 	const maxLines = opts.maxLines ?? 2;
 	const lineHeight = opts.lineHeight ?? 1.15;
 	const minSize = opts.minSize ?? 8;
@@ -101,7 +105,7 @@ export function fitText(
 
 	let lines: string[] = [];
 	while (size >= minSize) {
-		ctx.font = `${size}px ${font}`;
+		ctx.font = `${weight} ${size}px ${family}`;
 		lines = wrap(ctx, words, box.w, maxLines);
 		const widest = lines.reduce((m, l) => Math.max(m, ctx.measureText(l).width), 0);
 		if (widest <= box.w && lines.length * size * lineHeight <= box.h) break;

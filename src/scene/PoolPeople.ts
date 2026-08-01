@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
-import { POOL_CENTER } from './RoofIsland';
+import { inPool, POOL_CENTER } from './RoofIsland';
 
 /**
  * PoolPeople: badgasten voor het dakeiland.
@@ -456,7 +456,15 @@ export class PoolPeople {
 				ring.position.y = 0.92;
 				rig.root.add(ring);
 			}
-			rig.root.position.set(c.x, baseY, c.z);
+			// Naar binnen trekken tot ze echt in het water staan: de vier plekken zijn
+			// met de hand gekozen, de waterlijn is dat niet.
+			let sx = c.x;
+			let sz = c.z;
+			for (let n = 0; n < 12 && !inPool(sx, sz); n++) {
+				sx += (POOL_X - sx) * 0.2;
+				sz += (POOL_Z - sz) * 0.2;
+			}
+			rig.root.position.set(sx, baseY, sz);
 			rig.root.rotation.y = i * 1.7;
 
 			this.swimmers.push({
@@ -502,9 +510,9 @@ export class PoolPeople {
 	/** Parasolpaal naast de crew, met het clubvaandel. Retourneert het vaandel. */
 	private buildParasol(): THREE.Mesh {
 		const post = new THREE.Group();
-		// Right end of the crew line. It used to stand at x -14.3, which is inside
-		// the tiki bar's sign (x -13.85, z 13.3..15.7): the two planes intersected.
-		post.position.set(-7.4, DECK_Y, 15.2);
+		// Aan kop van de crew-rij, waar hij hoort. Wel 1,7 m verder naar links dan
+		// vroeger: op x -14,3 stak hij dwars door het tiki-bar-bord op x -13,85.
+		post.position.set(-15.6, DECK_Y, 15.2);
 
 		const paal = new THREE.Mesh(this.s.pole, this.mat(0x8a6a45, 0.7));
 		paal.position.y = 1.35;

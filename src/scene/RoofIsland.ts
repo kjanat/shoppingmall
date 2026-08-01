@@ -7,6 +7,75 @@ const DECK_Y = levelY('roof');
 
 /** Waterspiegel-centrum in wereldcoördinaten. PoolPeople zet er zwemmers op. */
 export const POOL_CENTER = { x: -20, z: 2 } as const;
+const POOL_ROT = 0.3;
+/** Breedte van de tegelrand rond het water. */
+const RIM_W = 0.55;
+
+/** Nierboon — twee lobben, één taille. Anatomisch niet correct, wel gezellig. */
+function kidneyShape(): THREE.Shape {
+	const sh = new THREE.Shape();
+	sh.moveTo(-6.5, -0.4);
+	sh.bezierCurveTo(-6.9, 1.8, -4.8, 3.6, -2.6, 3.6);
+	sh.bezierCurveTo(-0.8, 3.6, 0.4, 2.8, 2.2, 3.0);
+	sh.bezierCurveTo(4.2, 3.2, 6.2, 2.2, 6.4, 0.4);
+	sh.bezierCurveTo(6.6, -1.6, 4.6, -2.8, 2.8, -2.4);
+	sh.bezierCurveTo(1.4, -2.0, 1.0, -0.6, -0.6, -0.8);
+	sh.bezierCurveTo(-2.2, -1.0, -2.4, -2.6, -4.2, -2.6);
+	sh.bezierCurveTo(-6.0, -2.6, -6.3, -1.6, -6.5, -0.4);
+	return sh;
+}
+
+/**
+ * De waterlijn, één keer bemonsterd. Water, bodem, rand én de zwemmers lezen
+ * allemaal deze punten, dus ze kunnen niet meer uit elkaar lopen. Eerder was
+ * de rand `kidney(1.15)`: dat schaalt om de vorm-oorsprong, en die ligt niet
+ * in het bad, dus de rand schoof mee in plaats van gelijkmatig te verbreden.
+ */
+const POOL_OUTLINE: THREE.Vector2[] = kidneyShape().getPoints(96);
+
+/** Duwt elk punt naar buiten langs zijn eigen normaal: een rand van gelijke breedte. */
+function offsetOutward(pts: readonly THREE.Vector2[], d: number): THREE.Vector2[] {
+	let area = 0;
+	for (let i = 0; i < pts.length; i++) {
+		const a = at(pts, i);
+		const b = at(pts, i + 1);
+		area += a.x * b.y - b.x * a.y;
+	}
+	// Bij tegen de klok in wijst de linkernormaal naar binnen, dus draai hem om.
+	const sign = area > 0 ? -1 : 1;
+	return pts.map((_, i) => {
+		const prev = at(pts, i - 1);
+		const next = at(pts, i + 1);
+		const tx = next.x - prev.x;
+		const ty = next.y - prev.y;
+		const len = Math.hypot(tx, ty) || 1;
+		const p = at(pts, i);
+		return new THREE.Vector2(p.x + (sign * ty * d) / len, p.y - (sign * tx * d) / len);
+	});
+}
+
+/** Dezelfde waterlijn, maar in wereld-XZ. */
+export const POOL_POLYGON: ReadonlyArray<readonly [number, number]> = POOL_OUTLINE.map((p) => {
+	// De vlakken staan plat via rotation.x = -PI/2, dus vorm-y wordt wereld-min-z.
+	const lx = p.x;
+	const lz = -p.y;
+	const c = Math.cos(POOL_ROT);
+	const s = Math.sin(POOL_ROT);
+	return [POOL_CENTER.x + lx * c + lz * s, POOL_CENTER.z - lx * s + lz * c] as const;
+});
+
+/** Ligt (x, z) in het water? Ray casting op de echte waterlijn. */
+export function inPool(x: number, z: number): boolean {
+	let inside = false;
+	for (let i = 0, j = POOL_POLYGON.length - 1; i < POOL_POLYGON.length; j = i++) {
+		const a = at(POOL_POLYGON, i);
+		const b = at(POOL_POLYGON, j);
+		if (a[1] > z !== b[1] > z && x < ((b[0] - a[0]) * (z - a[1])) / (b[1] - a[1]) + a[0]) {
+			inside = !inside;
+		}
+	}
+	return inside;
+}
 
 /**
  * Tropisch dakeiland op het westelijke mall-dak. Zwembad in nierboonvorm,
@@ -100,17 +169,11 @@ export class RoofIsland {
 	}
 
 	/** Nierboon — twee lobben, één taille. Anatomisch niet correct, wel gezellig. */
-	private kidney(s: number): THREE.Shape {
-		const sh = new THREE.Shape();
-		sh.moveTo(-6.5 * s, -0.4 * s);
-		sh.bezierCurveTo(-6.9 * s, 1.8 * s, -4.8 * s, 3.6 * s, -2.6 * s, 3.6 * s);
-		sh.bezierCurveTo(-0.8 * s, 3.6 * s, 0.4 * s, 2.8 * s, 2.2 * s, 3.0 * s);
-		sh.bezierCurveTo(4.2 * s, 3.2 * s, 6.2 * s, 2.2 * s, 6.4 * s, 0.4 * s);
-		sh.bezierCurveTo(6.6 * s, -1.6 * s, 4.6 * s, -2.8 * s, 2.8 * s, -2.4 * s);
-		sh.bezierCurveTo(1.4 * s, -2.0 * s, 1.0 * s, -0.6 * s, -0.6 * s, -0.8 * s);
-		sh.bezierCurveTo(-2.2 * s, -1.0 * s, -2.4 * s, -2.6 * s, -4.2 * s, -2.6 * s);
-		sh.bezierCurveTo(-6.0 * s, -2.6 * s, -6.3 * s, -1.6 * s, -6.5 * s, -0.4 * s);
-		return sh;
+	private buildPoolShapes(): { inner: THREE.Shape; outer: THREE.Shape } {
+		const inner = new THREE.Shape(POOL_OUTLINE.map((p) => p.clone()));
+		const outer = new THREE.Shape(offsetOutward(POOL_OUTLINE, RIM_W));
+		outer.holes.push(new THREE.Path(POOL_OUTLINE.map((p) => p.clone())));
+		return { inner, outer };
 	}
 
 	private buildPool(): void {
@@ -119,13 +182,11 @@ export class RoofIsland {
 		pool.position.set(POOL_CENTER.x, DECK_Y, POOL_CENTER.z);
 		pool.rotation.y = 0.3;
 
-		const inner = this.kidney(1);
-		const outer = this.kidney(1.15);
-		outer.holes.push(new THREE.Path(inner.getPoints(28)));
+		const { inner, outer } = this.buildPoolShapes();
 
 		// Tegelrand — licht verhoogd, zodat niemand 'per ongeluk' erin rijdt
 		const rim = new THREE.Mesh(
-			this.geo(new THREE.ExtrudeGeometry(outer, { depth: 0.12, bevelEnabled: false, curveSegments: 24 })),
+			this.geo(new THREE.ExtrudeGeometry(outer, { depth: 0.12, bevelEnabled: false })),
 			this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.6 })),
 		);
 		rim.rotation.x = -Math.PI / 2;
@@ -134,7 +195,7 @@ export class RoofIsland {
 
 		// Donkere bodem onder het transparante water: dieptesuggestie voor bijna niks
 		const bottom = new THREE.Mesh(
-			this.geo(new THREE.ShapeGeometry(inner, 24)),
+			this.geo(new THREE.ShapeGeometry(inner)),
 			this.track(new THREE.MeshStandardMaterial({ color: 0x01579b, roughness: 0.85 })),
 		);
 		bottom.rotation.x = -Math.PI / 2;
@@ -151,7 +212,7 @@ export class RoofIsland {
 				opacity: 0.8,
 			}),
 		);
-		this.water = new THREE.Mesh(this.geo(new THREE.ShapeGeometry(inner, 24)), this.waterMat);
+		this.water = new THREE.Mesh(this.geo(new THREE.ShapeGeometry(inner)), this.waterMat);
 		this.water.rotation.x = -Math.PI / 2;
 		this.water.position.y = 0.1;
 		this.waterBaseY = 0.1;

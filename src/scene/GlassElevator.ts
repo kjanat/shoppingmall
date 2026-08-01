@@ -1,9 +1,9 @@
-import * as THREE from 'three';
 import { speakLine } from '@/audio/ElevenVoice';
-import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '@/data/levels';
+import { level, levelAt, levelAtIndex, type LevelId, levelIndex, LEVELS, levelY } from '@/data/levels';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
+import * as THREE from 'three';
 
 const FLOOR_B = levelY('p1');
 const FLOOR0 = levelY('v0');
@@ -25,7 +25,11 @@ const HANS_GREET = [
 const HANS_LINES: Record<LevelId, string[]> = {
 	p1: ["Parkeergarage. Let op auto's.", 'P1 garage. Ticket bij de kiosk.', 'Ondergronds. Lift terug is hier.'],
 	v0: ['Begane grond. Let op de stap.', 'Begane grond. Deuren open.', 'Begane grond. Prettige dag verder.'],
-	v1: ['Verdieping één. Kruidvat is links.', 'Eerste verdieping. Deuren open.', 'Verdieping één. Food court op het balkon.'],
+	v1: [
+		'Verdieping één. Kruidvat is links.',
+		'Eerste verdieping. Deuren open.',
+		'Verdieping één. Food court op het balkon.',
+	],
 	roof: ['Dak. Helipad en frisse lucht.', 'Dak. Niet van de rand vallen.', 'Dakterras. Helikopter is die kant op.'],
 };
 
@@ -139,7 +143,10 @@ export class GlassElevator {
 	}
 
 	/** Result of looking at elevator controls (FPS reticle). */
-	getLookHit(camera: THREE.PerspectiveCamera, maxDist = 5.5): { kind: 'hans' | 'panel' | 'call'; level?: LevelId } | null {
+	getLookHit(
+		camera: THREE.PerspectiveCamera,
+		maxDist = 5.5,
+	): { kind: 'hans' | 'panel' | 'call'; level?: LevelId } | null {
 		this.raycaster.setFromCamera(this.ndc, camera);
 		this.raycaster.far = maxDist;
 		const hits = this.raycaster.intersectObjects(this.interactables, true);
@@ -262,11 +269,11 @@ export class GlassElevator {
 			btn.scale.setScalar(scale);
 		}
 
-		const inside = !!playerPos && this.contains(playerPos.x, playerPos.z) && Math.abs(playerPos.y - (this.cabinY + 1.6)) < 2.2;
-		const near =
-			!!playerPos &&
-			Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z) < 5.5 &&
-			Math.abs(playerPos.y - (this.cabinY + 1.6)) < 3.5;
+		const inside = !!playerPos && this.contains(playerPos.x, playerPos.z)
+			&& Math.abs(playerPos.y - (this.cabinY + 1.6)) < 2.2;
+		const near = !!playerPos
+			&& Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z) < 5.5
+			&& Math.abs(playerPos.y - (this.cabinY + 1.6)) < 3.5;
 
 		// Board: soft greet, hold still — NO menu / focus steal (E opens menu)
 		if (inside && !this.wasInside) {
@@ -333,7 +340,11 @@ export class GlassElevator {
 		if (this.liftman) {
 			this.liftman.position.y = 0.02 + Math.sin(this.t * 1.4) * 0.015;
 			const face = inside ? Math.PI * 0.15 : Math.PI;
-			this.liftman.rotation.y = THREE.MathUtils.lerp(this.liftman.rotation.y, face + Math.sin(this.t * 0.4) * 0.08, 0.08);
+			this.liftman.rotation.y = THREE.MathUtils.lerp(
+				this.liftman.rotation.y,
+				face + Math.sin(this.t * 0.4) * 0.08,
+				0.08,
+			);
 		}
 
 		// Floor indicator
@@ -413,23 +424,27 @@ export class GlassElevator {
 		const postTop = FLOOR2 + 3.0;
 		const postH = postTop - postBottom;
 		const postMid = (postTop + postBottom) / 2;
-		for (const [sx, sz] of [
-			[-1.1, -1.1],
-			[1.1, -1.1],
-			[-1.1, 1.1],
-			[1.1, 1.1],
-		] as const) {
+		for (
+			const [sx, sz] of [
+				[-1.1, -1.1],
+				[1.1, -1.1],
+				[-1.1, 1.1],
+				[1.1, 1.1],
+			] as const
+		) {
 			const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, postH, 0.12), chrome);
 			post.position.set(sx, postMid, sz);
 			this.group.add(post);
 		}
 
 		// Glass shaft panels (N, W, E) — open south for boarding all floors
-		for (const [x, z, w, d] of [
-			[0, -1.12, 2.15, 0.04],
-			[-1.12, 0, 0.04, 2.15],
-			[1.12, 0, 0.04, 2.15],
-		] as const) {
+		for (
+			const [x, z, w, d] of [
+				[0, -1.12, 2.15, 0.04],
+				[-1.12, 0, 0.04, 2.15],
+				[1.12, 0, 0.04, 2.15],
+			] as const
+		) {
 			const panel = new THREE.Mesh(new THREE.BoxGeometry(w, postH - 0.4, d), glass);
 			panel.position.set(x, postMid, z);
 			this.group.add(panel);
@@ -825,9 +840,13 @@ export class GlassElevator {
 		ctx.fillStyle = '#ffd700';
 		ctx.font = 'bold 22px system-ui';
 		ctx.textAlign = 'center';
-		ctx.fillText('HANS · Liftman', 128, 28);
-		ctx.font = '14px system-ui';
-		ctx.fillText('Glazen lift · V0 ↔ V1', 128, 50);
+		fitText(ctx, 'HANS · Liftman', { x: 10, y: 6, w: 236, h: 26 }, { size: 22 });
+		fitText(
+			ctx,
+			`Glazen lift · ${LEVELS.map((l) => l.code).join(' · ')}`,
+			{ x: 8, y: 36, w: 240, h: 22 },
+			{ size: 14, weight: '500', maxLines: 1 },
+		);
 		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(1.2, 0.3, 1);
