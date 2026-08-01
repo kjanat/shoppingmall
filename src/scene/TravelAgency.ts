@@ -231,11 +231,7 @@ export class TravelAgency {
 			new THREE.PlaneGeometry(1.1, 0.75),
 			this.track(
 				new THREE.MeshBasicMaterial({
-					map: this.makeTextPoster(
-						['EPSTEIN ISLAND', 'VIP CHARTER', '⚠ FLIGHTS SUSPENDED', 'since 2019'],
-						'#004d40',
-						'#ffeb3b',
-					),
+					map: this.makeTextPoster(['EPSTEIN ISLAND', 'VIP CHARTER', '⚠ FLIGHTS SUSPENDED', 'since 2019'], '#004d40', '#ffeb3b'),
 					toneMapped: false,
 				}),
 			),

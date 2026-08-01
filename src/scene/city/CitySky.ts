@@ -93,11 +93,7 @@ export class CitySky {
 					s * 0.42, // plat, zoals een wolk met ambitie maar zonder budget
 					s * (0.8 + Math.random() * 0.5),
 				);
-				puff.position.set(
-					(j - 1) * (2.6 + Math.random() * 1.6),
-					(Math.random() - 0.5) * 1.4,
-					(Math.random() - 0.5) * 3,
-				);
+				puff.position.set((j - 1) * (2.6 + Math.random() * 1.6), (Math.random() - 0.5) * 1.4, (Math.random() - 0.5) * 3);
 				cluster.add(puff);
 			}
 			const y = 40 + Math.random() * 18;

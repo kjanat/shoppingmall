@@ -16,14 +16,14 @@ const POSE_PHRASE_BEATS = 16;
 
 /**
  * The Screaming Sheep (Original Upload) — classic goat/sheep scream meme
- * https://www.youtube.com/watch?v=SIaFtAKnqBU
+ * @see https://www.youtube.com/watch?v=SIaFtAKnqBU
  */
 const GOAT_SCREAMS = [
-	'/prayer-music/goat_scream_main.mp3',
-	'/prayer-music/goat_scream_punch.mp3',
 	'/prayer-music/goat_scream_hit2.mp3',
-	'/prayer-music/goat_scream_original.mp3',
 	'/prayer-music/goat_scream_intro.mp3',
+	'/prayer-music/goat_scream_main.mp3',
+	'/prayer-music/goat_scream_original.mp3',
+	'/prayer-music/goat_scream_punch.mp3',
 ];
 
 /**
@@ -125,11 +125,11 @@ export class PrayerRoom {
 		window.setTimeout(tryPlay, 120);
 
 		// Soft crowd chants under the trap beat
-		const chants = spatial.startLoopAt(
-			{ x: this.pos.x, y: 1.3, z: this.pos.z },
-			(ctx, dest) => startAllahuLoop(ctx, dest),
-			{ volume: 0.28, k: 0.04, maxDistance: 28 },
-		);
+		const chants = spatial.startLoopAt({ x: this.pos.x, y: 1.3, z: this.pos.z }, (ctx, dest) => startAllahuLoop(ctx, dest), {
+			volume: 0.28,
+			k: 0.04,
+			maxDistance: 28,
+		});
 
 		this.stopAudio = () => {
 			el.pause();
@@ -1254,10 +1254,7 @@ export class PrayerRoom {
 		const moustache = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.035, 0.05), beardM);
 		moustache.position.set(0, -0.07, 0.11);
 		headG.add(moustache);
-		const turbanBase = new THREE.Mesh(
-			new THREE.SphereGeometry(0.17, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
-			turbanM,
-		);
+		const turbanBase = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), turbanM);
 		turbanBase.position.set(0, 0.07, -0.02);
 		headG.add(turbanBase);
 		const turbanTop = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), turbanM);

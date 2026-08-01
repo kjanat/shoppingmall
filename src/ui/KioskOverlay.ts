@@ -769,13 +769,7 @@ export class KioskOverlay {
 	}
 
 	/** North-up labels for the big plan, in screen space so text stays crisp. */
-	private paintBigLabels(
-		ctx: CanvasRenderingContext2D,
-		cssW: number,
-		cssH: number,
-		scale: number,
-		floor: 0 | 1 | 2,
-	): void {
+	private paintBigLabels(ctx: CanvasRenderingContext2D, cssW: number, cssH: number, scale: number, floor: 0 | 1 | 2): void {
 		const sx = (x: number) => cssW / 2 + x * scale;
 		const sy = (z: number) => cssH / 2 + z * scale;
 		ctx.textAlign = 'center';
@@ -865,11 +859,7 @@ export class KioskOverlay {
 
 	private paintMapChrome(): void {
 		const floorText =
-			this.map.floor === 2
-				? 'DAK · HELIPAD & ISLAND'
-				: this.map.floor === 0
-					? 'V0 · BEGANE GROND'
-					: 'V1 · VERDIEPING 1';
+			this.map.floor === 2 ? 'DAK · HELIPAD & ISLAND' : this.map.floor === 0 ? 'V0 · BEGANE GROND' : 'V1 · VERDIEPING 1';
 		if (this.elMapFloor.textContent !== floorText) {
 			this.elMapFloor.textContent = floorText;
 		}

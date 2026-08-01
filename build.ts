@@ -19,7 +19,7 @@ const shared = {
 	root: '.',
 	publicPath: '/',
 	define: {
-		'process.env.NODE_ENV': '"production"',
+		'env.NODE_ENV': '"production"',
 	},
 } as const;
 

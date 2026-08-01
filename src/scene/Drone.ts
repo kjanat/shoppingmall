@@ -95,10 +95,7 @@ export class Drone {
 		this.materials.push(glass);
 
 		// Stoel-pod: open bol zodat je er als speler doorheen kunt kijken
-		const pod = new THREE.Mesh(
-			new THREE.SphereGeometry(0.75, 16, 12, 0, Math.PI * 2, Math.PI * 0.35, Math.PI * 0.5),
-			glass,
-		);
+		const pod = new THREE.Mesh(new THREE.SphereGeometry(0.75, 16, 12, 0, Math.PI * 2, Math.PI * 0.35, Math.PI * 0.5), glass);
 		pod.position.y = 0.35;
 		this.body.add(pod);
 		const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.55), dark);

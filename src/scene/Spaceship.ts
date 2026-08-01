@@ -158,10 +158,7 @@ export class Spaceship {
 		s.add(disc);
 
 		// Underside
-		const under = new THREE.Mesh(
-			new THREE.SphereGeometry(3.6, 24, 12, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.35),
-			dark,
-		);
+		const under = new THREE.Mesh(new THREE.SphereGeometry(3.6, 24, 12, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.35), dark);
 		under.scale.set(1, 0.35, 1);
 		under.position.y = -0.15;
 		s.add(under);

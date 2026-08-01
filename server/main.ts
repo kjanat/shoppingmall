@@ -8,6 +8,7 @@
 import { readdir } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { link } from 'ansispeck';
+import { env, serve } from 'bun';
 import index from '$/index.html';
 import { handleApi } from './api.ts';
 
@@ -64,11 +65,11 @@ async function publicRoutes(): Promise<Record<string, (req: Request) => Promise<
 	return out;
 }
 
-const server = Bun.serve({
-	port: Bun.env['PORT'] ?? 5174,
+const server = serve({
+	port: env['PORT'] ?? 5174,
 	hostname: '0.0.0.0',
 	idleTimeout: 60,
-	development: process.env.NODE_ENV !== 'production' && { hmr: true, console: true },
+	development: env.NODE_ENV !== 'production' && { hmr: true, console: true },
 
 	routes: {
 		...(await publicRoutes()),
@@ -90,7 +91,7 @@ const server = Bun.serve({
 console.log(
 	`\
 [Mall] game + /api on ${link(server.url)}
-\tELEVENLABS=${!!Bun.env['ELEVENLABS_API_KEY']}
-\tYOUTUBE=${!!Bun.env['YOUTUBE_API_KEY']}
-\tOPENROUTER=${!!Bun.env['OPENROUTER_API_KEY']}`,
+\tELEVENLABS=${!!env['ELEVENLABS_API_KEY']}
+\tYOUTUBE=${!!env['YOUTUBE_API_KEY']}
+\tOPENROUTER=${!!env['OPENROUTER_API_KEY']}`,
 );

@@ -129,12 +129,7 @@ export class DJOverlay {
 
 	setChat(lines: { who: 'you' | 'bartek'; text: string }[], status?: string): void {
 		this.chat.innerHTML = lines
-			.map(
-				(l) =>
-					`<div class="dj-chat-line ${l.who}"><b>${l.who === 'you' ? 'Jij' : 'Bartek'}:</b> ${escapeHtml(
-						l.text,
-					)}</div>`,
-			)
+			.map((l) => `<div class="dj-chat-line ${l.who}"><b>${l.who === 'you' ? 'Jij' : 'Bartek'}:</b> ${escapeHtml(l.text)}</div>`)
 			.join('');
 		this.chat.scrollTop = this.chat.scrollHeight;
 		if (status) this.setStatus(status);

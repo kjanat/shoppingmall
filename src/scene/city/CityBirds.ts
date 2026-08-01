@@ -54,10 +54,7 @@ export class CityBirds {
 		// punt naar +x. De linkervleugel is dezelfde geometry met scale.x = -1 —
 		// spiegelen is gratis, een tweede geometry niet.
 		const vleugelGeo = new THREE.BufferGeometry();
-		vleugelGeo.setAttribute(
-			'position',
-			new THREE.BufferAttribute(new Float32Array([0, 0, -0.28, 0, 0, 0.34, 1.0, 0, -0.02]), 3),
-		);
+		vleugelGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -0.28, 0, 0, 0.34, 1.0, 0, -0.02]), 3));
 		this.geometries.push(vleugelGeo);
 		const silhouet = this.track(new THREE.MeshBasicMaterial({ color: 0x151a1f, side: THREE.DoubleSide }));
 

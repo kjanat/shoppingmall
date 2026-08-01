@@ -283,12 +283,7 @@ export class CollisionWorld {
 		// balustrade-jump drops through, and the drone can descend back in through
 		// the skylight (capped just under ROOF_H so roof walkers aren't affected).
 		// Does not punch into the basement garage.
-		if (
-			currentY < ROOF_H - 0.5 &&
-			currentY > 0.3 &&
-			Math.abs(x) < CollisionWorld.VOID_X &&
-			Math.abs(z) < CollisionWorld.VOID_Z
-		) {
+		if (currentY < ROOF_H - 0.5 && currentY > 0.3 && Math.abs(x) < CollisionWorld.VOID_X && Math.abs(z) < CollisionWorld.VOID_Z) {
 			return 0;
 		}
 
@@ -324,11 +319,7 @@ export class CollisionWorld {
 			y > 0.6 &&
 			y < FLOOR_H - 0.6 &&
 			this.ramps.some(
-				(r) =>
-					x >= r.minX &&
-					x <= r.maxX &&
-					z >= Math.min(r.zBottom, r.zTop) - 1.2 &&
-					z <= Math.max(r.zBottom, r.zTop) + 1.2,
+				(r) => x >= r.minX && x <= r.maxX && z >= Math.min(r.zBottom, r.zTop) - 1.2 && z <= Math.max(r.zBottom, r.zTop) + 1.2,
 			)
 		);
 	}
@@ -430,13 +421,7 @@ export class CollisionWorld {
 	}
 
 	/** Separate two agents (sim-sim / player-sim). */
-	separate(
-		ax: number,
-		az: number,
-		bx: number,
-		bz: number,
-		minDist: number,
-	): { ax: number; az: number; bx: number; bz: number } {
+	separate(ax: number, az: number, bx: number, bz: number, minDist: number): { ax: number; az: number; bx: number; bz: number } {
 		let dx = bx - ax;
 		let dz = bz - az;
 		let d2 = dx * dx + dz * dz;

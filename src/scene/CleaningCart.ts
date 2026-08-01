@@ -4,17 +4,11 @@ import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
 
-/** Pre-generated ElevenLabs Chinese scolds (public/voices/wei/) */
-export const WEI_YELLS: { file: string; text: string; label: string }[] = [
-	{ file: '/voices/wei/block_01.mp3', text: '让开！让开！你挡路了！', label: '让开！你挡路了！' },
-	{ file: '/voices/wei/block_02.mp3', text: '喂！不要站在中间！', label: '喂！不要站在中间！' },
-	{ file: '/voices/wei/block_03.mp3', text: '小心！地滑！走开走开！', label: '小心！地滑！走开！' },
-	{ file: '/voices/wei/block_04.mp3', text: '我在拖地！让一下行不行？', label: '我在拖地！让一下！' },
-	{ file: '/voices/wei/block_05.mp3', text: '哎！你挡着我的车了！', label: '你挡着我的车了！' },
-	{ file: '/voices/wei/block_06.mp3', text: '拜托，让一让！我还要工作！', label: '拜托，让一让！' },
-	{ file: '/voices/wei/block_07.mp3', text: '借过借过！清洁车来了！', label: '借过！清洁车来了！' },
-	{ file: '/voices/wei/block_08.mp3', text: '你是看不见我吗？让开！', label: '你是看不见我吗？' },
-];
+/**
+ * Pre-generated ElevenLabs Chinese scolds. Straight from the manifest the
+ * generator writes next to the mp3s, so the list can't drift from the files.
+ */
+import WEI_YELLS from '$/public/voices/wei/manifest.json' with { type: 'json' };
 
 /**
  * Ride-on floor scrubber with Chinese cleaner Wei Chen —

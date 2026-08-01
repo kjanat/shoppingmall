@@ -14,6 +14,7 @@ import { basename, extname, join, resolve } from 'node:path';
 import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { OpenRouter } from '@openrouter/sdk';
+import { env } from 'bun';
 
 /** Music library. public/ is read from the working directory, like public/ in main.ts. */
 const MUSIC_DIR = resolve('public/dj-music');
@@ -166,11 +167,11 @@ let ttsCharacters = 0;
 let elevenClient: ElevenLabsClient | null = null;
 
 async function elevenLabsTts(text: string, voiceId?: string, lang?: string): Promise<TtsResult | null> {
-	if (!process.env['ELEVENLABS_API_KEY']) return null;
+	if (!env['ELEVENLABS_API_KEY']) return null;
 
 	const voice =
 		voiceId ||
-		process.env['ELEVENLABS_VOICE_ID']?.trim() ||
+		env['ELEVENLABS_VOICE_ID']?.trim() ||
 		// Charlie — energetic (good default DJ energy)
 		'IKne3meq5aSn9XLyUdCD';
 
@@ -183,7 +184,7 @@ async function elevenLabsTts(text: string, voiceId?: string, lang?: string): Pro
 		// Flash v2.5: ~75ms latency and half the credits per character, 32 langs
 		// incl. NL. Mall one-liners don't need multilingual_v2's long-form
 		// fidelity — set ELEVENLABS_MODEL_ID to go back.
-		modelId: process.env['ELEVENLABS_MODEL_ID']?.trim() || 'eleven_flash_v2_5',
+		modelId: env['ELEVENLABS_MODEL_ID']?.trim() || 'eleven_flash_v2_5',
 		voiceSettings: {
 			stability: lang === 'nl' ? 0.42 : 0.32,
 			similarityBoost: 0.82,
@@ -231,27 +232,16 @@ function openRouterAppMeta(): {
 	appTitle: string;
 	appCategories: string;
 } {
-	const httpReferer = (
-		process.env['OPENROUTER_HTTP_REFERER'] ||
-		process.env['OPENROUTER_SITE_URL'] ||
-		'https://prairie-lakes-mall.local'
-	).trim();
-	const appTitle = (
-		process.env['OPENROUTER_APP_TITLE'] ||
-		process.env['OPENROUTER_TITLE'] ||
-		'Prairie Lakes Mall SIM'
-	).trim();
-	const appCategories = (process.env['OPENROUTER_APP_CATEGORIES'] || 'game,roleplay')
-		.trim()
-		.toLowerCase()
-		.replace(/\s+/g, '');
+	const httpReferer = (env['OPENROUTER_HTTP_REFERER'] || env['OPENROUTER_SITE_URL'] || 'https://prairie-lakes-mall.local').trim();
+	const appTitle = (env['OPENROUTER_APP_TITLE'] || env['OPENROUTER_TITLE'] || 'Prairie Lakes Mall SIM').trim();
+	const appCategories = (env['OPENROUTER_APP_CATEGORIES'] || 'game,roleplay').trim().toLowerCase().replace(/\s+/g, '');
 	return { httpReferer, appTitle, appCategories };
 }
 
 /** Lazy singleton OpenRouter client with app attribution baked in */
 let openRouterClient: OpenRouter | null = null;
 function getOpenRouter(): OpenRouter | null {
-	if (!process.env['OPENROUTER_API_KEY']) return null;
+	if (!env['OPENROUTER_API_KEY']) return null;
 	if (!openRouterClient) {
 		const meta = openRouterAppMeta();
 		// The SDK reads OPENROUTER_API_KEY itself
@@ -315,7 +305,7 @@ async function simChatExchange(
 	if (!openrouter) return { error: 'no_openrouter_key' };
 
 	// Grok only (no Google). Fast sassy default; override via OPENROUTER_MODEL
-	const model = process.env['OPENROUTER_MODEL']?.trim() || 'x-ai/grok-4.20';
+	const model = env['OPENROUTER_MODEL']?.trim() || 'x-ai/grok-4.20';
 
 	const meanA = a.unhappiness >= 55;
 	const meanB = b.unhappiness >= 55;
@@ -384,7 +374,7 @@ Context: ${context ?? 'corridor botsing'}
 					generationName: 'guest-banter',
 					additionalProperties: {
 						feature: 'sim-chat',
-						environment: process.env.NODE_ENV ?? 'development',
+						environment: env.NODE_ENV ?? 'development',
 						context: ctxLabel,
 						mean_mode: meanA || meanB,
 						unhappiness_a: Math.round(a.unhappiness),
@@ -412,9 +402,7 @@ Context: ${context ?? 'corridor botsing'}
 				? content
 				: Array.isArray(content)
 					? content
-							.map((p) =>
-								typeof p === 'object' && p && 'text' in p ? String((p as { text?: string }).text ?? '') : '',
-							)
+							.map((p) => (typeof p === 'object' && p && 'text' in p ? String((p as { text?: string }).text ?? '') : ''))
 							.join('')
 					: ''
 		).trim();
@@ -435,7 +423,7 @@ Context: ${context ?? 'corridor botsing'}
 
 /** Official YouTube Data API search — more reliable than yt-dlp ytsearch */
 async function youtubeSearch(query: string): Promise<{ videoId: string; title: string } | { error: string }> {
-	const key = process.env['YOUTUBE_API_KEY'];
+	const key = env['YOUTUBE_API_KEY'];
 	if (!key) return { error: 'no_youtube_api_key' };
 
 	const params = new URLSearchParams({
@@ -562,7 +550,7 @@ async function requestTrack(
 	let log = '';
 
 	// Prefer official API search when key is present
-	const ytKey = process.env['YOUTUBE_API_KEY'];
+	const ytKey = env['YOUTUBE_API_KEY'];
 	if (ytKey) {
 		const hit = await youtubeSearch(clean);
 		if ('error' in hit) {
@@ -603,12 +591,12 @@ export async function handleApi(req: Request, ip: string): Promise<Response> {
 
 	try {
 		if (url === '/api/dj/status' && req.method === 'GET') {
-			const hasKey = !!process.env['ELEVENLABS_API_KEY'];
+			const hasKey = !!env['ELEVENLABS_API_KEY'];
 			return json(200, {
 				ok: true,
 				elevenlabs: hasKey,
-				youtubeApi: !!process.env['YOUTUBE_API_KEY'],
-				openrouter: !!process.env['OPENROUTER_API_KEY'],
+				youtubeApi: !!env['YOUTUBE_API_KEY'],
+				openrouter: !!env['OPENROUTER_API_KEY'],
 				openrouterSdk: true,
 				openrouterApp: openRouterAppMeta().appTitle,
 				openrouterCategories: openRouterAppMeta().appCategories,
@@ -618,7 +606,7 @@ export async function handleApi(req: Request, ip: string): Promise<Response> {
 				tracks: (await listPlaylist()).length,
 				ttsCharacters,
 				booth: 'DJ Bartek · Trap-gat · Prairie Lakes',
-				voice: process.env['ELEVENLABS_VOICE_ID']?.trim() || 'pNInz6obpgDQGcFmaJgB',
+				voice: env['ELEVENLABS_VOICE_ID']?.trim() || 'pNInz6obpgDQGcFmaJgB',
 			});
 		}
 

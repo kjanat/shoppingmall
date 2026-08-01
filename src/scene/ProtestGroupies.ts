@@ -3,6 +3,7 @@ import { spatial } from '@/audio/SpatialAudio';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
 import { at, pick } from '@/util/rand';
+import MANIFEST from '$/public/voices/protest/manifest.json' with { type: 'json' };
 
 /** Prebaked multi-voice chants (public/voices/protest/) — different speaker each clip */
 export type ProtestClip = {
@@ -15,235 +16,13 @@ export type ProtestClip = {
 };
 
 /**
- * Hardcoded fallback if manifest fetch fails — matches prebaked files.
- * Voices vary (DE/EN/AU/IE/NZ/IN) so the swarm doesn't sound like one person.
+ * The prebaked chants, straight from the manifest the generator writes next to
+ * the mp3s. JSON has no unions, so `kind` narrows once here.
  */
-export const PROTEST_CLIPS: ProtestClip[] = [
-	{
-		id: 'chant_01',
-		file: '/voices/protest/chant_01.mp3',
-		text: 'Wir schaffen das!',
-		label: 'Wir schaffen das!',
-		voice: 'de-DE-Conrad',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_02',
-		file: '/voices/protest/chant_02.mp3',
-		text: 'WIR SCHAFFEN DAS!',
-		label: 'WIR SCHAFFEN DAS!',
-		voice: 'de-DE-Katja',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_03',
-		file: '/voices/protest/chant_03.mp3',
-		text: 'Wir schaffen das, wirklich!',
-		label: 'Wir schaffen das, wirklich!',
-		voice: 'de-DE-Killian',
-		kind: 'merkel',
-	},
-	{
-		id: 'chant_04',
-		file: '/voices/protest/chant_04.mp3',
-		text: 'Zusammen schaffen wir das!',
-		label: 'Zusammen schaffen wir das!',
-		voice: 'de-DE-Seraphina',
-		kind: 'merkel',
-	},
-	{
-		id: 'chant_05',
-		file: '/voices/protest/chant_05.mp3',
-		text: 'Mutti is watching!',
-		label: 'Mutti is watching!',
-		voice: 'de-AT-Jonas',
-		kind: 'merkel',
-	},
-	{
-		id: 'chant_06',
-		file: '/voices/protest/chant_06.mp3',
-		text: 'Open borders, open hearts!',
-		label: 'Open borders, open hearts!',
-		voice: 'de-DE-Florian',
-		kind: 'merkel',
-	},
-	{
-		id: 'chant_07',
-		file: '/voices/protest/chant_07.mp3',
-		text: 'Refugees welcome!',
-		label: 'Refugees welcome!',
-		voice: 'en-US-Jenny',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_08',
-		file: '/voices/protest/chant_08.mp3',
-		text: 'Love is love!',
-		label: 'Love is love!',
-		voice: 'en-US-Guy',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_09',
-		file: '/voices/protest/chant_09.mp3',
-		text: 'LGBTQIA plus rights!',
-		label: 'LGBTQIA+ rights!',
-		voice: 'en-GB-Ryan',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_10',
-		file: '/voices/protest/chant_10.mp3',
-		text: 'Climate now!',
-		label: 'Climate now!',
-		voice: 'en-GB-Sonia',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_11',
-		file: '/voices/protest/chant_11.mp3',
-		text: 'No borders, no walls!',
-		label: 'No borders, no walls!',
-		voice: 'en-AU-Natasha',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_12',
-		file: '/voices/protest/chant_12.mp3',
-		text: 'Solidarity forever!',
-		label: 'Solidarity forever!',
-		voice: 'en-IE-Connor',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_13',
-		file: '/voices/protest/chant_13.mp3',
-		text: 'Tax the rich! Not me though!',
-		label: 'TAX THE RICH (not me)',
-		voice: 'en-US-Aria',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_14',
-		file: '/voices/protest/chant_14.mp3',
-		text: 'Free Palestine, free smoothies!',
-		label: 'Free Palestine free smoothies',
-		voice: 'en-US-Guy',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_15',
-		file: '/voices/protest/chant_15.mp3',
-		text: 'Defund the food court!',
-		label: 'Defund the food court',
-		voice: 'en-GB-Thomas',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_16',
-		file: '/voices/protest/chant_16.mp3',
-		text: 'Oat milk is a human right!',
-		label: 'Oat milk is a human right',
-		voice: 'en-CA-Clara',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_17',
-		file: '/voices/protest/chant_17.mp3',
-		text: 'Check your privilege and your receipt!',
-		label: 'Check your privilege',
-		voice: 'en-US-Christopher',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_18',
-		file: '/voices/protest/chant_18.mp3',
-		text: 'Smash the patriarchy after brunch!',
-		label: 'Smash the patriarchy after brunch',
-		voice: 'en-GB-Libby',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_19',
-		file: '/voices/protest/chant_19.mp3',
-		text: 'Decolonize the escalator!',
-		label: 'DECOLONIZE the escalator',
-		voice: 'en-US-Michelle',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_20',
-		file: '/voices/protest/chant_20.mp3',
-		text: 'Protect trans kids!',
-		label: 'Protect trans kids',
-		voice: 'en-IN-Neerja',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_21',
-		file: '/voices/protest/chant_21.mp3',
-		text: 'I brought a drum and no rhythm!',
-		label: 'I brought a drum and no rhythm',
-		voice: 'en-GB-Ryan',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_22',
-		file: '/voices/protest/chant_22.mp3',
-		text: 'Who has the aux?!',
-		label: 'Who has the aux??',
-		voice: 'en-NZ-Molly',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_23',
-		file: '/voices/protest/chant_23.mp3',
-		text: 'Late stage capitalism? In the mall?!',
-		label: 'Late-stage capitalism?? in the mall??',
-		voice: 'en-US-Ana',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_24',
-		file: '/voices/protest/chant_24.mp3',
-		text: 'My zodiac said to chant today!',
-		label: 'My zodiac said to chant today',
-		voice: 'en-GB-Maisie',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_25',
-		file: '/voices/protest/chant_25.mp3',
-		text: 'Die Lage ist ernst, aber wir schaffen das!',
-		label: 'Die Lage ist ernst, aber…',
-		voice: 'de-CH-Jan',
-		kind: 'merkel',
-	},
-	{
-		id: 'chant_26',
-		file: '/voices/protest/chant_26.mp3',
-		text: 'This sign is recycled!',
-		label: 'This sign is recycled!!',
-		voice: 'en-US-Andrew',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_27',
-		file: '/voices/protest/chant_27.mp3',
-		text: 'I am the main character of this march!',
-		label: 'I am the main character of this march',
-		voice: 'en-IE-Emily',
-		kind: 'crowd',
-	},
-	{
-		id: 'chant_28',
-		file: '/voices/protest/chant_28.mp3',
-		text: 'Guys is this being filmed?!',
-		label: 'Guys is this being filmed?',
-		voice: 'en-US-Eric',
-		kind: 'crowd',
-	},
-];
+const PROTEST_CLIPS: ProtestClip[] = MANIFEST.map((c) => ({
+	...c,
+	kind: c.kind === 'merkel' ? 'merkel' : 'crowd',
+}));
 
 type Protester = {
 	root: THREE.Group;
@@ -274,14 +53,14 @@ type Protester = {
 };
 
 const SIGN_LINES: [string, string][] = [
+	['CLIMATE', 'JUSTICE'],
+	['LGBTQIA+', 'PRIDE'],
+	['LOVE', 'WINS 🌈'],
+	['NO HATE', 'ONLY HUGS'],
+	['REFUGEES', 'WELCOME'],
+	['TOFU', 'NOT WAR'],
 	['WIR SCHAFFEN', 'DAS'],
 	['Wir schaffen', 'das!'],
-	['REFUGEES', 'WELCOME'],
-	['LOVE', 'WINS 🌈'],
-	['LGBTQIA+', 'PRIDE'],
-	['CLIMATE', 'JUSTICE'],
-	['NO HATE', 'ONLY HUGS'],
-	['TOFU', 'NOT WAR'],
 ];
 
 type FlagKind = 'progress' | 'rainbow' | 'trans' | 'bi' | 'lesbian' | 'nb' | 'pan' | 'intersex';
@@ -324,7 +103,6 @@ export class ProtestGroupies {
 		this.buildMegaphoneStand();
 		// Preload so first yell isn't silent
 		this.preloadClips();
-		void this.loadManifest();
 	}
 
 	ensureAudio(): void {
@@ -386,23 +164,6 @@ export class ProtestGroupies {
 		window.setTimeout(() => this.yellWave(4), 400);
 	}
 
-	private async loadManifest(): Promise<void> {
-		try {
-			const r = await fetch('/voices/protest/manifest.json');
-			if (!r.ok) return;
-			const data = (await r.json()) as ProtestClip[];
-			if (Array.isArray(data) && data.length > 0) {
-				this.clips = data;
-				this.crowdClips = data.filter((c) => c.kind !== 'merkel');
-				this.merkelClips = data.filter((c) => c.kind === 'merkel');
-				if (!this.merkelClips.length) this.merkelClips = this.crowdClips;
-				this.preloadClips();
-			}
-		} catch {
-			/* keep hardcoded bank */
-		}
-	}
-
 	private preloadClips(): void {
 		for (const c of this.clips) {
 			const a = new Audio(c.file);
@@ -439,9 +200,7 @@ export class ProtestGroupies {
 			idx = (idx + 1 + Math.floor(Math.random() * (bank.length - 1))) % bank.length;
 		}
 		// Light sticky preference: same person often reuses their voiceKey subset
-		const sticky = bank.filter(
-			(c) => c.voice.includes(p.voiceKey) || p.voiceKey.includes(c.voice.split('-').pop() ?? ''),
-		);
+		const sticky = bank.filter((c) => c.voice.includes(p.voiceKey) || p.voiceKey.includes(c.voice.split('-').pop() ?? ''));
 		if (sticky.length && Math.random() < 0.55) {
 			return pick(sticky);
 		}
@@ -728,18 +487,7 @@ export class ProtestGroupies {
 
 	/** Tall pride flag poles around the picket */
 	private buildPlantedFlags(): void {
-		const kinds: FlagKind[] = [
-			'progress',
-			'rainbow',
-			'trans',
-			'bi',
-			'lesbian',
-			'nb',
-			'pan',
-			'intersex',
-			'progress',
-			'rainbow',
-		];
+		const kinds: FlagKind[] = ['progress', 'rainbow', 'trans', 'bi', 'lesbian', 'nb', 'pan', 'intersex', 'progress', 'rainbow'];
 		for (let i = 0; i < kinds.length; i++) {
 			const ang = (i / kinds.length) * Math.PI * 2;
 			const r = 2.85;

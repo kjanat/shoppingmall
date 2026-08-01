@@ -27,13 +27,13 @@ const PERCHES: [number, number, number][] = [
 
 const FACE_YELLS = [
 	'AU!!',
-	'STINK STINK',
-	'DIT IS NIET GOED!',
 	'AUW M’N OGEN',
 	'BAH 💩',
-	'STINKT HIER!!',
-	'NIET COOL AAP',
+	'DIT IS NIET GOED!',
 	'HELP DE KAK',
+	'NIET COOL AAP',
+	'STINK STINK',
+	'STINKT HIER!!',
 ];
 
 type Poop = {

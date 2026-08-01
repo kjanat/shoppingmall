@@ -491,10 +491,7 @@ export class Catwalk {
 	// ── set dressing ───────────────────────────────────────
 
 	private buildRunway(): void {
-		const deck = new THREE.Mesh(
-			new THREE.BoxGeometry(HALF_W * 2, DECK_Y, TIP_Z - START_Z + 2.4),
-			this.mat(0xf7f5f2, 0.25, 0.15),
-		);
+		const deck = new THREE.Mesh(new THREE.BoxGeometry(HALF_W * 2, DECK_Y, TIP_Z - START_Z + 2.4), this.mat(0xf7f5f2, 0.25, 0.15));
 		deck.position.set(RUNWAY_X, DECK_Y / 2, (START_Z + TIP_Z) / 2);
 		deck.receiveShadow = true;
 		this.group.add(deck);

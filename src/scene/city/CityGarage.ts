@@ -320,12 +320,7 @@ export class CityGarage {
 	// ── gereedschap ─────────────────────────────────────────────
 
 	/** Eén InstancedMesh uit een lijstje plaatsingen — het stedelijke standaardrecept. */
-	private fill(
-		geo: THREE.BufferGeometry,
-		mat: THREE.Material,
-		items: readonly Placement[],
-		name: string,
-	): THREE.InstancedMesh {
+	private fill(geo: THREE.BufferGeometry, mat: THREE.Material, items: readonly Placement[], name: string): THREE.InstancedMesh {
 		const mesh = new THREE.InstancedMesh(geo, mat, items.length);
 		mesh.name = name;
 		items.forEach((p, i) => {
@@ -342,17 +337,7 @@ export class CityGarage {
 	}
 
 	/** Losse geschaalde unit-kubus voor eenmalige onderdelen (platen, poten, paal). */
-	private addBox(
-		mat: THREE.Material,
-		sx: number,
-		sy: number,
-		sz: number,
-		x: number,
-		y: number,
-		z: number,
-		rx = 0,
-		rz = 0,
-	): void {
+	private addBox(mat: THREE.Material, sx: number, sy: number, sz: number, x: number, y: number, z: number, rx = 0, rz = 0): void {
 		const m = new THREE.Mesh(this.unitBox, mat);
 		m.scale.set(sx, sy, sz);
 		m.position.set(x, y, z);

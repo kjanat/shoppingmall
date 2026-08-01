@@ -167,8 +167,7 @@ export class DriveableCars {
 		if (Math.abs(throttle) > 0.05) {
 			const want = throttle * maxSp;
 			const rate =
-				(Math.sign(throttle) === Math.sign(this.speed) || Math.abs(this.speed) < 0.4 ? ACCEL : BRAKE) *
-				(boost ? 1.2 : 1);
+				(Math.sign(throttle) === Math.sign(this.speed) || Math.abs(this.speed) < 0.4 ? ACCEL : BRAKE) * (boost ? 1.2 : 1);
 			if (this.speed < want) this.speed = Math.min(want, this.speed + rate * dt);
 			else this.speed = Math.max(want, this.speed - rate * dt);
 		} else {

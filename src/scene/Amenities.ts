@@ -246,14 +246,7 @@ export class Amenities {
 		return v;
 	}
 
-	private updateParticles(
-		pts: THREE.Points,
-		vel: Float32Array,
-		dt: number,
-		ox: number,
-		resetY: number,
-		maxY: number,
-	): void {
+	private updateParticles(pts: THREE.Points, vel: Float32Array, dt: number, ox: number, resetY: number, maxY: number): void {
 		const pos = pts.geometry.getAttribute('position');
 		const arr = pos.array as Float32Array;
 		for (let i = 0; i + 2 < arr.length; i += 3) {

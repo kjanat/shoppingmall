@@ -159,9 +159,7 @@ export class DJPlayer {
 		// speaks Range, so tracks added after startup play and seek fine.
 		this.audio.src = t.url || `/dj-music/${encodeURIComponent(t.file)}`;
 		// Sidecar metadata when the crate has it: "Uploader — Title · 4:23"
-		this.nowPlaying = [t.artist ? `${t.artist} — ${t.title}` : t.title, t.seconds ? ` · ${clock(t.seconds)}` : ''].join(
-			'',
-		);
+		this.nowPlaying = [t.artist ? `${t.artist} — ${t.title}` : t.title, t.seconds ? ` · ${clock(t.seconds)}` : ''].join('');
 		this.playing = autoplay;
 		const onMeta = () => {
 			if (seekTo > 0 && Number.isFinite(this.audio.duration)) {

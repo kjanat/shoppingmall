@@ -473,14 +473,7 @@ export class Americans {
 
 	/** Crowd at DJ Bartek: speech bubbles + happier + short freeze-dance */
 	cheerNear(worldPos: THREE.Vector3, radius: number): void {
-		const cheers = [
-			'BARTEK! BARTEK!',
-			'DROP IT!',
-			'Squeak banger!',
-			'Thicc & thriving',
-			'Trap-gat forever',
-			'Yallah dansen!',
-		];
+		const cheers = ['BARTEK! BARTEK!', 'DROP IT!', 'Squeak banger!', 'Thicc & thriving', 'Trap-gat forever', 'Yallah dansen!'];
 		for (const s of this.sims) {
 			if (Math.abs(s.pos.y - worldPos.y) > 2.5) continue;
 			if (s.pos.distanceTo(worldPos) > radius) continue;
@@ -906,11 +899,7 @@ export class Americans {
 
 		const f: SimFactors = {
 			id,
-			name: isBrad
-				? 'Brad Miller'
-				: isMiss
-					? at(MISS_NAMES, missIdx)
-					: `${pickWith(FIRST, rng)} ${pickWith(LAST, rng)}`,
+			name: isBrad ? 'Brad Miller' : isMiss ? at(MISS_NAMES, missIdx) : `${pickWith(FIRST, rng)} ${pickWith(LAST, rng)}`,
 			thicc,
 			speed: isBrad ? 1.35 : isMiss ? 1.1 : 0.7 + rng() * 1.0,
 			stride: isMiss ? 1.05 : 0.85 + rng() * 0.5,
@@ -929,9 +918,7 @@ export class Americans {
 			targetShop: '…',
 			targetShopId: '',
 			moneySpent: Math.floor(rng() * 40),
-			unhappiness: isMiss
-				? Math.floor(8 + rng() * 30)
-				: Math.floor(28 + rng() * 45 + (mood === 'hangry' ? 30 : 0) + thicc * 12),
+			unhappiness: isMiss ? Math.floor(8 + rng() * 30) : Math.floor(28 + rng() * 45 + (mood === 'hangry' ? 30 : 0) + thicc * 12),
 			bag: isBrad ? 'KRUIDVAT' : isMiss ? 'Sash' : rng() > 0.45 ? 'bag' : null,
 			shirt: isBrad ? 0xe30613 : isMiss ? at(MISS_OUTFITS, missIdx) : pickWith(SHIRTS, rng),
 			pants: isMiss ? at(MISS_OUTFITS, missIdx) : pickWith(PANTS, rng),
@@ -969,10 +956,7 @@ export class Americans {
 		}
 		body.add(belly);
 
-		const chest = new THREE.Mesh(
-			new THREE.SphereGeometry(bellyR * (isMiss ? 1.15 : 0.7), 10, 8),
-			this.mat(f.shirt, 0.9),
-		);
+		const chest = new THREE.Mesh(new THREE.SphereGeometry(bellyR * (isMiss ? 1.15 : 0.7), 10, 8), this.mat(f.shirt, 0.9));
 		// Miss: bigger chest, push forward
 		chest.scale.set(isMiss ? 1.55 : 1.3, isMiss ? 1.05 : 0.65, isMiss ? 1.05 : 0.85);
 		chest.position.set(0, torsoY + bellyR * (isMiss ? 1.35 : 1.0), isMiss ? 0.12 : 0);
@@ -1108,10 +1092,7 @@ export class Americans {
 			body.add(sash);
 		} else if (f.hasCap) {
 			const col = f.isBrad ? 0x00a651 : 0x1a5276;
-			const cap = new THREE.Mesh(
-				new THREE.SphereGeometry(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
-				this.mat(col),
-			);
+			const cap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), this.mat(col));
 			cap.position.set(0, headY + 0.05, 0);
 			body.add(cap);
 			const brim = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.22), this.mat(col));

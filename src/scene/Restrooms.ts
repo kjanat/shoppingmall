@@ -428,15 +428,7 @@ export class Restrooms {
 	}
 
 	/** Sign flush on outer side wall (face = ±1 for +X / −X) */
-	private sideWallPlate(
-		x: number,
-		y: number,
-		z: number,
-		title: string,
-		symbol: string,
-		color: string,
-		face: 1 | -1,
-	): THREE.Mesh {
+	private sideWallPlate(x: number, y: number, z: number, title: string, symbol: string, color: string, face: 1 | -1): THREE.Mesh {
 		const c = document.createElement('canvas');
 		c.width = 160;
 		c.height = 200;

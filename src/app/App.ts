@@ -435,9 +435,7 @@ export class App {
 			this.player.applySettings(s);
 			this.ui.setStatus(
 				s.mouseLook
-					? `Besturing: muis kijken${s.lookButton === 2 ? ' (rechtsklik)' : ''}${
-							s.turnWithKeys ? ' + A/D draaien' : ''
-						}`
+					? `Besturing: muis kijken${s.lookButton === 2 ? ' (rechtsklik)' : ''}${s.turnWithKeys ? ' + A/D draaien' : ''}`
 					: 'Besturing: geen muis · A/D draaien · R/F kijken',
 			);
 		});
@@ -463,9 +461,7 @@ export class App {
 		this.settingsUi.bindBinaural((on) => {
 			spatial.setBinaural(on);
 			this.ui.setStatus(
-				on
-					? '🎧 Binaural HRTF AAN · draai je hoofd, geluid blijft in de wereld'
-					: '🔊 Binaural UIT · equalpower stereo',
+				on ? '🎧 Binaural HRTF AAN · draai je hoofd, geluid blijft in de wereld' : '🔊 Binaural UIT · equalpower stereo',
 			);
 		});
 
@@ -534,12 +530,7 @@ export class App {
 					this.boardScrubber();
 				} else if (!this.possessId && this.freeMove && this.drone.distanceTo(this.camera.position) < 3.2) {
 					this.boardDrone();
-				} else if (
-					!this.possessId &&
-					this.freeMove &&
-					this.heli.boardable &&
-					this.heli.distanceTo(this.camera.position) < 4.5
-				) {
+				} else if (!this.possessId && this.freeMove && this.heli.boardable && this.heli.distanceTo(this.camera.position) < 4.5) {
 					this.boardHeli();
 				} else if (
 					this.slideT < 0 &&
@@ -686,9 +677,7 @@ export class App {
 
 		this.ui.hideBoot();
 		this.ui.setScore(this.score, this.metSims.size);
-		this.ui.setStatus(
-			`↻ Hervat · (${saved.x.toFixed(1)}, ${saved.y.toFixed(1)}, ${saved.z.toFixed(1)}) · ★ ${this.score}`,
-		);
+		this.ui.setStatus(`↻ Hervat · (${saved.x.toFixed(1)}, ${saved.y.toFixed(1)}, ${saved.z.toFixed(1)}) · ★ ${this.score}`);
 
 		this.player.enabled = true;
 		this.player.syncFromCamera();
@@ -946,9 +935,7 @@ export class App {
 			this.camera.position.set(exit.x, exit.y + 1.6, exit.z);
 			this.player.syncFromCamera();
 			this.ui.setStatus(
-				`🚗 Uitgestapt · ${
-					this.driveCars.activeName === '—' ? 'auto geparkeerd' : 'auto blijft hier'
-				} · E om weer in te stappen`,
+				`🚗 Uitgestapt · ${this.driveCars.activeName === '—' ? 'auto geparkeerd' : 'auto blijft hier'} · E om weer in te stappen`,
 			);
 			return;
 		}
@@ -972,9 +959,7 @@ export class App {
 		}
 
 		const ground =
-			Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5
-				? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3)
-				: 0;
+			Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5 ? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3) : 0;
 		this.drone.parkAt(new THREE.Vector3(p.x, ground, p.z));
 		// speler stapt er net naast uit
 		p.x += 1.2;
@@ -1033,9 +1018,7 @@ export class App {
 		this.atmosphere.americans.ensureAudio();
 		// Party aan = spuit dicht; party uit = Aperol over het publiek
 		this.catwalk.partyMode = on;
-		this.ui.setStatus(
-			on ? '🕺 HARDCORE MALL SET — 150BPM · boom-bam-bam-boom · mate ya' : 'Disco uit · sims shoppen weer',
-		);
+		this.ui.setStatus(on ? '🕺 HARDCORE MALL SET — 150BPM · boom-bam-bam-boom · mate ya' : 'Disco uit · sims shoppen weer');
 	}
 
 	private giveMoney(): void {
@@ -1139,9 +1122,7 @@ export class App {
 			} else {
 				this.djUi.setStatus('🎤 Bartek intro (ElevenLabs) — BARTEK BARTEK');
 				// Full longer line after baked clip
-				await this.bartekSpeak(
-					'Welkom bij het trap-gat. Request een plaatje en ik draai hem live. Drama gratis erbij.',
-				);
+				await this.bartekSpeak('Welkom bij het trap-gat. Request een plaatje en ik draai hem live. Drama gratis erbij.');
 			}
 			if (!st.elevenlabs) {
 				await this.bartekSpeak(BARTEK_LINES.noKey);
@@ -1201,13 +1182,7 @@ export class App {
 		const dx = this.camera.position.x - this.djBartek.pos.x;
 		const dz = this.camera.position.z - this.djBartek.pos.z;
 		const dist = Math.hypot(dx, dz);
-		if (
-			dist < 18 &&
-			this.camera.position.y < 4 &&
-			this.djBartek.dramaCd <= 0 &&
-			!this.bartekSpeaking &&
-			!this.djUi.isOpen()
-		) {
+		if (dist < 18 && this.camera.position.y < 4 && this.djBartek.dramaCd <= 0 && !this.bartekSpeaking && !this.djUi.isOpen()) {
 			this.djBartek.dramaCd = 18 + Math.random() * 22;
 			void this.bartekSpeak(pick(BARTEK_LINES.drama));
 		}
@@ -1383,12 +1358,7 @@ export class App {
 		const positions = new Float32Array(count * 3);
 		const colors = new Float32Array(count * 3);
 		this.confettiVel = new Float32Array(count * 3);
-		const palette = [
-			new THREE.Color(0x00a651),
-			new THREE.Color(0xe30613),
-			new THREE.Color(0xf5c518),
-			new THREE.Color(0xffffff),
-		];
+		const palette = [new THREE.Color(0x00a651), new THREE.Color(0xe30613), new THREE.Color(0xf5c518), new THREE.Color(0xffffff)];
 
 		for (let i = 0; i < count; i++) {
 			positions[i * 3] = origin.x;
@@ -1519,10 +1489,7 @@ export class App {
 		const inCab = this.elevator.contains(this.camera.position.x, this.camera.position.z, 0.2);
 		const names = ['P1 garage', 'begane grond', 'V1', 'dak'];
 
-		const distXZ = Math.hypot(
-			this.camera.position.x - this.elevator.pos.x,
-			this.camera.position.z - this.elevator.pos.z,
-		);
+		const distXZ = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
 		const floorHere = this.elevatorFloorFromY(this.player.feetHeight);
 		// Dak has a second call pedestal ~12 m toward the helipad — wider radius
 		const onRoof = floorHere === 3;
@@ -1576,13 +1543,7 @@ export class App {
 		}
 		// Wei Chen scrubber is solid — don't walk through the cart
 		if (cam.y < 4) {
-			const sep = this.world.separate(
-				cam.x,
-				cam.z,
-				this.cleaner.pos.x,
-				this.cleaner.pos.z,
-				PLAYER_RADIUS + this.cleaner.radius,
-			);
+			const sep = this.world.separate(cam.x, cam.z, this.cleaner.pos.x, this.cleaner.pos.z, PLAYER_RADIUS + this.cleaner.radius);
 			cam.x = sep.ax;
 			cam.z = sep.az;
 		}
@@ -1729,11 +1690,7 @@ export class App {
 			// Lopend: loopband-drift + niet ín Brad staan. Vliegend/rijdend: skip.
 			if (!this.player.flying && !this.player.driving) {
 				if (this.player.isGrounded && !this.elevRiding) {
-					const belt = this.walkways.beltVelocityAt(
-						this.camera.position.x,
-						this.player.feetHeight,
-						this.camera.position.z,
-					);
+					const belt = this.walkways.beltVelocityAt(this.camera.position.x, this.player.feetHeight, this.camera.position.z);
 					if (belt) this.player.nudge(belt.x * dt, belt.z * dt);
 				}
 				if (!this.elevRiding) this.pushPlayerFromSims(0.9);
@@ -1822,10 +1779,7 @@ export class App {
 
 		// Driveable cars (P1 garage / parked outside)
 		const nearCar =
-			!this.player.flying &&
-			!this.player.driving &&
-			this.freeMove &&
-			!!this.driveCars.nearestCar(this.camera.position, 4.2);
+			!this.player.flying && !this.player.driving && this.freeMove && !!this.driveCars.nearestCar(this.camera.position, 4.2);
 		if (nearCar && !this.nearCarHint) {
 			this.nearCarHint = true;
 			this.ui.setStatus('🚗 HUURAUTO · E = instappen · Shift = turbo · west-exit ramp → STAD');
@@ -1915,10 +1869,7 @@ export class App {
 			}
 
 			// Gebedsruimte — music + Allahu Akbar wall
-			const dPrayer = Math.hypot(
-				this.camera.position.x - this.prayer.pos.x,
-				this.camera.position.z - this.prayer.pos.z,
-			);
+			const dPrayer = Math.hypot(this.camera.position.x - this.prayer.pos.x, this.camera.position.z - this.prayer.pos.z);
 			if (dPrayer < 12 && this.camera.position.y < 4 && !this.nearPrayerHint) {
 				this.nearPrayerHint = true;
 				this.ui.setStatus('🕌 GEBEDSRUIMTE · Allahu Trapbar ♪ (vol) · poses op de beat · geit');
@@ -1941,10 +1892,7 @@ export class App {
 			}
 
 			// Glass elevator (+ dak: wide radius because call pedestals sit off-shaft)
-			const dElevXZ = Math.hypot(
-				this.camera.position.x - this.elevator.pos.x,
-				this.camera.position.z - this.elevator.pos.z,
-			);
+			const dElevXZ = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
 			const onRoofHint = this.player.feetHeight >= 10;
 			const elevHintR = onRoofHint ? 16 : 5;
 			const elevHintLeave = onRoofHint ? 20 : 7;

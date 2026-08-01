@@ -27,11 +27,7 @@ const HANS_GREET = [
 const HANS_LINES: Record<0 | 1 | 2 | 3, string[]> = {
 	0: ["Parkeergarage. Let op auto's.", 'P1 garage. Ticket bij de kiosk.', 'Ondergronds. Lift terug is hier.'],
 	1: ['Begane grond. Let op de stap.', 'Begane grond. Deuren open.', 'Begane grond. Prettige dag verder.'],
-	2: [
-		'Verdieping één. Kruidvat is links.',
-		'Eerste verdieping. Deuren open.',
-		'Verdieping één. Food court op het balkon.',
-	],
+	2: ['Verdieping één. Kruidvat is links.', 'Eerste verdieping. Deuren open.', 'Verdieping één. Food court op het balkon.'],
 	3: ['Dak. Helipad en frisse lucht.', 'Dak. Niet van de rand vallen.', 'Dakterras. Helikopter is die kant op.'],
 };
 
@@ -154,10 +150,7 @@ export class GlassElevator {
 	}
 
 	/** Result of looking at elevator controls (FPS reticle). */
-	getLookHit(
-		camera: THREE.PerspectiveCamera,
-		maxDist = 5.5,
-	): { kind: 'hans' | 'panel' | 'call'; floorIdx?: number } | null {
+	getLookHit(camera: THREE.PerspectiveCamera, maxDist = 5.5): { kind: 'hans' | 'panel' | 'call'; floorIdx?: number } | null {
 		this.raycaster.setFromCamera(this.ndc, camera);
 		this.raycaster.far = maxDist;
 		const hits = this.raycaster.intersectObjects(this.interactables, true);
@@ -282,8 +275,7 @@ export class GlassElevator {
 			btn.scale.setScalar(scale);
 		}
 
-		const inside =
-			!!playerPos && this.contains(playerPos.x, playerPos.z) && Math.abs(playerPos.y - (this.cabinY + 1.6)) < 2.2;
+		const inside = !!playerPos && this.contains(playerPos.x, playerPos.z) && Math.abs(playerPos.y - (this.cabinY + 1.6)) < 2.2;
 		const near =
 			!!playerPos &&
 			Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z) < 5.5 &&
@@ -354,11 +346,7 @@ export class GlassElevator {
 		if (this.liftman) {
 			this.liftman.position.y = 0.02 + Math.sin(this.t * 1.4) * 0.015;
 			const face = inside ? Math.PI * 0.15 : Math.PI;
-			this.liftman.rotation.y = THREE.MathUtils.lerp(
-				this.liftman.rotation.y,
-				face + Math.sin(this.t * 0.4) * 0.08,
-				0.08,
-			);
+			this.liftman.rotation.y = THREE.MathUtils.lerp(this.liftman.rotation.y, face + Math.sin(this.t * 0.4) * 0.08, 0.08);
 		}
 
 		// Floor indicator

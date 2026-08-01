@@ -193,10 +193,7 @@ export class CityBuildings {
 			if (mx <= 0 || mz <= 0) continue;
 			const cos = Math.cos(s.rot);
 			const sin = Math.sin(s.rot);
-			const opDak = (ox: number, oz: number): [number, number] => [
-				s.x + ox * cos - oz * sin,
-				s.z + ox * sin + oz * cos,
-			];
+			const opDak = (ox: number, oz: number): [number, number] => [s.x + ox * cos - oz * sin, s.z + ox * sin + oz * cos];
 
 			if (rand() < 0.38) {
 				const sc = 1.6 + rand();

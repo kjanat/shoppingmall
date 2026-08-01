@@ -50,31 +50,31 @@ type Bullet = {
 type Threat = { x: number; y: number; z: number; kind: string; weight: number };
 
 const YELLS = [
-	'HANDS UP!',
-	'I FELT THREATENED!',
-	'STOP RESISTING!',
-	'THIS IS AMERICA!',
-	'SUSPICIOUS ACTIVITY!',
-	'DROP THE BAG!',
-	'CODE RED — CODE RED!',
-	'HOSTILE SHOPPER!',
-	'FREEZE! MALL SECURITY!',
-	'I SAW A THREAT!',
 	'2A, BABY!',
+	'BACKUP! I NEED BACKUP!',
+	'CODE RED — CODE RED!',
 	'COMPLY OR DIE!',
+	'DROP THE BAG!',
+	'FREEZE! MALL SECURITY!',
+	'HANDS UP!',
 	'HE REACHED FOR HIS POCKET!',
-	'THAT LOOKED LIKE A GUN!',
+	'HOSTILE SHOPPER!',
+	'I FELT THREATENED!',
+	'I SAW A THREAT!',
 	'NO SUDDEN MOVES!',
 	'PRAIRIE LAKES PD… ish!',
-	'BACKUP! I NEED BACKUP!',
+	'STOP RESISTING!',
+	'SUSPICIOUS ACTIVITY!',
+	'THAT LOOKED LIKE A GUN!',
+	'THIS IS AMERICA!',
 	'YOU LOOKED AT ME WEIRD!',
 ];
 
 const NAMES = [
+	'Agent Randy "Open Carry" Buck',
+	'Deputy Chuck Freedom',
 	'Officer Brad "Trigger" Kowalski',
 	'Sgt. Liberty "Liberty" Jones',
-	'Deputy Chuck Freedom',
-	'Agent Randy "Open Carry" Buck',
 ];
 
 /**

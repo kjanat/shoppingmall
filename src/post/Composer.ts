@@ -10,11 +10,7 @@ import {
 import * as THREE from 'three';
 
 /** Clean, stable post — NO bloom (bloom + emissive = arcade flicker). */
-export function createComposer(
-	renderer: THREE.WebGLRenderer,
-	scene: THREE.Scene,
-	camera: THREE.Camera,
-): EffectComposer {
+export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): EffectComposer {
 	const composer = new EffectComposer(renderer, {
 		frameBufferType: THREE.HalfFloatType,
 	});

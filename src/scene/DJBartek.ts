@@ -387,9 +387,7 @@ export class DJBartek {
 		ctx.fillText('groupies · E · mic · props', 160, 70);
 		const tex = new THREE.CanvasTexture(c);
 		tex.colorSpace = THREE.SRGBColorSpace;
-		const sp = new THREE.Sprite(
-			this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })),
-		);
+		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })));
 		sp.scale.set(2.4, 0.72, 1);
 		sp.position.set(0, 2.9, 0.2);
 		return sp;
@@ -421,11 +419,9 @@ export class DJBartek {
 export const BARTEK_LINES = {
 	greet:
 		'Wow, hoe gaat het met je jongen? Ik ben DJ Bartek, Bartek, Bartek! Welkom bij het trap-gat. Request een plaatje en ik draai hem live.',
-	requestOk: (song: string) =>
-		`Bartek, Bartek! Goede keuze. Ik download ${song} en gooi hem op de decks. Yallah, dansen!`,
+	requestOk: (song: string) => `Bartek, Bartek! Goede keuze. Ik download ${song} en gooi hem op de decks. Yallah, dansen!`,
 	requestFail: 'Ai jongen, yt-dlp hapert. Probeer een andere titel. Bartek blijft staan bij de trap.',
-	noKey:
-		'ElevenLabs key mist nog, dus ik praat via browser-stem. Zet ELEVENLABS_API_KEY in je .env — Bartek wil écht klinken.',
+	noKey: 'ElevenLabs key mist nog, dus ik praat via browser-stem. Zet ELEVENLABS_API_KEY in je .env — Bartek wil écht klinken.',
 	probe:
 		'Yo kijk omhoog! Aliens proberen de Amerikanen! Bartek blijft draaien terwijl de UFO ze scant. Drama, jongen, pure mall-drama!',
 	/** Ambient drama he shouts into the mall */

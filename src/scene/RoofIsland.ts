@@ -78,11 +78,7 @@ export class RoofIsland {
 		return g;
 	}
 
-	private label(
-		draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void,
-		w = 256,
-		h = 128,
-	): THREE.CanvasTexture {
+	private label(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void, w = 256, h = 128): THREE.CanvasTexture {
 		const c = document.createElement('canvas');
 		c.width = w;
 		c.height = h;
@@ -367,9 +363,7 @@ export class RoofIsland {
 		// Bladeren: 9 per palm, één InstancedMesh, groentint via instanceColor
 		const frondGeo = this.geo(new THREE.PlaneGeometry(0.42, 2.1));
 		frondGeo.translate(0, 1.05, 0);
-		const frondMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, side: THREE.DoubleSide }),
-		);
+		const frondMat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, side: THREE.DoubleSide }));
 		const perPalm = 9;
 		const fronds = new THREE.InstancedMesh(frondGeo, frondMat, spots.length * perPalm);
 		const greens = [0x1b7a3d, 0x2d8a4e, 0x3d9b55, 0x228b22];
@@ -466,9 +460,7 @@ export class RoofIsland {
 		const poles = new THREE.InstancedMesh(poleGeo, poleMat, spots.length);
 
 		const canopyGeo = this.geo(new THREE.ConeGeometry(1.5, 0.7, 8));
-		const canopyMat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide }),
-		);
+		const canopyMat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide }));
 		const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, spots.length);
 		const colors = [0xff5252, 0x40c4ff, 0xffd740, 0xff4081];
 		const col = new THREE.Color();
@@ -497,9 +489,7 @@ export class RoofIsland {
 		];
 		const geoT = this.geo(new THREE.PlaneGeometry(0.62, 1.5));
 		geoT.rotateX(-Math.PI / 2);
-		const mat = this.track(
-			new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, side: THREE.DoubleSide }),
-		);
+		const mat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, side: THREE.DoubleSide }));
 		const towels = new THREE.InstancedMesh(geoT, mat, onLoungers.length + onDeck.length);
 		const colors = [0xef5350, 0x26c6da, 0xffee58, 0xab47bc, 0x66bb6a, 0xff7043, 0x5c6bc0, 0xec407a];
 		const d = new THREE.Object3D();

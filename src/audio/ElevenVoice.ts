@@ -174,10 +174,7 @@ export async function speakLine(
 	}
 }
 
-export async function speakBartek(
-	text: string,
-	opts: { voiceId?: string; volume?: number } = {},
-): Promise<SpeakResult> {
+export async function speakBartek(text: string, opts: { voiceId?: string; volume?: number } = {}): Promise<SpeakResult> {
 	return speakLine(text, { ...opts, voiceId: opts.voiceId ?? 'IKne3meq5aSn9XLyUdCD', lang: 'nl' });
 }
 
@@ -189,9 +186,7 @@ function speakBrowser(text: string, volume: number): boolean {
 	u.pitch = 0.95;
 	const voices = window.speechSynthesis.getVoices();
 	const pick =
-		voices.find((v) => /dutch|nl-NL|nederlands/i.test(v.lang + v.name)) ||
-		voices.find((v) => /^en/i.test(v.lang)) ||
-		voices[0];
+		voices.find((v) => /dutch|nl-NL|nederlands/i.test(v.lang + v.name)) || voices.find((v) => /^en/i.test(v.lang)) || voices[0];
 	if (pick) u.voice = pick;
 	window.speechSynthesis.speak(u);
 	return true;

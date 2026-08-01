@@ -233,10 +233,10 @@ export class ShopVoice {
 		// Prefer checkout-flavoured lines for Youssef
 		if (storeId === 'kruidvat') {
 			const lines = [
-				'Kassa is open — drie voor de prijs, wallah!',
 				'Dankjewel! Yallah, fijne dag nog.',
-				'Vitamines in de tas? Perfect. Tot de volgende.',
+				'Kassa is open — drie voor de prijs, wallah!',
 				'Marhaba nogmaals, en let op de roltrap he.',
+				'Vitamines in de tas? Perfect. Tot de volgende.',
 			];
 			await this.speak(storeId, lines[Math.floor(Math.random() * lines.length)], { minGapMs: 8000 });
 		} else {

@@ -24,18 +24,18 @@ type Penguin = {
 };
 
 const NAMES = [
-	'Pingu',
-	'Skipper',
+	'Chilly',
+	'Fishbreath',
+	'Glacier',
+	'Happy Feet',
 	'Kowalski',
-	'Rico',
+	'Opus',
+	'Pingu',
 	'Private',
+	'Rico',
+	'Skipper',
 	'Tux',
 	'Waddles',
-	'Chilly',
-	'Glacier',
-	'Fishbreath',
-	'Happy Feet',
-	'Opus',
 ];
 
 const CHIRPS = ['Noot noot!', '🐟?', 'Waddle waddle', 'Cold in the mall?', 'Where ice?', 'Honk', '🐧', 'Fish please'];

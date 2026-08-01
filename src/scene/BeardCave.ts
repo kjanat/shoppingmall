@@ -238,11 +238,7 @@ export class BeardCave {
 			);
 			const a = Math.random() * Math.PI * 2;
 			const r = Math.random() * 0.95;
-			coin.position.set(
-				-1.6 + Math.cos(a) * r * 0.7,
-				0.18 + Math.random() * 0.45 * (1 - r * 0.5),
-				-0.9 + Math.sin(a) * r,
-			);
+			coin.position.set(-1.6 + Math.cos(a) * r * 0.7, 0.18 + Math.random() * 0.45 * (1 - r * 0.5), -0.9 + Math.sin(a) * r);
 			coin.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.6;
 			coin.rotation.z = Math.random() * Math.PI;
 			this.lootGroup.add(coin);
@@ -279,10 +275,7 @@ export class BeardCave {
 
 		// Gold chains (torus loops)
 		for (let i = 0; i < 6; i++) {
-			const chain = new THREE.Mesh(
-				new THREE.TorusGeometry(0.14 + Math.random() * 0.06, 0.022, 6, 14),
-				i % 2 ? gold : silver,
-			);
+			const chain = new THREE.Mesh(new THREE.TorusGeometry(0.14 + Math.random() * 0.06, 0.022, 6, 14), i % 2 ? gold : silver);
 			chain.position.set(-1.2 + (Math.random() - 0.5) * 1.2, 0.25 + Math.random() * 0.5, (Math.random() - 0.5) * 2.2);
 			chain.rotation.set(Math.random(), Math.random(), Math.random());
 			this.lootGroup.add(chain);

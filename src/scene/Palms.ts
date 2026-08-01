@@ -99,10 +99,7 @@ export class PalmForest {
 		const segs = 5;
 		for (let i = 0; i < segs; i++) {
 			const t = i / segs;
-			const seg = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.1 - t * 0.03, 0.14 - t * 0.03, trunkH / segs, 6),
-				trunkMat,
-			);
+			const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.1 - t * 0.03, 0.14 - t * 0.03, trunkH / segs, 6), trunkMat);
 			seg.position.set(Math.sin(t * 0.8) * 0.08, 0.55 + (i + 0.5) * (trunkH / segs), 0);
 			seg.rotation.z = Math.sin(t) * 0.05;
 			g.add(seg);
