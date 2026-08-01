@@ -435,7 +435,11 @@ export class CollisionWorld {
 		// Floor-1 void eject — only when standing/walking (not cars at basement).
 		// Mid-jump (airborne) we MUST allow XZ over the hole so you can leap
 		// the balustrade and plummet to the fountain plaza.
-		if (!airborne && !city && y > 4) {
+		//
+		// Bovengrens net als in groundHeightAt: boven het gat ligt op dakhoogte
+		// gewoon het glazen dak. Zonder die grens werd je daar weggeduwd, terwijl
+		// er een vloer onder je voeten zat.
+		if (!airborne && !city && y > 4 && y < ROOF_H - 0.5) {
 			const inHole = Math.abs(px) < 8.2 && Math.abs(pz) < 6.2;
 			if (inHole) {
 				const toEdgeX = 8.4 - Math.abs(px);

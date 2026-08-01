@@ -33,25 +33,39 @@ function kidneyShape(): THREE.Shape {
  */
 const POOL_OUTLINE: THREE.Vector2[] = kidneyShape().getPoints(96);
 
-/** Duwt elk punt naar buiten langs zijn eigen normaal: een rand van gelijke breedte. */
-function offsetOutward(pts: readonly THREE.Vector2[], d: number): THREE.Vector2[] {
-	let area = 0;
+/** Oppervlak van een gesloten polygoon, teken weggelaten. */
+function polyArea(pts: readonly THREE.Vector2[]): number {
+	let sum = 0;
 	for (let i = 0; i < pts.length; i++) {
 		const a = at(pts, i);
 		const b = at(pts, i + 1);
-		area += a.x * b.y - b.x * a.y;
+		sum += a.x * b.y - b.x * a.y;
 	}
-	// Bij tegen de klok in wijst de linkernormaal naar binnen, dus draai hem om.
-	const sign = area > 0 ? -1 : 1;
-	return pts.map((_, i) => {
-		const prev = at(pts, i - 1);
-		const next = at(pts, i + 1);
-		const tx = next.x - prev.x;
-		const ty = next.y - prev.y;
-		const len = Math.hypot(tx, ty) || 1;
-		const p = at(pts, i);
-		return new THREE.Vector2(p.x + (sign * ty * d) / len, p.y - (sign * tx * d) / len);
-	});
+	return Math.abs(sum) / 2;
+}
+
+/**
+ * Duwt elk punt naar buiten langs zijn eigen normaal: een rand van gelijke
+ * breedte.
+ *
+ * Welke kant "buiten" is hangt af van de winding, en die klapt om zodra dezelfde
+ * omtrek gespiegeld wordt opgebouwd. Daar niet naar gokken: beide kanten
+ * uitrekenen en de grootste nemen. Zat het fout, dan werd het gat groter dan de
+ * omtrek en trianguleerde de rand tot een dichte plaat dwars over het water.
+ */
+function offsetOutward(pts: readonly THREE.Vector2[], d: number): THREE.Vector2[] {
+	const shift = (sign: number) =>
+		pts.map((_, i) => {
+			const prev = at(pts, i - 1);
+			const next = at(pts, i + 1);
+			const tx = next.x - prev.x;
+			const ty = next.y - prev.y;
+			const len = Math.hypot(tx, ty) || 1;
+			const p = at(pts, i);
+			return new THREE.Vector2(p.x + (sign * ty * d) / len, p.y - (sign * tx * d) / len);
+		});
+	const outward = shift(1);
+	return polyArea(outward) > polyArea(pts) ? outward : shift(-1);
 }
 
 /** Dezelfde waterlijn, maar in wereld-XZ. */
@@ -106,7 +120,7 @@ function polygonBounds(): { minX: number; maxX: number; minZ: number; maxZ: numb
 const POOL_BOUNDS = polygonBounds();
 
 /** Kortste afstand tot de waterlijn: hoe verder naar binnen, hoe dieper. */
-function rimDistance(x: number, z: number): number {
+export function rimDistance(x: number, z: number): number {
 	let best = Infinity;
 	for (let i = 0; i < POOL_POLYGON.length; i++) {
 		const a = at(POOL_POLYGON, i);
@@ -245,7 +259,9 @@ export class RoofIsland {
 		const pool = new THREE.Group();
 		pool.name = 'pool';
 		pool.position.set(POOL_CENTER.x, DECK_Y, POOL_CENTER.z);
-		pool.rotation.y = 0.3;
+		// Uit de constante: POOL_POLYGON rekent met dezelfde draai, en zodra die
+		// twee uit elkaar lopen klopt inPool niet meer met wat je ziet.
+		pool.rotation.y = POOL_ROT;
 
 		const { inner, outer } = this.buildPoolShapes();
 

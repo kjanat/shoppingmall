@@ -2,7 +2,32 @@ import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
-import { inPool, POOL_CENTER } from './RoofIsland';
+import { inPool, POOL_CENTER, rimDistance } from './RoofIsland';
+
+/**
+ * Hoe ver het middelpunt van een zwemmer binnen de waterlijn moet blijven: halve
+ * schouderbreedte, en met een zwemband eromheen de straal van die band.
+ */
+const SWIM_CLEAR = 0.36;
+const SWIM_CLEAR_RING = 0.62;
+/** Hoe diep de dames op de badrand zitten, en hoe dicht op de rand ze mogen. */
+const RIM_SINK = 0.85;
+const RIM_CLEAR = 0.2;
+
+/**
+ * Trekt een plek naar het water toe tot er `clear` meter waterlijn omheen zit.
+ * Alleen op inPool klemmen is niet genoeg: dat zet het middelpunt op de rand en
+ * dan hangt er nog een half lijf over de tegels.
+ */
+function waterSeat(x: number, z: number, clear = RIM_CLEAR): { x: number; z: number } {
+	let sx = x;
+	let sz = z;
+	for (let n = 0; n < 32 && (!inPool(sx, sz) || rimDistance(sx, sz) < clear); n++) {
+		sx += (POOL_CENTER.x - sx) * 0.15;
+		sz += (POOL_CENTER.z - sz) * 0.15;
+	}
+	return { x: sx, z: sz };
+}
 
 /**
  * PoolPeople: badgasten voor het dakeiland.
@@ -513,12 +538,16 @@ export class PoolPeople {
 		});
 
 		// Twee dames op de badrand: één zuid (kijkt noord), één oost (kijkt west).
+		// Ze zitten RIM_SINK verzonken, want hun benen horen in het water te hangen.
+		// Dan moet er onder ze wel water zitten: op het dek zakken ze het beton in.
 		const rimA = this.buildWoman(0x6b4423, 0x76ff03, 0x2b1b12, 'long');
-		rimA.root.position.set(POOL_X - 2, DECK_Y - 0.85, POOL_Z - 5.9);
+		const a = waterSeat(POOL_X - 2, POOL_Z - 5.9);
+		rimA.root.position.set(a.x, DECK_Y - RIM_SINK, a.z);
 		this.poseSitting(rimA);
 
 		const rimB = this.buildWoman(0xd9a377, 0xff6d00, 0x8d4a2f, 'bun');
-		rimB.root.position.set(POOL_X + 5.9, DECK_Y - 0.85, POOL_Z + 1.6);
+		const b = waterSeat(POOL_X + 5.9, POOL_Z + 1.6);
+		rimB.root.position.set(b.x, DECK_Y - RIM_SINK, b.z);
 		rimB.root.rotation.y = -Math.PI / 2;
 		this.poseSitting(rimB);
 	}
@@ -591,15 +620,10 @@ export class PoolPeople {
 				ring.position.y = 0.92;
 				rig.root.add(ring);
 			}
-			// Naar binnen trekken tot ze echt in het water staan: de vier plekken zijn
-			// met de hand gekozen, de waterlijn is dat niet.
-			let sx = c.x;
-			let sz = c.z;
-			for (let n = 0; n < 12 && !inPool(sx, sz); n++) {
-				sx += (POOL_X - sx) * 0.2;
-				sz += (POOL_Z - sz) * 0.2;
-			}
-			rig.root.position.set(sx, baseY, sz);
+			// De vier plekken zijn met de hand gekozen, de waterlijn is dat niet.
+			// Marge: halve schouderbreedte, of de straal van de zwemband.
+			const seat = waterSeat(c.x, c.z, c.ring ? SWIM_CLEAR_RING : SWIM_CLEAR);
+			rig.root.position.set(seat.x, baseY, seat.z);
 			rig.root.rotation.y = i * 1.7;
 
 			this.swimmers.push({
