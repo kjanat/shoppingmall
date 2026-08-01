@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
-import { ctx2d } from '@/util/dom';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /**
@@ -502,7 +502,9 @@ export class PoolPeople {
 	/** Parasolpaal naast de crew, met het clubvaandel. Retourneert het vaandel. */
 	private buildParasol(): THREE.Mesh {
 		const post = new THREE.Group();
-		post.position.set(-14.3, DECK_Y, 15.2);
+		// Right end of the crew line. It used to stand at x -14.3, which is inside
+		// the tiki bar's sign (x -13.85, z 13.3..15.7): the two planes intersected.
+		post.position.set(-7.4, DECK_Y, 15.2);
 
 		const paal = new THREE.Mesh(this.s.pole, this.mat(0x8a6a45, 0.7));
 		paal.position.y = 1.35;
@@ -512,21 +514,15 @@ export class PoolPeople {
 		post.add(kap);
 
 		// Het vaandel: AL ZUT. Wat het betekent weet alleen de crew, en die knikt.
-		const canvas = document.createElement('canvas');
-		canvas.width = 256;
-		canvas.height = 160;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(256, 160);
 		ctx.fillStyle = '#f2e8d5';
 		ctx.fillRect(0, 0, 256, 160);
 		ctx.strokeStyle = '#1b2a6b';
 		ctx.lineWidth = 10;
 		ctx.strokeRect(5, 5, 246, 150);
 		ctx.fillStyle = '#1b2a6b';
-		ctx.textAlign = 'center';
-		ctx.font = '900 58px system-ui,sans-serif';
-		ctx.fillText('AL ZUT', 128, 100);
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		fitText(ctx, 'AL ZUT', { x: 20, y: 20, w: 216, h: 120 }, { size: 58 });
+		const tex = labelTexture(canvas);
 		this.textures.push(tex);
 		const vaandelMat = new THREE.MeshBasicMaterial({
 			map: tex,

@@ -3,7 +3,8 @@ import { speakLine } from '@/audio/ElevenVoice';
 import { levelAt } from '@/data/levels';
 import { getOwner, type ShopOwner } from '@/data/shopOwners';
 import { STORES } from '@/data/stores';
-import { ctx2d } from '@/util/dom';
+
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 
 type KeeperSpeech = {
@@ -39,12 +40,8 @@ export class ShopVoice {
 	}
 
 	private attachSpeech(storeId: string, group: THREE.Group): void {
-		const c = document.createElement('canvas');
-		c.width = 400;
-		c.height = 100;
-		const ctx = ctx2d(c);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: c, ctx } = labelCanvas(400, 100);
+		const tex = labelTexture(c);
 		const mat = new THREE.SpriteMaterial({
 			map: tex,
 			transparent: true,
@@ -133,21 +130,7 @@ export class ShopVoice {
 		ctx.fillStyle = '#0f172a';
 		ctx.font = '600 16px system-ui,sans-serif';
 		ctx.textAlign = 'center';
-		// two-line wrap
-		const words = text.split(' ');
-		let l1 = '';
-		let l2 = '';
-		for (const word of words) {
-			const t = l1 ? `${l1} ${word}` : word;
-			if (ctx.measureText(t).width < w - 48 && !l2) l1 = t;
-			else l2 = l2 ? `${l2} ${word}` : word;
-		}
-		if (l2) {
-			ctx.fillText(l1.slice(0, 44), w / 2, 58);
-			ctx.fillText(l2.slice(0, 44), w / 2, 80);
-		} else {
-			ctx.fillText(l1.slice(0, 48), w / 2, 68);
-		}
+		fitText(ctx, text, { x: 24, y: 38, w: w - 48, h: h - 50 }, { size: 18 });
 		k.tex.needsUpdate = true;
 		k.sprite.visible = true;
 		(k.sprite.material as THREE.SpriteMaterial).visible = true;

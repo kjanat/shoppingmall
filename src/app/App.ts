@@ -63,6 +63,7 @@ import { KioskOverlay, type MapBlip } from '@/ui/KioskOverlay';
 import { type CastRow, PeopleDashboard } from '@/ui/PeopleDashboard';
 import { SettingsPanel } from '@/ui/SettingsPanel';
 import { at, pick } from '@/util/rand';
+import { setLabelAnisotropy } from '@/util/label';
 import { cullByLevel } from '@/util/visibility';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
 
@@ -200,6 +201,9 @@ export class App {
 		this.renderer.shadowMap.type = THREE.PCFShadowMap;
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 		this.renderer.toneMapping = THREE.NoToneMapping;
+		// Before anything builds a label: name plates and signs are read at a
+		// slant almost always, and this is what keeps them legible there.
+		setLabelAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
 		canvasParent.appendChild(this.renderer.domElement);
 
 		// Wider FOV feels more first-person / walking through a mall

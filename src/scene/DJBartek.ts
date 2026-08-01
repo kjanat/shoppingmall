@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelAt } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 
 /**
@@ -45,12 +46,9 @@ export class DJBartek {
 		this.group.add(this.nameSprite);
 		tagLevelCulled(this.nameSprite);
 
-		const sc = document.createElement('canvas');
-		sc.width = 420;
-		sc.height = 110;
-		this.speechCtx = ctx2d(sc);
-		this.speechTex = new THREE.CanvasTexture(sc);
-		this.speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: speechCtx } = labelCanvas(420, 110);
+		this.speechCtx = speechCtx;
+		this.speechTex = labelTexture(sc);
 		this.speechSprite = new THREE.Sprite(
 			this.track(
 				new THREE.SpriteMaterial({
@@ -87,21 +85,7 @@ export class DJBartek {
 		ctx.font = '600 18px system-ui,sans-serif';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		// wrap-ish: two lines max
-		const words = text.split(' ');
-		let line1 = '';
-		let line2 = '';
-		for (const word of words) {
-			const test = line1 ? `${line1} ${word}` : word;
-			if (ctx.measureText(test).width < w - 40 && !line2) line1 = test;
-			else line2 = line2 ? `${line2} ${word}` : word;
-		}
-		if (line2) {
-			ctx.fillText(line1.slice(0, 42), w / 2, h / 2 - 14);
-			ctx.fillText(line2.slice(0, 42), w / 2, h / 2 + 16);
-		} else {
-			ctx.fillText(line1.slice(0, 48), w / 2, h / 2);
-		}
+		fitText(ctx, text, { x: 18, y: 10, w: w - 36, h: h - 34 }, { size: 22 });
 		this.speechTex.needsUpdate = true;
 		this.speechSprite.visible = true;
 		(this.speechSprite.material as THREE.SpriteMaterial).visible = true;

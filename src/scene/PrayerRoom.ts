@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
 import { ctx2d } from '@/util/dom';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
 
@@ -341,10 +342,7 @@ export class PrayerRoom {
 		ctx.fill();
 		ctx.stroke();
 		ctx.fillStyle = '#fffde7';
-		ctx.font = 'bold 26px system-ui,sans-serif';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(text, w / 2, h / 2 - 6);
+		fitText(ctx, text, { x: 14, y: 8, w: w - 28, h: h - 30 }, { size: 26 });
 		tex.needsUpdate = true;
 		sp.visible = true;
 		fig.userData['speechLife'] = 2.2 + Math.random() * 0.9;
@@ -1097,12 +1095,8 @@ export class PrayerRoom {
 		tagLevelCulled(plate);
 
 		// Speech bubble
-		const sc = document.createElement('canvas');
-		sc.width = 320;
-		sc.height = 80;
-		const speechCtx = ctx2d(sc);
-		const speechTex = new THREE.CanvasTexture(sc);
-		speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
+		const speechTex = labelTexture(sc);
 		const speech = new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: speechTex,
@@ -1284,12 +1278,8 @@ export class PrayerRoom {
 		tagLevelCulled(plate);
 
 		// Speech bubble
-		const sc = document.createElement('canvas');
-		sc.width = 320;
-		sc.height = 80;
-		const speechCtx = ctx2d(sc);
-		const speechTex = new THREE.CanvasTexture(sc);
-		speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
+		const speechTex = labelTexture(sc);
 		const speech = new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: speechTex,

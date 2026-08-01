@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { speakLine } from '@/audio/ElevenVoice';
 import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
 
@@ -377,21 +378,7 @@ export class GlassElevator {
 		ctx.font = 'bold 16px system-ui';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		// wrap ~2 lines
-		const words = text.split(' ');
-		let l1 = '';
-		let l2 = '';
-		for (const word of words) {
-			const t = (l1 ? `${l1} ` : '') + word;
-			if (ctx.measureText(t).width < 290 && !l2) l1 = t;
-			else l2 = (l2 ? `${l2} ` : '') + word;
-		}
-		if (l2) {
-			ctx.fillText(l1.slice(0, 42), w / 2, h / 2 - 12);
-			ctx.fillText(l2.slice(0, 42), w / 2, h / 2 + 10);
-		} else {
-			ctx.fillText(l1.slice(0, 44), w / 2, h / 2 - 2);
-		}
+		fitText(ctx, text, { x: 14, y: 8, w: w - 28, h: h - 28 }, { size: 16 });
 		this.speechTex.needsUpdate = true;
 		this.speech.visible = true;
 		this.speechLife = 3.4;
@@ -861,12 +848,9 @@ export class GlassElevator {
 		g.add(sp);
 
 		// Speech bubble
-		const sc = document.createElement('canvas');
-		sc.width = 320;
-		sc.height = 80;
-		this.speechCtx = ctx2d(sc);
-		this.speechTex = new THREE.CanvasTexture(sc);
-		this.speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
+		this.speechCtx = speechCtx;
+		this.speechTex = labelTexture(sc);
 		// depthTest stays off: the bubble sits 2.47 m up in a 2.55 m cabin, so the
 		// chrome ceiling would slice the top line off for everyone riding along
 		this.speech = new THREE.Sprite(

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
 
@@ -170,10 +171,7 @@ export class Penguins {
 		ctx.fill();
 		ctx.stroke();
 		ctx.fillStyle = '#e0f2fe';
-		ctx.font = 'bold 18px system-ui,sans-serif';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(text, w / 2, h / 2 - 4);
+		fitText(ctx, text, { x: 12, y: 6, w: w - 24, h: h - 24 }, { size: 18 });
 		p.speechTex.needsUpdate = true;
 		p.speech.visible = true;
 		p.speechLife = 2.0 + Math.random();
@@ -251,12 +249,8 @@ export class Penguins {
 		tagLevelCulled(plate);
 
 		// Speech
-		const sc = document.createElement('canvas');
-		sc.width = 200;
-		sc.height = 56;
-		const speechCtx = ctx2d(sc);
-		const speechTex = new THREE.CanvasTexture(sc);
-		speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: speechCtx } = labelCanvas(200, 56);
+		const speechTex = labelTexture(sc);
 		const speech = new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: speechTex,

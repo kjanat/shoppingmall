@@ -3,6 +3,7 @@ import { spatial } from '@/audio/SpatialAudio';
 import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
 import MANIFEST from '$/public/voices/protest/manifest.json' with { type: 'json' };
@@ -810,12 +811,8 @@ export class ProtestGroupies {
 		tagLevelCulled(nameSp);
 
 		// Speech bubble
-		const sc = document.createElement('canvas');
-		sc.width = 360;
-		sc.height = 90;
-		const speechCtx = ctx2d(sc);
-		const speechTex = new THREE.CanvasTexture(sc);
-		speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: speechCtx } = labelCanvas(360, 90);
+		const speechTex = labelTexture(sc);
 		const speech = new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: speechTex,
@@ -1053,12 +1050,8 @@ export class ProtestGroupies {
 			pin.position.set(0.12, 1.25, 0.24);
 			root.add(pin);
 
-			const sc = document.createElement('canvas');
-			sc.width = 320;
-			sc.height = 80;
-			const speechCtx = ctx2d(sc);
-			const speechTex = new THREE.CanvasTexture(sc);
-			speechTex.colorSpace = THREE.SRGBColorSpace;
+			const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
+			const speechTex = labelTexture(sc);
 			const speech = new THREE.Sprite(
 				new THREE.SpriteMaterial({
 					map: speechTex,
@@ -1202,10 +1195,7 @@ export class ProtestGroupies {
 		ctx.stroke();
 
 		ctx.fillStyle = merkel ? '#ffeb3b' : '#0d47a1';
-		ctx.font = merkel ? 'bold 24px system-ui' : 'bold 22px system-ui';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(text, w / 2, h / 2 - 6);
+		fitText(ctx, text, { x: 16, y: 10, w: w - 32, h: h - 32 }, { size: merkel ? 24 : 22 });
 
 		p.speechTex.needsUpdate = true;
 		p.speech.visible = true;

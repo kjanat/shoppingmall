@@ -27,14 +27,26 @@ export function setLabelAnisotropy(n: number): void {
  * A canvas of `w` by `h` design units, backed by SUPERSAMPLE times as many
  * pixels, with the context already scaled. Everything you draw keeps using
  * `w` and `h`, so existing draw code does not change.
+ *
+ * `w` and `h` come back with it because `canvas.width` is now device pixels:
+ * a paint routine that reads the size off the canvas would draw at triple
+ * scale into a third of the box.
  */
-export function labelCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+export function labelCanvas(
+	w: number,
+	h: number,
+): {
+	canvas: HTMLCanvasElement;
+	ctx: CanvasRenderingContext2D;
+	w: number;
+	h: number;
+} {
 	const canvas = document.createElement('canvas');
 	canvas.width = Math.ceil(w * SUPERSAMPLE);
 	canvas.height = Math.ceil(h * SUPERSAMPLE);
 	const ctx = ctx2d(canvas);
 	ctx.scale(SUPERSAMPLE, SUPERSAMPLE);
-	return { canvas, ctx };
+	return { canvas, ctx, w, h };
 }
 
 /** Clear a labelCanvas back to transparent, in design units. */

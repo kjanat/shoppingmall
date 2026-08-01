@@ -3,6 +3,7 @@ import { spatial } from '@/audio/SpatialAudio';
 import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
 
@@ -449,10 +450,7 @@ export class SecurityGuards {
 		ctx.fill();
 		ctx.stroke();
 		ctx.fillStyle = '#ff5252';
-		ctx.font = 'bold 20px system-ui,sans-serif';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(text, w / 2, h / 2 - 4);
+		fitText(ctx, text, { x: 14, y: 6, w: w - 28, h: h - 26 }, { size: 20 });
 		g.speechTex.needsUpdate = true;
 		g.speech.visible = true;
 		g.speechLife = 2.0 + Math.random() * 0.8;
@@ -569,12 +567,8 @@ export class SecurityGuards {
 		tagLevelCulled(nameSp);
 
 		// Speech bubble
-		const sc = document.createElement('canvas');
-		sc.width = 360;
-		sc.height = 80;
-		const speechCtx = ctx2d(sc);
-		const speechTex = new THREE.CanvasTexture(sc);
-		speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: speechCtx } = labelCanvas(360, 80);
+		const speechTex = labelTexture(sc);
 		const speech = new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: speechTex,

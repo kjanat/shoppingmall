@@ -3,6 +3,7 @@ import { spatial } from '@/audio/SpatialAudio';
 import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
 
@@ -290,10 +291,7 @@ export class CleaningCart {
 		ctx.fill();
 		ctx.stroke();
 		ctx.fillStyle = angry ? '#ffeb3b' : '#0d47a1';
-		ctx.font = 'bold 20px system-ui';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(text, w / 2, h / 2 - 4);
+		fitText(ctx, text, { x: 14, y: 6, w: w - 28, h: h - 26 }, { size: 20 });
 		this.speechTex.needsUpdate = true;
 		this.speech.visible = true;
 		this.speechLife = angry ? 3.2 : 2.4;
@@ -544,12 +542,9 @@ export class CleaningCart {
 		tagLevelCulled(name);
 
 		// Speech bubble
-		const sc = document.createElement('canvas');
-		sc.width = 280;
-		sc.height = 72;
-		this.speechCtx = ctx2d(sc);
-		this.speechTex = new THREE.CanvasTexture(sc);
-		this.speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: speechCtx } = labelCanvas(280, 72);
+		this.speechCtx = speechCtx;
+		this.speechTex = labelTexture(sc);
 		this.speech = new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: this.speechTex,

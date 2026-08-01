@@ -5,7 +5,8 @@ import { STORES, type StoreDef } from '@/data/stores';
 import { Pathfinder } from '@/path/Pathfinder';
 import type { CollisionWorld } from '@/physics/Collision';
 import { fetchSimChat, type SimPersona } from '@/sim/SimChat';
-import { ctx2d } from '@/util/dom';
+
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick, pickWith } from '@/util/rand';
 
 export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
@@ -55,6 +56,9 @@ type Limb = {
 };
 
 /** Dashboard row: who, where, and what they're doing right now. */
+const LABEL_W = 320;
+const LABEL_H = 120;
+
 export type PersonRow = {
 	id: number;
 	name: string;
@@ -1134,12 +1138,8 @@ export class Americans {
 		body.scale.setScalar(scale);
 
 		// Head info plate (not floating store labels — per-sim status)
-		const labelCanvas = document.createElement('canvas');
-		labelCanvas.width = 320;
-		labelCanvas.height = 120;
-		const labelCtx = ctx2d(labelCanvas);
-		const labelTex = new THREE.CanvasTexture(labelCanvas);
-		labelTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: plate, ctx: labelCtx } = labelCanvas(LABEL_W, LABEL_H);
+		const labelTex = labelTexture(plate);
 		const label = new THREE.Sprite(
 			this.track(
 				new THREE.SpriteMaterial({
@@ -1155,12 +1155,8 @@ export class Americans {
 		root.add(label);
 
 		// Speech bubble for smart gibberish
-		const speechCanvas = document.createElement('canvas');
-		speechCanvas.width = 280;
-		speechCanvas.height = 72;
-		const speechCtx = ctx2d(speechCanvas);
-		const speechTex = new THREE.CanvasTexture(speechCanvas);
-		speechTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: speechCanvas, ctx: speechCtx } = labelCanvas(280, 72);
+		const speechTex = labelTexture(speechCanvas);
 		// depthTest AAN: met false zag je vanaf het dak alle tekstballonnen van
 		// twee verdiepingen lager dwars door het beton zweven
 		const speech = new THREE.Sprite(
@@ -1209,7 +1205,7 @@ export class Americans {
 			wait: rng() * 1.5,
 			phase: rng() * Math.PI * 2,
 			shopId: startShop.id,
-			labelCanvas,
+			labelCanvas: plate,
 			labelCtx,
 			labelTex,
 			gibberCd: 2 + rng() * 8,
@@ -1643,8 +1639,8 @@ export class Americans {
 	private paintLabel(sim: Sim): void {
 		const f = sim.f;
 		const ctx = sim.labelCtx;
-		const w = sim.labelCanvas.width;
-		const h = sim.labelCanvas.height;
+		const w = LABEL_W;
+		const h = LABEL_H;
 		ctx.clearRect(0, 0, w, h);
 
 		// soft plate
@@ -1745,20 +1741,7 @@ export class Americans {
 		ctx.font = '600 14px system-ui,sans-serif';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		const words = line.split(' ');
-		let l1 = '';
-		let l2 = '';
-		for (const w of words) {
-			const t = (l1 ? `${l1} ` : '') + w;
-			if (ctx.measureText(t).width < 250 && !l2) l1 = t;
-			else l2 = (l2 ? `${l2} ` : '') + w;
-		}
-		if (l2) {
-			ctx.fillText(l1.slice(0, 36), 140, 28);
-			ctx.fillText(l2.slice(0, 36), 140, 48);
-		} else {
-			ctx.fillText(l1.slice(0, 40), 140, 36);
-		}
+		fitText(ctx, line, { x: 12, y: 6, w: 256, h: 54 }, { size: 18 });
 		sim.speechTex.needsUpdate = true;
 		sim.speech.visible = true;
 		(sim.speech.material as THREE.SpriteMaterial).visible = true;
