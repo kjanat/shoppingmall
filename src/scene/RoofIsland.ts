@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
-import { ctx2d } from '@/util/dom';
-import { fitText } from '@/util/label';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 const DECK_Y = levelY('roof');
@@ -82,10 +81,8 @@ export class RoofIsland {
 	}
 
 	private label(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void, w = 256, h = 128): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = w;
-		c.height = h;
-		draw(ctx2d(c), w, h);
+		const { canvas: c, ctx } = labelCanvas(w, h);
+		draw(ctx, w, h);
 		const tex = labelTexture(c);
 		this.textures.push(tex);
 		return tex;

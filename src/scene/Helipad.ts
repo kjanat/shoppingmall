@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */

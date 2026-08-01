@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
-import { ctx2d } from '@/util/dom';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';

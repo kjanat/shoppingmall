@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { GARAGE_Y } from './ParkingGarage';
 import type { DriveInput } from './ScrubberBuggy';

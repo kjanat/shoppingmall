@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
-import { ctx2d } from '@/util/dom';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';

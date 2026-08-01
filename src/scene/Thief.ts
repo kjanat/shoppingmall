@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 import type { BeardCave } from './BeardCave';

@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { level, levelY } from '@/data/levels';
 import type { StoreDef } from '@/data/stores';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 

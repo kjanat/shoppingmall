@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /** Arcade drive input from the player */

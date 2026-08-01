@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 type Belt = {
@@ -79,10 +78,9 @@ export class MovingWalkways {
 		ctx.fillRect(0, 0, 4, 256);
 		ctx.fillRect(60, 0, 4, 256);
 
-		const tex = new THREE.CanvasTexture(canvas);
+		const tex = labelTexture(canvas);
 		tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
 		tex.repeat.set(1, len / 2);
-		tex.colorSpace = THREE.SRGBColorSpace;
 
 		const beltMat = this.track(
 			new THREE.MeshStandardMaterial({

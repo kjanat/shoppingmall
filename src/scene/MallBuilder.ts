@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import { getOwner } from '@/data/shopOwners';
 import { STORES, type StoreDef } from '@/data/stores';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
@@ -134,10 +133,9 @@ export class MallBuilder {
 		tctx.fillStyle = 'rgba(200, 180, 140, 0.25)';
 		tctx.fillRect(112, 0, 32, 256);
 
-		const tileTex = new THREE.CanvasTexture(tileCanvas);
+		const tileTex = labelTexture(tileCanvas);
 		tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
 		tileTex.repeat.set(MALL_W / 4, MALL_D / 4);
-		tileTex.colorSpace = THREE.SRGBColorSpace;
 		floorMat.map = tileTex;
 
 		const floor0 = new THREE.Mesh(new THREE.BoxGeometry(MALL_W, 0.3, MALL_D), floorMat);

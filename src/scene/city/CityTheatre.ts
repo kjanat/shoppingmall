@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -95,10 +94,8 @@ export class CityTheatre {
 	}
 
 	private makeTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = w;
-		c.height = h;
-		draw(ctx2d(c));
+		const { canvas: c, ctx } = labelCanvas(w, h);
+		draw(ctx);
 		const tex = labelTexture(c);
 		tex.anisotropy = 4;
 		this.textures.push(tex);

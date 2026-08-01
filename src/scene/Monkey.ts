@@ -471,9 +471,7 @@ export class Monkey {
 
 		// Yell sprite
 		if (!this.faceYell) {
-			const c = document.createElement('canvas');
-			c.width = 512;
-			c.height = 128;
+			const { canvas: c } = labelCanvas(512, 128);
 			this.yellTex = labelTexture(c);
 			this.faceYell = new THREE.Sprite(
 				this.track(

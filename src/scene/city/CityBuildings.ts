@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { pickWith } from '@/util/rand';
 

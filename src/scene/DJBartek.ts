@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { levelAt } from '@/data/levels';
-import { ctx2d } from '@/util/dom';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 

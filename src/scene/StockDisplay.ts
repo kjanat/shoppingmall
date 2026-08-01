@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
 import { levelY } from '@/data/levels';
 import { STORES, type StoreDef } from '@/data/stores';
-import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
