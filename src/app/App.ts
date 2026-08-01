@@ -1,3 +1,4 @@
+import { env } from 'bun';
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
 import { BartekChat } from '@/audio/BartekChat';
@@ -618,7 +619,7 @@ export class App {
 		}
 
 		// Dev-only handle for poking at the sim from the console / smoke tests
-		if (process.env.NODE_ENV !== 'production') {
+		if (env.NODE_ENV !== 'production') {
 			window.mallsim = this;
 		}
 
