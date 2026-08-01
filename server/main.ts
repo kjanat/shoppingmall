@@ -7,12 +7,21 @@
 
 import { readdir } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
+import { execArgv } from 'node:process';
 import { link } from 'ansispeck';
 import { env, serve } from 'bun';
 import index from '$/index.html';
 import { handleApi } from './api.ts';
 
 const PUBLIC = resolve('public');
+
+/**
+ * HMR and console forwarding are opt-in. The Dockerfile and `bun start` do set
+ * NODE_ENV=production, but a bare `./mall` does not, and on `!== 'production'`
+ * that one quietly served a dev server. `bun --hot` is the dev script and Bun
+ * leaves NODE_ENV unset there, so that one says so through argv.
+ */
+const dev = env.NODE_ENV === 'development' || execArgv.includes('--hot');
 const notFound = () => new Response('not found', { status: 404 });
 
 async function serveStatic(req: Request): Promise<Response> {
@@ -69,7 +78,7 @@ const server = serve({
 	port: env['PORT'] ?? 5174,
 	hostname: '0.0.0.0',
 	idleTimeout: 60,
-	development: env.NODE_ENV !== 'production' && { hmr: true, console: true },
+	development: dev && { hmr: true, console: true },
 
 	routes: {
 		...(await publicRoutes()),
@@ -91,6 +100,7 @@ const server = serve({
 console.log(
 	`\
 [Mall] game + /api on ${link(server.url)}
+\tDEV=${dev}
 \tELEVENLABS=${!!env['ELEVENLABS_API_KEY']}
 \tYOUTUBE=${!!env['YOUTUBE_API_KEY']}
 \tOPENROUTER=${!!env['OPENROUTER_API_KEY']}`,

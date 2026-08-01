@@ -77,6 +77,71 @@ export function inPool(x: number, z: number): boolean {
 	return inside;
 }
 
+/** Waterspiegel in wereld-y: het watervlak uit buildPool ligt precies hier. */
+export const POOL_WATER_Y = DECK_Y + 0.1;
+/**
+ * Bodem van het diepe: 1.15 onder de waterlijn zet je borst op het water.
+ * PoolPeople hangt zijn zwemmers met dezelfde 1.15 op, maar rekent vanaf een
+ * eigen WATER_Y (13.75), dus die drijven 0.30 lager dan waar jij staat.
+ */
+export const POOL_FLOOR_Y = POOL_WATER_Y - 1.15;
+/** Breedte van de aflopende instap: binnen deze band waad je naar het diepe. */
+const POOL_SHALLOW_W = 1.8;
+
+function polygonBounds(): { minX: number; maxX: number; minZ: number; maxZ: number } {
+	let minX = Infinity;
+	let maxX = -Infinity;
+	let minZ = Infinity;
+	let maxZ = -Infinity;
+	for (const [x, z] of POOL_POLYGON) {
+		minX = Math.min(minX, x);
+		maxX = Math.max(maxX, x);
+		minZ = Math.min(minZ, z);
+		maxZ = Math.max(maxZ, z);
+	}
+	return { minX, maxX, minZ, maxZ };
+}
+
+/** Doos om de waterlijn, zodat alles wat er niet in staat de raycast overslaat. */
+const POOL_BOUNDS = polygonBounds();
+
+/** Kortste afstand tot de waterlijn: hoe verder naar binnen, hoe dieper. */
+function rimDistance(x: number, z: number): number {
+	let best = Infinity;
+	for (let i = 0; i < POOL_POLYGON.length; i++) {
+		const a = at(POOL_POLYGON, i);
+		const b = at(POOL_POLYGON, i + 1);
+		const dx = b[0] - a[0];
+		const dz = b[1] - a[1];
+		const len2 = dx * dx + dz * dz;
+		const raw = len2 > 0 ? ((x - a[0]) * dx + (z - a[1]) * dz) / len2 : 0;
+		const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
+		const d = Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t));
+		if (d < best) best = d;
+	}
+	return best;
+}
+
+/**
+ * Loophoogte in het bad, of `null` als je er niet in staat.
+ *
+ * Aan de waterlijn is dat nog gewoon dekhoogte en daarna zakt de bodem in
+ * POOL_SHALLOW_W meter naar POOL_FLOOR_Y: je waadt erin in plaats van dat je
+ * van een richel valt. De bak zit alleen hier en niet in de meshes, want onder
+ * 13.9 begint de dakplaat van de mall: een echt uitgesneden kuil zou door dat
+ * beton snijden en de onderlijven van de zwemmers bloot leggen. In first person
+ * zie je alleen je camera zakken, en die klopt wel.
+ */
+export function poolFloorY(x: number, z: number): number | null {
+	if (x < POOL_BOUNDS.minX || x > POOL_BOUNDS.maxX) return null;
+	if (z < POOL_BOUNDS.minZ || z > POOL_BOUNDS.maxZ) return null;
+	if (!inPool(x, z)) return null;
+	const raw = rimDistance(x, z) / POOL_SHALLOW_W;
+	const t = raw > 1 ? 1 : raw;
+	// Smoothstep: vlakke bodem in het diepe, zachte knik bij de rand
+	return DECK_Y - (DECK_Y - POOL_FLOOR_Y) * t * t * (3 - 2 * t);
+}
+
 /**
  * Tropisch dakeiland op het westelijke mall-dak. Zwembad in nierboonvorm,
  * buisglijbaan vanaf een 4 m toren, tiki-bar, palmen, ligstoelen, parasols
@@ -193,7 +258,9 @@ export class RoofIsland {
 		rim.position.y = 0.005;
 		pool.add(rim);
 
-		// Donkere bodem onder het transparante water: dieptesuggestie voor bijna niks
+		// Donkere bodem onder het transparante water: dieptesuggestie voor bijna niks.
+		// Blijft vlak op dekhoogte: hij dekt de dakplaat van de mall en de benen van
+		// de zwemmers af. De loopbare bak zit in poolFloorY.
 		const bottom = new THREE.Mesh(
 			this.geo(new THREE.ShapeGeometry(inner)),
 			this.track(new THREE.MeshStandardMaterial({ color: 0x01579b, roughness: 0.85 })),
@@ -214,8 +281,9 @@ export class RoofIsland {
 		);
 		this.water = new THREE.Mesh(this.geo(new THREE.ShapeGeometry(inner)), this.waterMat);
 		this.water.rotation.x = -Math.PI / 2;
-		this.water.position.y = 0.1;
-		this.waterBaseY = 0.1;
+		// Uit de constante, zodat de waterlijn van de fysica nooit van de mesh loskomt
+		this.waterBaseY = POOL_WATER_Y - DECK_Y;
+		this.water.position.y = this.waterBaseY;
 		pool.add(this.water);
 
 		this.group.add(pool);

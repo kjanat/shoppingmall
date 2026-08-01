@@ -25,11 +25,116 @@ const POOL_Z = POOL_CENTER.z;
 const NOD_PERIOD = 5.5; // om de zoveel seconden vindt de crew iets goed
 const NOD_TIME = 1.1;
 
+/**
+ * De ligstoel, één keer opgeschreven. De houding van de zonaanbidsters wordt
+ * hieruit afgeleid (zie hieronder), dus verzet je de stoel of kantel je de
+ * leuning, dan schuift het lijf mee in plaats van erdoorheen te zakken.
+ */
+const LOUNGER = {
+	w: 0.68,
+	legW: 0.06,
+	legH: 0.32,
+	legLen: 1.15,
+	legX: 0.3,
+	legY: 0.16,
+	seatH: 0.06,
+	seatLen: 1.4,
+	seatY: 0.35,
+	backH: 0.06,
+	backLen: 0.7,
+	backY: 0.55,
+	backZ: -0.78,
+	backTilt: 1.0,
+	towelW: 0.6,
+	towelH: 0.015,
+	towelLen: 1.3,
+} as const;
+const LOUNGER_Z = -9.8;
+
+const SEAT_TOP = LOUNGER.seatY + LOUNGER.seatH / 2;
+const TOWEL_Y = SEAT_TOP + LOUNGER.towelH / 2;
+/** Waar een lijf op landt: de handdoek, niet het frame. */
+const REST_Y = SEAT_TOP + LOUNGER.towelH;
+/** Hoek van de leuning t.o.v. verticaal: de romp krijgt precies deze hoek. */
+const RECLINE = Math.PI / 2 - LOUNGER.backTilt;
+const BACK_C = Math.cos(LOUNGER.backTilt);
+const BACK_S = Math.sin(LOUNGER.backTilt);
+// Voorvlak van de leuning als lijn in yz: normaal (BACK_C, BACK_S) door het
+// onderste punt. Afstand van een punt tot dat vlak = hoeveel het vrij zit.
+const BACK_FOOT_Y = LOUNGER.backY - (LOUNGER.backLen / 2) * BACK_S + (LOUNGER.backH / 2) * BACK_C;
+const BACK_FOOT_Z = LOUNGER.backZ + (LOUNGER.backLen / 2) * BACK_C + (LOUNGER.backH / 2) * BACK_S;
+
+// Rigmaten, gedeeld door de bouwer en de pose-wiskunde.
+const HIP_Y = 0.9;
+const WAIST_Y = 1.0;
+const SHOULDER_X = 0.185;
+const SHOULDER_Y = 0.52;
+const THIGH_R = 0.105;
+const THIGH_LEN = 0.47; // heup → knie
+const CALF_R = 0.068;
+const CALF_MID = 0.16; // knie → midden kuit
+const CALF_CYL = 0.28; // recht stuk van de kuitcapsule
+const CALF_LOW = CALF_MID + CALF_CYL / 2; // knie → onderste kuitbol
+const CALF_LEN = 0.38; // knie → enkel
+const FOOT_H = 0.05;
+const FOOT_LEN = 0.22;
+const FOOT_FWD = 0.05; // enkel zit achter het midden van de voet
+const ARM_LEN = 0.58; // schouder → handmidden
+const HAND_R = 0.045;
+const TORSO_R = 0.205; // breedste latheslag, onderaan bij de heupflare
+/** Speling die elk lijfsdeel van het frame houdt. De handdoek mag wél indrukken. */
+const CLEAR = 0.01;
+
+/**
+ * Zittend-achterover, volledig uit de stoel afgeleid: het heupscharnier staat
+ * één dijstraal boven de handdoek (een vlakke dij zou hem net raken; door de
+ * knielift hieronder zweeft hij ruim een centimeter) en de rug staat evenwijdig
+ * aan het voorvlak van de leuning, op één rompstraal plus een centimeter
+ * speling.
+ */
+const LOUNGE_HIP_Y = REST_Y + THIGH_R;
+const LOUNGE_ROOT_Y = LOUNGE_HIP_Y - HIP_Y;
+const LOUNGE_WAIST_Y = LOUNGE_ROOT_Y + WAIST_Y;
+const LOUNGE_ROOT_Z = BACK_FOOT_Z + (TORSO_R + CLEAR - (LOUNGE_WAIST_Y - BACK_FOOT_Y) * BACK_C) / BACK_S;
+
+/** Zijwaarts net genoeg dat de hand langs de romp valt, plus wat lucht. */
+const LOUNGE_ARM_Z = Math.asin((TORSO_R + HAND_R - SHOULDER_X) / ARM_LEN) + 0.15;
+/**
+ * Recht omlaag kan niet: daar zit de leuning. De arm zakt dus naar voren tot
+ * dijhoogte. Erop landen doet de hand niet: de zijwaartse hoek hierboven moet
+ * eerst om de romp heen en zet hem daarmee naast de heup.
+ */
+const LOUNGE_ARM_X =
+	RECLINE -
+	Math.acos(
+		(LOUNGE_WAIST_Y + SHOULDER_Y * Math.cos(RECLINE) - (LOUNGE_HIP_Y + THIGH_R + HAND_R)) / (ARM_LEN * Math.cos(LOUNGE_ARM_Z)),
+	);
+
+/**
+ * Beenhoeken voor één been: knie `lift` omhoog uit de heup, kuit daarna omlaag
+ * tot hij op het ligvlak rust, voet gekanteld tot de hiel de handdoek raakt.
+ */
+function loungeLeg(lift: number): { thigh: number; knee: number; foot: number } {
+	const kneeY = LOUNGE_HIP_Y + THIGH_LEN * Math.sin(lift);
+	// De kuit is dikker dan de enkel, dus die raakt het ligvlak het eerst: buig
+	// de knie tot de onderste kuitbol op speling boven het frame hangt.
+	const bend = Math.asin((kneeY - SEAT_TOP - CLEAR - CALF_R) / CALF_LOW);
+	// En kantel de voet tot de hiel de handdoek raakt; tenen dus omhoog.
+	const footY = kneeY - CALF_LEN * Math.sin(bend) + FOOT_FWD * Math.cos(bend);
+	const sole = Math.hypot(FOOT_H / 2, FOOT_LEN / 2);
+	const toe = Math.asin((footY - REST_Y) / sole) - Math.atan2(FOOT_H, FOOT_LEN);
+	return { thigh: -(Math.PI / 2 + lift), knee: lift + bend, foot: Math.PI / 2 - bend - toe };
+}
+
 type Rig = {
 	root: THREE.Group;
 	body: THREE.Group;
 	legL: THREE.Group;
 	legR: THREE.Group;
+	kneeL: THREE.Group;
+	kneeR: THREE.Group;
+	footL: THREE.Mesh;
+	footR: THREE.Mesh;
 	armL: THREE.Group;
 	armR: THREE.Group;
 	head: THREE.Group;
@@ -131,9 +236,9 @@ export class PoolPeople {
 			torsoM: this.geo(new THREE.LatheGeometry(maleProfile, 14)),
 			pelvis: this.geo(new THREE.SphereGeometry(0.185, 14, 10)),
 			bust: this.geo(new THREE.SphereGeometry(0.115, 12, 10)),
-			thigh: this.geo(new THREE.CapsuleGeometry(0.105, 0.34, 5, 9)),
-			calf: this.geo(new THREE.CapsuleGeometry(0.068, 0.28, 5, 8)),
-			foot: this.geo(new THREE.BoxGeometry(0.1, 0.05, 0.22)),
+			thigh: this.geo(new THREE.CapsuleGeometry(THIGH_R, 0.34, 5, 9)),
+			calf: this.geo(new THREE.CapsuleGeometry(CALF_R, CALF_CYL, 5, 8)),
+			foot: this.geo(new THREE.BoxGeometry(0.1, FOOT_H, FOOT_LEN)),
 			upperArm: this.geo(new THREE.CapsuleGeometry(0.052, 0.24, 4, 7)),
 			lowerArm: this.geo(new THREE.CapsuleGeometry(0.042, 0.22, 4, 7)),
 			hand: this.geo(new THREE.SphereGeometry(0.045, 8, 6)),
@@ -153,10 +258,10 @@ export class PoolPeople {
 			bikiniCup: this.geo(new THREE.SphereGeometry(0.062, 8, 6)),
 			armband: this.geo(new THREE.TorusGeometry(0.075, 0.028, 6, 12)),
 			ring: this.geo(new THREE.TorusGeometry(0.36, 0.11, 8, 18)),
-			loungerLeg: this.geo(new THREE.BoxGeometry(0.06, 0.32, 1.15)),
-			loungerSeat: this.geo(new THREE.BoxGeometry(0.68, 0.06, 1.4)),
-			loungerBack: this.geo(new THREE.BoxGeometry(0.68, 0.06, 0.7)),
-			towel: this.geo(new THREE.BoxGeometry(0.6, 0.015, 1.3)),
+			loungerLeg: this.geo(new THREE.BoxGeometry(LOUNGER.legW, LOUNGER.legH, LOUNGER.legLen)),
+			loungerSeat: this.geo(new THREE.BoxGeometry(LOUNGER.w, LOUNGER.seatH, LOUNGER.seatLen)),
+			loungerBack: this.geo(new THREE.BoxGeometry(LOUNGER.w, LOUNGER.backH, LOUNGER.backLen)),
+			towel: this.geo(new THREE.BoxGeometry(LOUNGER.towelW, LOUNGER.towelH, LOUNGER.towelLen)),
 			bottle: this.geo(new THREE.CylinderGeometry(0.032, 0.038, 0.15, 8)),
 			bottleCap: this.geo(new THREE.CylinderGeometry(0.012, 0.012, 0.05, 6)),
 			pole: this.geo(new THREE.CylinderGeometry(0.035, 0.035, 2.7, 8)),
@@ -177,37 +282,42 @@ export class PoolPeople {
 		const root = new THREE.Group();
 
 		const hips = new THREE.Group();
-		hips.position.y = 0.9;
+		hips.position.y = HIP_Y;
 		root.add(hips);
 
-		const makeLeg = (side: -1 | 1): THREE.Group => {
+		const makeLeg = (side: -1 | 1): { leg: THREE.Group; knee: THREE.Group; foot: THREE.Mesh } => {
 			const leg = new THREE.Group();
 			leg.position.set(side * 0.085, 0, 0);
 			const thigh = new THREE.Mesh(this.s.thigh, skinMat);
 			thigh.position.y = -0.22;
 			leg.add(thigh);
+			// Knie als echt scharnier: zonder dit kan een been alleen als plank
+			// draaien, en dan zakt de ligstoel-pose dwars door het ligvlak.
+			const knee = new THREE.Group();
+			knee.position.y = -THIGH_LEN;
+			leg.add(knee);
 			const calf = new THREE.Mesh(this.s.calf, skinMat);
-			calf.position.y = -0.63;
-			leg.add(calf);
+			calf.position.y = -CALF_MID;
+			knee.add(calf);
 			// Teenslipper of blote voet — de badstranduniform.
 			const foot = new THREE.Mesh(this.s.foot, footMat);
-			foot.position.set(0, -0.85, 0.05);
-			leg.add(foot);
+			foot.position.set(0, -CALF_LEN, FOOT_FWD);
+			knee.add(foot);
 			hips.add(leg);
-			return leg;
+			return { leg, knee, foot };
 		};
-		const legL = makeLeg(-1);
-		const legR = makeLeg(1);
+		const l = makeLeg(-1);
+		const r = makeLeg(1);
 
 		const body = new THREE.Group();
-		body.position.y = 1.0;
+		body.position.y = WAIST_Y;
 		root.add(body);
 		const torso = new THREE.Mesh(torsoGeo, torsoMat);
 		body.add(torso);
 
 		const makeArm = (side: -1 | 1): THREE.Group => {
 			const arm = new THREE.Group();
-			arm.position.set(side * 0.185, 0.52, 0);
+			arm.position.set(side * SHOULDER_X, SHOULDER_Y, 0);
 			const upper = new THREE.Mesh(this.s.upperArm, skinMat);
 			upper.position.y = -0.17;
 			arm.add(upper);
@@ -216,7 +326,7 @@ export class PoolPeople {
 			arm.add(lower);
 			const hand = new THREE.Mesh(this.s.hand, skinMat);
 			hand.scale.set(0.85, 1.15, 0.85);
-			hand.position.y = -0.58;
+			hand.position.y = -ARM_LEN;
 			arm.add(hand);
 			body.add(arm);
 			return arm;
@@ -234,7 +344,19 @@ export class PoolPeople {
 		head.add(neck);
 
 		this.group.add(root);
-		return { root, body, legL, legR, armL, armR, head };
+		return {
+			root,
+			body,
+			legL: l.leg,
+			legR: r.leg,
+			kneeL: l.knee,
+			kneeR: r.knee,
+			footL: l.foot,
+			footR: r.foot,
+			armL,
+			armR,
+			head,
+		};
 	}
 
 	/** Sportzonnebril met zwart bandje — niemand kijkt hier iemand aan. */
@@ -254,11 +376,12 @@ export class PoolPeople {
 		const kit = this.mat(kitColor, 0.45, 0.1);
 		const rig = this.buildRig(this.s.torsoF, skin, skin, kit);
 
-		// Bikinibroekje: het bekken in felle kleur, klaar.
+		// Bikinibroekje: het bekken in felle kleur, klaar. Hangt aan de romp en
+		// niet aan de root, anders blijft het rechtop staan zodra iemand leunt.
 		const pelvis = new THREE.Mesh(this.s.pelvis, kit);
 		pelvis.scale.set(1.05, 0.62, 0.92);
-		pelvis.position.y = 0.96;
-		rig.root.add(pelvis);
+		pelvis.position.y = 0.96 - WAIST_Y;
+		rig.body.add(pelvis);
 
 		// Buste plus bikinitop: bandje rondom, twee cups ervoor. PG, cartoon.
 		const bust = new THREE.Mesh(this.s.bust, skin);
@@ -306,8 +429,8 @@ export class PoolPeople {
 		// Zwembroek/korte broek: bekken iets hoger geschaald zodat het kledt.
 		const pelvis = new THREE.Mesh(this.s.pelvis, shorts);
 		pelvis.scale.set(1.05, 0.75, 0.95);
-		pelvis.position.y = 0.93;
-		rig.root.add(pelvis);
+		pelvis.position.y = 0.93 - WAIST_Y;
+		rig.body.add(pelvis);
 
 		const hairMat = this.mat(0x1a1a1a, 0.8);
 		const cap = new THREE.Mesh(this.s.capHair, hairMat);
@@ -319,14 +442,25 @@ export class PoolPeople {
 
 	// ── zonaanbidsters ─────────────────────────────────────
 
-	/** Achterover op de ligstoel, benen vooruit (+z), hoofd richting rugleuning. */
-	private poseLying(rig: Rig): void {
-		rig.legL.rotation.x = -1.45;
-		rig.legR.rotation.x = -1.42;
-		rig.body.rotation.x = -0.6;
-		rig.head.rotation.x = -0.25;
-		rig.armL.rotation.set(-0.2, 0, 0.35);
-		rig.armR.rotation.set(-0.2, 0, -0.35);
+	/**
+	 * Zittend-achterover op de ligstoel: bekken op het ligvlak, romp onder de
+	 * hoek van de leuning ertegenaan, dijen over de handdoek en de knieën
+	 * gebogen tot de hielen weer op de handdoek landen. `liftL`/`liftR` zetten
+	 * de knieën een tik verschillend omhoog; de rest volgt uit de stoel.
+	 */
+	private poseLounged(rig: Rig, liftL: number, liftR: number): void {
+		rig.body.rotation.x = -RECLINE;
+		rig.head.rotation.x = RECLINE / 2; // kin omlaag, niet recht de zon in
+		const l = loungeLeg(liftL);
+		rig.legL.rotation.x = l.thigh;
+		rig.kneeL.rotation.x = l.knee;
+		rig.footL.rotation.x = l.foot;
+		const r = loungeLeg(liftR);
+		rig.legR.rotation.x = r.thigh;
+		rig.kneeR.rotation.x = r.knee;
+		rig.footR.rotation.x = r.foot;
+		rig.armL.rotation.set(LOUNGE_ARM_X, 0, -LOUNGE_ARM_Z);
+		rig.armR.rotation.set(LOUNGE_ARM_X, 0, LOUNGE_ARM_Z);
 	}
 
 	/** Op de badrand, kuiten in het (aangenomen) water. */
@@ -352,29 +486,30 @@ export class PoolPeople {
 			const x = at(loungerX, i);
 			// Ligstoel: twee sledes, ligvlak, schuine rugleuning, handdoek erop.
 			const lounger = new THREE.Group();
-			lounger.position.set(x, DECK_Y, -9.8);
+			lounger.position.set(x, DECK_Y, LOUNGER_Z);
 			for (const side of [-1, 1] as const) {
 				const leg = new THREE.Mesh(this.s.loungerLeg, frameMat);
-				leg.position.set(side * 0.3, 0.16, 0);
+				leg.position.set(side * LOUNGER.legX, LOUNGER.legY, 0);
 				lounger.add(leg);
 			}
 			const seat = new THREE.Mesh(this.s.loungerSeat, frameMat);
-			seat.position.y = 0.35;
+			seat.position.y = LOUNGER.seatY;
 			lounger.add(seat);
 			const back = new THREE.Mesh(this.s.loungerBack, frameMat);
-			back.position.set(0, 0.55, -0.78);
-			back.rotation.x = 1.0;
+			back.position.set(0, LOUNGER.backY, LOUNGER.backZ);
+			back.rotation.x = LOUNGER.backTilt;
 			lounger.add(back);
 			const towel = new THREE.Mesh(this.s.towel, this.mat(at(towelColors, i), 0.9));
-			towel.position.y = 0.39;
+			towel.position.y = TOWEL_Y;
 			lounger.add(towel);
 			this.group.add(lounger);
 
 			const rig = this.buildWoman(skin, kit, hair, style);
-			rig.root.position.set(x, DECK_Y + 0.41 - 0.9, -9.95);
-			this.poseLying(rig);
+			rig.root.position.set(x, DECK_Y + LOUNGE_ROOT_Y, LOUNGER_Z + LOUNGE_ROOT_Z);
+			this.poseLounged(rig, 0.24 + i * 0.04, 0.3 - i * 0.03);
 			// Nummer twee heeft een arm achter het hoofd. Maximale ontspanning.
-			if (i === 1) rig.armR.rotation.set(-0.5, 0, -2.7);
+			// Naar buiten: met -2.7 gaat de elleboog dwars door haar schedel.
+			if (i === 1) rig.armR.rotation.set(-0.5, 0, 2.7);
 		});
 
 		// Twee dames op de badrand: één zuid (kijkt noord), één oost (kijkt west).

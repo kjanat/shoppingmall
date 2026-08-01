@@ -1,14 +1,163 @@
 import * as THREE from 'three';
-import { levelY } from '@/data/levels';
+import { level, levelY } from '@/data/levels';
 import { getOwner } from '@/data/shopOwners';
 import { STORES, type StoreDef } from '@/data/stores';
-import { labelCanvas, labelTexture } from '@/util/label';
+import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /** One storey, straight from the deck heights. */
 const FLOOR_H = levelY('v1') - levelY('v0');
 const MALL_W = 72;
 const MALL_D = 48;
+
+/**
+ * De oostelijke roltrap. Dit is de enige plek waar deze maten staan: ze moeten
+ * kloppen met de `escalator`-ramp in Collision (x 20.7..23.3, z 8 → -2,
+ * y 0 → FLOOR_H); het gat in de vloerplaat wordt hieruit afgeleid.
+ */
+const ESC = {
+	x: 22,
+	zBottom: 8,
+	zTop: -2,
+	steps: 20,
+	/** Zo breed als de climbable band, anders loop je naast je eigen roltrap. */
+	width: 2.2,
+	/** Midden en halve diepte van het gat in de vloerplaat, uit de ramp. */
+	holeCz: -0.5,
+	holeHalfD: 2.1,
+	/**
+	 * Halve breedte van dat gat: precies de x-band van de ramp. Ruimer en er
+	 * blijft een zwarte spleet naast de roltrap open waar je in kunt kijken,
+	 * krapper en het vakwerk steekt door de plaat.
+	 */
+	holeHalfW: 1.3,
+	/**
+	 * Hoe ver aanloop en uitloop voorbij de helling doorlopen, omkeer inbegrepen.
+	 * De blokkeerdoos in Collision loopt van z -3.5 tot 9, dus 1.0 is het maximum.
+	 */
+	apron: 1.0,
+	/** Tredesnelheid langs de helling, m/s. */
+	speed: 0.5,
+} as const;
+
+/**
+ * De westelijke trap. Andere wand, kruist de roltrap nooit. Zelfde afspraak: dit
+ * is de enige plek waar deze maten staan, het gat in de vloerplaat volgt eruit.
+ */
+const STAIR = {
+	x: -22,
+	zBottom: 4,
+	zTop: -14,
+	width: 2.4,
+	holeCz: -11,
+	holeHalfW: 2.0,
+	holeHalfD: 3.6,
+} as const;
+
+/** Laagste stand van een trede: net boven de vloer, anders z-fightt hij ermee. */
+const ESC_STEP_MIN = 0.02;
+/**
+ * Hoogte van de gele neuslijn, hoe ver hij binnen de randen van het tredeblad
+ * blijft, en hoe ver hij erboven zweeft. Die laatste alleen genoeg om uit de
+ * dieptebuffer te blijven, want een centimeter zie je.
+ */
+const ESC_NOSE_H = 0.006;
+const ESC_NOSE_INSET = 0.01;
+const ESC_NOSE_LIFT = 0.0015;
+/** Wereldlengte van één herhaling van de leuningtextuur. */
+const ESC_RAIL_TICK = 0.32;
+/** Dikte van tredeblad, stootbord en de staande panelen. */
+const ESC_TREAD_T = 0.07;
+const ESC_RISER_T = 0.05;
+const ESC_PANEL_T = 0.05;
+/** Speling tussen de zijkant van de treden en de schortplaat. */
+const ESC_SKIRT_GAP = 0.03;
+/** Onder- en bovenkant van het balustradeglas boven de tredelijn. */
+const ESC_GLASS_LO = 0.33;
+const ESC_GLASS_HI = 0.99;
+/** Buisstraal van de leuning en zijn speling tot de rand van het glas. */
+const ESC_RAIL_R = 0.05;
+const ESC_RAIL_GAP = 0.02;
+/** De balustradekop is halfrond om het midden van het glas. */
+const ESC_GLASS_R = (ESC_GLASS_HI - ESC_GLASS_LO) / 2;
+const ESC_GLASS_MID = (ESC_GLASS_HI + ESC_GLASS_LO) / 2;
+/**
+ * De leuning draait concentrisch om die kop, op vaste speling. Daar volgen zowel
+ * de omkeerstraal als de hoogte van het leuninghart uit. Kies je die twee los,
+ * dan staat er rondom lucht tussen lus en glas en hangt de omkeer als een losse
+ * ring naast de roltrap.
+ */
+const ESC_NEWEL_R = ESC_GLASS_R + ESC_RAIL_GAP + ESC_RAIL_R;
+const ESC_RAIL_Y = ESC_GLASS_MID + ESC_NEWEL_R;
+/** Halve breedte tot de buitenkant van de balustrade. */
+const ESC_SKIRT_X = ESC.width / 2 + ESC_SKIRT_GAP;
+/** Z van de rand van het vloergat aan de kant van de uitstap. */
+const ESC_HOLE_FAR_Z = ESC.holeCz - Math.sign(ESC.zBottom - ESC.zTop) * ESC.holeHalfD;
+
+/** Hoogte van de roltraphelling op z, vlak op beide landingen. */
+function escLine(z: number): number {
+	const t = (z - ESC.zBottom) / (ESC.zTop - ESC.zBottom);
+	return FLOOR_H * (t < 0 ? 0 : t > 1 ? 1 : t);
+}
+
+/**
+ * Middellijn van de leuning in (z, y): omkeer onderaan, de klim, omkeer bovenaan.
+ * De koppen zijn het verschil tussen een leuning en een losse buis.
+ *
+ * De omkeer draait een halve slag, van +90° naar -90°, zodat hij een straal
+ * lager weer naar binnen wijst en zijn open uiteinde in het balustradeglas
+ * verdwijnt in plaats van als een afgeknipte buis in de lucht te hangen.
+ *
+ * Dicht bemonsterd, want dit pad gaat door een spline: met alleen de hoekpunten
+ * bolt een lange rechte er tussenuit.
+ */
+function escRailPath(zLo: number, zHi: number, off: number): [number, number][] {
+	const r = ESC_NEWEL_R;
+	const dir = Math.sign(zHi - zLo);
+	const pts: [number, number][] = [];
+	// Halve slag rond de kop; `s` bepaalt of hij naar buiten of naar binnen bolt.
+	const newel = (zEnd: number, base: number, s: number): [number, number][] =>
+		Array.from({ length: 13 }, (_, k) => {
+			const a = -Math.PI / 2 + (k / 12) * Math.PI;
+			return [zEnd + s * dir * r * Math.cos(a), base - r + r * Math.sin(a)];
+		});
+	const straight = (za: number, ya: number, zb: number, yb: number, n: number) => {
+		for (let k = 1; k <= n; k++) {
+			pts.push([za + ((zb - za) * k) / n, ya + ((yb - ya) * k) / n]);
+		}
+	};
+	pts.push(...newel(zLo, off, -1));
+	straight(zLo, off, ESC.zBottom, off, 4);
+	straight(ESC.zBottom, off, ESC.zTop, FLOOR_H + off, 24);
+	straight(ESC.zTop, FLOOR_H + off, zHi, FLOOR_H + off, 5);
+	// slice(1): de omkeer begint op hetzelfde punt waar de rechte eindigt. Laat je
+	// dat dubbel staan, dan is dat segment nul lang, is de raaklijn daar
+	// ongedefinieerd en klapt het frame van de buis om — een knik in de leuning.
+	pts.push(
+		...newel(zHi, FLOOR_H + off, 1)
+			.reverse()
+			.slice(1),
+	);
+	return pts;
+}
+
+/**
+ * De leuning als één doorlopende buis. Losse cilinders per segment gaven op elke
+ * knik een zichtbare breuk, en met een afgeplat profiel stond elke koker ook nog
+ * eens anders gedraaid dan zijn buurman.
+ *
+ * Het pad ligt in één ZY-vlak op x = 0, zodat de aanroeper hem in x kan
+ * platdrukken tot een leuningprofiel zonder de buis zelf te vervormen.
+ */
+function escRailTube(pts: [number, number][], radius: number): { geo: THREE.TubeGeometry; length: number } {
+	const curve = new THREE.CatmullRomCurve3(
+		pts.map(([z, y]) => new THREE.Vector3(0, y, z)),
+		false,
+		'centripetal',
+	);
+	const length = curve.getLength();
+	return { geo: new THREE.TubeGeometry(curve, Math.round(length / 0.1), radius, 8, false), length };
+}
 
 /** Tiny stable hash for per-staff variety */
 function hashStr(s: string): number {
@@ -75,6 +224,10 @@ export class MallBuilder {
 	readonly group = new THREE.Group();
 	readonly storeMeshes = new Map<string, THREE.Group>();
 	private materials: THREE.Material[] = [];
+	private textures: THREE.Texture[] = [];
+	private escSteps: { node: THREE.Group; index: number }[] = [];
+	private escRailMaps: THREE.Texture[] = [];
+	private escPhase = 0;
 
 	build(): THREE.Group {
 		this.group.name = 'mall';
@@ -88,6 +241,19 @@ export class MallBuilder {
 		return this.group;
 	}
 
+	/** Laat de roltrap lopen. Zonder dit is het een trap met een kap erop. */
+	update(dt: number): void {
+		const stepDepth = Math.abs(ESC.zTop - ESC.zBottom) / ESC.steps;
+		const pitch = Math.hypot(stepDepth, FLOOR_H / ESC.steps);
+		this.escPhase = (this.escPhase + (ESC.speed * dt) / pitch) % 1;
+		this.placeEscalatorSteps();
+		// De leuning loopt mee via de textuur-offset; modulo houdt hem na een uur
+		// draaien nog steeds precies genoeg.
+		for (const map of this.escRailMaps) {
+			map.offset.y = (map.offset.y - (ESC.speed * dt) / ESC_RAIL_TICK) % 1;
+		}
+	}
+
 	dispose(): void {
 		this.group.traverse((obj) => {
 			if (obj instanceof THREE.Mesh) {
@@ -96,6 +262,9 @@ export class MallBuilder {
 		});
 		this.materials.forEach((m) => {
 			m.dispose();
+		});
+		this.textures.forEach((t) => {
+			t.dispose();
 		});
 	}
 
@@ -177,9 +346,9 @@ export class MallBuilder {
 		// each hole spans from just past the top down to where the incline is ~2 m
 		// under the slab, which is the stretch where your head would hit concrete.
 		// West stairs: incline z=+4 (bottom) → z=-14 (top), so open z -14.6 … -7.4
-		addRectHole(-22, -11, 2.0, 3.6);
+		addRectHole(STAIR.x, STAIR.holeCz, STAIR.holeHalfW, STAIR.holeHalfD);
 		// East escalator: incline z=+8 → z=-2, so open z -2.6 … +1.6
-		addRectHole(22, -0.5, 1.7, 2.1);
+		addRectHole(ESC.x, ESC.holeCz, ESC.holeHalfW, ESC.holeHalfD);
 		// Glazen lift (16, -8): schacht V0 → dak — zonder dit gat prikte de
 		// glascabine dwars door de verdieping-1-plaat heen
 		addRectHole(16, -8, 1.2, 1.2);
@@ -466,56 +635,373 @@ export class MallBuilder {
 	 * Each has a hole cut in floor-1 at the top landing.
 	 */
 	private buildEscalator(): void {
-		// East roltrap: bottom (22,0,8) → top (22,6,-2)  — only along +X wall
-		this.buildStraightFlight({
-			name: 'escalator',
-			x: 22,
-			zBottom: 8,
-			zTop: -2,
-			rise: FLOOR_H,
-			width: 1.6,
-			kind: 'escalator',
-		});
-		// West trap: bottom (-22,0,4) → top (-22,6,-14) — opposite wall, no cross
-		this.buildStraightFlight({
-			name: 'stairs',
-			x: -22,
-			zBottom: 4,
-			zTop: -14,
-			rise: FLOOR_H,
-			width: 2.4,
-			kind: 'stairs',
-		});
+		this.buildEscalatorFlight();
+		// West trap: bodem (-22,0,4) → top (-22,6,-14). Andere wand, kruist nooit.
+		this.buildStairFlight();
 	}
 
-	/** Proper single flight: steps don't overlap, no X-crossing truss soup */
-	private buildStraightFlight(opts: {
-		name: string;
+	/** Paneel evenwijdig aan de helling, met rechte koppen in plaats van schuine. */
+	private escPanel(opts: {
 		x: number;
-		zBottom: number;
-		zTop: number;
-		rise: number;
-		width: number;
-		kind: 'escalator' | 'stairs';
-	}): void {
+		zLo: number;
+		zHi: number;
+		below: number;
+		above: number;
+		thick: number;
+		mat: THREE.Material;
+		/** Halfronde koppen, zodat de balustrade om de leuningomkeer heen loopt. */
+		round?: boolean;
+	}): THREE.Mesh {
+		// De twee knikken zitten op z0 en z1, waar de helling in de vlakke
+		// landingen overgaat; zonder die punten snijdt het paneel de hoeken af.
+		const zs = [opts.zLo, ESC.zBottom, ESC.zTop, opts.zHi];
+		const shape = new THREE.Shape();
+		const cap = (zEnd: number, outward: number, a0: number, a1: number) => {
+			if (!opts.round) return;
+			const cy = escLine(zEnd) + (opts.below + opts.above) / 2;
+			const r = (opts.above - opts.below) / 2;
+			for (let k = 1; k < 8; k++) {
+				const a = a0 + ((a1 - a0) * k) / 8;
+				shape.lineTo(zEnd + outward * r * Math.cos(a), cy + r * Math.sin(a));
+			}
+		};
+		const out = Math.sign(opts.zHi - opts.zLo);
+		shape.moveTo(opts.zLo, escLine(opts.zLo) + opts.below);
+		for (const z of zs.slice(1)) {
+			shape.lineTo(z, escLine(z) + opts.below);
+		}
+		cap(opts.zHi, out, -Math.PI / 2, Math.PI / 2);
+		for (const z of [...zs].reverse()) {
+			shape.lineTo(z, escLine(z) + opts.above);
+		}
+		// Terug naar beneden langs a = 0, niet langs a = PI: die kant passeert
+		// cos = -1 en bolt de kop dus naar binnen in plaats van naar buiten.
+		cap(opts.zLo, -out, Math.PI / 2, -Math.PI / 2);
+		shape.closePath();
+		const geo = new THREE.ExtrudeGeometry(shape, { depth: opts.thick, bevelEnabled: false });
+		geo.rotateY(-Math.PI / 2);
+		geo.translate(opts.x + opts.thick / 2, 0, 0);
+		return new THREE.Mesh(geo, opts.mat);
+	}
+
+	/**
+	 * De oostelijke roltrap.
+	 *
+	 * Het midden van elke trede ligt exact op de helling uit Collision. Leg je ze
+	 * op `(i+1)*rise`, dan zweeft de hele trap een halve stap boven de lijn die je
+	 * beklimt en zak je er zichtbaar doorheen.
+	 */
+	private buildEscalatorFlight(): void {
 		const g = new THREE.Group();
-		g.name = opts.name;
+		g.name = 'escalator';
+
+		const { x, zBottom: z0, zTop: z1, steps, width: w } = ESC;
+		const dir = z1 < z0 ? -1 : 1;
+		const stepDepth = Math.abs(z1 - z0) / steps;
+		const stepRise = FLOOR_H / steps;
+		// Waar de balustrade eindigt. De omkeer bolt daar nog een straal voorbij,
+		// dus het paneel stopt precies zoveel eerder als de apron toestaat.
+		const zLo = z0 - dir * (ESC.apron - ESC_NEWEL_R);
+		const zHi = z1 + dir * (ESC.apron - ESC_NEWEL_R);
+
+		const cleat = this.escStripeTexture(64, '#8b969d', '#5b6469', 1.6, w / 0.28);
+		// De scene heeft geen environment map, dus metalness boven ~0.5 heeft niets
+		// om in te spiegelen en slaat om in zwart. Geborsteld staal, geen chroom.
+		const treadMat = this.track(new THREE.MeshStandardMaterial({ map: cleat, metalness: 0.45, roughness: 0.5 }));
+		const riserMat = this.track(new THREE.MeshStandardMaterial({ map: cleat, color: 0x767f85, metalness: 0.4, roughness: 0.6 }));
+		const steelMat = this.track(new THREE.MeshStandardMaterial({ color: 0xc3ccd2, metalness: 0.4, roughness: 0.34 }));
+		const trussMat = this.track(new THREE.MeshStandardMaterial({ color: 0x39424a, metalness: 0.2, roughness: 0.78 }));
+		const glassMat = this.track(
+			new THREE.MeshStandardMaterial({
+				color: 0xbcd6e6,
+				metalness: 0.1,
+				roughness: 0.06,
+				transparent: true,
+				opacity: 0.24,
+				side: THREE.DoubleSide,
+			}),
+		);
+		const glowMat = this.track(new THREE.MeshBasicMaterial({ color: 0x8fe3ff, toneMapped: false }));
+		const combMat = this.track(
+			new THREE.MeshStandardMaterial({
+				map: this.escStripeTexture(64, '#c8a02a', '#4a3c10', 2, w / 0.09),
+				metalness: 0.6,
+				roughness: 0.45,
+			}),
+		);
+
+		// ── vakwerk, schortplaat, glas en de lichtstrip onder de leuning ──
+		// Het vakwerk hangt onder de tredebladen en steekt net buiten de balustrade
+		// uit, zodat die er niet naast zweeft.
+		const outerX = ESC_SKIRT_X + ESC_PANEL_T / 2;
+		g.add(
+			this.escPanel({
+				x,
+				zLo,
+				zHi,
+				below: -(stepRise + ESC_TREAD_T + 0.4),
+				above: -(ESC_TREAD_T + 0.02),
+				thick: outerX * 2 + 0.02,
+				mat: trussMat,
+			}),
+		);
+		for (const side of [-1, 1] as const) {
+			const shared = { x: x + side * ESC_SKIRT_X, zLo, zHi, round: true };
+			g.add(this.escPanel({ ...shared, below: -0.02, above: ESC_GLASS_LO, thick: ESC_PANEL_T, mat: steelMat }));
+			g.add(this.escPanel({ ...shared, below: ESC_GLASS_LO, above: ESC_GLASS_HI, thick: 0.03, mat: glassMat }));
+			// De lichtstrip vult de spleet tussen glasrand en leuning, en stopt recht
+			// af: een echte dekverlichting loopt niet mee de omkeer in.
+			g.add(
+				this.escPanel({
+					...shared,
+					round: false,
+					below: ESC_GLASS_HI,
+					above: ESC_RAIL_Y - ESC_RAIL_R,
+					thick: ESC_PANEL_T + 0.005,
+					mat: glowMat,
+				}),
+			);
+		}
+
+		// ── landingen en kamplaten ──
+		// De onderste kamplaat begint precies op z0, waar de helling nog nul is:
+		// daardoor komt een trede er vlak onder vandaan en klimt hij pas daarna.
+		const landW = outerX * 2 + 0.2;
+		const land0 = new THREE.Mesh(new THREE.BoxGeometry(landW, 0.02, ESC.apron + 0.3), steelMat);
+		land0.position.set(x, ESC_STEP_MIN - 0.01, z0 - (dir * (ESC.apron + 0.3)) / 2);
+		g.add(land0);
+		// Voorbij de top van de ramp loopt het gat nog door tot ESC_HOLE_FAR_Z;
+		// deze plaat vult precies dat stuk, zodat je bij de uitstap niet in de
+		// schacht stapt.
+		const gapD = Math.abs(ESC_HOLE_FAR_Z - z1);
+		const land1 = new THREE.Mesh(new THREE.BoxGeometry(ESC.holeHalfW * 2, 0.14, gapD), steelMat);
+		land1.position.set(x, FLOOR_H - 0.07, z1 + (dir * gapD) / 2);
+		g.add(land1);
+		// De kamplaat begint op de knik en loopt naar buiten, dus de trede die
+		// eronder ligt is precies de trede die nog vlak is.
+		const combD = stepDepth + 0.05;
+		for (const [z, y] of [
+			[z0 - (dir * combD) / 2, ESC_STEP_MIN],
+			[z1 + (dir * combD) / 2, FLOOR_H],
+		] as const) {
+			const comb = new THREE.Mesh(new THREE.BoxGeometry(ESC_SKIRT_X * 2, 0.05, combD), combMat);
+			comb.position.set(x, y + 0.02, z);
+			g.add(comb);
+		}
+
+		// ── newel-sokkels: het donkere blok waar de onderste helft van de
+		// leuningomkeer in verdwijnt. Zonder dit hangt die lus als een losse ring
+		// naast de roltrap, want de schortplaat is er met 0.05 veel te dun voor ──
+		const baseH = ESC_GLASS_MID + 0.02;
+		const baseT = 0.16;
+		const baseD = 0.85;
+		const noseGeo = new THREE.CylinderGeometry(baseT / 2, baseT / 2, baseH, 10);
+		const baseGeo = new THREE.BoxGeometry(baseT, baseH, baseD);
+		for (const [zEnd, out] of [
+			[zLo, -dir],
+			[zHi, dir],
+		] as const) {
+			const yMid = escLine(zEnd) - 0.02 + baseH / 2;
+			const front = zEnd + out * ESC_GLASS_R;
+			for (const side of [-1, 1] as const) {
+				const sx = x + side * ESC_SKIRT_X;
+				const block = new THREE.Mesh(baseGeo, trussMat);
+				block.position.set(sx, yMid, front - (out * baseD) / 2);
+				g.add(block);
+				const nose = new THREE.Mesh(noseGeo, trussMat);
+				nose.position.set(sx, yMid, front);
+				g.add(nose);
+			}
+		}
+
+		// ── treden: één extra onderaan, zodat er altijd één onder de kamplaat
+		// vandaan komt op het moment dat de bovenste eronder verdwijnt ──
+		const treadGeo = new THREE.BoxGeometry(w, ESC_TREAD_T, stepDepth);
+		const riserGeo = new THREE.BoxGeometry(w, stepRise + 0.02, ESC_RISER_T);
+		// Gele neuslijn op de afloopkant van elk tredeblad, zoals op elke roltrap.
+		// Hij ligt er los bovenop en is aan alle kanten ingelaten: deelt hij ook maar
+		// één vlak met het tredeblad, dan vechten ze om de dieptebuffer en flikkert
+		// de lijn.
+		const noseLineGeo = new THREE.BoxGeometry(w - 2 * ESC_NOSE_INSET, ESC_NOSE_H, 0.05);
+		const noseLineMat = this.track(new THREE.MeshStandardMaterial({ color: 0xe8b312, roughness: 0.55 }));
+		for (let i = -1; i < steps; i++) {
+			const node = new THREE.Group();
+			node.position.x = x;
+			const tread = new THREE.Mesh(treadGeo, treadMat);
+			tread.position.y = -ESC_TREAD_T / 2;
+			node.add(tread);
+			const noseLine = new THREE.Mesh(noseLineGeo, noseLineMat);
+			noseLine.position.set(0, ESC_NOSE_LIFT + ESC_NOSE_H / 2, -dir * (stepDepth / 2 - ESC_NOSE_INSET - 0.025));
+			node.add(noseLine);
+			const riser = new THREE.Mesh(riserGeo, riserMat);
+			riser.position.set(0, -ESC_TREAD_T - (stepRise + 0.02) / 2, -dir * (stepDepth / 2));
+			node.add(riser);
+			g.add(node);
+			this.escSteps.push({ node, index: i });
+		}
+		this.placeEscalatorSteps();
+
+		// ── leuning: één buis van kop tot kop, geen segmentnaden ──
+		const pts = escRailPath(zLo, zHi, ESC_RAIL_Y);
+		const { geo: railGeo, length: railLen } = escRailTube(pts, ESC_RAIL_R);
+		const railTex = this.escRailTexture(railLen / ESC_RAIL_TICK);
+		const railMat = this.track(new THREE.MeshStandardMaterial({ map: railTex, roughness: 0.85, metalness: 0.05 }));
+		this.escRailMaps.push(railTex);
+		const capGeo = new THREE.SphereGeometry(ESC_RAIL_R, 8, 6);
+		for (const side of [-1, 1] as const) {
+			const bar = new THREE.Mesh(railGeo, railMat);
+			bar.position.x = x + side * ESC_SKIRT_X;
+			// Breder dan hoog, zoals een rubber leuningband. Mag alleen in x, want
+			// het hele pad ligt in het ZY-vlak.
+			bar.scale.x = 1.4;
+			g.add(bar);
+			// De buis is open aan beide koppen; twee dopjes sluiten hem af.
+			for (const end of [pts[0], pts[pts.length - 1]]) {
+				if (!end) continue;
+				const cap = new THREE.Mesh(capGeo, railMat);
+				cap.position.set(bar.position.x, end[1], end[0]);
+				cap.scale.x = 1.4;
+				g.add(cap);
+			}
+		}
+
+		// ── bord boven de instap ──
+		const { canvas: sc, ctx: sctx, w: sw, h: sh } = labelCanvas(512, 96);
+		sctx.fillStyle = '#0d47a1';
+		sctx.fillRect(0, 0, sw, sh);
+		sctx.fillStyle = '#ffffff';
+		fitText(
+			sctx,
+			`ROLTRAP ↑ ${level('v1').name.toUpperCase()}`,
+			{ x: 16, y: 10, w: sw - 32, h: sh - 20 },
+			{ size: 56, maxLines: 1 },
+		);
+		const signTex = labelTexture(sc);
+		this.textures.push(signTex);
+		// Portaal boven de instap: de staanders net buiten de balustrade, het bord
+		// er bovenin, zodat je er onderdoor loopt en niet tegenaan.
+		const gantryH = 2.6;
+		const signW = ESC_SKIRT_X * 2 + 0.4;
+		const sign = new THREE.Mesh(
+			new THREE.PlaneGeometry(signW, (signW * sh) / sw),
+			this.track(new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false })),
+		);
+		const signZ = z0 - dir * ESC.apron;
+		sign.position.set(x, gantryH - (signW * sh) / sw / 2 - 0.06, signZ);
+		g.add(sign);
+		for (const side of [-1, 1] as const) {
+			const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, gantryH, 8), steelMat);
+			post.position.set(x + side * (signW / 2 + 0.05), gantryH / 2, signZ);
+			g.add(post);
+		}
+
+		this.addHoleRails(g, { x, cz: ESC.holeCz, halfW: ESC.holeHalfW, halfD: ESC.holeHalfD, dir }, glassMat, steelMat);
+
+		this.group.add(g);
+	}
+
+	/**
+	 * Hekwerk om een gat in de vloerplaat: glas met een stalen bovenregel langs
+	 * beide lange zijden, en dicht aan de kant waar de trap onder de plaat door
+	 * gaat. Alleen de uitstapkant blijft open, anders sta je erop te kijken en
+	 * loop je er aan de andere kant zo in.
+	 */
+	private addHoleRails(
+		g: THREE.Group,
+		o: { x: number; cz: number; halfW: number; halfD: number; dir: number },
+		glassMat: THREE.Material,
+		railMat: THREE.Material,
+	): void {
+		const GLASS_H = 0.95;
+		const T = 0.03;
+		// Net buiten de gatrand, anders staat het hek op lucht.
+		const dx = o.halfW + 0.12;
+		const nearZ = o.cz - o.dir * (o.halfD + 0.12);
+		const panel = (px: number, pz: number, pw: number, pd: number) => {
+			const glass = new THREE.Mesh(new THREE.BoxGeometry(pw, GLASS_H, pd), glassMat);
+			glass.position.set(px, FLOOR_H + GLASS_H / 2, pz);
+			g.add(glass);
+			const rail = new THREE.Mesh(new THREE.BoxGeometry(pw + 0.04, 0.07, pd + 0.04), railMat);
+			rail.position.set(px, FLOOR_H + GLASS_H, pz);
+			g.add(rail);
+		};
+		for (const side of [-1, 1] as const) {
+			panel(o.x + side * dx, o.cz, T, o.halfD * 2 + 0.24);
+		}
+		panel(o.x, nearZ, dx * 2, T);
+	}
+
+	/** Zet elke trede op de huidige fase. u = 0 is de gebouwde stand. */
+	private placeEscalatorSteps(): void {
+		const dir = ESC.zTop < ESC.zBottom ? -1 : 1;
+		const stepDepth = Math.abs(ESC.zTop - ESC.zBottom) / ESC.steps;
+		const stepRise = FLOOR_H / ESC.steps;
+		for (const s of this.escSteps) {
+			const k = s.index + 0.5 + this.escPhase;
+			s.node.position.z = ESC.zBottom + dir * k * stepDepth;
+			// Onder- en bovenaan afgekapt: dat is precies het vlakke stuk waar een
+			// echte roltrap zijn treden onder de kamplaat in laat lopen.
+			const y = k * stepRise;
+			s.node.position.y = y < ESC_STEP_MIN ? ESC_STEP_MIN : y > FLOOR_H ? FLOOR_H : y;
+		}
+	}
+
+	/**
+	 * Leuningband: donker rubber met een flauwe dwarsband, zodat je hem ziet
+	 * lopen. Op een buis loopt v langs de lengte, dus de band moet horizontaal.
+	 */
+	private escRailTexture(repeatY: number): THREE.Texture {
+		const { canvas, ctx, w, h } = labelCanvas(8, 32);
+		ctx.fillStyle = '#24272d';
+		ctx.fillRect(0, 0, w, h);
+		ctx.fillStyle = '#31353d';
+		ctx.fillRect(0, 0, w, 3);
+		const tex = labelTexture(canvas);
+		tex.wrapS = THREE.RepeatWrapping;
+		tex.wrapT = THREE.RepeatWrapping;
+		tex.repeat.set(1, repeatY);
+		this.textures.push(tex);
+		return tex;
+	}
+
+	/** Herhaalbare streepjestextuur: ribbels op treden, tanden op de kamplaat. */
+	private escStripeTexture(size: number, bg: string, fg: string, lineW: number, repeatX: number, height = 8): THREE.Texture {
+		const { canvas, ctx, w, h } = labelCanvas(size, height);
+		ctx.fillStyle = bg;
+		ctx.fillRect(0, 0, w, h);
+		ctx.fillStyle = fg;
+		for (let i = 0; i < w; i += 4) {
+			ctx.fillRect(i, 0, lineW, h);
+		}
+		const tex = labelTexture(canvas);
+		tex.wrapS = THREE.RepeatWrapping;
+		tex.wrapT = THREE.RepeatWrapping;
+		tex.repeat.set(repeatX, 1);
+		this.textures.push(tex);
+		return tex;
+	}
+
+	/** Vaste trap: elke trede in zijn eigen band, geen diagonale balkensoep. */
+	private buildStairFlight(): void {
+		const g = new THREE.Group();
+		g.name = 'stairs';
 		// World-space build so nothing is rotated into another flight
+		const opts = STAIR;
 		const z0 = opts.zBottom;
 		const z1 = opts.zTop;
 		const run = Math.abs(z1 - z0);
 		const dir = z1 < z0 ? -1 : 1;
-		const steps = opts.kind === 'stairs' ? 14 : 18;
+		const steps = 14;
 		const metal = this.track(
 			new THREE.MeshStandardMaterial({
-				color: opts.kind === 'escalator' ? 0x455a64 : 0x6d4c41,
-				metalness: opts.kind === 'escalator' ? 0.8 : 0.15,
+				color: 0x6d4c41,
+				metalness: 0.15,
 				roughness: 0.4,
 			}),
 		);
 		const tread = this.track(
 			new THREE.MeshStandardMaterial({
-				color: opts.kind === 'escalator' ? 0x37474f : 0xd7ccc8,
+				color: 0xd7ccc8,
 				roughness: 0.55,
 			}),
 		);
@@ -528,12 +1014,12 @@ export class MallBuilder {
 
 		// Top landing (sits in floor-1 hole)
 		const land1 = new THREE.Mesh(new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.5), metal);
-		land1.position.set(opts.x, opts.rise + 0.06, z1 + dir * 0.35);
+		land1.position.set(opts.x, FLOOR_H + 0.06, z1 + dir * 0.35);
 		g.add(land1);
 
 		// Discrete steps — each tread only occupies its own band (no cross)
 		const stepDepth = run / steps;
-		const stepRise = opts.rise / steps;
+		const stepRise = FLOOR_H / steps;
 		for (let i = 0; i < steps; i++) {
 			const z = z0 + dir * (i + 0.5) * stepDepth;
 			const y = (i + 1) * stepRise;
@@ -570,37 +1056,41 @@ export class MallBuilder {
 					const segLen = Math.hypot(z2 - z, y2 - y);
 					const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, segLen), railMat);
 					rail.position.set(sx, midY, midZ);
-					rail.rotation.x = Math.atan2(y2 - y, z2 - z);
+					// Een draai om X stuurt lokaal +Z naar (0, -sin, cos): zonder het
+					// minteken helt elk segment de verkeerde kant op en zakt de leuning
+					// terwijl de trap klimt.
+					rail.rotation.x = -Math.atan2(y2 - y, z2 - z);
 					g.add(rail);
 				}
 			}
 		}
 
-		// Label
-		const label = opts.kind === 'escalator' ? 'ROLTRAP ↑' : 'TRAP ↑';
-		const { canvas: c, ctx } = labelCanvas(256, 64);
-		ctx.fillStyle = opts.kind === 'escalator' ? '#1565c0' : '#5d4037';
-		ctx.fillRect(0, 0, 256, 64);
+		const { canvas: c, ctx, w: cw, h: ch } = labelCanvas(256, 64);
+		ctx.fillStyle = '#5d4037';
+		ctx.fillRect(0, 0, cw, ch);
 		ctx.fillStyle = '#fff';
-		ctx.font = 'bold 28px system-ui,sans-serif';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(label, 128, 32);
+		fitText(ctx, `TRAP ↑ ${level('v1').name.toUpperCase()}`, { x: 10, y: 8, w: cw - 20, h: ch - 16 }, { size: 36, maxLines: 1 });
 		const tex = labelTexture(c);
+		this.textures.push(tex);
 		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.5, 0.38),
+			new THREE.PlaneGeometry(1.9, 0.48),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		sign.position.set(opts.x, 1.5, z0 - dir * 0.2);
+		sign.position.set(opts.x, 1.6, z0 - dir * 0.2);
 		g.add(sign);
 
-		// Safety rail around floor-1 hole edges (short segments)
-		const holeZ = z1;
-		for (const side of [-1, 1]) {
-			const cap = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.0, 3.5), railMat);
-			cap.position.set(opts.x + side * (opts.width / 2 + 0.5), FLOOR_H + 0.55, holeZ);
-			g.add(cap);
-		}
+		// Hekje langs het gat in de vloerplaat, buiten de halve gatbreedte.
+		const glassMat = this.track(
+			new THREE.MeshStandardMaterial({
+				color: 0xbcd6e6,
+				metalness: 0.1,
+				roughness: 0.06,
+				transparent: true,
+				opacity: 0.24,
+				side: THREE.DoubleSide,
+			}),
+		);
+		this.addHoleRails(g, { x: opts.x, cz: opts.holeCz, halfW: opts.holeHalfW, halfD: opts.holeHalfD, dir }, glassMat, railMat);
 
 		this.group.add(g);
 	}

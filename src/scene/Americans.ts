@@ -8,6 +8,7 @@ import { fetchSimChat, type SimPersona } from '@/sim/SimChat';
 
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick, pickWith } from '@/util/rand';
+import { tagLevelCulled } from '@/util/visibility';
 
 export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
 
@@ -95,6 +96,10 @@ type Sim = {
 	armL: THREE.Object3D;
 	armR: THREE.Object3D;
 	label: THREE.Sprite;
+	/** Houder van de naamplaat op voethoogte: cullByLevel bezit zijn `visible` */
+	plateAnchor: THREE.Group;
+	/** Tekst veranderde terwijl de plaat weggeculld stond */
+	plateDirty: boolean;
 	speech: THREE.Sprite;
 	speechTex: THREE.CanvasTexture;
 	speechCtx: CanvasRenderingContext2D;
@@ -569,12 +574,16 @@ export class Americans {
 				this.tickDance(s, dt);
 				this.tickFace(s, dt);
 				this.cullSpeechVisibility(s);
+				if (s.plateDirty) this.paintLabel(s);
 				s.lag = 0;
 			}
 		} else {
 			const viewer = this.listener ? levelAt(this.listener.y) : null;
 			for (const s of this.sims) {
 				s.lag += dt;
+				// Voor de throttle: een zichtbare plaat moet bijwerken, ook als deze
+				// sim deze tick wordt overgeslagen.
+				if (s.plateDirty) this.paintLabel(s);
 				// Another deck: at best a silhouette across the atrium, so pay for it
 				// every 4th frame. Staggered by id so one bucket lands per frame
 				// instead of the whole crowd hitching together.
@@ -1152,7 +1161,13 @@ export class Americans {
 		);
 		label.scale.set(2.6, 1.0, 1);
 		label.position.set(0, headY * scale + 0.85, 0);
-		root.add(label);
+		// De plaat hangt twee tot drie meter boven de voeten, dus op de roltrap
+		// zit hij al in de band van de volgende verdieping terwijl de sim nog
+		// beneden loopt. De houder staat op dekhoogte en beslist over de deck.
+		const plateAnchor = new THREE.Group();
+		plateAnchor.add(label);
+		root.add(plateAnchor);
+		tagLevelCulled(plateAnchor);
 
 		// Speech bubble for smart gibberish
 		const { canvas: speechCanvas, ctx: speechCtx } = labelCanvas(280, 72);
@@ -1187,6 +1202,8 @@ export class Americans {
 			armL,
 			armR,
 			label,
+			plateAnchor,
+			plateDirty: false,
 			speech,
 			speechTex,
 			speechCtx,
@@ -1637,6 +1654,13 @@ export class Americans {
 	}
 
 	private paintLabel(sim: Sim): void {
+		// Weggeculld: anders vult de hele crowd elke tick een canvas van 320x120
+		// voor een plaat die niemand ziet. De vlag haalt het in op het eerste
+		// frame dat hij terug op de deck van de speler staat.
+		if (!sim.plateAnchor.visible) {
+			sim.plateDirty = true;
+			return;
+		}
 		const f = sim.f;
 		const ctx = sim.labelCtx;
 		const w = LABEL_W;
@@ -1673,6 +1697,7 @@ export class Americans {
 		ctx.fillText(`${face}${Math.round(f.unhappiness)}%`, 100, 92);
 
 		sim.labelTex.needsUpdate = true;
+		sim.plateDirty = false;
 	}
 
 	/** Player tips nearest sim — muntjes + happiness */

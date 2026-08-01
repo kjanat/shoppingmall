@@ -13,6 +13,12 @@ const GRAVITY = 24;
 /** High enough to clear the floor-1 balustrade into the atrium void */
 const JUMP_V = 7.4;
 const RADIUS = 0.4;
+/** Waterdiepte waarbij je maximaal geremd bent: borstdiep. */
+const WADE_DEEP = 1.15;
+/** Wat er van je loopsnelheid over is als je tot je borst in het water staat. */
+const WADE_SPEED = 0.45;
+/** Zo ver zakt je ooghoogte dan weg. Meer en je kijkt door de waterspiegel heen. */
+const WADE_SINK = 0.22;
 const PITCH_MAX = 1.45;
 /** rad per pixel */
 const LOCK_SENS = 0.0022;
@@ -80,6 +86,9 @@ export class PlayerControls {
 	private bob = 0;
 	private dip = 0;
 	private lean = 0;
+	/** Water boven de voeten (m) en hoe ver de camera daarvoor al gezakt is. */
+	private wade = 0;
+	private sink = 0;
 
 	private dragging = false;
 	private lastX = 0;
@@ -132,9 +141,13 @@ export class PlayerControls {
 		return this.yaw;
 	}
 
-	/** Which deck the player is standing on (for the minimap). */
+	/**
+	 * Which deck the player is standing on (for the minimap). Gemeten vanaf de
+	 * waterlijn: in het dakbad hangen je voeten onder de dakplaat, maar je staat
+	 * nog steeds op het dak.
+	 */
 	get level(): LevelId {
-		return levelAt(this.feetY);
+		return levelAt(this.feetY + this.wade);
 	}
 
 	/**
@@ -207,6 +220,8 @@ export class PlayerControls {
 		this.grounded = true;
 		this.bob = 0;
 		this.dip = 0;
+		this.wade = 0;
+		this.sink = 0;
 		this.keys.clear();
 		this.axisX = 0;
 		this.axisY = 0;
@@ -277,6 +292,7 @@ export class PlayerControls {
 		this.vy = 0;
 		this.grounded = true;
 		this.jumpQueued = false;
+		this.wade = 0;
 	}
 
 	update(dt: number): void {
@@ -292,6 +308,9 @@ export class PlayerControls {
 		}
 
 		const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+		// Waden: één afgeleide waarde stuurt zowel de rem als hoe diep je wegzakt
+		this.wade = this.world.waterDepthAt(this.cam.position.x, this.cam.position.z, this.feetY);
+		const wadeT = Math.min(1, this.wade / WADE_DEEP);
 
 		// ── Steering ─────────────────────────────────────────
 		// Q/E always turn, so a mouseless player is never stuck facing one way.
@@ -344,7 +363,7 @@ export class PlayerControls {
 			wz /= wishLen;
 		}
 
-		const speed = (sprint ? RUN : WALK) * Math.min(1, Math.max(wishLen, moving ? 0.4 : 0));
+		const speed = (sprint ? RUN : WALK) * Math.min(1, Math.max(wishLen, moving ? 0.4 : 0)) * (1 - (1 - WADE_SPEED) * wadeT);
 		const tx = wx * speed;
 		const tz = wz * speed;
 		const rate = (moving ? (this.grounded ? ACCEL : AIR_ACCEL) : FRICTION) * dt;
@@ -433,8 +452,9 @@ export class PlayerControls {
 		}
 		this.dip = THREE.MathUtils.lerp(this.dip, 0, Math.min(1, 7 * dt));
 		this.lean = THREE.MathUtils.lerp(this.lean, strafe * (sprint ? 0.02 : 0.013), Math.min(1, 6 * dt));
+		this.sink = THREE.MathUtils.lerp(this.sink, wadeT * WADE_SINK, Math.min(1, 8 * dt));
 
-		p.y = this.feetY + EYE + this.bob - this.dip;
+		p.y = this.feetY + EYE + this.bob - this.dip - this.sink;
 
 		this.cam.rotation.order = 'YXZ';
 		this.cam.rotation.set(this.pitch, this.yaw, -this.lean);
@@ -627,13 +647,20 @@ export class PlayerControls {
 		const insideMall = Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5;
 		const overVoid = Math.abs(p.x) < 7.4 && Math.abs(p.z) < 5.4;
 		const ceiling = insideMall && !overVoid && this.feetY < 13.4 ? 12.6 : 55;
-		const floor = insideMall ? this.world.groundHeightAt(p.x, p.z, this.feetY, 2.5) + 0.45 : 0.45;
+		let floor = 0.45;
+		if (insideMall) {
+			const g = this.world.groundHeightAt(p.x, p.z, this.feetY, 2.5);
+			// Boven het dakbad is de waterspiegel de bodem: de badbodem ligt onder de
+			// dekplaat, dus daarop klemmen zet de drone middenin het dakbeton.
+			floor = g + this.world.waterDepthAt(p.x, p.z, g) + 0.45;
+		}
 		this.feetY = THREE.MathUtils.clamp(this.feetY, floor, ceiling);
 
 		p.y = this.feetY + 0.55; // ooghoogte in het stoeltje
 		this.cam.rotation.order = 'YXZ';
 		this.cam.rotation.set(this.pitch, this.yaw, -this.vel.x * 0.004);
 		this.grounded = false;
+		this.wade = 0;
 	}
 
 	/** Keep yaw in ±π so the minimap needle never wraps oddly. */

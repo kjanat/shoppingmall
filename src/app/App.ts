@@ -1704,6 +1704,7 @@ export class App {
 		}
 
 		this.updateConfetti(dt);
+		this.mall.update(dt);
 		this.palms.update(elapsed);
 		this.walkways.update(dt);
 		this.amenities.update(dt, elapsed);

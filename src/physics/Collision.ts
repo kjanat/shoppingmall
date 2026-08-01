@@ -1,5 +1,6 @@
 import { levelY } from '@/data/levels';
 import { STORES } from '@/data/stores';
+import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '@/scene/RoofIsland';
 
 export type AABB = {
 	minX: number;
@@ -285,6 +286,13 @@ export class CollisionWorld {
 			if (Math.abs(h - currentY) <= step) return h;
 		}
 
+		// Het zwembad is een gat in het dek: binnen de waterlijn is de bodem de
+		// vloer. Staat vóór roofPads, want die plaat loopt dwars over het bad heen.
+		if (currentY > FLOOR_H + 2) {
+			const pool = poolFloorY(x, z);
+			if (pool !== null) return pool;
+		}
+
 		// Roof deck when you're up there
 		for (const p of this.roofPads) {
 			if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
@@ -325,6 +333,15 @@ export class CollisionWorld {
 			return slab;
 		}
 		return slab;
+	}
+
+	/**
+	 * Hoeveel water er boven je voeten staat in het dakbad, 0 op het droge.
+	 * De hoogtecheck eerst: onder het bad ligt gewoon de mall.
+	 */
+	waterDepthAt(x: number, z: number, feetY: number): number {
+		if (feetY > POOL_WATER_Y || feetY < POOL_FLOOR_Y - 0.5) return 0;
+		return poolFloorY(x, z) === null ? 0 : POOL_WATER_Y - feetY;
 	}
 
 	/** True while the climber is standing on an incline rather than a slab. */
