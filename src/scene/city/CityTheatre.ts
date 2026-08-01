@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
  * PRAIRIE THEATRE — monumentaal cultuurpaleis op het NO-blok (x 56..88, z -68..-44).
@@ -98,8 +99,7 @@ export class CityTheatre {
 		c.width = w;
 		c.height = h;
 		draw(ctx2d(c));
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		tex.anisotropy = 4;
 		this.textures.push(tex);
 		return tex;

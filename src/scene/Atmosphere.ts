@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { Americans } from './Americans';
 
 /**
@@ -29,10 +30,7 @@ export class Atmosphere {
 		];
 
 		for (const ad of ads) {
-			const canvas = document.createElement('canvas');
-			canvas.width = 512;
-			canvas.height = 256;
-			const ctx = ctx2d(canvas);
+			const { canvas, ctx } = labelCanvas(512, 256);
 			ctx.fillStyle = ad.bg;
 			ctx.fillRect(0, 0, 512, 256);
 			ctx.strokeStyle = ad.color;
@@ -46,8 +44,7 @@ export class Atmosphere {
 			lines.forEach((line, i) => {
 				ctx.fillText(line, 256, 128 + (i - (lines.length - 1) / 2) * 56);
 			});
-			const tex = new THREE.CanvasTexture(canvas);
-			tex.colorSpace = THREE.SRGBColorSpace;
+			const tex = labelTexture(canvas);
 			// MeshBasic — no emissive pulse / bloom flicker
 			const mat = new THREE.MeshBasicMaterial({
 				map: tex,

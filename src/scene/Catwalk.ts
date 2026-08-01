@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /**
@@ -555,10 +556,7 @@ export class Catwalk {
 		this.group.add(wall);
 
 		// Backdrop banner
-		const canvas = document.createElement('canvas');
-		canvas.width = 512;
-		canvas.height = 256;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(512, 256);
 		const grad = ctx.createLinearGradient(0, 0, 512, 256);
 		grad.addColorStop(0, '#ff4fa3');
 		grad.addColorStop(1, '#7c3aed');
@@ -571,8 +569,7 @@ export class Catwalk {
 		ctx.fillText('WEEK', 256, 152);
 		ctx.font = '600 22px system-ui,sans-serif';
 		ctx.fillText('PRAIRIE LAKES · CATWALK', 256, 200);
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(canvas);
 		const banner = new THREE.Mesh(
 			new THREE.PlaneGeometry(5, 3.6),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),

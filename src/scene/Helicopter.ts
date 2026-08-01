@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { ROOF_Y } from './Helipad';
 
 type HeliState = 'parked' | 'spinup' | 'takeoff' | 'cruise' | 'approach' | 'land' | 'spindown';
@@ -287,10 +288,7 @@ export class Helicopter {
 		// Kenteken als GEBOGEN decal op de romp — een bolsegment met iets grotere
 		// radius, als kind van de fuselage zodat het de schaal (1.7, .95, .95)
 		// meekrijgt. Het oude platte bordje sneed dwars door de gebogen romp.
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 192;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 192);
 		ctx.clearRect(0, 0, 512, 192);
 		// wit plaatje met afgeronde hoeken + rode bies
 		const r = 26;
@@ -314,8 +312,7 @@ export class Helicopter {
 		ctx.fillStyle = '#5c6066';
 		ctx.font = '700 26px system-ui,sans-serif';
 		ctx.fillText('MALL AIR · PRAIRIE LAKES', 256, 134);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		tex.anisotropy = 4;
 		const stickerMat = new THREE.MeshBasicMaterial({
 			map: tex,

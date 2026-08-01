@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
  * The ultimate mall ending: a chrome saucer hovering above the landing pad.
@@ -208,10 +209,7 @@ export class Spaceship {
 		this.lights.push(pl);
 
 		// Mall rooftop attraction sticker (family-friendly)
-		const canvas = document.createElement('canvas');
-		canvas.width = 256;
-		canvas.height = 128;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(256, 128);
 		ctx.fillStyle = '#1e3a5f';
 		ctx.fillRect(0, 0, 256, 128);
 		ctx.fillStyle = '#f5c518';
@@ -223,8 +221,7 @@ export class Spaceship {
 		ctx.fillText('SKY RIDE', 128, 50);
 		ctx.font = 'bold 16px system-ui,sans-serif';
 		ctx.fillText('mall attraction', 128, 88);
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(canvas);
 		const sticker = new THREE.Mesh(
 			new THREE.PlaneGeometry(2.2, 1.1),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -271,10 +268,7 @@ export class Spaceship {
 	}
 
 	private makeSign(): THREE.Sprite {
-		const canvas = document.createElement('canvas');
-		canvas.width = 512;
-		canvas.height = 128;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = 'rgba(15,23,42,0.9)';
 		roundRect(ctx, 8, 16, 496, 96, 16);
 		ctx.fill();
@@ -290,8 +284,7 @@ export class Spaceship {
 		ctx.font = '500 20px system-ui,sans-serif';
 		ctx.fillStyle = '#94a3b8';
 		ctx.fillText('einde van de route', 256, 88);
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(canvas);
 		const sprite = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
 		sprite.position.set(0, 12.4, 0);
 		sprite.scale.set(8, 2, 1);

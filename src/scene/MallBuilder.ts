@@ -3,6 +3,7 @@ import { levelY } from '@/data/levels';
 import { getOwner } from '@/data/shopOwners';
 import { STORES, type StoreDef } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /** One storey, straight from the deck heights. */
@@ -33,10 +34,7 @@ function makeTextTexture(
 ): THREE.CanvasTexture {
 	const w = opts.w ?? 512;
 	const h = opts.h ?? 256;
-	const canvas = document.createElement('canvas');
-	canvas.width = w;
-	canvas.height = h;
-	const ctx = ctx2d(canvas);
+	const { canvas, ctx } = labelCanvas(w, h);
 
 	ctx.fillStyle = opts.bg ?? '#111118';
 	ctx.fillRect(0, 0, w, h);
@@ -69,8 +67,7 @@ function makeTextTexture(
 		y += fontSize * 1.15;
 	}
 
-	const tex = new THREE.CanvasTexture(canvas);
-	tex.colorSpace = THREE.SRGBColorSpace;
+	const tex = labelTexture(canvas);
 	tex.anisotropy = 8;
 	return tex;
 }
@@ -118,10 +115,7 @@ export class MallBuilder {
 			}),
 		);
 
-		const tileCanvas = document.createElement('canvas');
-		tileCanvas.width = 256;
-		tileCanvas.height = 256;
-		const tctx = ctx2d(tileCanvas);
+		const { canvas: tileCanvas, ctx: tctx } = labelCanvas(256, 256);
 		tctx.fillStyle = '#e8e0d4';
 		tctx.fillRect(0, 0, 256, 256);
 		tctx.strokeStyle = '#d0c8ba';
@@ -586,10 +580,7 @@ export class MallBuilder {
 
 		// Label
 		const label = opts.kind === 'escalator' ? 'ROLTRAP ↑' : 'TRAP ↑';
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 64;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 64);
 		ctx.fillStyle = opts.kind === 'escalator' ? '#1565c0' : '#5d4037';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#fff';
@@ -597,8 +588,7 @@ export class MallBuilder {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(label, 128, 32);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sign = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.5, 0.38),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -721,10 +711,7 @@ export class MallBuilder {
 		}
 
 		// OPEN signs
-		const openCanvas = document.createElement('canvas');
-		openCanvas.width = 256;
-		openCanvas.height = 96;
-		const octx = ctx2d(openCanvas);
+		const { canvas: openCanvas, ctx: octx } = labelCanvas(256, 96);
 		octx.fillStyle = '#15803d';
 		octx.fillRect(0, 0, 256, 96);
 		octx.fillStyle = '#fff';
@@ -732,8 +719,7 @@ export class MallBuilder {
 		octx.textAlign = 'center';
 		octx.textBaseline = 'middle';
 		octx.fillText('OPEN', 128, 48);
-		const openTex = new THREE.CanvasTexture(openCanvas);
-		openTex.colorSpace = THREE.SRGBColorSpace;
+		const openTex = labelTexture(openCanvas);
 		const openSign = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.2, 0.45),
 			this.track(new THREE.MeshBasicMaterial({ map: openTex, toneMapped: false })),
@@ -919,10 +905,7 @@ export class MallBuilder {
 		const title = isBoss ? (owner?.title ?? 'Shop owner') : at(staffTitles, index);
 		const meaning = isBoss ? (owner?.meaning ?? '') : `Crew #${index + 1}`;
 
-		const pc = document.createElement('canvas');
-		pc.width = 320;
-		pc.height = 96;
-		const pctx = ctx2d(pc);
+		const { canvas: pc, ctx: pctx } = labelCanvas(320, 96);
 		pctx.fillStyle = '#0f172a';
 		pctx.fillRect(0, 0, 320, 96);
 		pctx.fillStyle = isBoss && owner ? '#4ade80' : '#38bdf8';
@@ -939,8 +922,7 @@ export class MallBuilder {
 			pctx.font = '12px system-ui,sans-serif';
 			pctx.fillText(meaning.slice(0, 36), 160, 74);
 		}
-		const ptex = new THREE.CanvasTexture(pc);
-		ptex.colorSpace = THREE.SRGBColorSpace;
+		const ptex = labelTexture(pc);
 		const plate = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.2, 0.36),
 			this.track(new THREE.MeshBasicMaterial({ map: ptex, toneMapped: false })),

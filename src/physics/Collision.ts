@@ -265,18 +265,32 @@ export class CollisionWorld {
 	 * doesn't snap you to the deck above.
 	 */
 	groundHeightAt(x: number, z: number, currentY: number, step = 0.7): number {
-		// Roof deck first when you're up there
+		// Platforms and flights that sit ABOVE a roof pad go first. The pads span
+		// whole decks and answer unconditionally up here (`currentY > FLOOR_H + 2`),
+		// so anything standing on one is unreachable if the pad is asked first.
+		// Both are gated on already being at that height, so nothing below changes.
+		for (const p of this.platforms) {
+			if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
+			if (currentY >= p.y - 0.35 && currentY < p.y + 2) return p.y;
+		}
+		for (const r of this.ramps) {
+			if (r.yTop <= ROOF_H) continue;
+			if (x < r.minX || x > r.maxX) continue;
+			const zLo = Math.min(r.zBottom, r.zTop) - 1.2;
+			const zHi = Math.max(r.zBottom, r.zTop) + 1.2;
+			if (z < zLo || z > zHi) continue;
+			const raw = (z - r.zBottom) / (r.zTop - r.zBottom);
+			const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
+			const h = r.yBottom + (r.yTop - r.yBottom) * t;
+			if (Math.abs(h - currentY) <= step) return h;
+		}
+
+		// Roof deck when you're up there
 		for (const p of this.roofPads) {
 			if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
 			if (Math.abs(p.y - currentY) <= step + 0.4 || currentY > FLOOR_H + 2) {
 				return p.y;
 			}
-		}
-
-		// Low platforms (catwalk deck): the top is floor while you're on/above it
-		for (const p of this.platforms) {
-			if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
-			if (currentY >= p.y - 0.35 && currentY < p.y + 2) return p.y;
 		}
 
 		// Over the atrium hole there is no slab at any height below the roof: the

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
  * Mall toilets next to the gebedsruimte (not inside it).
@@ -212,18 +213,14 @@ export class Restrooms {
 			g.add(tap);
 		}
 
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 64;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 64);
 		ctx.fillStyle = '#0d47a1';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#fff';
 		ctx.font = 'bold 22px system-ui';
 		ctx.textAlign = 'center';
 		ctx.fillText('WUDU / ABLUTIE', 128, 40);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sign = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.6, 0.4),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -321,10 +318,7 @@ export class Restrooms {
 	}
 
 	private makeDoorSign(x: number, z: number, title: string, sub: string, color: string): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 96;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 96);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 256, 96);
 		ctx.fillStyle = '#fff';
@@ -333,8 +327,7 @@ export class Restrooms {
 		ctx.fillText(title, 128, 40);
 		ctx.font = '16px system-ui,sans-serif';
 		ctx.fillText(sub, 128, 70);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const mesh = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.5, 0.55),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -352,10 +345,7 @@ export class Restrooms {
 		this.group.add(this.pictogram(2.0, 2.2, 2.95, '♀', '#c2185b'));
 
 		// Overhead wayfinding strip
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 96;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 96);
 		ctx.fillStyle = '#111827';
 		ctx.fillRect(0, 0, 512, 96);
 		ctx.fillStyle = '#22c55e';
@@ -367,8 +357,7 @@ export class Restrooms {
 		ctx.font = '600 18px system-ui';
 		ctx.fillStyle = '#94a3b8';
 		ctx.fillText('HEREN  ·  DAMES  ·  gender apart', 256, 72);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const strip = new THREE.Mesh(
 			new THREE.PlaneGeometry(3.6, 0.7),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -383,10 +372,7 @@ export class Restrooms {
 
 	/** Flat board on the front wall */
 	private wallBoard(x: number, y: number, z: number, title: string, sub: string, color: string): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 320;
-		c.height = 140;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(320, 140);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 320, 140);
 		ctx.fillStyle = '#ffffff';
@@ -395,8 +381,7 @@ export class Restrooms {
 		ctx.fillText(title, 160, 58);
 		ctx.font = '20px system-ui,sans-serif';
 		ctx.fillText(sub, 160, 100);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const mesh = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.7, 0.75),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -406,10 +391,7 @@ export class Restrooms {
 	}
 
 	private pictogram(x: number, y: number, z: number, symbol: string, color: string): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 128;
-		c.height = 128;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(128, 128);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 128, 128);
 		ctx.fillStyle = '#fff';
@@ -417,8 +399,7 @@ export class Restrooms {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(symbol, 64, 68);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const mesh = new THREE.Mesh(
 			new THREE.PlaneGeometry(0.55, 0.55),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -429,10 +410,7 @@ export class Restrooms {
 
 	/** Sign flush on outer side wall (face = ±1 for +X / −X) */
 	private sideWallPlate(x: number, y: number, z: number, title: string, symbol: string, color: string, face: 1 | -1): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 160;
-		c.height = 200;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(160, 200);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 160, 200);
 		ctx.fillStyle = '#fff';
@@ -441,8 +419,7 @@ export class Restrooms {
 		ctx.fillText(symbol, 80, 80);
 		ctx.font = 'bold 32px system-ui';
 		ctx.fillText(title, 80, 140);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const mesh = new THREE.Mesh(
 			new THREE.PlaneGeometry(0.7, 0.9),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide })),

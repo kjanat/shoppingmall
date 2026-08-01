@@ -19,9 +19,6 @@ const shared = {
 	minify: true,
 	root: '.',
 	publicPath: '/',
-	define: {
-		'env.NODE_ENV': JSON.stringify('production'),
-	},
 } as const;
 
 const [out1, out2] = await Promise.all([

@@ -620,10 +620,7 @@ export class GlassElevator {
 	}
 
 	private makeCallSign(text: string, w: number, h: number): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 160;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 160);
 		ctx.fillStyle = '#0d47a1';
 		ctx.fillRect(0, 0, 512, 160);
 		ctx.strokeStyle = '#ffd700';
@@ -634,8 +631,7 @@ export class GlassElevator {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 256, 80);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Mesh(
 			new THREE.PlaneGeometry(w, h),
 			this.track(
@@ -649,10 +645,7 @@ export class GlassElevator {
 	}
 
 	private makeCallSprite(text: string): THREE.Sprite {
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 128;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = 'rgba(0,100,0,0.92)';
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.strokeStyle = '#ffd700';
@@ -663,8 +656,7 @@ export class GlassElevator {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 256, 64);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: tex,
@@ -828,10 +820,7 @@ export class GlassElevator {
 		g.add(stache);
 
 		// Name plate
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 64;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 64);
 		ctx.fillStyle = 'rgba(13,21,69,0.9)';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#ffd700';
@@ -840,8 +829,7 @@ export class GlassElevator {
 		ctx.fillText('HANS · Liftman', 128, 28);
 		ctx.font = '14px system-ui';
 		ctx.fillText('Glazen lift · V0 ↔ V1', 128, 50);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(1.2, 0.3, 1);
 		sp.position.set(0, 2.05, 0);
@@ -873,10 +861,7 @@ export class GlassElevator {
 
 	private buildSigns(): void {
 		// Overhead shaft sign
-		const c = document.createElement('canvas');
-		c.width = 384;
-		c.height = 96;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(384, 96);
 		ctx.fillStyle = '#0d47a1';
 		ctx.fillRect(0, 0, 384, 96);
 		ctx.fillStyle = '#fff';
@@ -885,8 +870,7 @@ export class GlassElevator {
 		ctx.fillText('GLAZEN LIFT', 192, 40);
 		ctx.font = '16px system-ui';
 		ctx.fillText('P1 · V0 · V1 · DAK · Hans', 192, 72);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const board = new THREE.Mesh(
 			new THREE.PlaneGeometry(2.4, 0.6),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -895,12 +879,9 @@ export class GlassElevator {
 		this.group.add(board);
 
 		// Cabin floor display
-		const sc = document.createElement('canvas');
-		sc.width = 256;
-		sc.height = 96;
-		this.signCtx = ctx2d(sc);
-		this.signTex = new THREE.CanvasTexture(sc);
-		this.signTex.colorSpace = THREE.SRGBColorSpace;
+		const { canvas: sc, ctx: __ctx } = labelCanvas(256, 96);
+		this.signCtx = __ctx;
+		this.signTex = labelTexture(sc);
 		this.signSprite = new THREE.Sprite(
 			new THREE.SpriteMaterial({
 				map: this.signTex,

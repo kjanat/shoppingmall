@@ -62,8 +62,8 @@ import { ElevatorPanel } from '@/ui/ElevatorPanel';
 import { KioskOverlay, type MapBlip } from '@/ui/KioskOverlay';
 import { type CastRow, PeopleDashboard } from '@/ui/PeopleDashboard';
 import { SettingsPanel } from '@/ui/SettingsPanel';
-import { at, pick } from '@/util/rand';
 import { setLabelAnisotropy } from '@/util/label';
+import { at, pick } from '@/util/rand';
 import { cullByLevel } from '@/util/visibility';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
 
@@ -1948,8 +1948,11 @@ export class App {
 			this.persistNow();
 		}
 
-		// Last thing before the draw: every update() above has moved something
-		cullByLevel(this.player.level);
+		// Last thing before the draw: every update() above has moved something.
+		// Keyed on the camera, not on the player body: in guest view and on the
+		// cinematic tour `player.update()` never runs, so `player.level` is frozen
+		// on whatever deck the body was left standing on. Same deck as the minimap.
+		cullByLevel(levelAt(this.camera.position.y));
 
 		this.composer.render(dt);
 	};

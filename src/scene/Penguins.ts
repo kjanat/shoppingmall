@@ -300,10 +300,7 @@ export class Penguins {
 	}
 
 	private makePlate(text: string, bg: string): THREE.Sprite {
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 64;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 64);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.strokeStyle = '#7dd3fc';
@@ -314,8 +311,7 @@ export class Penguins {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 128, 32);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 

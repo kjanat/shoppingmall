@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 import type { BeardCave } from './BeardCave';
 
@@ -145,18 +146,14 @@ export class BakerThief {
 		g.add(sack);
 
 		// name plate
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 64;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 64);
 		ctx.fillStyle = 'rgba(0,0,0,0.85)';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#ffd700';
 		ctx.font = 'bold 22px system-ui';
 		ctx.textAlign = 'center';
 		ctx.fillText('BAARD-DIEF 💀', 128, 40);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
 		sp.scale.set(2.2, 0.55, 1);
 		sp.position.y = 2.4;

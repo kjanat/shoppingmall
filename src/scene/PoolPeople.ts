@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
+import { POOL_CENTER } from './RoofIsland';
 
 /**
  * PoolPeople: badgasten voor het dakeiland.
@@ -16,11 +17,10 @@ import { at } from '@/util/rand';
 const DECK_Y = levelY('roof');
 const WATER_Y = 13.75;
 
-// Aanname: het zwembad zit rond het midden van het dek (x -32..-6, z -20..20),
-// dus centrum ±(-19, 0) met een straal van ~5.5. Klopt het bad niet? Dan
-// schuiven deze twee getallen en zit iedereen weer droog/nat naar behoren.
-const POOL_X = -19;
-const POOL_Z = 0;
+// Uit RoofIsland, niet geraden: de vorige aanname (-19, 0) zat 1 m en 2 m naast
+// het echte bad, dus de helft van de zwemmers lag op de tegels.
+const POOL_X = POOL_CENTER.x;
+const POOL_Z = POOL_CENTER.z;
 
 const NOD_PERIOD = 5.5; // om de zoveel seconden vindt de crew iets goed
 const NOD_TIME = 1.1;

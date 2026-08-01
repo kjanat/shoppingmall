@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /**
@@ -122,10 +123,7 @@ export class CityRoads {
 	 * op wrapS maakt er vanzelf een nette dash van.
 	 */
 	private makeAsphaltTexture(repeatX: number): THREE.Texture {
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 128;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 128);
 		ctx.fillStyle = '#26282c';
 		ctx.fillRect(0, 0, 256, 128);
 		// Vlekjes — asfalt zonder textuur is gewoon een sombere plane
@@ -141,8 +139,7 @@ export class CityRoads {
 		// Middenstreep: ~40% van de tegel streep, de rest gat
 		ctx.fillStyle = '#d9d4c2';
 		ctx.fillRect(24, 61, 104, 6);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		tex.wrapS = THREE.RepeatWrapping;
 		tex.repeat.set(repeatX, 1);
 		this.textures.push(tex);

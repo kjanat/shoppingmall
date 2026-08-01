@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /** World Y of the parking deck (one storey under V0) */
@@ -289,10 +290,7 @@ export class ParkingGarage {
 	}
 
 	private makeTextPlane(text: string, w: number, h: number, bg = '#1565c0', fg = '#ffffff'): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 128;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.fillStyle = fg;
@@ -300,8 +298,7 @@ export class ParkingGarage {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 256, 64);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Mesh(
 			new THREE.PlaneGeometry(w, h),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),

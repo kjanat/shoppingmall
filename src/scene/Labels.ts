@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { level, levelY } from '@/data/levels';
 import type { StoreDef } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 
 /** Clean mall directory labels — white pills, no neon pulse. */
@@ -33,10 +34,7 @@ export class StoreLabels {
 
 	private makeLabel(store: StoreDef): THREE.Sprite {
 		const name = store.name.replace('\n', ' ');
-		const canvas = document.createElement('canvas');
-		canvas.width = 512;
-		canvas.height = 128;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(512, 128);
 
 		ctx.fillStyle = store.hero ? 'rgba(227, 6, 19, 0.95)' : 'rgba(255, 255, 255, 0.94)';
 		roundRect(ctx, 8, 20, 496, 88, 16);
@@ -57,8 +55,7 @@ export class StoreLabels {
 		ctx.font = '500 20px system-ui, sans-serif';
 		ctx.fillText(level(store.level).code, 256, 88);
 
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(canvas);
 		const mat = new THREE.SpriteMaterial({
 			map: tex,
 			transparent: true,
@@ -72,10 +69,7 @@ export class StoreLabels {
 	}
 
 	private makeFloorBadge(text: string, x: number, y: number, z: number, color: string): THREE.Sprite {
-		const canvas = document.createElement('canvas');
-		canvas.width = 512;
-		canvas.height = 80;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(512, 80);
 		ctx.fillStyle = 'rgba(255,255,255,0.9)';
 		roundRect(ctx, 40, 10, 432, 60, 12);
 		ctx.fill();
@@ -89,8 +83,7 @@ export class StoreLabels {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 256, 40);
 
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(canvas);
 		const mat = new THREE.SpriteMaterial({
 			map: tex,
 			transparent: true,

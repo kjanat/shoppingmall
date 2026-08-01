@@ -424,10 +424,7 @@ export class ProtestGroupies {
 		pR.position.x = 1.6;
 		this.group.add(pL, pR);
 
-		const c = document.createElement('canvas');
-		c.width = 768;
-		c.height = 192;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(768, 192);
 		// Progress pride stripe base
 		const cols = ['#e40303', '#ff8c00', '#ffed00', '#008026', '#24408e', '#732982'];
 		cols.forEach((col, i) => {
@@ -457,8 +454,7 @@ export class ProtestGroupies {
 		ctx.fillText('WIR SCHAFFEN DAS', 440, 82);
 		ctx.font = 'bold 24px system-ui';
 		ctx.fillText('ANGELA + LGBTQIA+ PROTEST GROUPIES', 440, 128);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		this.banner = new THREE.Mesh(
 			new THREE.PlaneGeometry(3.4, 0.85),
 			this.track(
@@ -570,10 +566,7 @@ export class ProtestGroupies {
 	}
 
 	private makePrideFlagTex(kind: FlagKind): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 160;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 160);
 
 		const stripes = (cols: string[]) => {
 			const h = 160 / cols.length;
@@ -663,8 +656,7 @@ export class ProtestGroupies {
 		ctx.lineWidth = 4;
 		ctx.strokeRect(2, 2, 252, 156);
 
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return tex;
 	}
 
@@ -886,18 +878,14 @@ export class ProtestGroupies {
 		);
 		pole.position.y = 0.85;
 		g.add(pole);
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 160;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 160);
 		ctx.fillStyle = '#000';
 		ctx.fillRect(0, 0, 256, 53);
 		ctx.fillStyle = '#DD0000';
 		ctx.fillRect(0, 53, 256, 54);
 		ctx.fillStyle = '#FFCE00';
 		ctx.fillRect(0, 107, 256, 53);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const cloth = new THREE.Mesh(
 			new THREE.PlaneGeometry(0.7, 0.44),
 			this.track(
@@ -1124,10 +1112,7 @@ export class ProtestGroupies {
 	}
 
 	private makeSignTex(lines: [string, string], seed: number): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 176;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 176);
 		const bgs = ['#ffffff', '#fff59d', '#e3f2fd', '#f3e5f5', '#e8f5e9'];
 		ctx.fillStyle = at(bgs, seed);
 		ctx.fillRect(0, 0, 256, 176);
@@ -1145,8 +1130,7 @@ export class ProtestGroupies {
 		ctx.fillText(lines[0], 128, 90);
 		ctx.font = 'bold 34px system-ui';
 		ctx.fillText(lines[1], 128, 140);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return tex;
 	}
 
@@ -1156,10 +1140,7 @@ export class ProtestGroupies {
 	}
 
 	private makeTextSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
-		const c = document.createElement('canvas');
-		c.width = w;
-		c.height = h;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg.startsWith('#') || bg.startsWith('rgb') ? bg : bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = '#fff';
@@ -1167,8 +1148,7 @@ export class ProtestGroupies {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, w / 2, h / 2);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(0.85, 0.22, 1);
 		return sp;

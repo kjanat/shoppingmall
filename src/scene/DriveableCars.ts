@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { GARAGE_Y } from './ParkingGarage';
 import type { DriveInput } from './ScrubberBuggy';
 
@@ -257,10 +258,7 @@ export class DriveableCars {
 	}
 
 	private paintLabel(c: CarSlot, text: string, bg: string): void {
-		const canvas = document.createElement('canvas');
-		canvas.width = 320;
-		canvas.height = 64;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(320, 64);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
 		ctx.strokeStyle = '#ffc107';
@@ -271,8 +269,7 @@ export class DriveableCars {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 160, 32);
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(canvas);
 		const mat = c.label.material as THREE.SpriteMaterial;
 		mat.map?.dispose();
 		mat.map = tex;
@@ -280,10 +277,7 @@ export class DriveableCars {
 	}
 
 	private makeLabel(text: string, bg: string): THREE.Sprite {
-		const canvas = document.createElement('canvas');
-		canvas.width = 320;
-		canvas.height = 64;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(320, 64);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
 		ctx.strokeStyle = '#ffc107';
@@ -294,8 +288,7 @@ export class DriveableCars {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 160, 32);
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(canvas);
 		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(2.4, 0.5, 1);
 		return sp;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { pickWith } from '@/util/rand';
 
 /**
@@ -269,10 +270,7 @@ export class CityBuildings {
 
 	/** Gedeelde gevel-textuur: donkere nacht, ~30% ramen aan, één raam rood. */
 	private makeWindowTexture(rand: Rand): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 512;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 512);
 		const bg = ctx.createLinearGradient(0, 0, 0, 512);
 		bg.addColorStop(0, '#0d1019');
 		bg.addColorStop(1, '#141827');
@@ -301,8 +299,7 @@ export class CityBuildings {
 		}
 		ctx.globalAlpha = 1;
 
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		tex.anisotropy = 4;
 		this.textures.push(tex);
 		return tex;

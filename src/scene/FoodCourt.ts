@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
  * Open food court — floor 1, south balcony over the atrium.
@@ -237,10 +238,7 @@ export class FoodCourt {
 	}
 
 	private makeSign(title: string, sub: string, bg: number, fg: number): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 320;
-		c.height = 100;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(320, 100);
 		ctx.fillStyle = `#${bg.toString(16).padStart(6, '0')}`;
 		ctx.fillRect(0, 0, 320, 100);
 		ctx.fillStyle = `#${fg.toString(16).padStart(6, '0')}`;
@@ -249,8 +247,7 @@ export class FoodCourt {
 		ctx.fillText(title, 160, 42);
 		ctx.font = '18px system-ui';
 		ctx.fillText(sub, 160, 72);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Mesh(
 			new THREE.PlaneGeometry(2.4, 0.75),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -258,10 +255,7 @@ export class FoodCourt {
 	}
 
 	private buildSign(): void {
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 128;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = '#bf360c';
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.fillStyle = '#ffcc02';
@@ -272,8 +266,7 @@ export class FoodCourt {
 		ctx.fillText('FOOD COURT', 256, 50);
 		ctx.font = '22px system-ui';
 		ctx.fillText('hangry zone · open late · no diet zone', 256, 88);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
 		sp.scale.set(5.5, 1.4, 1);
 		sp.position.set(0, 3.6, 0);

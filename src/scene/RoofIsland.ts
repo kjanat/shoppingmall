@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
+import { fitText } from '@/util/label';
 import { at } from '@/util/rand';
 
 const DECK_Y = levelY('roof');
+
+/** Waterspiegel-centrum in wereldcoördinaten. PoolPeople zet er zwemmers op. */
+export const POOL_CENTER = { x: -20, z: 2 } as const;
 
 /**
  * Tropisch dakeiland op het westelijke mall-dak. Zwembad in nierboonvorm,
@@ -82,8 +86,7 @@ export class RoofIsland {
 		c.width = w;
 		c.height = h;
 		draw(ctx2d(c), w, h);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		this.textures.push(tex);
 		return tex;
 	}
@@ -116,7 +119,7 @@ export class RoofIsland {
 	private buildPool(): void {
 		const pool = new THREE.Group();
 		pool.name = 'pool';
-		pool.position.set(-20, DECK_Y, 2);
+		pool.position.set(POOL_CENTER.x, DECK_Y, POOL_CENTER.z);
 		pool.rotation.y = 0.3;
 
 		const inner = this.kidney(1);
@@ -313,7 +316,7 @@ export class RoofIsland {
 				ctx.textAlign = 'center';
 				ctx.fillText('TIKI BAR', w / 2, 56);
 				ctx.font = '22px system-ui';
-				ctx.fillText('cocktails op dakprijzen', w / 2, 96);
+				fitText(ctx, 'cocktails op dakprijzen', { x: 16, y: 74, w: w - 32, h: 40 }, { size: 30, maxLines: 1 });
 			},
 			384,
 			128,

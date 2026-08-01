@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
  * Baard-dief hideout — rocky west-wall cave stuffed with juwelen & goud.
@@ -351,10 +352,7 @@ export class BeardCave {
 
 	private buildSigns(): void {
 		const makePlate = (lines: string[], _w: number, _h: number, bg: string, fg: string) => {
-			const c = document.createElement('canvas');
-			c.width = 512;
-			c.height = 256;
-			const ctx = ctx2d(c);
+			const { canvas: c, ctx } = labelCanvas(512, 256);
 			ctx.fillStyle = bg;
 			ctx.fillRect(0, 0, 512, 256);
 			ctx.strokeStyle = fg;
@@ -368,8 +366,7 @@ export class BeardCave {
 				else ctx.font = '28px system-ui';
 				ctx.fillText(line, 256, 70 + i * 52);
 			});
-			const tex = new THREE.CanvasTexture(c);
-			tex.colorSpace = THREE.SRGBColorSpace;
+			const tex = labelTexture(c);
 			return this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
 		};
 

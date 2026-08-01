@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
  * Fountain (particles), monkey in tree, Aperol Spritz bar.
@@ -86,18 +87,14 @@ export class Amenities {
 		this.group.add(bowl);
 
 		// Sign
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 64;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 64);
 		ctx.fillStyle = '#1565c0';
 		ctx.fillRect(0, 0, 256, 64);
 		ctx.fillStyle = '#fff';
 		ctx.font = 'bold 22px system-ui';
 		ctx.textAlign = 'center';
 		ctx.fillText('FONTEIN', 128, 40);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
 		sp.position.set(0, 3.2, 0);
 		sp.scale.set(2, 0.5, 1);
@@ -140,18 +137,14 @@ export class Amenities {
 		glass.position.set(0.9, 1.25, 0.2);
 		g.add(glass);
 
-		const c = document.createElement('canvas');
-		c.width = 320;
-		c.height = 80;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(320, 80);
 		ctx.fillStyle = '#ff6b35';
 		ctx.fillRect(0, 0, 320, 80);
 		ctx.fillStyle = '#fff';
 		ctx.font = 'bold 26px system-ui';
 		ctx.textAlign = 'center';
 		ctx.fillText('APEROL SPRITZ 🍊', 160, 48);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sign = new THREE.Mesh(
 			new THREE.PlaneGeometry(2.4, 0.6),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -197,18 +190,14 @@ export class Amenities {
 		e2.position.set(0.06, 0.48, 0.26);
 		m.add(e1, e2);
 
-		const c = document.createElement('canvas');
-		c.width = 128;
-		c.height = 40;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(128, 40);
 		ctx.fillStyle = 'rgba(0,0,0,0.7)';
 		ctx.fillRect(0, 0, 128, 40);
 		ctx.fillStyle = '#fff';
 		ctx.font = 'bold 16px system-ui';
 		ctx.textAlign = 'center';
 		ctx.fillText('🐵 aap', 64, 26);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
 		sp.scale.set(1.0, 0.32, 1);
 		sp.position.y = 0.85;

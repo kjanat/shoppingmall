@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 
 /**
@@ -260,10 +261,7 @@ export class TravelAgency {
 	}
 
 	private makeIslandPoster(): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 384;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 384);
 		// Sky
 		const sky = ctx.createLinearGradient(0, 0, 0, 280);
 		sky.addColorStop(0, '#0277bd');
@@ -330,16 +328,12 @@ export class TravelAgency {
 		ctx.fillText('CANCELLED', 0, 8);
 		ctx.restore();
 
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return tex;
 	}
 
 	private makeTextPoster(lines: string[], bg: string, fg: string): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = 384;
-		c.height = 256;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(384, 256);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 384, 256);
 		ctx.strokeStyle = fg;
@@ -351,8 +345,7 @@ export class TravelAgency {
 			ctx.font = i === 0 ? 'bold 28px system-ui' : 'bold 22px system-ui';
 			ctx.fillText(line, 192, 55 + i * 48);
 		});
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return tex;
 	}
 
@@ -494,10 +487,7 @@ export class TravelAgency {
 	}
 
 	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
-		const c = document.createElement('canvas');
-		c.width = w;
-		c.height = h;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = '#fff';
@@ -505,8 +495,7 @@ export class TravelAgency {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, w / 2, h / 2);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }

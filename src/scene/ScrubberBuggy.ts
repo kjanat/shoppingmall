@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /** Arcade drive input from the player */
 export type DriveInput = {
@@ -177,10 +178,7 @@ export class ScrubberBuggy {
 	}
 
 	private paintLabel(text: string, bg: string): void {
-		const c = document.createElement('canvas');
-		c.width = 320;
-		c.height = 64;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(320, 64);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
 		ctx.strokeStyle = '#ffeb3b';
@@ -191,8 +189,7 @@ export class ScrubberBuggy {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 160, 32);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const mat = this.label.material as THREE.SpriteMaterial;
 		mat.map?.dispose();
 		mat.map = tex;
@@ -357,10 +354,7 @@ export class ScrubberBuggy {
 	}
 
 	private makePlate(text: string, bg: string, fg: string, w: number, h: number): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = w;
-		c.height = h;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = fg;
@@ -371,8 +365,7 @@ export class ScrubberBuggy {
 		lines.forEach((line, i) => {
 			ctx.fillText(line, w / 2, h / 2 + (i - (lines.length - 1) / 2) * (h * 0.32));
 		});
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return tex;
 	}
 

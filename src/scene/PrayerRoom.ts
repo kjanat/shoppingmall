@@ -398,10 +398,7 @@ export class PrayerRoom {
 		this.group.add(lamp);
 
 		// sign
-		const c = document.createElement('canvas');
-		c.width = 320;
-		c.height = 96;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(320, 96);
 		ctx.fillStyle = '#1b5e20';
 		ctx.fillRect(0, 0, 320, 96);
 		ctx.fillStyle = '#fff';
@@ -410,8 +407,7 @@ export class PrayerRoom {
 		ctx.fillText('GEBEDSRUIMTE', 160, 40);
 		ctx.font = '13px system-ui';
 		ctx.fillText('Allahu Trapbar · geit · wudu ernaast', 160, 70);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sign = new THREE.Mesh(
 			new THREE.PlaneGeometry(2.2, 0.65),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -829,10 +825,7 @@ export class PrayerRoom {
 
 	/** Classic sticky note: paper color + sharpie text + slight curl shadow */
 	private makePostIt(lines: string[], bg: string, fg: string, worldW: number, worldH: number): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 256;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 256);
 		// Paper
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 256, 256);
@@ -856,8 +849,7 @@ export class PrayerRoom {
 			const y = 128 + (i - (n - 1) / 2) * (fs + 8);
 			ctx.fillText(line, 128, y);
 		});
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Mesh(
 			new THREE.PlaneGeometry(worldW, worldH),
 			this.track(
@@ -1320,10 +1312,7 @@ export class PrayerRoom {
 	}
 
 	private makeNamePlate(name: string, title: string): THREE.Sprite {
-		const c = document.createElement('canvas');
-		c.width = 320;
-		c.height = 80;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(320, 80);
 		ctx.fillStyle = 'rgba(27,94,32,0.88)';
 		ctx.fillRect(0, 0, 320, 80);
 		ctx.strokeStyle = '#a5d6a7';
@@ -1336,8 +1325,7 @@ export class PrayerRoom {
 		ctx.fillStyle = '#c8e6c9';
 		ctx.font = '14px system-ui,sans-serif';
 		ctx.fillText(title, 160, 56);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }

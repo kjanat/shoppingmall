@@ -611,10 +611,7 @@ export class CleaningCart {
 	}
 
 	private makePlate(text: string, bg: string, fg: string, w: number, h: number): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = w;
-		c.height = h;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.strokeStyle = fg;
@@ -630,16 +627,12 @@ export class CleaningCart {
 			const y = h / 2 + (i - (lines.length - 1) / 2) * (fs + 4);
 			ctx.fillText(line, w / 2, y);
 		});
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return tex;
 	}
 
 	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
-		const c = document.createElement('canvas');
-		c.width = w;
-		c.height = h;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = '#fff';
@@ -647,8 +640,7 @@ export class CleaningCart {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, w / 2, h / 2);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /**
@@ -229,10 +230,7 @@ export class CityTraffic {
 
 	/** Geel bordje met TAXI erop. Van achteren staat er IXAT — heel authentiek. */
 	private makeTaxiSignMaterial(): THREE.MeshBasicMaterial {
-		const c = document.createElement('canvas');
-		c.width = 128;
-		c.height = 44;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(128, 44);
 		ctx.fillStyle = '#f7c500';
 		ctx.fillRect(0, 0, 128, 44);
 		ctx.strokeStyle = '#111';
@@ -243,8 +241,7 @@ export class CityTraffic {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText('TAXI', 64, 24);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		this.textures.push(tex);
 		return this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide }));
 	}

@@ -10,7 +10,7 @@
 		"fmt": "run lint --fix; dprint fmt .",
 		"lint": "biome check",
 		"prestart": "run build",
-		"start": "dist/mall",
+		"start": "NODE_ENV=production dist/mall",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

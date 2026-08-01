@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
 // Ceiling slab tops out at 13.75 (y 13.5 + 0.25 extrude) — the deck used to sit
@@ -60,10 +61,7 @@ export class Helipad {
 		door.position.set(x - 1.2, y0 + 1.1, z0 - 0.8);
 		g.add(door);
 
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 96;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 96);
 		ctx.fillStyle = '#b71c1c';
 		ctx.fillRect(0, 0, 256, 96);
 		ctx.fillStyle = '#ffc107';
@@ -72,8 +70,7 @@ export class Helipad {
 		ctx.fillText('ALLEEN PERSONEEL', 128, 38);
 		ctx.font = '16px system-ui';
 		ctx.fillText('→ DAK / HELIPAD', 128, 68);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const plate = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.5, 0.55),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -244,10 +241,7 @@ export class Helipad {
 	}
 
 	private buildSigns(): void {
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 128;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = 'rgba(15,23,42,0.92)';
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.strokeStyle = '#f5c518';
@@ -260,8 +254,7 @@ export class Helipad {
 		ctx.fillStyle = '#e2e8f0';
 		ctx.font = '20px system-ui';
 		ctx.fillText('Land soft · via geheime trap', 256, 95);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		// depthTest AAN: met false prikte het bord door de plafondplaat en hing
 		// het als spook-signage boven verdieping 1
 		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
@@ -270,10 +263,7 @@ export class Helipad {
 		this.group.add(sp);
 
 		// Point south toward glass elevator + green call pedestals
-		const c2 = document.createElement('canvas');
-		c2.width = 512;
-		c2.height = 160;
-		const ctx2 = ctx2d(c2);
+		const { canvas: c2, ctx: ctx2 } = labelCanvas(512, 160);
 		ctx2.fillStyle = '#1b5e20';
 		ctx2.fillRect(0, 0, 512, 160);
 		ctx2.strokeStyle = '#00e676';
@@ -286,8 +276,7 @@ export class Helipad {
 		ctx2.font = 'bold 28px system-ui,sans-serif';
 		ctx2.fillStyle = '#ffc107';
 		ctx2.fillText('gele streep · groene knop · E', 256, 115);
-		const tex2 = new THREE.CanvasTexture(c2);
-		tex2.colorSpace = THREE.SRGBColorSpace;
+		const tex2 = labelTexture(c2);
 		const liftSign = new THREE.Mesh(
 			new THREE.PlaneGeometry(5.5, 1.7),
 			this.track(

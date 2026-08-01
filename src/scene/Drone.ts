@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
  * Passagiersdrone — stap in (E) en vlieg. De camera zit in het bolletje;
@@ -148,10 +149,7 @@ export class Drone {
 		}
 
 		// TAXI-bordje erboven — het is tenslotte openbaar vervoer
-		const c = document.createElement('canvas');
-		c.width = 128;
-		c.height = 48;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(128, 48);
 		ctx.fillStyle = '#ffd400';
 		ctx.fillRect(0, 0, 128, 48);
 		ctx.fillStyle = '#111';
@@ -159,8 +157,7 @@ export class Drone {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText('DRONE', 64, 26);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const signMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
 		this.materials.push(signMat);
 		const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.2), signMat);

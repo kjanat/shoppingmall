@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 
 const GRAVITY = 18;
@@ -374,10 +375,7 @@ export class Monkey {
 	}
 
 	private makeSplatTexture(): THREE.CanvasTexture {
-		const c = document.createElement('canvas');
-		c.width = 128;
-		c.height = 128;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(128, 128);
 		ctx.clearRect(0, 0, 128, 128);
 		// Irregular dung puddle — several overlapping blobs
 		const blobs = 7 + Math.floor(Math.random() * 5);
@@ -401,8 +399,7 @@ export class Monkey {
 			ctx.arc(30 + Math.random() * 70, 30 + Math.random() * 70, 1 + Math.random() * 2.5, 0, Math.PI * 2);
 			ctx.fill();
 		}
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return tex;
 	}
 
@@ -449,13 +446,9 @@ export class Monkey {
 	/** Gooey face smear + floating AU / STINK text on the lens. */
 	private splatFace(yell: string): void {
 		if (!this.faceSplat) {
-			const c = document.createElement('canvas');
-			c.width = 256;
-			c.height = 192;
-			const ctx = ctx2d(c);
+			const { canvas: c, ctx } = labelCanvas(256, 192);
 			this.paintFaceGoo(ctx, 256, 192);
-			this.faceTex = new THREE.CanvasTexture(c);
-			this.faceTex.colorSpace = THREE.SRGBColorSpace;
+			this.faceTex = labelTexture(c);
 			const mat = this.track(
 				new THREE.MeshBasicMaterial({
 					map: this.faceTex,
@@ -481,8 +474,7 @@ export class Monkey {
 			const c = document.createElement('canvas');
 			c.width = 512;
 			c.height = 128;
-			this.yellTex = new THREE.CanvasTexture(c);
-			this.yellTex.colorSpace = THREE.SRGBColorSpace;
+			this.yellTex = labelTexture(c);
 			this.faceYell = new THREE.Sprite(
 				this.track(
 					new THREE.SpriteMaterial({

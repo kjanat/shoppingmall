@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at, pickWith } from '@/util/rand';
 
 /**
@@ -199,10 +200,7 @@ export class CityGarage {
 
 	/** Groot blauw P-bord op de westgevel (richting mall), met VOL in rood eronder. */
 	private buildSign(): void {
-		const c = document.createElement('canvas');
-		c.width = 256;
-		c.height = 384;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(256, 384);
 		ctx.fillStyle = '#0a49b8';
 		ctx.fillRect(0, 0, 256, 384);
 		ctx.strokeStyle = '#f4f6f8';
@@ -219,8 +217,7 @@ export class CityGarage {
 		ctx.fillStyle = '#d0261c';
 		ctx.font = 'bold 64px system-ui,sans-serif';
 		ctx.fillText('VOL', 128, 314);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		this.textures.push(tex);
 
 		// Donker draagvlak over de open gevel, anders hangt het bord in het niets.

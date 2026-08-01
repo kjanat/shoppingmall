@@ -3,6 +3,7 @@ import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
 import { levelY } from '@/data/levels';
 import { STORES, type StoreDef } from '@/data/stores';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /**
@@ -221,10 +222,7 @@ export class StockDisplay {
 	}
 
 	private makeLabel(text: string, color: string, w: number, h: number): THREE.Mesh {
-		const canvas = document.createElement('canvas');
-		canvas.width = 512;
-		canvas.height = 128;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = '#111';
 		ctx.fillRect(0, 0, 512, 128);
 		ctx.fillStyle = color.startsWith('#') ? color : '#ffffff';
@@ -232,8 +230,7 @@ export class StockDisplay {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text.slice(0, 32), 256, 64);
-		const tex = new THREE.CanvasTexture(canvas);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(canvas);
 		return new THREE.Mesh(
 			new THREE.PlaneGeometry(w, h),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),

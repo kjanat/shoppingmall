@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 
 type Belt = {
 	mat: THREE.MeshStandardMaterial;
@@ -67,10 +68,7 @@ export class MovingWalkways {
 		const w = 1.2;
 		const len = opts.length;
 
-		const canvas = document.createElement('canvas');
-		canvas.width = 64;
-		canvas.height = 256;
-		const ctx = ctx2d(canvas);
+		const { canvas, ctx } = labelCanvas(64, 256);
 		ctx.fillStyle = '#3a3f48';
 		ctx.fillRect(0, 0, 64, 256);
 		for (let i = 0; i < 16; i++) {

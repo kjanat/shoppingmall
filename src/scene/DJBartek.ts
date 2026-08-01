@@ -182,18 +182,14 @@ export class DJBartek {
 			g.add(phone);
 
 			// tiny "BARTEK" fan plate
-			const c = document.createElement('canvas');
-			c.width = 128;
-			c.height = 40;
-			const ctx = ctx2d(c);
+			const { canvas: c, ctx } = labelCanvas(128, 40);
 			ctx.fillStyle = '#ec4899';
 			ctx.fillRect(0, 0, 128, 40);
 			ctx.fillStyle = '#fff';
 			ctx.font = 'bold 16px system-ui';
 			ctx.textAlign = 'center';
 			ctx.fillText('BARTEK ❤️', 64, 26);
-			const tex = new THREE.CanvasTexture(c);
-			tex.colorSpace = THREE.SRGBColorSpace;
+			const tex = labelTexture(c);
 			const fan = new THREE.Mesh(
 				new THREE.PlaneGeometry(0.55, 0.18),
 				this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
@@ -362,10 +358,7 @@ export class DJBartek {
 	}
 
 	private makeNamePlate(): THREE.Sprite {
-		const c = document.createElement('canvas');
-		c.width = 320;
-		c.height = 96;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(320, 96);
 		ctx.fillStyle = 'rgba(15,23,42,0.92)';
 		ctx.fillRect(0, 0, 320, 96);
 		ctx.fillStyle = '#f472b6';
@@ -375,8 +368,7 @@ export class DJBartek {
 		ctx.fillStyle = '#e2e8f0';
 		ctx.font = '15px system-ui,sans-serif';
 		ctx.fillText('groupies · E · mic · props', 160, 70);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
 		sp.scale.set(2.4, 0.72, 1);
 		sp.position.set(0, 2.9, 0.2);
@@ -384,10 +376,7 @@ export class DJBartek {
 	}
 
 	private makeCanvasPlane(lines: string[], w: number, h: number, bg: string, fg: string): THREE.Mesh {
-		const c = document.createElement('canvas');
-		c.width = 512;
-		c.height = 256;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(512, 256);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 512, 256);
 		ctx.fillStyle = fg;
@@ -397,8 +386,7 @@ export class DJBartek {
 			ctx.font = i === 0 ? 'bold 56px system-ui' : '28px system-ui';
 			ctx.fillText(line, 256, 70 + i * 55);
 		});
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Mesh(
 			new THREE.PlaneGeometry(w, h),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),

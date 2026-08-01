@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ctx2d } from '@/util/dom';
+import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
 /**
@@ -100,10 +101,7 @@ export class CityPark {
 		const H = 452; // ~vierkante texels bij 34×30 wereldmeter
 		const px = (x: number): number => ((x - (CX - PARK_W / 2)) / PARK_W) * W;
 		const py = (z: number): number => ((z - (CZ - PARK_D / 2)) / PARK_D) * H;
-		const c = document.createElement('canvas');
-		c.width = W;
-		c.height = H;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(W, H);
 		ctx.fillStyle = '#47793d';
 		ctx.fillRect(0, 0, W, H);
 		// Grasvlekjes — een effen groen vlak heet een biljartlaken, geen park
@@ -134,8 +132,7 @@ export class CityPark {
 		};
 		drawPath(38, '#8f8870');
 		drawPath(30, '#d6ccae');
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		this.textures.push(tex);
 		const geo = new THREE.PlaneGeometry(PARK_W, PARK_D);
 		geo.rotateX(-Math.PI / 2);

@@ -497,9 +497,11 @@ export class SecurityGuards {
 		const badge = new THREE.Mesh(new THREE.CircleGeometry(0.07, 8), gold);
 		badge.position.set(0.16, 1.25, 0.16);
 		root.add(badge);
-		// "SECURITY" plate
+		// "SECURITY" plate. Clear of the torso capsule, which bulges out to
+		// z 0.219 at this height: a sprite takes its centre's depth, so at 0.16
+		// the depth test let the belly eat the middle of the word.
 		const plate = this.makePlate('SECURITY', '#111', '#f5c518');
-		plate.position.set(0, 1.35, 0.16);
+		plate.position.set(0, 1.35, 0.24);
 		plate.scale.set(0.55, 0.14, 1);
 		root.add(plate);
 
@@ -612,10 +614,7 @@ export class SecurityGuards {
 	}
 
 	private makePlate(text: string, bg: string, fg: string): THREE.Sprite {
-		const c = document.createElement('canvas');
-		c.width = 320;
-		c.height = 64;
-		const ctx = ctx2d(c);
+		const { canvas: c, ctx } = labelCanvas(320, 64);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
 		ctx.strokeStyle = '#f5c518';
@@ -626,8 +625,7 @@ export class SecurityGuards {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 160, 32);
-		const tex = new THREE.CanvasTexture(c);
-		tex.colorSpace = THREE.SRGBColorSpace;
+		const tex = labelTexture(c);
 		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 
