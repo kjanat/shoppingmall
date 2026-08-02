@@ -60,8 +60,6 @@ export class CleaningCart {
 		const start = at(this.path, 0);
 		this.mesh.position.copy(start);
 		this.pos.copy(start);
-		// Warm browser cache so first scold isn't silent
-		this.preloadClips();
 	}
 
 	setYellCallback(cb: (label: string) => void): void {
@@ -219,15 +217,6 @@ export class CleaningCart {
 		const ahead = this.tmpFwd.dot(this.tmpTo);
 		// ~130° front cone
 		return ahead > -0.35;
-	}
-
-	private preloadClips(): void {
-		for (const line of WEI_YELLS) {
-			const a = new Audio(line.file);
-			a.preload = 'auto';
-			// touch load without playing
-			a.load();
-		}
 	}
 
 	private async yellAtPlayer(playerPos: THREE.Vector3): Promise<void> {

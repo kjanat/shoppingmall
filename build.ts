@@ -19,6 +19,7 @@ const shared = {
 	minify: true,
 	root: '.',
 	publicPath: '/',
+	splitting: true,
 } as const;
 
 const [out1, out2] = await Promise.all([

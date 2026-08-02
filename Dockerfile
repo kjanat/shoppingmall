@@ -37,7 +37,9 @@ RUN printf '#!/bin/sh\nexec env BUN_BE_BUN=1 /app/mall "$@"\n' > /usr/local/bin/
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build --chown=mall:mall /app/dist/mall ./mall
-# The client is inside the binary; public/ is read from the working directory
+# Serve fingerprinted browser assets separately so they receive immutable
+# caching headers; the executable still contains the dev HTML manifest.
+COPY --from=build --chown=mall:mall /app/dist/static ./dist/static
 COPY --chown=mall:mall public ./public
 # dj-music is a bind mount at runtime
 RUN mkdir -p public/dj-music && chown -R mall:mall public

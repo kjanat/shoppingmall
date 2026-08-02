@@ -103,8 +103,6 @@ export class ProtestGroupies {
 		this.buildMerkel();
 		this.buildCrowd(12);
 		this.buildMegaphoneStand();
-		// Preload so first yell isn't silent
-		this.preloadClips();
 	}
 
 	ensureAudio(): void {
@@ -164,14 +162,6 @@ export class ProtestGroupies {
 		this.stopAudio = () => handle.stop();
 		// Kick a first wave so you hear them immediately
 		window.setTimeout(() => this.yellWave(4), 400);
-	}
-
-	private preloadClips(): void {
-		for (const c of this.clips) {
-			const a = new Audio(c.file);
-			a.preload = 'auto';
-			a.load();
-		}
 	}
 
 	/** Fire n people yelling with real multi-voice audio */

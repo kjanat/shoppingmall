@@ -13,6 +13,7 @@ import { PathMesh } from '@/path/PathMesh';
 import { CollisionWorld } from '@/physics/Collision';
 import { PlayerControls } from '@/player/Controls';
 import { createComposer } from '@/post/Composer';
+import { SceneBatcher } from '@/render/SceneBatcher';
 import { AlienProbe } from '@/scene/AlienProbe';
 import { Amenities } from '@/scene/Amenities';
 import type { PersonRow } from '@/scene/Americans';
@@ -178,6 +179,8 @@ export class App {
 	private crowdCheerCd = 0;
 	private persistT = 0;
 	private restoredFromSave = false;
+	private sceneBatcher!: SceneBatcher;
+	private readonly perfProbe = new URLSearchParams(window.location.search).has('perf-probe');
 
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
 		this.atmosphere = new Atmosphere(this.world);
@@ -201,6 +204,7 @@ export class App {
 		this.renderer.shadowMap.type = THREE.PCFShadowMap;
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 		this.renderer.toneMapping = THREE.NoToneMapping;
+		if (this.perfProbe) this.renderer.info.autoReset = false;
 		// Before anything builds a label: name plates and signs are read at a
 		// slant almost always, and this is what keeps them legible there.
 		setLabelAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
@@ -318,6 +322,13 @@ export class App {
 				this.ui.setStatus('🐒💩 Aap gooit kak op de GEBEDSRUIMTE — je stond te ver weg');
 			}
 		});
+
+		// Preserve every gameplay object, but submit compatible opaque meshes
+		// through a small number of GPU batches.
+		this.sceneBatcher = new SceneBatcher(this.scene);
+		console.info('[Mall] render batching', this.sceneBatcher.stats);
+		document.documentElement.dataset['batchSourceMeshes'] = String(this.sceneBatcher.stats.sourceMeshes);
+		document.documentElement.dataset['batchDrawCalls'] = String(this.sceneBatcher.stats.drawCalls);
 
 		// Hypersensitive mall cops — open fire → panic sims / graze player
 		this.security.setOpenFireCallback((msg) => this.ui.setStatus(msg));
@@ -1558,7 +1569,7 @@ export class App {
 	}
 
 	private animate = (timestamp?: number): void => {
-		requestAnimationFrame(this.animate);
+		if (!this.perfProbe) requestAnimationFrame(this.animate);
 		// THREE.Timer: update once per frame, then query delta/elapsed (stable multi-read)
 		this.timer.update(timestamp);
 		const dt = Math.min(this.timer.getDelta(), 0.05);
@@ -1749,13 +1760,6 @@ export class App {
 		if (this.vehicle === 'heli') this.heli.followCamera(this.camera, dt);
 		else this.heli.update(dt);
 		this.drone.followCamera(this.camera, dt);
-
-		// Outdoor city systems
-		this.cityRoads.update(dt, elapsed);
-		this.cityTraffic.update(dt, elapsed);
-		this.cityBuildings.update(dt, elapsed);
-		this.citySky.update(dt, elapsed);
-		this.cityBirds.update(dt, elapsed);
 
 		// E-hint als je naast de geparkeerde drone staat
 		const nearDrone =
@@ -1955,6 +1959,20 @@ export class App {
 		// on whatever deck the body was left standing on. Same deck as the minimap.
 		cullByLevel(levelAt(this.camera.position.y));
 
+		if (this.perfProbe) this.renderer.info.reset();
+		this.sceneBatcher.update();
 		this.composer.render(dt);
+		if (this.perfProbe) {
+			const totalCalls = this.renderer.info.render.calls;
+			const totalTriangles = this.renderer.info.render.triangles;
+			this.renderer.shadowMap.enabled = false;
+			this.renderer.info.reset();
+			this.composer.render(dt);
+			const mainCalls = this.renderer.info.render.calls;
+			document.documentElement.dataset['frameDrawCalls'] = String(mainCalls);
+			document.documentElement.dataset['shadowDrawCalls'] = String(Math.max(0, totalCalls - mainCalls));
+			document.documentElement.dataset['frameTriangles'] = String(totalTriangles);
+			this.renderer.shadowMap.enabled = true;
+		}
 	};
 }

@@ -81,19 +81,12 @@ export class PrayerRoom {
 		this.audioStarted = true;
 		spatial.ensure();
 
-		// Warm goat scream buffers so first bleat isn't silent
-		for (const url of GOAT_SCREAMS) {
-			const a = new Audio(url);
-			a.preload = 'auto';
-			a.load();
-		}
-
 		// ── Allahu Trapbar via HTMLAudio + HRTF ──
 		// MediaElement is more reliable than decodeAudioData for long loops,
 		// and currentTime is the ground truth for pose sync.
 		const el = new Audio(TRAPBAR_URL);
 		el.loop = true;
-		el.preload = 'auto';
+		el.preload = 'metadata';
 		el.crossOrigin = 'anonymous';
 
 		const se = spatial.attachElementAt(
