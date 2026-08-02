@@ -4,13 +4,16 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "run -s typecheck build.ts",
-		"build:static": "tsc && bun build.ts --static",
+		"build": "run -s typecheck check build.ts",
+		"build:static": "run -s typecheck check static",
+		"check": "run scripts/check-world.ts",
 		"dev": "bun --hot server/main.ts",
+		"favicon": "npx -y --package=vite-svg-to-ico@latest svg-to-ico generate public/favicon.svg --out-dir public",
 		"fmt": "run lint --fix; dprint fmt .",
 		"lint": "biome check",
 		"prestart": "run build",
 		"start": "NODE_ENV=production dist/mall",
+		"static": "run build.ts --static",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

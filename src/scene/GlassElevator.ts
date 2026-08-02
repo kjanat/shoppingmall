@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { speakLine } from '@/audio/ElevenVoice';
 import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '@/data/levels';
+import { EYE } from '@/player/Controls';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
@@ -13,6 +14,63 @@ const CABIN_H = 2.55;
 const CABIN_W = 2.0;
 const CABIN_D = 2.0;
 const SPEED = 1.85; // m/s vertical
+
+/** Halve breedte van het plein op dak en garage, rond het hart van de schacht. */
+const PAD_HALF = 2.75;
+/** Speling tussen de cabine en de rand van het schachtgat in dat plein. */
+const SHAFT_GAP = 0.12;
+
+/**
+ * Het plein op dak en garage, met het schachtgat erin. Het gat volgt de
+ * cabinemaat plus speling: wordt de cabine ooit breder, dan groeit het gat mee in
+ * plaats van dat de cabine er weer doorheen begint te snijden.
+ */
+function padWithShaftHole(): THREE.ExtrudeGeometry {
+	const shape = new THREE.Shape();
+	shape.moveTo(-PAD_HALF, -PAD_HALF);
+	shape.lineTo(PAD_HALF, -PAD_HALF);
+	shape.lineTo(PAD_HALF, PAD_HALF);
+	shape.lineTo(-PAD_HALF, PAD_HALF);
+	shape.closePath();
+	const hx = CABIN_W / 2 + SHAFT_GAP;
+	const hz = CABIN_D / 2 + SHAFT_GAP;
+	const hole = new THREE.Path();
+	hole.moveTo(-hx, -hz);
+	hole.lineTo(hx, -hz);
+	hole.lineTo(hx, hz);
+	hole.lineTo(-hx, hz);
+	hole.closePath();
+	shape.holes.push(hole);
+	const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.12, bevelEnabled: false });
+	// Extrusie gaat +Z; leg hem plat en zet de bovenkant op y 0.
+	geo.rotateX(-Math.PI / 2);
+	// Zelfde dikte en zelfde loopvlak als de Box die hij vervangt.
+	geo.translate(0, -0.06, 0);
+	return geo;
+}
+
+// Roeppaal op het dak. Knop op borsthoogte: net onder ooghoogte, zodat je hem in
+// je blikveld hebt zonder omhoog te kijken en zonder dat de paal het dek opvreet.
+const CALL_BTN_Y = EYE - 0.42;
+const CALL_BASE_R = 0.22;
+const CALL_BASE_H = 0.14;
+const CALL_POLE_R = 0.075;
+/** Behuizing is de paal plus marge: een paneeltje, geen kast. */
+const CALL_HOUSING_W = (CALL_POLE_R + 0.085) * 2;
+const CALL_HOUSING_H = 0.4;
+const CALL_HOUSING_D = 0.18;
+const CALL_BTN_R = CALL_HOUSING_W * 0.3;
+/** Bovenkant behuizing: alles wat erboven hangt wordt hiervan afgeleid. */
+const CALL_TOP = CALL_BTN_Y + CALL_HOUSING_H / 2;
+
+// Canvasmaat van bord en zwevend label. De mesh erft deze verhouding, dus het
+// staat hier één keer: een tweede kopie bij de aanroeper rekt de tekst zodra
+// iemand het canvas verandert.
+const CALL_SIGN_TEX_W = 512;
+const CALL_SIGN_TEX_H = 160;
+const CALL_SPRITE_TEX_W = 512;
+const CALL_SPRITE_TEX_H = 128;
+
 /** Daniel — firm male (liftman energy) */
 const HANS_VOICE = 'onwK4e9ZLuTAKqWW03F9';
 
@@ -448,17 +506,24 @@ export class GlassElevator {
 		for (const { id, y, code } of LEVELS) {
 			const isRoof = id === 'roof';
 			const isGarage = id === 'p1';
-			const pad = new THREE.Mesh(
-				new THREE.BoxGeometry(isRoof || isGarage ? 5.5 : 2.6, 0.12, isRoof || isGarage ? 5.5 : 1.0),
-				isRoof ? roofPadMat : isGarage ? garagePadMat : padMat,
-			);
-			pad.position.set(0, y + 0.02, isRoof || isGarage ? 0.6 : 1.55);
+			// Dak en garage krijgen een plein van 5.5 rond de schacht in plaats van
+			// een smal perron ervoor. Dat plein ligt dus PAL over de cabine heen, dus
+			// er moet een gat in: zonder dat gat rijd je op weg naar boven dwars door
+			// een dichte plaat en zie je hem door je hoofd gaan. Het gat komt uit de
+			// cabinemaat, zodat het niet los kan lopen als die verandert.
+			const wide = isRoof || isGarage;
+			const pad = wide
+				? new THREE.Mesh(padWithShaftHole(), isRoof ? roofPadMat : garagePadMat)
+				: new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 1.0), padMat);
+			pad.position.set(0, y + 0.02, wide ? 0 : 1.55);
 			this.group.add(pad);
 
 			if (isRoof) {
-				// Two stations: at shaft + midway to helipad (helipad is ~24 m north)
-				this.buildRoofCallStation(id, 2.6, 2.8, true);
-				this.buildRoofCallStation(id, 2.0, 12.5, false);
+				// Eén roeppaal, bij de schacht. De tweede stond halverwege de helipad-route
+				// om het lopen te bekorten, maar op het dak laat App E al op ruime afstand van
+				// de schacht werken (die radius hoort daar, niet nog eens hier) en de gele
+				// streep plus het pijlbord wijzen de weg. Die paal was dus alleen massa.
+				this.buildRoofCallStation(id, 2.6, 2.8);
 				this.buildRoofWalkway();
 			} else {
 				// Compact landing call plate (P1 / V0 / V1)
@@ -519,10 +584,10 @@ export class GlassElevator {
 	}
 
 	/**
-	 * Tall green call pedestal on the dak.
+	 * Slanke roeppaal op het dak: knop op borsthoogte, instapkant is +Z.
 	 * @param localX/localZ relative to shaft center (group origin)
 	 */
-	private buildRoofCallStation(id: LevelId, localX: number, localZ: number, primary: boolean): void {
+	private buildRoofCallStation(id: LevelId, localX: number, localZ: number): void {
 		const station = new THREE.Group();
 		station.position.set(localX, FLOOR2, localZ);
 
@@ -552,22 +617,23 @@ export class GlassElevator {
 			}),
 		);
 
-		// Wide base plinth
-		const base = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.9, 0.3, 14), metal);
-		base.position.y = 0.15;
+		// Lage voetplaat: markeert de plek, is geen obstakel om overheen te struikelen
+		const base = new THREE.Mesh(new THREE.CylinderGeometry(CALL_BASE_R, CALL_BASE_R + 0.06, CALL_BASE_H, 14), metal);
+		base.position.y = CALL_BASE_H / 2;
 		station.add(base);
-		const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 2.6, 10), metal);
-		pole.position.y = 1.45;
+		const pole = new THREE.Mesh(new THREE.CylinderGeometry(CALL_POLE_R, CALL_POLE_R + 0.02, CALL_BTN_Y, 10), metal);
+		pole.position.y = CALL_BTN_Y / 2;
 		station.add(pole);
 
 		// Housing box so it reads as a CONTROL PANEL, not a ball
-		const housing = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.95, 0.55), redFrame);
-		housing.position.y = 2.85;
+		const housing = new THREE.Mesh(new THREE.BoxGeometry(CALL_HOUSING_W, CALL_HOUSING_H, CALL_HOUSING_D), redFrame);
+		housing.position.y = CALL_BTN_Y;
 		station.add(housing);
 
-		// Giant mushroom push-button (the actual "knop")
-		const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.42, 0.28, 20), green);
-		btn.position.set(0, 2.95, 0.22);
+		// Paddenstoelknop steekt net uit het paneel, genoeg om te zien dat je hem indrukt
+		const face = CALL_HOUSING_D / 2;
+		const btn = new THREE.Mesh(new THREE.CylinderGeometry(CALL_BTN_R, CALL_BTN_R + 0.01, 0.08, 20), green);
+		btn.position.set(0, CALL_BTN_Y, face + 0.01);
 		btn.rotation.x = Math.PI / 2;
 		station.add(btn);
 		this.tagInteract(btn, 'call', id);
@@ -575,8 +641,8 @@ export class GlassElevator {
 		this.roofCallBtns.push(btn);
 
 		// Dome cap on button
-		const dome = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), green);
-		dome.position.set(0, 2.95, 0.36);
+		const dome = new THREE.Mesh(new THREE.SphereGeometry(CALL_BTN_R, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), green);
+		dome.position.set(0, CALL_BTN_Y, face + 0.05);
 		dome.rotation.x = Math.PI / 2;
 		station.add(dome);
 		this.tagInteract(dome, 'call', id);
@@ -585,22 +651,30 @@ export class GlassElevator {
 		// GEEN beacon-PointLight (emissive dome gloeit al — en elke light telt op
 		// de Pi) en GEEN ring van vier dezelfde borden: dat was de bordenspam op
 		// het dak. Eén bescheiden bordje aan de instapkant + één zwevend label.
-		const sign = this.makeCallSign('GROENE KNOP · E', 1.6, 0.55);
-		sign.position.set(0, 1.7, 0.7);
+		const signW = CALL_HOUSING_W * 2.2;
+		const signH = signW * (CALL_SIGN_TEX_H / CALL_SIGN_TEX_W);
+		const sign = this.makeCallSign('GROENE KNOP · E', signW, signH);
+		sign.position.set(0, CALL_BTN_Y - CALL_HOUSING_H / 2 - signH / 2 - 0.04, CALL_POLE_R + 0.02);
 		station.add(sign);
 		this.tagInteract(sign, 'call', id);
 
-		const sp = this.makeCallSprite(primary ? '🟢 LIFT · E' : '🟢 ROEP LIFT · E');
-		sp.position.set(0, 3.9, 0);
-		sp.scale.set(2.4, 0.65, 1);
+		// Enige roeppaal op het dak, dus het label moet van de helipad-kant al opvallen:
+		// het blijft breed, maar het hangt nu net boven de behuizing in plaats van los
+		// in de lucht op een hoogte die uit de oude paal volgde.
+		const spriteW = 2.0;
+		const spriteH = spriteW * (CALL_SPRITE_TEX_H / CALL_SPRITE_TEX_W);
+		const sp = this.makeCallSprite('🟢 LIFT · E');
+		sp.position.set(0, CALL_TOP + 0.09 + spriteH / 2, 0);
+		sp.scale.set(spriteW, spriteH, 1);
 		station.add(sp);
 		this.tagInteract(sp, 'call', id);
 		// The station is bolted to the dak, unlike the cabin, so it can be culled
 		tagLevelCulled(sp);
 
-		// Yellow hazard ring
+		// Gele ring om de voet: laag genoeg om als vloermarkering te lezen, maar net hoger
+		// dan de streep en de chevrons uit buildRoofWalkway, anders z-fighten ze.
 		const ring = new THREE.Mesh(
-			new THREE.TorusGeometry(1.0, 0.05, 6, 28),
+			new THREE.TorusGeometry(CALL_BASE_R * 2.3, 0.035, 6, 24),
 			this.track(
 				new THREE.MeshStandardMaterial({
 					color: 0xffc107,
@@ -612,24 +686,26 @@ export class GlassElevator {
 			),
 		);
 		ring.rotation.x = Math.PI / 2;
-		ring.position.y = 0.32;
+		ring.position.y = 0.11;
 		station.add(ring);
 
 		this.group.add(station);
 	}
 
 	private makeCallSign(text: string, w: number, h: number): THREE.Mesh {
-		const { canvas: c, ctx } = labelCanvas(512, 160);
+		const cw = CALL_SIGN_TEX_W;
+		const ch = CALL_SIGN_TEX_H;
+		const { canvas: c, ctx } = labelCanvas(cw, ch);
 		ctx.fillStyle = '#0d47a1';
-		ctx.fillRect(0, 0, 512, 160);
+		ctx.fillRect(0, 0, cw, ch);
 		ctx.strokeStyle = '#ffd700';
 		ctx.lineWidth = 10;
-		ctx.strokeRect(6, 6, 500, 148);
+		ctx.strokeRect(6, 6, cw - 12, ch - 12);
 		ctx.fillStyle = '#ffd700';
 		ctx.font = 'bold 42px system-ui';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText(text, 256, 80);
+		ctx.fillText(text, cw / 2, ch / 2);
 		const tex = labelTexture(c);
 		return new THREE.Mesh(
 			new THREE.PlaneGeometry(w, h),
@@ -644,17 +720,19 @@ export class GlassElevator {
 	}
 
 	private makeCallSprite(text: string): THREE.Sprite {
-		const { canvas: c, ctx } = labelCanvas(512, 128);
+		const cw = CALL_SPRITE_TEX_W;
+		const ch = CALL_SPRITE_TEX_H;
+		const { canvas: c, ctx } = labelCanvas(cw, ch);
 		ctx.fillStyle = 'rgba(0,100,0,0.92)';
-		ctx.fillRect(0, 0, 512, 128);
+		ctx.fillRect(0, 0, cw, ch);
 		ctx.strokeStyle = '#ffd700';
 		ctx.lineWidth = 8;
-		ctx.strokeRect(4, 4, 504, 120);
+		ctx.strokeRect(4, 4, cw - 8, ch - 8);
 		ctx.fillStyle = '#fff';
 		ctx.font = 'bold 40px system-ui';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText(text, 256, 64);
+		ctx.fillText(text, cw / 2, ch / 2);
 		const tex = labelTexture(c);
 		return new THREE.Sprite(
 			new THREE.SpriteMaterial({

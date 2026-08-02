@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
-import { inPool, POOL_CENTER, rimDistance } from './RoofIsland';
+import { inPool, POOL_CENTER, POOL_WATER_Y, rimDistance } from './RoofIsland';
 
 /**
  * Hoe ver het middelpunt van een zwemmer binnen de waterlijn moet blijven: halve
@@ -40,7 +40,12 @@ function waterSeat(x: number, z: number, clear = RIM_CLEAR): { x: number; z: num
  */
 
 const DECK_Y = levelY('roof');
-const WATER_Y = 13.75;
+/**
+ * De waterlijn komt uit RoofIsland, waar het wateroppervlak ook mee getekend
+ * wordt. Hier stond een eigen 13.75 naast POOL_WATER_Y 14.05: dertig centimeter
+ * verschil, dus de badgasten hingen te laag in hun eigen bad.
+ */
+const WATER_Y = POOL_WATER_Y;
 
 // Uit RoofIsland, niet geraden: de vorige aanname (-19, 0) zat 1 m en 2 m naast
 // het echte bad, dus de helft van de zwemmers lag op de tegels.

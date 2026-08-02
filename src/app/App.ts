@@ -6,8 +6,8 @@ import { fetchDjStatus, playBoothFile, speakLine } from '@/audio/ElevenVoice';
 import { spatial } from '@/audio/SpatialAudio';
 import { Director } from '@/camera/Director';
 import type { GraphNode } from '@/data/graph';
-import { level, levelAt, levelY } from '@/data/levels';
-import { getKruidvat, getStore, type StoreDef } from '@/data/stores';
+import { type LevelId, level, levelAt, levelY } from '@/data/levels';
+import { getKruidvat, getStore, type StoreDef, shopStores } from '@/data/stores';
 import { Pathfinder } from '@/path/Pathfinder';
 import { PathMesh } from '@/path/PathMesh';
 import { CollisionWorld } from '@/physics/Collision';
@@ -70,6 +70,8 @@ import { loadGame, pathToPersist, saveGame } from './GamePersist';
 
 const PLAYER_RADIUS = 0.4;
 const PERSIST_EVERY = 0.75; // seconds
+/** Praatafstand tot een verkoper — E praat én de E-melding luistert hiernaar. */
+const TALK_RADIUS = 7;
 
 export class App {
 	private renderer: THREE.WebGLRenderer;
@@ -1111,7 +1113,7 @@ export class App {
 	/** E near a counter — Youssef / any named keeper speaks aloud */
 	private async talkToShopkeeper(): Promise<void> {
 		this.atmosphere.americans.ensureAudio();
-		const owner = await this.shopVoice.talkNear(this.camera.position, 7);
+		const owner = await this.shopVoice.talkNear(this.camera.position, TALK_RADIUS);
 		if (!owner) {
 			this.ui.setStatus('Geen verkoper dichtbij — loop naar een OPEN winkel (E)');
 			return;
@@ -1506,12 +1508,11 @@ export class App {
 	}
 
 	/**
-	 * E on elevator controls:
-	 * - Outside call (look or stand next to shaft) → summon cabin to THIS floor
-	 * - Inside Hans / panel → destination menu + free mouse
+	 * Wat E bij de lift zou doen, zonder het te doen. Ook `hasEInteraction` vraagt
+	 * het hier, zodat de knop-check en de actie niet uit elkaar kunnen lopen.
 	 */
-	private tryOpenElevatorMenu(): boolean {
-		if (!this.freeMove || this.possessId !== null || this.player.flying) return false;
+	private elevatorAction(): { kind: 'menu' } | { kind: 'call'; level: LevelId } | null {
+		if (!this.freeMove || this.possessId !== null || this.player.flying) return null;
 		const hit = this.elevator.getLookHit(this.camera, 10);
 		const inCab = this.elevator.contains(this.camera.position.x, this.camera.position.z, 0.2);
 		const distXZ = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
@@ -1520,7 +1521,26 @@ export class App {
 		const nearShaft = distXZ < (here === 'roof' ? 14 : 4.5);
 
 		// Inside Hans / panel → menu
-		if (hit?.kind === 'hans' || hit?.kind === 'panel' || (inCab && hit?.kind === 'call')) {
+		if (hit?.kind === 'hans' || hit?.kind === 'panel' || (inCab && hit?.kind === 'call')) return { kind: 'menu' };
+
+		// Outside call button OR proximity on landing
+		if (hit?.kind === 'call' || (nearShaft && !inCab)) {
+			return { kind: 'call', level: hit?.kind === 'call' ? (hit.level ?? here) : here };
+		}
+
+		return null;
+	}
+
+	/**
+	 * E on elevator controls:
+	 * - Outside call (look or stand next to shaft) → summon cabin to THIS floor
+	 * - Inside Hans / panel → destination menu + free mouse
+	 */
+	private tryOpenElevatorMenu(): boolean {
+		const action = this.elevatorAction();
+		if (!action) return false;
+
+		if (action.kind === 'menu') {
 			if (this.elevator.isMoving) {
 				this.ui.setStatus('🛗 Even wachten — lift is onderweg');
 				return true;
@@ -1532,14 +1552,39 @@ export class App {
 			return true;
 		}
 
-		// Outside call button OR proximity on landing
-		const callLevel = hit?.kind === 'call' ? (hit.level ?? here) : here;
-		if (hit?.kind === 'call' || (nearShaft && !inCab)) {
-			this.elevator.callToFloor(callLevel);
-			this.ui.setStatus(`🛗 Hans komt naar ${level(callLevel).name.toLowerCase()} — even wachten`);
-			return true;
-		}
+		this.elevator.callToFloor(action.level);
+		this.ui.setStatus(`🛗 Hans komt naar ${level(action.level).name.toLowerCase()} — even wachten`);
+		return true;
+	}
 
+	/**
+	 * Doet E hier iets? Spiegelt de keten in de keydown-handler in dezelfde
+	 * volgorde, dus komt daar een actie bij dan hoort hij hier ook thuis.
+	 * Controls gebruikt dit om E dan niet ook de camera te laten draaien.
+	 */
+	private hasEInteraction(): boolean {
+		const p = this.camera.position;
+		if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car') return true;
+		if (this.elevatorAction() !== null) return true;
+		const free = !this.possessId && this.freeMove;
+		if (free && this.driveCars.nearestCar(p, 4.5)) return true;
+		if (free && this.scrubber.distanceTo(p) < 3.5 && levelAt(p.y) === 'v0') return true;
+		if (free && this.drone.distanceTo(p) < 3.2) return true;
+		if (free && this.heli.boardable && this.heli.distanceTo(p) < 4.5) return true;
+		if (this.slideT < 0 && this.player.feetHeight > 17 && Math.hypot(p.x + 28.5, p.z + 10) < 2.2) return true;
+		if (this.djBartek.inRange(p)) return true;
+		return this.keeperInTalkRange();
+	}
+
+	/** Staat er een verkoper binnen praatafstand op jouw dek? Zoals ShopVoice.talkNear kiest. */
+	private keeperInTalkRange(): boolean {
+		const p = this.camera.position;
+		const here = levelAt(p.y);
+		// shopStores() bepaalt wie een verkoper krijgt — die regel hier niet nabouwen.
+		for (const s of shopStores()) {
+			if (s.level !== here) continue;
+			if (this.shopVoice.distanceTo(s.id, p) < TALK_RADIUS) return true;
+		}
 		return false;
 	}
 
@@ -1681,6 +1726,10 @@ export class App {
 			this.security.update(dt, this.camera.position, threats);
 		}
 
+		// Vóór de speler-update, want E is ook actieknop: ligt er iets klaar dan mag
+		// hij de camera niet meedraaien terwijl je hem indrukt.
+		this.player.setInteractOnE(this.hasEInteraction());
+
 		if (this.possessId !== null) {
 			const eye = this.atmosphere.americans.getSimEye(this.possessId);
 			if (eye) {
@@ -1706,6 +1755,10 @@ export class App {
 				if (this.player.isGrounded && !this.elevRiding) {
 					const belt = this.walkways.beltVelocityAt(this.camera.position.x, this.player.feetHeight, this.camera.position.z);
 					if (belt) this.player.nudge(belt.x * dt, belt.z * dt);
+					// Roltrap net als de loopband: horizontale drift erbij, de klim volgt
+					// vanzelf uit groundHeightAt. De trap heeft geen carrySpeed en doet niks.
+					const tread = this.world.rampCarryAt(this.camera.position.x, this.camera.position.z, this.player.feetHeight);
+					if (tread) this.player.nudge(tread.x * dt, tread.z * dt);
 				}
 				if (!this.elevRiding) this.pushPlayerFromSims(0.9);
 			}
@@ -1807,7 +1860,7 @@ export class App {
 		// Auto-greet Youssef when you walk into Kruidvat
 		void this.shopVoice.greetIfNear('kruidvat', this.camera.position, 6.5);
 		const dYoussef = this.shopVoice.distanceTo('kruidvat', this.camera.position);
-		if (dYoussef < 7 && levelAt(this.camera.position.y) === 'v1' && !this.youssefHint) {
+		if (dYoussef < TALK_RADIUS && levelAt(this.camera.position.y) === 'v1' && !this.youssefHint) {
 			this.youssefHint = true;
 			this.ui.setStatus('💊 Youssef Benali (Kruidvat) · druk E om te praten');
 		} else if (dYoussef > 10) {

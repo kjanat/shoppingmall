@@ -31,6 +31,11 @@ export type Ramp = {
 	 */
 	openMinZ: number;
 	openMaxZ: number;
+	/**
+	 * Tredesnelheid langs de helling (m/s) van een helling die zelf beweegt.
+	 * Ontbreekt hij, dan is het een gewone trap en vervoert hij niemand.
+	 */
+	carrySpeed?: number;
 };
 
 /** One storey */
@@ -39,6 +44,22 @@ const ROOF_H = levelY('roof');
 const BASEMENT_H = levelY('p1');
 const MALL_W = 72;
 const MALL_D = 48;
+/**
+ * Hoogteverschil waarbinnen een lopende speler een vlak nog als zijn vloer ziet.
+ * Controls geeft hem mee aan `groundHeightAt`, `rampCarryAt` rekent met dezelfde
+ * waarde: een bewegende helling hoort je precies dan te vervoeren als je er ook
+ * echt op staat. Stond hij hier ruimer, dan sleepte de roltrap je onderaan ook
+ * mee terwijl je gewoon op de vloerplaat eronder liep.
+ */
+export const WALK_STEP = 0.5;
+
+/**
+ * Tredesnelheid van de roltrap langs de helling (m/s). Staat hier omdat de
+ * fysica hem nodig heeft om je te vervoeren en MallBuilder om de treden ermee te
+ * tekenen. Twee losse getallen die gelijk moeten blijven glijden vroeg of laat
+ * uit elkaar, en dan lopen de treden onder je voeten door.
+ */
+export const ESCALATOR_SPEED = 0.5;
 
 /**
  * Lightweight horizontal collision world (XZ cylinders vs AABBs).
@@ -59,6 +80,7 @@ export class CollisionWorld {
 			label: 'escalator',
 			openMinZ: -2.6,
 			openMaxZ: 1.6,
+			carrySpeed: ESCALATOR_SPEED,
 		},
 		// West trap only — opposite wall, cannot cross the escalator
 		{
@@ -113,7 +135,13 @@ export class CollisionWorld {
 		{ minX: 24.5, maxX: 27.5, minZ: 18.85, maxZ: 23, y: ROOF_H },
 		// Glass elevator roof hatch (16, −8) + corridor toward helipad
 		{ minX: 12, maxX: 28, minZ: -12, maxZ: 8, y: ROOF_H },
-		{ minX: 14, maxX: 30, minZ: 4, maxZ: 18, y: ROOF_H },
+		// De gang naar de helipad, in drie stukken om hetzelfde trapgat heen als
+		// hierboven. In één stuk (14..30, 4..18) legde hij het gat weer dicht dat
+		// de vier pads erboven juist openhouden, en liep je erover in plaats van
+		// de trap af.
+		{ minX: 14, maxX: 24.5, minZ: 4, maxZ: 18, y: ROOF_H },
+		{ minX: 27.5, maxX: 30, minZ: 4, maxZ: 18, y: ROOF_H },
+		{ minX: 24.5, maxX: 27.5, minZ: 4, maxZ: 13.65, y: ROOF_H },
 	];
 
 	/** Low platforms you can hop onto (deck top is the walkable surface). */
@@ -342,6 +370,28 @@ export class CollisionWorld {
 	waterDepthAt(x: number, z: number, feetY: number): number {
 		if (feetY > POOL_WATER_Y || feetY < POOL_FLOOR_Y - 0.5) return 0;
 		return poolFloorY(x, z) === null ? 0 : POOL_WATER_Y - feetY;
+	}
+
+	/**
+	 * Drift van een bewegende helling voor wie erop staat, anders null. Zelfde
+	 * mechaniek als MovingWalkways.beltVelocityAt, dus de aanroeper verplaatst je
+	 * ermee door de collision heen. Alleen de horizontale component: de hoogte
+	 * volgt al uit groundHeightAt zodra je meeschuift, en samen zijn ze precies
+	 * `carrySpeed` langs de helling. Een trap zonder carrySpeed vervoert niet.
+	 */
+	rampCarryAt(x: number, z: number, feetY: number): { x: number; z: number } | null {
+		for (const r of this.ramps) {
+			const speed = r.carrySpeed;
+			if (speed === undefined) continue;
+			if (x < r.minX || x > r.maxX) continue;
+			if (z < Math.min(r.zBottom, r.zTop) || z > Math.max(r.zBottom, r.zTop)) continue;
+			const run = r.zTop - r.zBottom;
+			const rise = r.yTop - r.yBottom;
+			const h = r.yBottom + rise * ((z - r.zBottom) / run);
+			if (Math.abs(h - feetY) > WALK_STEP) continue;
+			return { x: 0, z: (speed * run) / Math.hypot(run, rise) };
+		}
+		return null;
 	}
 
 	/** True while the climber is standing on an incline rather than a slab. */

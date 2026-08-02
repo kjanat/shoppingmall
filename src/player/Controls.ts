@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { type LevelId, levelAt } from '@/data/levels';
-import type { CollisionWorld } from '@/physics/Collision';
+import { type CollisionWorld, WALK_STEP } from '@/physics/Collision';
 
 export const EYE = 1.68;
 
@@ -90,6 +90,13 @@ export class PlayerControls {
 	private wade = 0;
 	private sink = 0;
 
+	/**
+	 * Ligt er een E-actie klaar (liftknop, instappen, glijbaan)? App weet dat en
+	 * zet het hier neer. Zolang het aan staat draait E niet mee, anders zwaait je
+	 * beeld weg op het moment dat je de knop indrukt.
+	 */
+	private interactOnE = false;
+
 	private dragging = false;
 	private lastX = 0;
 	private lastY = 0;
@@ -123,6 +130,11 @@ export class PlayerControls {
 	applySettings(next: Partial<ControlSettings>): void {
 		this.settings = { ...this.settings, ...next };
 		if (!this.settings.mouseLook) this.releaseLook();
+	}
+
+	/** App meldt per frame of E hier iets doet; veert vanzelf terug als je wegkijkt. */
+	setInteractOnE(available: boolean): void {
+		this.interactOnE = available;
 	}
 
 	dispose(): void {
@@ -313,10 +325,11 @@ export class PlayerControls {
 		const wadeT = Math.min(1, this.wade / WADE_DEEP);
 
 		// ── Steering ─────────────────────────────────────────
-		// Q/E always turn, so a mouseless player is never stuck facing one way.
+		// Q always turns, so a mouseless player is never stuck facing one way. E doet
+		// dat ook, maar wijkt voor de interactie zodra er een knop klaarligt.
 		let turn = 0;
 		if (this.keys.has('KeyQ')) turn += 1;
-		if (this.keys.has('KeyE')) turn -= 1;
+		if (this.keys.has('KeyE') && !this.interactOnE) turn -= 1;
 		let fwd = this.axisY;
 		let strafe = this.axisX;
 		if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) fwd += 1;
@@ -419,7 +432,7 @@ export class PlayerControls {
 		} else {
 			// Airborne gets a looser step so hopping on the escalator doesn't snap you
 			// onto the deck above.
-			const ground = this.world.groundHeightAt(p.x, p.z, this.feetY, this.grounded ? 0.5 : 2.5);
+			const ground = this.world.groundHeightAt(p.x, p.z, this.feetY, this.grounded ? WALK_STEP : 2.5);
 
 			if (this.grounded) {
 				// Follow the surface: snappy on ramps, instant on flat ground
@@ -588,10 +601,11 @@ export class PlayerControls {
 
 	/** Drone-vlucht: traag versnellen, muren tellen binnen, plafond via clamp. */
 	private updateFlight(dt: number): void {
-		// Kijken werkt zoals altijd (muis / Q-E / R-F)
+		// Kijken werkt zoals altijd (muis / Q / R-F). E draait hier nooit: vliegend
+		// is E de uitstapknop, dus App meldt hem altijd als interactie.
 		let turn = 0;
 		if (this.keys.has('KeyQ')) turn += 1;
-		if (this.keys.has('KeyE')) turn -= 1;
+		if (this.keys.has('KeyE') && !this.interactOnE) turn -= 1;
 		if (this.settings.turnWithKeys) {
 			if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) turn -= 1;
 			if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) turn += 1;

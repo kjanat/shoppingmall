@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
 import { levelY } from '@/data/levels';
-import { STORES, type StoreDef } from '@/data/stores';
+import { type StoreDef, shopStores } from '@/data/stores';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
@@ -16,8 +16,7 @@ export class StockDisplay {
 
 	constructor() {
 		this.group.name = 'stock';
-		for (const store of STORES) {
-			if (store.id === 'info') continue;
+		for (const store of shopStores()) {
 			const inv = getInventory(store.id);
 			if (!inv) continue;
 			this.buildStoreStock(store, inv.items, inv.slogan);

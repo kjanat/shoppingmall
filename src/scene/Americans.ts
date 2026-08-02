@@ -8,7 +8,7 @@ import { fetchSimChat, type SimPersona } from '@/sim/SimChat';
 
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick, pickWith } from '@/util/rand';
-import { tagLevelCulled } from '@/util/visibility';
+import { isOnViewerLevel, tagLevelCulled } from '@/util/visibility';
 
 export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
 
@@ -96,8 +96,12 @@ type Sim = {
 	armL: THREE.Object3D;
 	armR: THREE.Object3D;
 	label: THREE.Sprite;
-	/** Houder van de naamplaat op voethoogte: cullByLevel bezit zijn `visible` */
-	plateAnchor: THREE.Group;
+	/**
+	 * Houder van plaat én ballon op voethoogte: cullByLevel bezit zijn
+	 * `visible`. Eén houder, want beide labels stellen dezelfde dekvraag over
+	 * dezelfde sim; twee houders zijn twee antwoorden die uit elkaar kunnen lopen.
+	 */
+	levelAnchor: THREE.Group;
 	/** Tekst veranderde terwijl de plaat weggeculld stond */
 	plateDirty: boolean;
 	speech: THREE.Sprite;
@@ -587,12 +591,17 @@ export class Americans {
 				// Another deck: at best a silhouette across the atrium, so pay for it
 				// every 4th frame. Staggered by id so one bucket lands per frame
 				// instead of the whole crowd hitching together.
-				if (viewer && levelAt(s.pos.y) !== viewer && (this.frame + s.f.id) % Americans.OFF_LEVEL_EVERY !== 0) continue;
-				// Full banked dt, never the frame's dt: routes must not run slow.
-				const step = s.lag;
-				s.lag = 0;
-				this.tick(s, step);
-				this.tickFace(s, step);
+				const throttled =
+					viewer !== null && levelAt(s.pos.y) !== viewer && (this.frame + s.f.id) % Americans.OFF_LEVEL_EVERY !== 0;
+				if (!throttled) {
+					// Full banked dt, never the frame's dt: routes must not run slow.
+					const step = s.lag;
+					s.lag = 0;
+					this.tick(s, step);
+					this.tickFace(s, step);
+				}
+				// Buiten de throttle: dit is de enige schrijver die de ballon weer
+				// uitzet, dus hij moet ook draaien voor een sim die niet tikt.
 				this.cullSpeechVisibility(s);
 			}
 			this.resolveAgents();
@@ -603,26 +612,36 @@ export class Americans {
 		this.tickBubbles(dt);
 	}
 
-	/** Same floor + close enough that the player could actually read the bubble */
-	private isNearListener(pos: THREE.Vector3, range = Americans.SPEECH_RANGE): boolean {
+	/** Dichtbij genoeg dat de speler de tekst zou kunnen lezen, puur afstand. */
+	private isWithinRange(sim: Sim, range: number): boolean {
 		const L = this.listener;
 		if (!L) return false;
-		if (levelAt(pos.y) !== levelAt(L.y)) return false; // other deck
-		const dx = pos.x - L.x;
-		const dz = pos.z - L.z;
+		const dx = sim.pos.x - L.x;
+		const dz = sim.pos.z - L.z;
 		return dx * dx + dz * dz <= range * range;
 	}
 
-	/** Kill bubbles the player cannot see — no free floating text on other levels */
+	/**
+	 * Same floor + close enough that the player could actually read the bubble.
+	 * Het dek komt uit de registry, die het ook voor het tekenen beslist: praten
+	 * mag exact zolang de ballon getekend zou worden.
+	 */
+	private isNearListener(sim: Sim, range = Americans.SPEECH_RANGE): boolean {
+		const L = this.listener;
+		if (!L) return false;
+		return isOnViewerLevel(sim.levelAnchor, levelAt(L.y)) && this.isWithinRange(sim, range);
+	}
+
+	/**
+	 * Wat er bovenop het dek komt: leeft de ballon nog, en staat de speler dicht
+	 * genoeg bij om hem te lezen. Het dek zelf zit een niveau hoger, in
+	 * levelAnchor, en is van cullByLevel. Dit is de enige plek die de ballon weer
+	 * uitzet; sayLine, cheerNear en panicFromGunfire zetten hem alleen aan.
+	 */
 	private cullSpeechVisibility(sim: Sim): void {
-		if (sim.speechLife <= 0) {
-			if (sim.speech.visible) sim.speech.visible = false;
-			return;
-		}
-		const ok = this.isNearListener(sim.pos, Americans.SPEECH_RANGE);
+		const ok = sim.speechLife > 0 && this.isWithinRange(sim, Americans.SPEECH_RANGE);
 		sim.speech.visible = ok;
 		(sim.speech.material as THREE.SpriteMaterial).visible = ok;
-		// Don't burn life while culled far away? Still tick down so they don't pile up.
 	}
 
 	/**
@@ -736,11 +755,11 @@ export class Americans {
 		void fetchSimChat(persona(sa), persona(sb), ctx)
 			.then((ex) => {
 				// Re-check visibility — player may have left the floor mid-request
-				if (this.isNearListener(sa.pos, Americans.GOSSIP_RANGE + 4)) {
+				if (this.isNearListener(sa, Americans.GOSSIP_RANGE + 4)) {
 					this.sayLine(sa, ex.a, false);
 				}
 				window.setTimeout(() => {
-					if (this.isNearListener(sb.pos, Americans.GOSSIP_RANGE + 4)) {
+					if (this.isNearListener(sb, Americans.GOSSIP_RANGE + 4)) {
 						this.sayLine(sb, ex.b, false);
 					}
 				}, 900);
@@ -1164,10 +1183,10 @@ export class Americans {
 		// De plaat hangt twee tot drie meter boven de voeten, dus op de roltrap
 		// zit hij al in de band van de volgende verdieping terwijl de sim nog
 		// beneden loopt. De houder staat op dekhoogte en beslist over de deck.
-		const plateAnchor = new THREE.Group();
-		plateAnchor.add(label);
-		root.add(plateAnchor);
-		tagLevelCulled(plateAnchor);
+		const levelAnchor = new THREE.Group();
+		levelAnchor.add(label);
+		root.add(levelAnchor);
+		tagLevelCulled(levelAnchor);
 
 		// Speech bubble for smart gibberish
 		const { canvas: speechCanvas, ctx: speechCtx } = labelCanvas(280, 72);
@@ -1188,7 +1207,10 @@ export class Americans {
 		speech.scale.set(2.0, 0.55, 1);
 		speech.position.set(0, headY * scale + 1.35, 0);
 		speech.visible = false;
-		root.add(speech);
+		// Zelfde houder als de plaat: die zit al op dekhoogte en is al getagd, en
+		// het dek van deze sim is voor beide labels hetzelfde feit. `speech.visible`
+		// blijft van de levensduur plus de leesafstand, dus geen dubbele eigenaar.
+		levelAnchor.add(speech);
 
 		const start = shopEntrance(startShop);
 		root.position.copy(start);
@@ -1202,7 +1224,7 @@ export class Americans {
 			armL,
 			armR,
 			label,
-			plateAnchor,
+			levelAnchor,
 			plateDirty: false,
 			speech,
 			speechTex,
@@ -1404,14 +1426,13 @@ export class Americans {
 		// Gibberish chatter — only near the player (no bubbles on other floors)
 		sim.gibberCd -= dt;
 		if (sim.speechLife > 0) {
+			// Alleen de klok: cullSpeechVisibility draait direct na deze tick en
+			// leest speechLife opnieuw, dus de vlaggen hier ook zetten zou hetzelfde
+			// antwoord een tweede keer opschrijven.
 			sim.speechLife -= dt;
-			if (sim.speechLife <= 0) {
-				sim.speech.visible = false;
-				(sim.speech.material as THREE.SpriteMaterial).visible = false;
-			}
 		} else if (sim.gibberCd <= 0) {
 			sim.gibberCd = 6 + Math.random() * 16;
-			if (this.isNearListener(sim.pos, Americans.SPEECH_RANGE)) {
+			if (this.isNearListener(sim, Americans.SPEECH_RANGE)) {
 				this.sayGibberish(sim);
 			}
 		}
@@ -1657,7 +1678,7 @@ export class Americans {
 		// Weggeculld: anders vult de hele crowd elke tick een canvas van 320x120
 		// voor een plaat die niemand ziet. De vlag haalt het in op het eerste
 		// frame dat hij terug op de deck van de speler staat.
-		if (!sim.plateAnchor.visible) {
+		if (!sim.levelAnchor.visible) {
 			sim.plateDirty = true;
 			return;
 		}
@@ -1750,7 +1771,7 @@ export class Americans {
 	/** Speech bubble with real words (gossip / checkout) — skipped if not visible to player */
 	private sayLine(sim: Sim, line: string, checkout = false): void {
 		// Never paint / show / squeak for sims the player can't see
-		if (!this.isNearListener(sim.pos, Americans.SPEECH_RANGE + (checkout ? 6 : 0))) {
+		if (!this.isNearListener(sim, Americans.SPEECH_RANGE + (checkout ? 6 : 0))) {
 			return;
 		}
 		const ctx = sim.speechCtx;

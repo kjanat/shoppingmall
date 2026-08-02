@@ -502,9 +502,17 @@ export function getStore(id: string): StoreDef | undefined {
 	return STORES.find((s) => s.id === id);
 }
 
-/** Shops only (no utilities / kiosk) — for sim shopping routes */
-export function shopStores(): StoreDef[] {
-	return STORES.filter((s) => !s.utility && s.id !== 'info');
+/**
+ * De winkels: alles wat een winkelpod, schappen en een verkoper krijgt.
+ * Utility-bestemmingen en de infokiosk hebben elk hun eigen bouwer (FoodCourt,
+ * Helipad, Restrooms, buildKiosk), dus een generieke pod met schappen
+ * erbovenop is dubbele geometrie: zolang elke bouwer zelf filterde vergat
+ * StockDisplay het en stonden er rekken op het helikopterdek.
+ */
+const SHOPS: StoreDef[] = STORES.filter((s) => !s.utility && s.id !== 'info');
+
+export function shopStores(): readonly StoreDef[] {
+	return SHOPS;
 }
 
 /**

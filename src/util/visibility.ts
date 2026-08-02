@@ -11,6 +11,11 @@
  *
  * A registry instead of `scene.traverse()`: the pass runs every frame over
  * thousands of objects otherwise, and only the labels ever opt in.
+ *
+ * Een eis bovenop het dek (een ballon alleen tonen als de speler hem kan lezen)
+ * hoort niet in deze pass: die kent de kijker alleen als dek, niet als plek.
+ * Hang zoiets aan een kind van het getagde object, en haal het dekdeel hier op
+ * via `isOnViewerLevel` in plaats van het een tweede keer uit te rekenen.
  */
 import * as THREE from 'three';
 import { type LevelId, levelAt } from '@/data/levels';
@@ -32,10 +37,20 @@ export function tagLevelCulled(obj: THREE.Object3D): void {
 	culled.push(obj);
 }
 
+/**
+ * Staat dit object op het dek van de kijker?
+ *
+ * Precies de vraag die de pass hieronder per frame stelt, en daarom het enige
+ * antwoord: een tweede uitwerking gaat vroeg of laat van een andere hoogte uit
+ * dan de wereldpositie van het object en spreekt de pass dan tegen. Dat is wat
+ * een sim halverwege de roltrap laat flikkeren.
+ */
+export function isOnViewerLevel(obj: THREE.Object3D, viewer: LevelId): boolean {
+	obj.getWorldPosition(worldPos);
+	return levelAt(worldPos.y) === viewer;
+}
+
 /** Hide every registered object that is not on the viewer's deck. */
 export function cullByLevel(viewer: LevelId): void {
-	for (const obj of culled) {
-		obj.getWorldPosition(worldPos);
-		obj.visible = levelAt(worldPos.y) === viewer;
-	}
+	for (const obj of culled) obj.visible = isOnViewerLevel(obj, viewer);
 }

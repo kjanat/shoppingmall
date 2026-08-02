@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { level, levelY } from '@/data/levels';
 import { getOwner } from '@/data/shopOwners';
-import { STORES, type StoreDef } from '@/data/stores';
+import { type StoreDef, shopStores } from '@/data/stores';
+import { ESCALATOR_SPEED } from '@/physics/Collision';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
@@ -36,8 +37,8 @@ const ESC = {
 	 * De blokkeerdoos in Collision loopt van z -3.5 tot 9, dus 1.0 is het maximum.
 	 */
 	apron: 1.0,
-	/** Tredesnelheid langs de helling, m/s. */
-	speed: 0.5,
+	/** Tredesnelheid langs de helling. Uit de fysica, die vervoert je ermee. */
+	speed: ESCALATOR_SPEED,
 } as const;
 
 /**
@@ -412,9 +413,9 @@ export class MallBuilder {
 		rectHole(ceilShape, 0, 0, aw / 2, ad / 2);
 		// Secret stairs run (26, y6, z14) → (26, roof, z18); hole matches the ramp
 		rectHole(ceilShape, 26, 16.25, 1.5, 2.6);
-		// Glazen lift naar het dak — zelfde schachtgat als in de V1-plaat
-		rectHole(ceilShape, 16, -8, 1.2, 1.2);
-		// Glass elevator shaft (16, −8) — hatch so cabin + dak-callstation sit on open roof
+		// Glazen lift (16, -8): schachtgat naar het dak. Eén gat, niet twee: hier
+		// stonden er twee op dezelfde plek met verschillende maat, dus een gat in
+		// een gat. De ruimste wint, die geeft de cabine en zijn deuren de ruimte.
 		rectHole(ceilShape, 16, -8, 1.45, 1.45);
 		const ceilGeo = new THREE.ExtrudeGeometry(ceilShape, {
 			depth: 0.4, // USA dikte — het dakdek (13.95) rust hier bovenop
@@ -1096,8 +1097,7 @@ export class MallBuilder {
 	}
 
 	private buildStores(): void {
-		for (const store of STORES) {
-			if (store.id === 'info' || store.utility) continue;
+		for (const store of shopStores()) {
 			const pod = this.buildStorePod(store);
 			this.storeMeshes.set(store.id, pod);
 			this.group.add(pod);

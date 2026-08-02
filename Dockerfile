@@ -7,12 +7,13 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY build.ts index.html tsconfig.json ./
-COPY server ./server
-COPY src ./src
 # The bundler reaches into public/: the favicon is hashed into index.html and
 # the voice manifests are JSON imports. Whole dir, so a new import can't fail
 # the build on a copy line nobody remembered to extend. dj-music is .dockerignored.
 COPY public ./public
+COPY scripts ./scripts
+COPY server ./server
+COPY src ./src
 RUN bun run build
 
 # ── runtime: ./mall ──────────────────────────────────────────────────────
@@ -36,13 +37,13 @@ RUN printf '#!/bin/sh\nexec env BUN_BE_BUN=1 /app/mall "$@"\n' > /usr/local/bin/
 
 ENV NODE_ENV=production
 WORKDIR /app
+COPY --chown=mall:mall public ./public
+# dj-music is a bind mount at runtime
+RUN mkdir -p public/dj-music && chown -R mall:mall public
 COPY --from=build --chown=mall:mall /app/dist/mall ./mall
 # Serve fingerprinted browser assets separately so they receive immutable
 # caching headers; the executable still contains the dev HTML manifest.
 COPY --from=build --chown=mall:mall /app/dist/static ./dist/static
-COPY --chown=mall:mall public ./public
-# dj-music is a bind mount at runtime
-RUN mkdir -p public/dj-music && chown -R mall:mall public
 
 USER mall
 EXPOSE 5174
