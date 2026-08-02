@@ -1,0 +1,24 @@
+{
+	"formatter": [{ "external": { "command": "run", "arguments": ["-qq", "dprint", "fmt", "--stdin", "{buffer_path}"] } }],
+	"prettier": { "allowed": false },
+	"format_on_save": "on",
+	"editor.codeActionsOnSave": {
+		"source.fixAll.biome": "explicit"
+	},
+	"languages": {
+		"TypeScript": {
+			"code_actions_on_format": {
+				"source.fixAll.biome": true,
+				"source.organizeImports.biome": true
+			}
+		}
+	},
+	"lsp": {
+		"biome": {
+			"settings": {
+				"config_path": "<path>/biome.jsonc",
+				"require_config_file": true
+			}
+		}
+	}
+}

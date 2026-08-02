@@ -1,1 +1,5 @@
-{ "extends": "https://github.com/kjanat/kjanat/raw/HEAD/configs/dprint.biome.json", "biome": { "lineWidth": 130 } }
+{
+	"extends": "https://github.com/kjanat/kjanat/raw/HEAD/configs/dprint.biome.json",
+	"biome": { "lineWidth": 130 },
+	"excludes": ["bun.lock"]
+}

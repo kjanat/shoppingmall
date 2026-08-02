@@ -1,10 +1,10 @@
 {
 	"name": "mall-sim",
-	"version": "1.0.0",
+	"version": "0.0.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "tsc && bun build.ts",
+		"build": "run -s typecheck build.ts",
 		"build:static": "tsc && bun build.ts --static",
 		"dev": "bun --hot server/main.ts",
 		"fmt": "run lint --fix; dprint fmt .",
@@ -14,20 +14,21 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@elevenlabs/elevenlabs-js": "^2.60.0",
-		"@openrouter/sdk": "^1.2.3",
-		"ansispeck": "^0.4.1",
-		"gsap": "^3.15.0",
-		"postprocessing": "^6.39.4",
-		"three": "^0.185.1"
+		"@elevenlabs/elevenlabs-js": "^2.60",
+		"@openrouter/sdk": "^1.2",
+		"ansispeck": "^0.4",
+		"gsap": "^3.15",
+		"postprocessing": "^6.39",
+		"three": "^0.185"
 	},
 	"devDependencies": {
-		"@types/bun": "^1.3.14",
-		"@types/three": "^0.185.3",
-		"biome": "npm:@biomejs/biome",
-		"dprint": "^0.55.2",
-		"runner-run": "^0.23.0",
+		"@types/bun": "^1.3",
+		"@types/three": "^0.185",
+		"biome": "npm:@biomejs/biome@^2.5.6",
+		"dprint": "^0.55",
+		"runner-run": "^0.24.0",
 		"typescript": "^7"
 	},
-	"packageManager": "bun@1.3.14"
+	"packageManager": "bun@1.3.14",
+	"trustedDependencies": ["@openrouter/sdk"]
 }

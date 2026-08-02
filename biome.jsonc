@@ -7,7 +7,7 @@
 		"defaultBranch": "master"
 	},
 	"files": {
-		"includes": ["**", "!!**/dist", "!!**/out"]
+		"includes": ["**", "!!**/dist", "!!**/out", "!bun.lock"]
 	},
 	"formatter": { "enabled": false, "indentStyle": "tab" },
 	"linter": {
