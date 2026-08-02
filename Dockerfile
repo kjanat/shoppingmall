@@ -2,8 +2,7 @@
 # ── build: tsc + one bun build (server + client, compiled to one binary) ─
 FROM oven/bun:1.3-alpine AS build
 WORKDIR /app
-RUN apk add --no-cache curl ca-certificates \
-  && curl -fsSL https://raw.githubusercontent.com/kjanat/runner/master/install.sh | RUNNER_INSTALL_DIR=/usr/local/bin sh
+COPY --from=kjanat/runner:latest /run /runner /usr/local/bin/
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY build.ts index.html tsconfig.json ./
