@@ -11,6 +11,27 @@ const GRAPH_H = 34;
 const GRAPH_MAX_MS = 50;
 const VSYNC_MS = 1000 / 60;
 
+/** Every value row, in order. The markup and the lookup both read this — two
+ * copies of the list drifted apart the moment a row was added, and the panel
+ * threw on a missing element. */
+const ROWS: [id: string, label: string][] = [
+	['fps', 'fps'],
+	['low', '1% laag'],
+	['ms', 'frametijd'],
+	['cpu', 'cpu'],
+	['phases', 'logica/batch/sub'],
+	['p95', 'p95'],
+	['worst', 'slechtste'],
+	['hitch', 'hikken/s'],
+	['draws', 'draw calls'],
+	['tris', 'driehoeken'],
+	['batches', 'batches'],
+	['lights', 'lichten'],
+	['res', 'resolutie'],
+	['programs', "programma's"],
+	['mem', 'geheugen'],
+];
+
 /** What the frame loop hands over once per frame. */
 export type PerfFrame = {
 	/** Unclamped wall time since the previous frame. */
@@ -25,6 +46,11 @@ export type PerfFrame = {
 	bufferHeight: number;
 	/** Dynamic-resolution step, 1 = native for the current quality tier. */
 	renderScale: number;
+	/** Main-thread time for the whole frame callback, and its three phases. */
+	cpuMs: number;
+	logicMs: number;
+	batchMs: number;
+	submitMs: number;
 	/** Pool slots with a light in them, out of the fixed total. */
 	lightsUsed: number;
 	lightsTotal: number;
@@ -91,26 +117,10 @@ export class PerfOverlay {
       <div class="perf-panel" id="perf-panel">
         <canvas class="perf-graph" id="perf-graph" width="${GRAPH_W}" height="${GRAPH_H}"></canvas>
         <div class="perf-graph-key"><span>frametijd</span><span>${GRAPH_MAX_MS} ms</span></div>
-        ${[
-					['fps', 'fps'],
-					['low', '1% laag'],
-					['ms', 'frametijd'],
-					['p95', 'p95'],
-					['worst', 'slechtste'],
-					['hitch', 'hikken/s'],
-					['draws', 'draw calls'],
-					['tris', 'driehoeken'],
-					['batches', 'batches'],
-					['lights', 'lichten'],
-					['res', 'resolutie'],
-					['programs', "programma's"],
-					['mem', 'geheugen'],
-				]
-					.map(
-						([id, label]) =>
-							`<div class="perf-row"><span class="perf-label">${label}</span><b class="perf-value" id="perf-${id}">—</b></div>`,
-					)
-					.join('')}
+        ${ROWS.map(
+					([id, label]) =>
+						`<div class="perf-row"><span class="perf-label">${label}</span><b class="perf-value" id="perf-${id}">—</b></div>`,
+				).join('')}
         <div class="perf-hint">I = aan/uit</div>
       </div>
     `;
@@ -119,23 +129,7 @@ export class PerfOverlay {
 		this.chip = qs(this.host, '#perf-chip');
 		this.panel = qs(this.host, '#perf-panel');
 		this.graph = qs<HTMLCanvasElement>(this.host, '#perf-graph');
-		for (const id of [
-			'fps',
-			'low',
-			'ms',
-			'p95',
-			'worst',
-			'hitch',
-			'draws',
-			'tris',
-			'batches',
-			'lights',
-			'res',
-			'programs',
-			'mem',
-		]) {
-			this.values.set(id, qs(this.host, `#perf-${id}`));
-		}
+		for (const [id] of ROWS) this.values.set(id, qs(this.host, `#perf-${id}`));
 
 		this.chip.addEventListener('click', () => this.toggle());
 		window.addEventListener('keydown', (e) => {
@@ -242,6 +236,11 @@ export class PerfOverlay {
 		set('fps', `${fps}`);
 		set('low', n >= 60 ? `${Math.round(1000 / Math.max(lowMs, 0.01))} fps` : '—');
 		set('ms', `${avgMs.toFixed(1)} ms`);
+		// cpu vs frametijd is de hele diagnose: bijna gelijk = de main thread is
+		// de rem, ver eronder = de GPU (of vsync) bepaalt het tempo.
+		const cpuShare = avgMs > 0 ? Math.round((frame.cpuMs / avgMs) * 100) : 0;
+		set('cpu', `${frame.cpuMs.toFixed(1)} ms · ${cpuShare}%`);
+		set('phases', `${frame.logicMs.toFixed(1)}/${frame.batchMs.toFixed(1)}/${frame.submitMs.toFixed(1)}`);
 		set('p95', `${p95.toFixed(1)} ms`);
 		set('worst', `${worst.toFixed(0)} ms`);
 		set('hitch', `${this.longTasks.length}`);

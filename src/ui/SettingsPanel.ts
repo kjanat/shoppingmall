@@ -31,11 +31,14 @@ function loadBinaural(): boolean {
 function loadDynRes(): boolean {
 	try {
 		const v = localStorage.getItem(DYNRES_KEY);
-		// default AAN — liever even zachter beeld dan een diavoorstelling
-		if (v === null) return true;
+		// Standaard UIT. Aan-als-default ruilde stilzwijgend scherpte in voor
+		// framerate: op een trage machine zakt hij door tot 0.5 en dan kijk je
+		// naar een kwart van de pixels, opgerekt — waziger beeld zonder dat
+		// iemand erom vroeg. Wie de ruil wil, zet hem zelf aan.
+		if (v === null) return false;
 		return v !== '0' && v !== 'false';
 	} catch {
-		return true;
+		return false;
 	}
 }
 
@@ -173,7 +176,7 @@ export class SettingsPanel {
         <label class="settings-row">
           <span>
             <b>Dynamische resolutie</b>
-            <small>Verlaagt de renderresolutie tijdelijk als de framerate zakt; scherp zodra het weer kan.</small>
+            <small>Verlaagt de renderresolutie tijdelijk als de framerate zakt; scherp zodra het weer kan. Standaard uit — het beeld wordt er zichtbaar zachter van.</small>
           </span>
           <input type="checkbox" id="set-dynres" />
         </label>

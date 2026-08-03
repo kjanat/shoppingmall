@@ -79,7 +79,7 @@ const TALK_RADIUS = 7;
  * wissel laat composer.setSize twee HalfFloat-fullscreentargets heralloceren.
  * Onder 0.5 wordt het beeld te papperig om nog wat te winnen.
  */
-const DYN_RES_STEPS = [1, 0.85, 0.7, 0.6, 0.5];
+const DYN_RES_STEPS = [1, 0.85, 0.75, 0.65];
 /** Boven dit gemiddelde (ms/frame) zakt de schaal een trede (≈ onder 42 fps). */
 const DYN_RES_SLOW_MS = 24;
 /**
@@ -1842,6 +1842,10 @@ export class App {
 		const frameMs = timestamp !== undefined && this.lastRafTs !== null ? timestamp - this.lastRafTs : dt * 1000;
 		if (timestamp !== undefined) this.lastRafTs = timestamp;
 		this.updateDynRes(frameMs);
+		// CPU-klok van dit frame. Zonder deze splitsing zegt een frametijd van
+		// 43 ms niet of de GPU of de main thread hem opsoupeert, en dat bepaalt
+		// volledig wat je eraan moet doen.
+		const cpuStart = performance.now();
 
 		this.atmosphere.update(dt, this.camera.position);
 		this.pathMesh.update(dt);
@@ -2224,12 +2228,18 @@ export class App {
 		// on whatever deck the body was left standing on. Same deck as the minimap.
 		cullByLevel(levelAt(this.camera.position.y));
 
+		const afterLogic = performance.now();
 		this.renderer.info.reset();
 		this.sceneBatcher.update();
 		// Ná sceneBatcher.update(): die roept scene.updateMatrixWorld(true) aan, dus
 		// de matrixWorld van elk object dat een lamp volgt is hier vers.
 		this.pool.update(this.camera);
+		const afterBatch = performance.now();
 		this.composer.render(dt);
+		// Let op bij het lezen: dit is de tijd om het frame te versturen, niet om
+		// het te tekenen. De driver blokkeert hier pas als hij achterloopt — dan
+		// loopt juist dít getal op terwijl de GPU de echte schuldige is.
+		const afterRender = performance.now();
 		if (this.perfProbe) {
 			const totalCalls = this.renderer.info.render.calls;
 			const totalTriangles = this.renderer.info.render.triangles;
@@ -2255,6 +2265,10 @@ export class App {
 			bufferWidth: buffer.width,
 			bufferHeight: buffer.height,
 			renderScale: this.dynScale,
+			cpuMs: afterRender - cpuStart,
+			logicMs: afterLogic - cpuStart,
+			batchMs: afterBatch - afterLogic,
+			submitMs: afterRender - afterBatch,
 			lightsUsed: this.pool.slotsInUse,
 			lightsTotal: LIGHT_POOL_SLOTS,
 			batches: this.sceneBatcher.stats.drawCalls,
