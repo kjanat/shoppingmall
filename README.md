@@ -2,20 +2,15 @@
 
 Night-neon **Three.js** kiosk experience: cinematic route from the directory to **Kruidvat** (and every other store).
 
-## Working on this (people and agents alike)
+## House rules
 
-Two house rules that exist because breaking them cost real time:
+1. **Feature-gate every looks-vs-speed choice.** Build all the options behind a switch and let the maintainer try them.
+   Runtime knobs go in ⚙ Besturing ([src/render/graphicsPrefs.ts](src/render/graphicsPrefs.ts)). Shader-baked ones
+   reload the page on change. Code that should not ship at all uses `import { feature } from 'bun:bundle'` with
+   `bun build --feature FLAG`.
+2. **Edit files with an editor, never a shell heredoc.** No live diff otherwise.
 
-1. **Judgement calls get feature-gated, not decided behind my back.** Anything that trades looks against speed — light
-   count, material model, ambient level, resolution scaling — ships as *all* the options behind a switch, with a "try
-   them and tell me which you like". Never one taste baked into the source. Runtime knobs live in `⚙ Besturing`
-   (`src/render/graphicsPrefs.ts`); anything baked into shaders reloads the page when you change it, because that is
-   the only moment it can be chosen. For code that should not ship at all, use Bun's build-time flags:
-   `import { feature } from 'bun:bundle'` + `bun build --feature FLAG`, which drops the dead branch entirely.
-2. **Edit files with an editor, not a shell heredoc.** A scripted rewrite shows no live diff, and a replacement that
-   silently fails to match ships broken code — it already shipped a panel that threw on boot that way.
-
-The full version of both, plus the type-safety and invariants rules, is in `AGENTS.md`.
+Full rules in [AGENTS.md](AGENTS.md).
 
 ## Run
 
@@ -26,8 +21,8 @@ bun run dev
 
 Serves on `http://localhost:5174` (`PORT` overrides).
 
-Bun does all three jobs here: package manager, bundler and task runner. So it is `bun install`, not `npm install`, and
-the dev server is `bun --hot server/main.ts` — there is no Vite and no separate build tool.
+Bun does all three jobs here: package manager, bundler and task runner. Install with `bun install`. The dev server is
+`bun --hot server/main.ts`. There is no Vite and no separate build tool.
 
 ## Controls
 
