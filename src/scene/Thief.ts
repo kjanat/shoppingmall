@@ -107,15 +107,11 @@ export class BakerThief {
 
 	private build(): THREE.Group {
 		const g = new THREE.Group();
-		const skin = new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.85 });
-		const shirt = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.9 });
-		const pants = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.85 });
-		const beardMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.95 });
-		const gold = new THREE.MeshStandardMaterial({
-			color: 0xffd700,
-			metalness: 0.9,
-			roughness: 0.25,
-		});
+		const skin = new THREE.MeshLambertMaterial({ color: 0xe8b896 });
+		const shirt = new THREE.MeshLambertMaterial({ color: 0xf5f5f5 });
+		const pants = new THREE.MeshLambertMaterial({ color: 0x1a1a2e });
+		const beardMat = new THREE.MeshLambertMaterial({ color: 0x3e2723 });
+		const gold = new THREE.MeshLambertMaterial({ color: 0xffd700 });
 
 		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.7, 4, 8), shirt);
 		body.position.y = 1.1;

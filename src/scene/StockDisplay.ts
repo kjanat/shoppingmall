@@ -60,8 +60,8 @@ export class StockDisplay {
 		const backShelfZ = -roomDepth + 0.55;
 		const midZ = -roomDepth * 0.35;
 
-		const shelfMat = this.track(new THREE.MeshStandardMaterial({ color: 0x6d5c45, roughness: 0.7 }));
-		const chrome = this.track(new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.75, roughness: 0.3 }));
+		const shelfMat = this.track(new THREE.MeshLambertMaterial({ color: 0x6d5c45 }));
+		const chrome = this.track(new THREE.MeshLambertMaterial({ color: 0xc0c0c0 }));
 
 		// Back shelving (IN FRONT of back wall — fully visible)
 		const unitW = w * 0.82;
@@ -143,13 +143,13 @@ export class StockDisplay {
 		reg.position.set(0.7, 0.95, -roomDepth * 0.55);
 		const regBody = new THREE.Mesh(
 			new THREE.BoxGeometry(0.48, 0.28, 0.36),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x1a2332, metalness: 0.5, roughness: 0.4 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x1a2332 })),
 		);
 		reg.add(regBody);
 		const screen = new THREE.Mesh(
 			new THREE.BoxGeometry(0.36, 0.24, 0.05),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0x00ff88,
 					emissive: 0x00aa55,
 					emissiveIntensity: 0.55,
@@ -164,7 +164,7 @@ export class StockDisplay {
 		reg.userData['saleLight'] = saleLight;
 		const coin = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.25 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0xffd700 })),
 		);
 		coin.position.set(-0.2, 0.18, 0.2);
 		coin.visible = false;
@@ -185,10 +185,8 @@ export class StockDisplay {
 		let col = new THREE.Color(item.color);
 		if (col.r + col.g + col.b < 0.3) col = new THREE.Color(0x444444);
 		const mat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: col,
-				roughness: 0.45,
-				metalness: item.kind === 'device' ? 0.5 : 0.1,
 				emissive: col,
 				emissiveIntensity: 0.08,
 			}),

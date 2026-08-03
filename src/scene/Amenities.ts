@@ -52,7 +52,7 @@ export class Amenities {
 	private buildFountain(): void {
 		const base = new THREE.Mesh(
 			new THREE.CylinderGeometry(2.4, 2.8, 0.45, 24),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xb0bec5, metalness: 0.5, roughness: 0.4 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0xb0bec5 })),
 		);
 		base.position.set(0, 0.22, 0);
 		this.group.add(base);
@@ -60,11 +60,10 @@ export class Amenities {
 		const basin = new THREE.Mesh(
 			new THREE.CylinderGeometry(2.0, 2.1, 0.5, 24),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0x4fc3f7,
 					transparent: true,
 					opacity: 0.55,
-					roughness: 0.15,
 				}),
 			),
 		);
@@ -73,14 +72,14 @@ export class Amenities {
 
 		const pillar = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.25, 0.35, 1.4, 12),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.6, roughness: 0.35 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x90a4ae })),
 		);
 		pillar.position.set(0, 1.2, 0);
 		this.group.add(pillar);
 
 		const bowl = new THREE.Mesh(
 			new THREE.SphereGeometry(0.55, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xcfd8dc, metalness: 0.5, roughness: 0.3 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0xcfd8dc })),
 		);
 		bowl.position.set(0, 1.9, 0);
 		this.group.add(bowl);
@@ -106,7 +105,7 @@ export class Amenities {
 
 		const counter = new THREE.Mesh(
 			new THREE.BoxGeometry(3.2, 1.0, 1.2),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x5d4037 })),
 		);
 		counter.position.y = 0.5;
 		g.add(counter);
@@ -115,7 +114,7 @@ export class Amenities {
 		for (let i = 0; i < 4; i++) {
 			const bot = new THREE.Mesh(
 				new THREE.CylinderGeometry(0.08, 0.1, 0.45, 8),
-				this.track(new THREE.MeshStandardMaterial({ color: 0xff6b35, roughness: 0.4, metalness: 0.2 })),
+				this.track(new THREE.MeshLambertMaterial({ color: 0xff6b35 })),
 			);
 			bot.position.set(-0.9 + i * 0.55, 1.25, 0);
 			g.add(bot);
@@ -125,11 +124,10 @@ export class Amenities {
 		const glass = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.12, 0.08, 0.35, 10),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xff8a50,
 					transparent: true,
 					opacity: 0.75,
-					roughness: 0.1,
 				}),
 			),
 		);
@@ -161,8 +159,8 @@ export class Amenities {
 		const m = new THREE.Group();
 		m.position.copy(base);
 
-		const fur = this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.9 }));
-		const face = this.track(new THREE.MeshStandardMaterial({ color: 0xe0b090, roughness: 0.85 }));
+		const fur = this.track(new THREE.MeshLambertMaterial({ color: 0x6d4c41 }));
+		const face = this.track(new THREE.MeshLambertMaterial({ color: 0xe0b090 }));
 		const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), fur);
 		body.scale.set(1, 1.15, 0.9);
 		body.position.y = 0.15;

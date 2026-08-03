@@ -75,19 +75,17 @@ export class Drone {
 		for (const m of this.materials) m.dispose();
 	}
 
-	private mat(color: number, roughness = 0.5, metalness = 0.5): THREE.MeshStandardMaterial {
-		const m = new THREE.MeshStandardMaterial({ color, roughness, metalness });
+	private mat(color: number): THREE.MeshLambertMaterial {
+		const m = new THREE.MeshLambertMaterial({ color });
 		this.materials.push(m);
 		return m;
 	}
 
 	private build(): void {
-		const frame = this.mat(0x1e88e5, 0.4, 0.6); // mall-blauw
-		const dark = this.mat(0x263238, 0.5, 0.5);
-		const glass = new THREE.MeshStandardMaterial({
+		const frame = this.mat(0x1e88e5); // mall-blauw
+		const dark = this.mat(0x263238);
+		const glass = new THREE.MeshLambertMaterial({
 			color: 0xbfe3f7,
-			roughness: 0.1,
-			metalness: 0.15,
 			transparent: true,
 			opacity: 0.35,
 			side: THREE.DoubleSide,

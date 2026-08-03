@@ -460,17 +460,11 @@ export class SecurityGuards {
 		const start = at(patrol, 0).clone();
 		root.position.copy(start);
 
-		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xe0a878, roughness: 0.88 }));
-		const navy = this.track(new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.75 }));
-		const vest = this.track(new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.15 }));
-		const black = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.3 }));
-		const gold = this.track(
-			new THREE.MeshStandardMaterial({
-				color: 0xffd54f,
-				metalness: 0.7,
-				roughness: 0.35,
-			}),
-		);
+		const skin = this.track(new THREE.MeshLambertMaterial({ color: 0xe0a878 }));
+		const navy = this.track(new THREE.MeshLambertMaterial({ color: 0x1a237e }));
+		const vest = this.track(new THREE.MeshLambertMaterial({ color: 0x263238 }));
+		const black = this.track(new THREE.MeshLambertMaterial({ color: 0x111111 }));
+		const gold = this.track(new THREE.MeshLambertMaterial({ color: 0xffd54f }));
 
 		// Boots
 		for (const sx of [-0.12, 0.12]) {
@@ -511,14 +505,14 @@ export class SecurityGuards {
 		// Sunglasses
 		const shades = new THREE.Mesh(
 			new THREE.BoxGeometry(0.22, 0.06, 0.04),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6, roughness: 0.2 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x111111 })),
 		);
 		shades.position.set(0, 1.64, 0.14);
 		root.add(shades);
 		// Buzzcut / high-and-tight
 		const hair = new THREE.Mesh(
 			new THREE.SphereGeometry(0.165, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.9 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x3e2723 })),
 		);
 		hair.position.set(0, 1.68, 0);
 		root.add(hair);

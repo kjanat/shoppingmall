@@ -208,19 +208,17 @@ export class Helicopter {
 		this.stateT = 0;
 	}
 
-	private mat(color: number, roughness = 0.5, metalness = 0.4): THREE.MeshStandardMaterial {
-		const m = new THREE.MeshStandardMaterial({ color, roughness, metalness });
+	private mat(color: number): THREE.MeshLambertMaterial {
+		const m = new THREE.MeshLambertMaterial({ color });
 		this.materials.push(m);
 		return m;
 	}
 
 	private build(): void {
-		const hull = this.mat(0xc62828, 0.35, 0.55); // mall-rood
-		const dark = this.mat(0x263238, 0.5, 0.5);
-		const glassMat = new THREE.MeshStandardMaterial({
+		const hull = this.mat(0xc62828); // mall-rood
+		const dark = this.mat(0x263238);
+		const glassMat = new THREE.MeshLambertMaterial({
 			color: 0x9ad4f5,
-			roughness: 0.12,
-			metalness: 0.2,
 			transparent: true,
 			opacity: 0.7,
 		});

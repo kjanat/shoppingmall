@@ -149,15 +149,13 @@ export class CityRoads {
 		// Twee textures uit dezelfde tegel-logica: de stroken verschillen in
 		// lengte en repeat is een texture-eigenschap, dus delen gaat niet.
 		const ewMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				map: this.makeAsphaltTexture(EW_LEN / TILE_LEN),
-				roughness: 0.95,
 			}),
 		);
 		const nsMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				map: this.makeAsphaltTexture(NS_LEN / TILE_LEN),
-				roughness: 0.95,
 			}),
 		);
 
@@ -193,7 +191,7 @@ export class CityRoads {
 		const barGeo = new THREE.PlaneGeometry(0.55, ROAD_W - 0.6);
 		barGeo.rotateX(-Math.PI / 2);
 		this.geometries.push(barGeo);
-		const barMat = this.track(new THREE.MeshStandardMaterial({ color: 0xd8d8d8, roughness: 0.9 }));
+		const barMat = this.track(new THREE.MeshLambertMaterial({ color: 0xd8d8d8 }));
 
 		this.zebras = new THREE.InstancedMesh(barGeo, barMat, BARS * 4);
 		const dummy = new THREE.Object3D();
@@ -226,9 +224,9 @@ export class CityRoads {
 		this.redOn = this.track(new THREE.MeshBasicMaterial({ color: 0xff2418, toneMapped: false }));
 		this.amberOn = this.track(new THREE.MeshBasicMaterial({ color: 0xffb300, toneMapped: false }));
 		this.greenOn = this.track(new THREE.MeshBasicMaterial({ color: 0x22e05a, toneMapped: false }));
-		this.redOff = this.track(new THREE.MeshStandardMaterial({ color: 0x3a1210, roughness: 0.4 }));
-		this.amberOff = this.track(new THREE.MeshStandardMaterial({ color: 0x3a2c0c, roughness: 0.4 }));
-		this.greenOff = this.track(new THREE.MeshStandardMaterial({ color: 0x0f2f18, roughness: 0.4 }));
+		this.redOff = this.track(new THREE.MeshLambertMaterial({ color: 0x3a1210 }));
+		this.amberOff = this.track(new THREE.MeshLambertMaterial({ color: 0x3a2c0c }));
+		this.greenOff = this.track(new THREE.MeshLambertMaterial({ color: 0x0f2f18 }));
 	}
 
 	/**
@@ -237,8 +235,8 @@ export class CityRoads {
 	 * Twee koppen per paal zou realistischer zijn; de gemeente had budget voor één.
 	 */
 	private buildTrafficLights(): void {
-		const poleMat = this.track(new THREE.MeshStandardMaterial({ color: 0x37404a, metalness: 0.6, roughness: 0.45 }));
-		const housingMat = this.track(new THREE.MeshStandardMaterial({ color: 0x14171a, roughness: 0.7 }));
+		const poleMat = this.track(new THREE.MeshLambertMaterial({ color: 0x37404a }));
+		const housingMat = this.track(new THREE.MeshLambertMaterial({ color: 0x14171a }));
 		const poleGeo = new THREE.CylinderGeometry(0.09, 0.11, 4.2, 8);
 		this.geometries.push(poleGeo);
 		const housingGeo = new THREE.BoxGeometry(0.5, 1.35, 0.3);

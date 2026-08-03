@@ -406,7 +406,7 @@ export class ProtestGroupies {
 	}
 
 	private buildBanner(): void {
-		const pole = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.8 }));
+		const pole = this.track(new THREE.MeshLambertMaterial({ color: 0x5d4037 }));
 		const pL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 2.6, 6), pole);
 		pL.position.set(-1.6, 1.3, -1.8);
 		const pR = pL.clone();
@@ -490,10 +490,8 @@ export class ProtestGroupies {
 	private makeFlagPole(kind: FlagKind, height = 1.6): THREE.Group {
 		const g = new THREE.Group();
 		const poleMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xb0bec5,
-				metalness: 0.55,
-				roughness: 0.4,
 			}),
 		);
 		const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, height, 6), poleMat);
@@ -502,10 +500,8 @@ export class ProtestGroupies {
 		const ball = new THREE.Mesh(
 			new THREE.SphereGeometry(0.05, 8, 8),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xffd700,
-					metalness: 0.8,
-					roughness: 0.3,
 				}),
 			),
 		);
@@ -534,7 +530,7 @@ export class ProtestGroupies {
 		const g = new THREE.Group();
 		const stick = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.015, 0.018, 0.7, 5),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.9 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x8d6e63 })),
 		);
 		stick.position.y = 0.35;
 		g.add(stick);
@@ -659,16 +655,14 @@ export class ProtestGroupies {
 		root.position.copy(base);
 
 		// Soft older skin
-		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xe8c4a8, roughness: 0.9 }));
-		const suit = this.track(new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.75 }));
-		const suitPants = this.track(new THREE.MeshStandardMaterial({ color: 0x0d1545, roughness: 0.8 }));
-		const blouse = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.7 }));
-		const hairM = this.track(new THREE.MeshStandardMaterial({ color: 0xd4b896, roughness: 0.85 }));
+		const skin = this.track(new THREE.MeshLambertMaterial({ color: 0xe8c4a8 }));
+		const suit = this.track(new THREE.MeshLambertMaterial({ color: 0x1a237e }));
+		const suitPants = this.track(new THREE.MeshLambertMaterial({ color: 0x0d1545 }));
+		const blouse = this.track(new THREE.MeshLambertMaterial({ color: 0xf5f5f5 }));
+		const hairM = this.track(new THREE.MeshLambertMaterial({ color: 0xd4b896 }));
 		const pearl = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xfff8e7,
-				metalness: 0.35,
-				roughness: 0.25,
 			}),
 		);
 
@@ -767,7 +761,7 @@ export class ProtestGroupies {
 		// Sign: WIR SCHAFFEN DAS
 		const stick = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.025, 0.03, 1.0, 5),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.9 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x8d6e63 })),
 		);
 		stick.position.set(0.35, 1.55, 0.35);
 		root.add(stick);
@@ -813,7 +807,7 @@ export class ProtestGroupies {
 		// Abandoned crate at camp (Mutti left the stage)
 		const crate = new THREE.Mesh(
 			new THREE.BoxGeometry(0.9, 0.38, 0.75),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.85 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x5d4037 })),
 		);
 		crate.position.set(0, 0.19, 0.4);
 		this.group.add(crate);
@@ -858,10 +852,8 @@ export class ProtestGroupies {
 		const pole = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.025, 0.03, 1.7, 6),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xb0bec5,
-					metalness: 0.5,
-					roughness: 0.4,
 				}),
 			),
 		);
@@ -895,10 +887,8 @@ export class ProtestGroupies {
 		const mega = new THREE.Mesh(
 			new THREE.ConeGeometry(0.16, 0.38, 10),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xffeb3b,
-					metalness: 0.3,
-					roughness: 0.45,
 				}),
 			),
 		);
@@ -921,18 +911,16 @@ export class ProtestGroupies {
 			const root = new THREE.Group();
 			root.position.set(bx, 0, bz);
 
-			const skin = this.track(new THREE.MeshStandardMaterial({ color: skins[i % skins.length], roughness: 0.85 }));
-			const shirt = this.track(new THREE.MeshStandardMaterial({ color: tops[i % tops.length], roughness: 0.7 }));
+			const skin = this.track(new THREE.MeshLambertMaterial({ color: skins[i % skins.length] }));
+			const shirt = this.track(new THREE.MeshLambertMaterial({ color: tops[i % tops.length] }));
 			const pants = this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: i % 2 === 0 ? 0x37474f : 0x5d4037,
-					roughness: 0.85,
 				}),
 			);
 			const hairM = this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: hairs[i % hairs.length],
-					roughness: 0.9,
 				}),
 			);
 
@@ -963,9 +951,8 @@ export class ProtestGroupies {
 			const scarf = new THREE.Mesh(
 				new THREE.TorusGeometry(0.14, 0.035, 6, 12),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					new THREE.MeshLambertMaterial({
 						color: [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982][i % 6],
-						roughness: 0.8,
 					}),
 				),
 			);
@@ -995,7 +982,7 @@ export class ProtestGroupies {
 			// Cardboard sign
 			const stick = new THREE.Mesh(
 				new THREE.CylinderGeometry(0.02, 0.025, 1.1, 5),
-				this.track(new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.9 })),
+				this.track(new THREE.MeshLambertMaterial({ color: 0x8d6e63 })),
 			);
 			stick.position.set(-0.32, 1.35, 0.2);
 			root.add(stick);

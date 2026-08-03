@@ -277,10 +277,8 @@ export class MallBuilder {
 	private buildStructure(): void {
 		// Warm beige mall floor (daylight American mall)
 		const floorMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xd8cfc0,
-				metalness: 0.05,
-				roughness: 0.75,
 			}),
 		);
 
@@ -370,10 +368,8 @@ export class MallBuilder {
 
 		// Cream mall walls
 		const wallMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xf0ebe3,
-				metalness: 0.02,
-				roughness: 0.9,
 			}),
 		);
 		const wallH = FLOOR_H * 2 + 2;
@@ -394,10 +390,8 @@ export class MallBuilder {
 
 		// Ceiling with atrium opening
 		const ceilMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xf5f0e8,
-				metalness: 0.05,
-				roughness: 0.85,
 				side: THREE.DoubleSide,
 			}),
 		);
@@ -428,10 +422,8 @@ export class MallBuilder {
 
 		// Skylight — simple transparent (no transmission black-hole)
 		const glassMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xa8d4ff,
-				metalness: 0.1,
-				roughness: 0.15,
 				transparent: true,
 				opacity: 0.25,
 				side: THREE.DoubleSide,
@@ -443,7 +435,7 @@ export class MallBuilder {
 		this.group.add(skylight);
 
 		// Parking lot-ish ground outside
-		const voidMat = this.track(new THREE.MeshStandardMaterial({ color: 0x8a9099, roughness: 0.95 }));
+		const voidMat = this.track(new THREE.MeshLambertMaterial({ color: 0x8a9099 }));
 		const voidPlane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), voidMat);
 		voidPlane.rotation.x = -Math.PI / 2;
 		voidPlane.position.y = -0.5;
@@ -456,17 +448,13 @@ export class MallBuilder {
 	 */
 	private buildGodStatue(): void {
 		const marble = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xe9e5dd,
-				roughness: 0.35,
-				metalness: 0.05,
 			}),
 		);
 		const gold = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xd4af37,
-				metalness: 0.9,
-				roughness: 0.25,
 			}),
 		);
 
@@ -578,10 +566,8 @@ export class MallBuilder {
 	private buildAtrium(): void {
 		// Atrium planter + fake palm (classic US mall energy)
 		const baseMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xb8a090,
-				metalness: 0.1,
-				roughness: 0.7,
 			}),
 		);
 
@@ -591,7 +577,7 @@ export class MallBuilder {
 
 		const planter = new THREE.Mesh(
 			new THREE.CylinderGeometry(1.2, 1.4, 0.8, 24),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.85 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x8b7355 })),
 		);
 		planter.position.y = 0.7;
 		this.group.add(planter);
@@ -600,10 +586,8 @@ export class MallBuilder {
 		const water = new THREE.Mesh(
 			new THREE.CylinderGeometry(1.15, 1.15, 0.12, 24),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0x2a7ea8,
-					metalness: 0.35,
-					roughness: 0.15,
 					transparent: true,
 					opacity: 0.85,
 				}),
@@ -619,7 +603,7 @@ export class MallBuilder {
 		const accent = new THREE.Mesh(
 			new THREE.RingGeometry(2.6, 3.0, 48),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xc4b5a0,
 					side: THREE.DoubleSide,
 				}),
@@ -706,17 +690,15 @@ export class MallBuilder {
 		const zHi = z1 + dir * (ESC.apron - ESC_NEWEL_R);
 
 		const cleat = this.escStripeTexture(64, '#8b969d', '#5b6469', 1.6, w / 0.28);
-		// De scene heeft geen environment map, dus metalness boven ~0.5 heeft niets
-		// om in te spiegelen en slaat om in zwart. Geborsteld staal, geen chroom.
-		const treadMat = this.track(new THREE.MeshStandardMaterial({ map: cleat, metalness: 0.45, roughness: 0.5 }));
-		const riserMat = this.track(new THREE.MeshStandardMaterial({ map: cleat, color: 0x767f85, metalness: 0.4, roughness: 0.6 }));
-		const steelMat = this.track(new THREE.MeshStandardMaterial({ color: 0xc3ccd2, metalness: 0.4, roughness: 0.34 }));
-		const trussMat = this.track(new THREE.MeshStandardMaterial({ color: 0x39424a, metalness: 0.2, roughness: 0.78 }));
+		// Lambert kent geen metalness/roughness — geborsteld staal komt nu alleen
+		// uit kleur en textuur, niet meer uit een gedempte spiegeling.
+		const treadMat = this.track(new THREE.MeshLambertMaterial({ map: cleat }));
+		const riserMat = this.track(new THREE.MeshLambertMaterial({ map: cleat, color: 0x767f85 }));
+		const steelMat = this.track(new THREE.MeshLambertMaterial({ color: 0xc3ccd2 }));
+		const trussMat = this.track(new THREE.MeshLambertMaterial({ color: 0x39424a }));
 		const glassMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xbcd6e6,
-				metalness: 0.1,
-				roughness: 0.06,
 				transparent: true,
 				opacity: 0.24,
 				side: THREE.DoubleSide,
@@ -724,10 +706,8 @@ export class MallBuilder {
 		);
 		const glowMat = this.track(new THREE.MeshBasicMaterial({ color: 0x8fe3ff, toneMapped: false }));
 		const combMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				map: this.escStripeTexture(64, '#c8a02a', '#4a3c10', 2, w / 0.09),
-				metalness: 0.6,
-				roughness: 0.45,
 			}),
 		);
 
@@ -824,7 +804,7 @@ export class MallBuilder {
 		// één vlak met het tredeblad, dan vechten ze om de dieptebuffer en flikkert
 		// de lijn.
 		const noseLineGeo = new THREE.BoxGeometry(w - 2 * ESC_NOSE_INSET, ESC_NOSE_H, 0.05);
-		const noseLineMat = this.track(new THREE.MeshStandardMaterial({ color: 0xe8b312, roughness: 0.55 }));
+		const noseLineMat = this.track(new THREE.MeshLambertMaterial({ color: 0xe8b312 }));
 		for (let i = -1; i < steps; i++) {
 			const node = new THREE.Group();
 			node.position.x = x;
@@ -846,7 +826,7 @@ export class MallBuilder {
 		const pts = escRailPath(zLo, zHi, ESC_RAIL_Y);
 		const { geo: railGeo, length: railLen } = escRailTube(pts, ESC_RAIL_R);
 		const railTex = this.escRailTexture(railLen / ESC_RAIL_TICK);
-		const railMat = this.track(new THREE.MeshStandardMaterial({ map: railTex, roughness: 0.85, metalness: 0.05 }));
+		const railMat = this.track(new THREE.MeshLambertMaterial({ map: railTex }));
 		this.escRailMaps.push(railTex);
 		const capGeo = new THREE.SphereGeometry(ESC_RAIL_R, 8, 6);
 		for (const side of [-1, 1] as const) {
@@ -994,19 +974,16 @@ export class MallBuilder {
 		const dir = z1 < z0 ? -1 : 1;
 		const steps = 14;
 		const metal = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0x6d4c41,
-				metalness: 0.15,
-				roughness: 0.4,
 			}),
 		);
 		const tread = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xd7ccc8,
-				roughness: 0.55,
 			}),
 		);
-		const railMat = this.track(new THREE.MeshStandardMaterial({ color: 0xb0bec5, metalness: 0.7, roughness: 0.3 }));
+		const railMat = this.track(new THREE.MeshLambertMaterial({ color: 0xb0bec5 }));
 
 		// Bottom landing
 		const land0 = new THREE.Mesh(new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.4), metal);
@@ -1082,10 +1059,8 @@ export class MallBuilder {
 
 		// Hekje langs het gat in de vloerplaat, buiten de halve gatbreedte.
 		const glassMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xbcd6e6,
-				metalness: 0.1,
-				roughness: 0.06,
 				transparent: true,
 				opacity: 0.24,
 				side: THREE.DoubleSide,
@@ -1117,10 +1092,8 @@ export class MallBuilder {
 		const bodyColor = new THREE.Color(store.color);
 		bodyColor.offsetHSL(0, 0, 0.1);
 		const wallMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: bodyColor,
-				metalness: 0.15,
-				roughness: 0.65,
 			}),
 		);
 
@@ -1136,7 +1109,7 @@ export class MallBuilder {
 		// Floor of shop (visible mat)
 		const floor = new THREE.Mesh(
 			new THREE.BoxGeometry(w - 0.2, 0.06, roomDepth),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xe8dcc8, roughness: 0.85 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0xe8dcc8 })),
 		);
 		floor.position.set(0, 0.03, -roomDepth / 2);
 		g.add(floor);
@@ -1157,7 +1130,7 @@ export class MallBuilder {
 		// Thin ceiling so it reads as a room
 		const ceil = new THREE.Mesh(
 			new THREE.BoxGeometry(w - 0.1, 0.1, roomDepth),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.9 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0xf5f0e8 })),
 		);
 		ceil.position.set(0, h - 0.05, -roomDepth / 2);
 		g.add(ceil);
@@ -1166,9 +1139,8 @@ export class MallBuilder {
 		const interior = new THREE.Mesh(
 			new THREE.PlaneGeometry(w - 0.4, h - 0.6),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: new THREE.Color(store.accent).lerp(new THREE.Color(0xfff8f0), 0.5),
-					roughness: 0.75,
 					emissive: new THREE.Color(store.accent),
 					emissiveIntensity: 0.1,
 					side: THREE.DoubleSide,
@@ -1182,7 +1154,7 @@ export class MallBuilder {
 		const counterW = Math.min(w * 0.78, 5.2);
 		const counter = new THREE.Mesh(
 			new THREE.BoxGeometry(counterW, 0.85, 0.5),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x5d4037 })),
 		);
 		counter.position.set(0, 0.42, -roomDepth * 0.55);
 		g.add(counter);
@@ -1254,10 +1226,8 @@ export class MallBuilder {
 		const strip = new THREE.Mesh(
 			new THREE.BoxGeometry(w * 0.9, 0.08, 0.06),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: store.accent,
-					roughness: 0.5,
-					metalness: 0.1,
 				}),
 			),
 		);
@@ -1266,10 +1236,8 @@ export class MallBuilder {
 
 		// Pillars
 		const pillarMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xd0cbc4,
-				metalness: 0.15,
-				roughness: 0.6,
 			}),
 		);
 		for (const px of [-w / 2 + 0.2, w / 2 - 0.2]) {
@@ -1281,10 +1249,8 @@ export class MallBuilder {
 		// Hero extras for Kruidvat (matte green cross — still the joke destination)
 		if (store.hero) {
 			const crossMat = this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0x00a651,
-					roughness: 0.55,
-					metalness: 0.1,
 				}),
 			);
 			const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.4, 0.15), crossMat);
@@ -1325,18 +1291,16 @@ export class MallBuilder {
 		g.userData['ownerLines'] = owner?.lines ?? ['Thanks!'];
 		g.userData['ownerMeaning'] = isBoss ? (owner?.meaning ?? 'Houdt de winkel draaiende') : 'Werkt hier gewoon';
 
-		const skin = this.track(new THREE.MeshStandardMaterial({ color: skinCol, roughness: 0.85 }));
+		const skin = this.track(new THREE.MeshLambertMaterial({ color: skinCol }));
 		const uni = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: shirtCol,
-				roughness: 0.8,
 			}),
 		);
-		const hairMat = this.track(new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.9 }));
+		const hairMat = this.track(new THREE.MeshLambertMaterial({ color: hairCol }));
 		const pants = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: isBoss ? 0x1a1a2e : 0x2c3e50,
-				roughness: 0.85,
 			}),
 		);
 
@@ -1358,9 +1322,8 @@ export class MallBuilder {
 		const badge = new THREE.Mesh(
 			new THREE.BoxGeometry(0.18, 0.1, 0.02),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: store.accent ? new THREE.Color(store.accent).getHex() : 0xffffff,
-					roughness: 0.5,
 				}),
 			),
 		);
@@ -1426,16 +1389,13 @@ export class MallBuilder {
 		g.name = 'kiosk';
 
 		const bodyMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0x4a5568,
-				metalness: 0.3,
-				roughness: 0.5,
 			}),
 		);
 		const screenMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0x3b82f6,
-				roughness: 0.4,
 			}),
 		);
 
@@ -1461,10 +1421,9 @@ export class MallBuilder {
 		const ring = new THREE.Mesh(
 			new THREE.RingGeometry(0.9, 1.15, 40),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xdc2626,
 					side: THREE.DoubleSide,
-					roughness: 0.6,
 				}),
 			),
 		);
@@ -1478,18 +1437,15 @@ export class MallBuilder {
 
 	private buildRailings(): void {
 		const railMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0x8899aa,
-				metalness: 0.95,
-				roughness: 0.15,
 			}),
 		);
 		const glassMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xc5e0f5,
 				transparent: true,
 				opacity: 0.25,
-				roughness: 0.1,
 				side: THREE.DoubleSide,
 			}),
 		);
@@ -1544,9 +1500,8 @@ export class MallBuilder {
 
 		// Fluorescent panels (matte, no emissive strobe)
 		const bulbMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xf5f0e0,
-				roughness: 0.4,
 			}),
 		);
 

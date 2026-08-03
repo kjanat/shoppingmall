@@ -203,17 +203,16 @@ export class ScrubberBuggy {
 	private build(): THREE.Group {
 		const g = new THREE.Group();
 
-		const yellow = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.55, metalness: 0.2 }));
-		const blue = this.track(new THREE.MeshStandardMaterial({ color: 0x0d47a1, roughness: 0.65 }));
-		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.3 }));
-		const grey = this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.4, roughness: 0.45 }));
-		const rubber = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }));
+		const yellow = this.track(new THREE.MeshLambertMaterial({ color: 0xffc107 }));
+		const blue = this.track(new THREE.MeshLambertMaterial({ color: 0x0d47a1 }));
+		const dark = this.track(new THREE.MeshLambertMaterial({ color: 0x263238 }));
+		const grey = this.track(new THREE.MeshLambertMaterial({ color: 0x90a4ae }));
+		const rubber = this.track(new THREE.MeshLambertMaterial({ color: 0x1a1a1a }));
 		const green = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0x00e676,
 				emissive: 0x00c853,
 				emissiveIntensity: 0.35,
-				roughness: 0.5,
 			}),
 		);
 
@@ -253,7 +252,7 @@ export class ScrubberBuggy {
 		g.add(deck);
 		this.brush = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.34, 0.34, 0.06, 16),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.85 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x455a64 })),
 		);
 		this.brush.position.set(0, 0.06, 0.55);
 		g.add(this.brush);
@@ -261,7 +260,7 @@ export class ScrubberBuggy {
 			const a = (i / 8) * Math.PI * 2;
 			const br = new THREE.Mesh(
 				new THREE.BoxGeometry(0.28, 0.02, 0.04),
-				this.track(new THREE.MeshStandardMaterial({ color: 0x78909c, roughness: 0.9 })),
+				this.track(new THREE.MeshLambertMaterial({ color: 0x78909c })),
 			);
 			br.position.set(Math.cos(a) * 0.05, 0.04, 0.55 + Math.sin(a) * 0.05);
 			br.rotation.y = a;

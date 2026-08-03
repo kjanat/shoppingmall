@@ -347,10 +347,10 @@ export class PrayerRoom {
 
 	private build(): void {
 		// Small quiet room shell
-		const wall = this.track(new THREE.MeshStandardMaterial({ color: 0xe8e4d9, roughness: 0.9 }));
+		const wall = this.track(new THREE.MeshLambertMaterial({ color: 0xe8e4d9 }));
 		const floor = new THREE.Mesh(
 			new THREE.BoxGeometry(5.5, 0.08, 4.2),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xc4a574, roughness: 0.85 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0xc4a574 })),
 		);
 		floor.position.y = 0.04;
 		this.group.add(floor);
@@ -369,7 +369,7 @@ export class PrayerRoom {
 		// green carpet strip
 		const carpet = new THREE.Mesh(
 			new THREE.BoxGeometry(4.2, 0.03, 2.8),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x1b5e20, roughness: 0.95 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x1b5e20 })),
 		);
 		carpet.position.set(0, 0.1, -0.2);
 		this.group.add(carpet);
@@ -378,7 +378,7 @@ export class PrayerRoom {
 		for (let i = 0; i < 4; i++) {
 			const mat = new THREE.Mesh(
 				new THREE.BoxGeometry(0.85, 0.02, 1.35),
-				this.track(new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 })),
+				this.track(new THREE.MeshLambertMaterial({ color: 0x2e7d32 })),
 			);
 			mat.position.set(-1.45 + i * 0.95, 0.12, -0.35);
 			this.group.add(mat);
@@ -425,8 +425,8 @@ export class PrayerRoom {
 		// McD bag
 		const makeBag = (seed: number): THREE.Group => {
 			const g = new THREE.Group();
-			const red = this.track(new THREE.MeshStandardMaterial({ color: 0xda291c, roughness: 0.85 }));
-			const yellow = this.track(new THREE.MeshStandardMaterial({ color: 0xffc72c, roughness: 0.7 }));
+			const red = this.track(new THREE.MeshLambertMaterial({ color: 0xda291c }));
+			const yellow = this.track(new THREE.MeshLambertMaterial({ color: 0xffc72c }));
 			const bag = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.12), red);
 			bag.position.y = 0.14;
 			g.add(bag);
@@ -444,8 +444,8 @@ export class PrayerRoom {
 		// Fries carton
 		const makeFries = (seed: number): THREE.Group => {
 			const g = new THREE.Group();
-			const red = this.track(new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.8 }));
-			const fryM = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.75 }));
+			const red = this.track(new THREE.MeshLambertMaterial({ color: 0xc62828 }));
+			const fryM = this.track(new THREE.MeshLambertMaterial({ color: 0xffc107 }));
 			const box = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.1), red);
 			box.position.y = 0.07;
 			g.add(box);
@@ -463,9 +463,9 @@ export class PrayerRoom {
 		// Soft drink cup + straw
 		const makeCup = (seed: number): THREE.Group => {
 			const g = new THREE.Group();
-			const red = this.track(new THREE.MeshStandardMaterial({ color: 0xb71c1c, roughness: 0.75 }));
-			const lidM = this.track(new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6 }));
-			const strawM = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 }));
+			const red = this.track(new THREE.MeshLambertMaterial({ color: 0xb71c1c }));
+			const lidM = this.track(new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
+			const strawM = this.track(new THREE.MeshLambertMaterial({ color: 0xf5f5f5 }));
 			const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.16, 10), red);
 			cup.position.y = 0.08;
 			g.add(cup);
@@ -488,9 +488,8 @@ export class PrayerRoom {
 		// Burger wrapper (flat crumpled disc/box)
 		const makeWrapper = (seed: number): THREE.Mesh => {
 			const paper = this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: rng(seed) > 0.5 ? 0xfff8e1 : 0xffecb3,
-					roughness: 0.95,
 				}),
 			);
 			const w = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.01, 0.14), paper);
@@ -515,10 +514,8 @@ export class PrayerRoom {
 			const body = new THREE.Mesh(
 				new THREE.CylinderGeometry(0.035, 0.035, 0.13, 12),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					new THREE.MeshLambertMaterial({
 						color: col.body,
-						metalness: 0.55,
-						roughness: 0.35,
 					}),
 				),
 			);
@@ -527,10 +524,8 @@ export class PrayerRoom {
 			const rim = new THREE.Mesh(
 				new THREE.CylinderGeometry(0.036, 0.036, 0.015, 12),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					new THREE.MeshLambertMaterial({
 						color: 0xc0c0c0,
-						metalness: 0.8,
-						roughness: 0.25,
 					}),
 				),
 			);
@@ -540,10 +535,8 @@ export class PrayerRoom {
 			const stripe = new THREE.Mesh(
 				new THREE.BoxGeometry(0.072, 0.05, 0.01),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					new THREE.MeshLambertMaterial({
 						color: col.accent,
-						roughness: 0.5,
-						metalness: 0.2,
 					}),
 				),
 			);
@@ -804,10 +797,8 @@ export class PrayerRoom {
 		const cork = new THREE.Mesh(
 			new THREE.BoxGeometry(4.8, 1.4, 0.04),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xc4a574,
-					roughness: 0.95,
-					metalness: 0.05,
 				}),
 			),
 		);
@@ -946,7 +937,7 @@ export class PrayerRoom {
 		for (let i = 0; i < 4; i++) {
 			const mat = new THREE.Mesh(
 				new THREE.BoxGeometry(0.85, 0.02, 1.15),
-				this.track(new THREE.MeshStandardMaterial({ color: 0x33691e, roughness: 0.9 })),
+				this.track(new THREE.MeshLambertMaterial({ color: 0x33691e })),
 			);
 			mat.position.set(-1.55 + i * 1.0, 0.12, 0.95);
 			this.group.add(mat);
@@ -967,13 +958,11 @@ export class PrayerRoom {
 	/** Low-poly goat standing in front of the ayatollah row */
 	private buildGoat(): void {
 		const g = new THREE.Group();
-		const fur = this.track(new THREE.MeshStandardMaterial({ color: 0xd7ccc8, roughness: 0.92 }));
-		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.85 }));
+		const fur = this.track(new THREE.MeshLambertMaterial({ color: 0xd7ccc8 }));
+		const dark = this.track(new THREE.MeshLambertMaterial({ color: 0x5d4037 }));
 		const hornM = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xefebe9,
-				roughness: 0.55,
-				metalness: 0.05,
 			}),
 		);
 		const black = this.track(new THREE.MeshBasicMaterial({ color: 0x111111 }));
@@ -1058,13 +1047,13 @@ export class PrayerRoom {
 		// Rope / stake so it "belongs" to the room
 		const stake = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.02, 0.025, 0.55, 6),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.8 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x6d4c41 })),
 		);
 		stake.position.set(-0.55, 0.28, 0.25);
 		g.add(stake);
 		const rope = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.008, 0.008, 0.7, 4),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xa1887f, roughness: 0.9 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0xa1887f })),
 		);
 		rope.position.set(-0.22, 0.38, 0.12);
 		rope.rotation.z = Math.PI / 2.4;
@@ -1179,10 +1168,10 @@ export class PrayerRoom {
 
 	private makeAyatollah(name: string, title: string, turbanColor: number): THREE.Group {
 		const g = new THREE.Group();
-		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.88 }));
-		const robe = this.track(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.92 }));
-		const beardM = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.95 }));
-		const turbanM = this.track(new THREE.MeshStandardMaterial({ color: turbanColor, roughness: 0.85 }));
+		const skin = this.track(new THREE.MeshLambertMaterial({ color: 0xc68642 }));
+		const robe = this.track(new THREE.MeshLambertMaterial({ color: 0x141414 }));
+		const beardM = this.track(new THREE.MeshLambertMaterial({ color: 0xf5f5f5 }));
+		const turbanM = this.track(new THREE.MeshLambertMaterial({ color: turbanColor }));
 
 		// Hips
 		const hips = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), robe);

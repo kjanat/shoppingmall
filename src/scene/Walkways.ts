@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 type Belt = {
-	mat: THREE.MeshStandardMaterial;
+	mat: THREE.MeshLambertMaterial;
 	speed: number;
 	/** World-space footprint + drift for conveyance */
 	minX: number;
@@ -83,10 +83,8 @@ export class MovingWalkways {
 		tex.repeat.set(1, len / 2);
 
 		const beltMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				map: tex,
-				roughness: 0.65,
-				metalness: 0.35,
 			}),
 		);
 
@@ -95,10 +93,8 @@ export class MovingWalkways {
 		g.add(belt);
 
 		const frameMat = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0x8a919c,
-				metalness: 0.85,
-				roughness: 0.3,
 			}),
 		);
 		for (const sx of [-w / 2 - 0.06, w / 2 + 0.06]) {

@@ -44,18 +44,16 @@ export class Helipad {
 		const run = z1 - z0;
 		const steps = 16;
 		const metal = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0x455a64,
-				metalness: 0.55,
-				roughness: 0.45,
 			}),
 		);
-		const tread = this.track(new THREE.MeshStandardMaterial({ color: 0x78909c, roughness: 0.55, metalness: 0.3 }));
+		const tread = this.track(new THREE.MeshLambertMaterial({ color: 0x78909c }));
 
 		// Service door facade on floor 1
 		const door = new THREE.Mesh(
 			new THREE.BoxGeometry(1.4, 2.2, 0.12),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.7 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x37474f })),
 		);
 		door.position.set(x - 1.2, y0 + 1.1, z0 - 0.8);
 		g.add(door);
@@ -92,7 +90,7 @@ export class Helipad {
 		}
 
 		// Side rails
-		const rail = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, metalness: 0.6, roughness: 0.35 }));
+		const rail = this.track(new THREE.MeshLambertMaterial({ color: 0xffc107 }));
 		for (const sx of [x - 1.2, x + 1.2]) {
 			for (let i = 0; i < steps; i += 2) {
 				const z = z0 + (i + 0.5) * stepD;
@@ -139,10 +137,8 @@ export class Helipad {
 		const deck = new THREE.Mesh(
 			deckGeo,
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0x3a3f48,
-					metalness: 0.25,
-					roughness: 0.75,
 				}),
 			),
 		);
@@ -151,7 +147,7 @@ export class Helipad {
 		this.group.add(deck);
 
 		// Low safety wall on outer edges (not over stairs hatch)
-		const wallM = this.track(new THREE.MeshStandardMaterial({ color: 0x546e7a, metalness: 0.4, roughness: 0.5 }));
+		const wallM = this.track(new THREE.MeshLambertMaterial({ color: 0x546e7a }));
 		const wall = (w: number, d: number, x: number, z: number) => {
 			const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, d), wallM);
 			m.position.set(x, ROOF_Y + 0.5, z);
@@ -166,10 +162,8 @@ export class Helipad {
 		const pad = new THREE.Mesh(
 			new THREE.CylinderGeometry(5.5, 5.8, 0.12, 40),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0x1a1a1a,
-					metalness: 0.35,
-					roughness: 0.55,
 				}),
 			),
 		);
@@ -206,17 +200,16 @@ export class Helipad {
 		// Windsock pole
 		const pole = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.05, 0.05, 3.2, 8),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.7 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x90a4ae })),
 		);
 		pole.position.set(this.padCenter.x + 6.5, ROOF_Y + 1.6, this.padCenter.z + 4);
 		this.group.add(pole);
 		const sock = new THREE.Mesh(
 			new THREE.ConeGeometry(0.35, 1.4, 8, 1, true),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xff5722,
 					side: THREE.DoubleSide,
-					roughness: 0.8,
 				}),
 			),
 		);

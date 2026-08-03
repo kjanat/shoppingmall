@@ -107,12 +107,12 @@ export class CityTraffic {
 		signGeo.rotateY(Math.PI / 2); // bordje kijkt in de rijrichting
 		this.geometries.push(bodyGeo, cabinGeo, wheelGeo, lampGeo, signGeo);
 
-		const glassMat = this.track(new THREE.MeshStandardMaterial({ color: 0x1d262d, roughness: 0.25, metalness: 0.5 }));
-		const wheelMat = this.track(new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.9 }));
+		const glassMat = this.track(new THREE.MeshLambertMaterial({ color: 0x1d262d }));
+		const wheelMat = this.track(new THREE.MeshLambertMaterial({ color: 0x101114 }));
 		const lampMat = this.track(new THREE.MeshBasicMaterial({ color: 0xfff3c4, toneMapped: false }));
-		const taxiMat = this.track(new THREE.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.45, metalness: 0.25 }));
+		const taxiMat = this.track(new THREE.MeshLambertMaterial({ color: 0xf2b705 }));
 		const paint = [0xb0413e, 0x3e63a8, 0x4a4e57, 0xd8d3c8, 0x3f6f4f, 0x23262d, 0x9a7b4f].map((c) =>
-			this.track(new THREE.MeshStandardMaterial({ color: c, roughness: 0.5, metalness: 0.3 })),
+			this.track(new THREE.MeshLambertMaterial({ color: c })),
 		);
 		const signMat = this.makeTaxiSignMaterial();
 

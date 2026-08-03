@@ -43,8 +43,8 @@ export class Restrooms {
 		return m;
 	}
 
-	private tileMat(color: number): THREE.MeshStandardMaterial {
-		return this.track(new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 }));
+	private tileMat(color: number): THREE.MeshLambertMaterial {
+		return this.track(new THREE.MeshLambertMaterial({ color }));
 	}
 
 	private buildShell(): void {
@@ -89,10 +89,8 @@ export class Restrooms {
 		const splash = new THREE.Mesh(
 			new THREE.BoxGeometry(3.2, 1.4, 0.08),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xb0bec5,
-					metalness: 0.35,
-					roughness: 0.4,
 				}),
 			),
 		);
@@ -104,7 +102,7 @@ export class Restrooms {
 		}
 
 		// dividers between urinals
-		const divMat = this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.2, roughness: 0.5 }));
+		const divMat = this.track(new THREE.MeshLambertMaterial({ color: 0x90a4ae }));
 		for (const dx of [-0.55, 0.55]) {
 			const d = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, 0.45), divMat);
 			d.position.set(dx, 0.85, -2.35);
@@ -142,10 +140,8 @@ export class Restrooms {
 		const mirror = new THREE.Mesh(
 			new THREE.BoxGeometry(3.0, 0.9, 0.04),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0xcfd8dc,
-					metalness: 0.85,
-					roughness: 0.15,
 				}),
 			),
 		);
@@ -164,7 +160,7 @@ export class Restrooms {
 
 		const bench = new THREE.Mesh(
 			new THREE.BoxGeometry(2.4, 0.35, 0.7),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.8 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x5d4037 })),
 		);
 		bench.position.y = 0.2;
 		g.add(bench);
@@ -173,10 +169,8 @@ export class Restrooms {
 		const basin = new THREE.Mesh(
 			new THREE.BoxGeometry(2.2, 0.18, 0.55),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0x78909c,
-					metalness: 0.5,
-					roughness: 0.35,
 				}),
 			),
 		);
@@ -186,11 +180,10 @@ export class Restrooms {
 		const water = new THREE.Mesh(
 			new THREE.BoxGeometry(2.0, 0.04, 0.4),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				new THREE.MeshLambertMaterial({
 					color: 0x4fc3f7,
 					transparent: true,
 					opacity: 0.45,
-					roughness: 0.1,
 				}),
 			),
 		);
@@ -201,10 +194,8 @@ export class Restrooms {
 			const tap = new THREE.Mesh(
 				new THREE.CylinderGeometry(0.03, 0.03, 0.25, 8),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					new THREE.MeshLambertMaterial({
 						color: 0xb0bec5,
-						metalness: 0.8,
-						roughness: 0.25,
 					}),
 				),
 			);
@@ -232,10 +223,8 @@ export class Restrooms {
 		const g = new THREE.Group();
 		g.position.set(x, 0, z);
 		const ceramic = this.track(
-			new THREE.MeshStandardMaterial({
+			new THREE.MeshLambertMaterial({
 				color: 0xf5f5f5,
-				roughness: 0.25,
-				metalness: 0.1,
 			}),
 		);
 		// bowl
@@ -254,7 +243,7 @@ export class Restrooms {
 		// flush pipe
 		const pipe = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.025, 0.025, 0.35, 6),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.7, roughness: 0.3 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0x90a4ae })),
 		);
 		pipe.position.set(0, 1.15, -0.05);
 		g.add(pipe);
@@ -264,7 +253,7 @@ export class Restrooms {
 	private makeStall(x: number, z: number, doorColor: number): THREE.Group {
 		const g = new THREE.Group();
 		g.position.set(x, 0, z);
-		const panel = this.track(new THREE.MeshStandardMaterial({ color: 0xcfd8dc, roughness: 0.6 }));
+		const panel = this.track(new THREE.MeshLambertMaterial({ color: 0xcfd8dc }));
 		// three walls of stall
 		const back = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.0, 0.06), panel);
 		back.position.set(0, 1.0, -0.7);
@@ -277,13 +266,13 @@ export class Restrooms {
 		// door (ajar a bit)
 		const door = new THREE.Mesh(
 			new THREE.BoxGeometry(0.9, 1.85, 0.05),
-			this.track(new THREE.MeshStandardMaterial({ color: doorColor, roughness: 0.55 })),
+			this.track(new THREE.MeshLambertMaterial({ color: doorColor })),
 		);
 		door.position.set(0.15, 0.95, 0.7);
 		door.rotation.y = -0.35;
 		g.add(door);
 		// toilet
-		const ceramic = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }));
+		const ceramic = this.track(new THREE.MeshLambertMaterial({ color: 0xffffff }));
 		const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.2, 0.35, 12), ceramic);
 		bowl.position.set(0, 0.35, -0.15);
 		g.add(bowl);
@@ -300,7 +289,7 @@ export class Restrooms {
 	private makeSink(x: number, z: number): THREE.Group {
 		const g = new THREE.Group();
 		g.position.set(x, 0, z);
-		const ceramic = this.track(new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.3 }));
+		const ceramic = this.track(new THREE.MeshLambertMaterial({ color: 0xfafafa }));
 		const top = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 0.45), ceramic);
 		top.position.y = 0.9;
 		g.add(top);
@@ -309,7 +298,7 @@ export class Restrooms {
 		g.add(bowl);
 		const faucet = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.02, 0.02, 0.22, 6),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xb0bec5, metalness: 0.85, roughness: 0.2 })),
+			this.track(new THREE.MeshLambertMaterial({ color: 0xb0bec5 })),
 		);
 		faucet.position.set(0, 1.1, -0.1);
 		g.add(faucet);
