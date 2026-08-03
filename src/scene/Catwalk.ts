@@ -64,7 +64,8 @@ export class Catwalk {
 	private handPos = new THREE.Vector3();
 	private models: Model[] = [];
 	private materials: THREE.Material[] = [];
-	private spot: THREE.SpotLight;
+	/** The only spotlight in the mall; real, so the disco dimmer needs a handle on it. */
+	readonly spot: THREE.SpotLight;
 	private spotTarget = new THREE.Object3D();
 	private flashes: { mesh: THREE.Mesh; life: number }[] = [];
 	private queue = 0;

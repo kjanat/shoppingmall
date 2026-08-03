@@ -2,7 +2,16 @@ import * as THREE from 'three';
 import type { LightPool } from '@/render/LightPool';
 
 /** Turns the daylight down for the disco and puts it back exactly as it was. */
-export type DaylightDimmer = { dimDaylight(on: boolean): void };
+export type DaylightDimmer = {
+	dimDaylight(on: boolean): void;
+	/**
+	 * A real light owned elsewhere that must follow the dim. The old traverse
+	 * caught every light in the scene; this list is what replaces that reach —
+	 * miss one and it blasts at full power through the "deep arcade night"
+	 * (the catwalk spot did exactly that).
+	 */
+	register(light: THREE.Light, factor: number): void;
+};
 
 /** Warm daylight American mall — no neon club vibes. */
 export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimmer {
@@ -62,18 +71,27 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 		});
 	}
 
-	// De disco dimde vroeger via scene.traverse over álle lampen. Dat werkte
-	// alleen zolang die lampen echte scene-lights waren; de puntlichten zitten nu
-	// in de pool, dus de vier echte lampen die overblijven worden hier bij naam
-	// gedimd en op hun eigen beginwaarde hersteld — geen zoektocht, en geen kans
-	// meer om het licht van een andere feature "terug te zetten" op iets anders.
-	const base = { ambient: ambient.intensity, hemi: hemi.intensity, sun: sun.intensity, fill: fill.intensity };
+	// The disco used to dim by traversing every light in the scene and restoring
+	// from its own snapshot — which could hand a stale intensity back to a light
+	// that had since changed owners. The point lights live in the pool now, so
+	// the real lights that remain are dimmed here by name and restored to their
+	// own captured base value. Lights owned by other files join via register().
+	const entries: { light: THREE.Light; factor: number; base: number }[] = [
+		{ light: ambient, factor: 0.12, base: ambient.intensity },
+		{ light: hemi, factor: 0.1, base: hemi.intensity },
+		{ light: sun, factor: 0.08, base: sun.intensity },
+		{ light: fill, factor: 0.08, base: fill.intensity },
+	];
+	let active = false;
 	return {
 		dimDaylight(on: boolean): void {
-			ambient.intensity = on ? base.ambient * 0.12 : base.ambient;
-			hemi.intensity = on ? base.hemi * 0.1 : base.hemi;
-			sun.intensity = on ? base.sun * 0.08 : base.sun;
-			fill.intensity = on ? base.fill * 0.08 : base.fill;
+			active = on;
+			for (const e of entries) e.light.intensity = on ? e.base * e.factor : e.base;
+		},
+		register(light: THREE.Light, factor: number): void {
+			const entry = { light, factor, base: light.intensity };
+			entries.push(entry);
+			if (active) light.intensity = entry.base * factor;
 		},
 	};
 }

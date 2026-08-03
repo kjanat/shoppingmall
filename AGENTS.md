@@ -7,18 +7,18 @@ small `/api` for the DJ booth and the voices.
 
 Bun, not npm. There is no Vite in this project.
 
-| Command            | What it does                                                              |
-| ------------------ | ------------------------------------------------------------------------- |
-| `runner install`   | installs deps for current toolchain                                       |
-| `run dev`          | `bun --hot server/main.ts` on port 5174 (`PORT` overrides)                |
-| `run build`        | typecheck → world check → `build.ts` → `dist/static` + `dist/mall` binary |
-| `run build:static` | same, Pages target (no `/api`)                                            |
-| `run typecheck`    | `tsc --noEmit`                                                            |
-| `run lint`         | `biome check` (`bun run fmt` to fix + dprint)                             |
-| `run check`        | `scripts/check-world.ts` — world invariants, no browser needed            |
-| `run diagnose`     | what a frame is made of (see Performance)                                 |
-| `run bench`        | frame-time benchmark with drift detection                                 |
-| `run live`         | rebuild + swap the Docker container (compose, behind traefik)             |
+| Command            | What it does                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| `runner install`   | installs deps for current toolchain                                                |
+| `run dev`          | `bun --hot server/main.ts` on port 5174 (`PORT` overrides)                         |
+| `run build`        | typecheck → world + light checks → `build.ts` → `dist/static` + `dist/mall` binary |
+| `run build:static` | same, Pages target (no `/api`)                                                     |
+| `run typecheck`    | `tsc --noEmit`                                                                     |
+| `run lint`         | `biome check` (`bun run fmt` to fix + dprint)                                      |
+| `run check`        | `check-world.ts` + `check-lights.ts` — world & light invariants, no browser needed |
+| `run diagnose`     | what a frame is made of (see Performance)                                          |
+| `run bench`        | frame-time benchmark with drift detection                                          |
+| `run live`         | rebuild + swap the Docker container (compose, behind traefik)                      |
 
 Flags pass through the task runner: `bun run bench --samples 8` works.
 
@@ -31,10 +31,11 @@ Flags pass through the task runner: `bun run bench --samples 8` works.
 
 ```
 src/
-  app/App.ts           orchestration, the frame loop, ~2000 lines
+  app/App.ts           orchestration, the frame loop, ~2200 lines
   main.ts              boot; removes #app-loading after `await app.ready`
-  scene/               37 files — the mall and everything living in it
+  scene/               the mall and everything living in it (plus city/ outside)
   render/SceneBatcher  merges compatible meshes into BatchedMeshes
+  render/LightPool     the only 8 real point lights; ~85 virtual lights rent slots
   physics/Collision.ts AABB world + walkable inclines
   player/Controls.ts   first-person walking
   camera/Director.ts   cinematics only
@@ -43,6 +44,7 @@ src/
   ui/                  kiosk chrome, minimap, floor plan, settings
 server/                main.ts (serves the game + routes) and api.ts
 scripts/perf/          benchmarking and diagnostics (see below)
+scripts/stub-dom.ts    canvas/audio stubs shared by the headless checks
 ```
 
 Aliases: `@/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensions.
@@ -62,16 +64,20 @@ Aliases: `@/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensi
 
 ## World invariants
 
-`scripts/check-world.ts` runs on every build. It boots the collision world and the two shop builders headlessly (with a
-canvas stub) and asserts things like: ramps line up with the floor holes cut for them, the ladder is actually climbable
-step by step, swimmers are inside the waterline, every shop has inventory. If you move geometry and it fails, the world
-is wrong — not the check.
+`scripts/check-world.ts` and `scripts/check-lights.ts` run on every build (headless, `scripts/stub-dom.ts` provides the
+canvas/audio stubs). check-world boots the collision world and the two shop builders and asserts things like: ramps line
+up with the floor holes cut for them, the ladder is actually climbable step by step, swimmers are inside the waterline,
+every shop has inventory. check-lights boots every light-owning feature against one `LightPool` and asserts the scene
+holds exactly `LIGHT_POOL_SLOTS` real `PointLight`s — including while the disco and the alien probe toggle — and greps
+`src/` so a `new PointLight` (or a named `PointLight` import) anywhere outside the pool fails the build. If you move
+geometry or add a light and a check fails, the world is wrong — not the check.
 
 ## Performance
 
 The scene is **GPU-bound, and it is almost entirely the main scene pass.**
 
-Authoritative measurement — **a snapshot, and only comparable against another snapshot that names its build:**
+Last authoritative measurement — **a snapshot, and only comparable against another snapshot that names its build.** It
+predates the light pool / Lambert / culling / dynamic-resolution branch below, so it is the *before* picture:
 
 |          |                                                                                                |
 | -------- | ---------------------------------------------------------------------------------------------- |
@@ -107,25 +113,46 @@ lights in shader   72 point, 2 directional, 1 spot
 **zero** times on the deployed build (`diagnose` warns whenever they are non-zero, and it stays silent). Those calls were
 ~66% of all CPU time in the original traces. Do not re-investigate this.
 
-**`time to playable` is 52 s, and that is arguably worse than the framerate.** It is not the network — it is 105 programs
-of up to 125.7 KB linking, which is downstream of the light count. Anything that reduces lights shortens load *and*
-frame time together.
+**Do not optimise shadows or postprocessing.** They are rounding errors. In the snapshot above two things dominated —
+72 point lights unrolled into every fragment (`NUM_POINT_LIGHTS` is pasted into the shader and `#pragma unroll_loop`ed;
+a light contributing zero still costs, there is no branch), and ~270 draw calls with no culling. Both were attacked in
+one branch, **which has not been measured yet** — the next `run diagnose --url` against a deploy of it is the missing
+snapshot, and until it exists every number above is the *old* build:
 
-**Do not optimise shadows or postprocessing.** They are rounding errors. Two things dominate:
+1. **The fixed light pool shipped** (`src/render/LightPool.ts`). Exactly 8 real `PointLight`s exist for the whole
+   session; every feature registers a *virtual* light and animates the returned handle. `NUM_POINT_LIGHTS` can no
+   longer change, so there is one program set, no mid-session relinks, and `App.warmup()` is a single compile pass.
+   The 52 s time-to-playable was 105 programs linking, which this removes the cause of. Scoring (decided, do not
+   re-litigate without a measurement): `intensity × dim² × priority × (1 − d/distance)`, an incumbent keeps its slot
+   until beaten by 30%, slots fade at 10/s except `snap` lights (muzzle flashes, sale flashes) which write through.
+   The five 32–50 m washes in `Lighting.ts` carry `priority: 2` so nearby 6 m shop lamps cannot starve the building.
+2. **Every scene material is `MeshLambertMaterial` now.** Nothing used a PBR feature (no env/normal/ao maps, no
+   `scene.environment` — high metalness already rendered black), and the physical lights chunk is 22 KB against
+   Lambert's 1 KB, multiplied by the unrolled light loop. Specular is gone; looks that depended on metalness darkening
+   encode it in the base colour instead (see the disco balls).
+3. **Whole-batch frustum culling is on** (`SceneBatcher`): one sphere test per batch. `setMatrixAt` never invalidates
+   the lazily-computed sphere, so when a source moves the sphere is *grown* over the mover (`growBounds`) — monotonic,
+   never under-covers. `perObjectFrustumCulled` stays off; its per-instance walk is the cost the file comment
+   describes. Batch count also dropped: an emissive whose quantized intensity rounds to zero no longer splits a batch
+   (StockDisplay's 66 invisible product tints were 71 of the 141 batches); visible emissives keep their exact colour.
+4. **Dynamic resolution shipped, default on** (`mallsim.dynres.v1`, toggle in the settings panel). Fixed steps 1 →
+   0.5, driven by an EMA of the *unclamped* rAF interval; down after 0.5 s above 24 ms, up after 2 s under measured
+   vsync × 1.12, 1 s cooldown. The canvas CSS (100%) upscales the smaller buffer.
 
-1. **72 point lights.** three.js pastes `NUM_POINT_LIGHTS` into the shader and `#pragma unroll_loop`s over it, so every
-   fragment evaluates all 72. That is why the largest fragment shader is 125.7 KB and why cold load takes ~105 s (105
-   programs to link). A light contributing zero still costs — there is no branch.
-2. **~270 draw calls with no culling at all.** `SceneBatcher` sets `frustumCulled = false` and
-   `perObjectFrustumCulled = false` on all 141 batches; `cullByLevel` only hides label sprites. There is no LOD, no zone
-   or portal culling, and no dynamic resolution. Standing in the garage still renders the roof.
+Still true: no LOD, no zone/portal culling, `cullByLevel` only hides label sprites, and standing in the garage still
+renders the roof when it is on-screen.
 
 ### Traps
 
 - **`NUM_POINT_LIGHTS` is part of the program cache key.** Changing the number of *visible* lights relinks every
-  material in the mall, mid-frame. `Disco` (13 lights) and `AlienProbe` (1, on a 40–90 s timer) both do this by toggling
-  group visibility. `App.warmup()` pre-compiles the probe variant so its first appearance is a cache hit. Any future
-  zone-culling needs a fixed light count first, or every doorway will stutter.
+  material in the mall, mid-frame. The `LightPool` exists to make that impossible: never construct a raw
+  `THREE.PointLight` (register a virtual light instead — `check:lights` fails the build otherwise), and never set a
+  pool light `visible = false` — an invisible light is not counted by the renderer, so hiding one changes
+  `NUM_POINT_LIGHTS` and triggers exactly the relink storm the pool kills. Unused slots sit at `intensity 0`.
+- **The disco dims through `DaylightDimmer` + `pool.setDimFactor`, not a traverse.** A real light added outside
+  `Lighting.ts` must be `register()`ed with the dimmer or it will blast through the party at full power (the catwalk
+  spot did). The Catwalk `SpotLight` count is likewise baked into programs (`NUM_SPOT_LIGHTS`); there is exactly one
+  and nothing enforces that, so do not add a second casually.
 - **`renderer.debug.checkShaderErrors` is on in dev and off in production** (`App.ts`, gated on `import.meta.hot`). Each
   call is a blocking CPU↔GPU sync and they were once ~66% of all CPU time. **Never benchmark the dev server** — it
   measures a configuration nobody ships.
@@ -159,6 +186,9 @@ dependencies and intends to keep it that way). `probe.ts` is injected before pag
   what. Only per-pass queries summed together are real GPU work.
 - Chrome may sit on the integrated GPU on a laptop even with `powerPreference: 'high-performance'`. `diagnose` warns.
   Windows: Settings → Display → Graphics → Chrome → High performance.
+- **Dynamic resolution is disabled under `?perf-probe` but live in a normal browser tab.** Measuring the shipped build
+  without the probe means the renderer may quietly lower its own pixel count mid-run — turn the setting off (⚙) or use
+  the perf scripts, or an A-B-A will look stable while the resolution moves underneath it.
 
 `.perf/` is gitignored and holds saved baselines plus a reused Chrome profile (its shader cache is what keeps repeat
 runs from paying the ~105 s cold link).
@@ -167,44 +197,48 @@ runs from paying the ~105 s cold link).
 
 Written down because each one cost real time and produced a confident wrong answer:
 
-- **Whether frustum culling helps is UNKNOWN.** An A/B of `perObjectFrustumCulled` and `frustumCulled` appeared to show
-  culling made things 1.7× worse. It was drift: the control — the *original* config, re-measured — came back 106.4 ms
-  against its own earlier 38.8 ms. All four samples were invalid. The question is still open and needs a stable machine.
+- **How much whole-batch frustum culling wins is UNKNOWN — it shipped unmeasured.** An early A/B appeared to show
+  culling made things 1.7× worse; it was drift (the control re-measured 106.4 ms against its own earlier 38.8 ms — all
+  four samples invalid). Headless sphere-vs-frustum modelling said 13–81% of draw calls cull depending on viewpoint,
+  but the scene is ~98% fill-bound, so expect a modest win at best; the A-B-A on a stable machine is still owed.
+  `perObjectFrustumCulled` (a different mechanism with a real per-frame CPU cost) remains off and untested.
 - **The "RTX 4090 at 30 FPS / 30% GPU" figure is stale.** It predates the shader-stall fix and includes those stalls.
   Do not reason from it. Re-trace before treating it as the target.
-- **Batches are not all mall-wide.** Median batch bounding radius is 6.7 m; 22 of 141 exceed 40 m and 53 exceed 20 m. The
-  mall-spanning ones are the shared-material batches (floors, walls). Spatial partitioning is therefore a narrower fix
-  than "every batch spans the building" would suggest.
+- **Batches are not all mall-wide.** Pre-branch: median batch bounding radius 6.7 m; 22 of 141 exceeded 40 m and 53
+  exceeded 20 m — the mall-spanning ones are the shared-material batches (floors, walls), and they are also the ones
+  whose spheres now grow over every animated limb they contain. Spatial partitioning is therefore a narrower fix than
+  "every batch spans the building" would suggest. The 141 itself is stale since the emissive-key change merged the
+  per-product batches; re-derive before leaning on any of these numbers.
 - **A thermally- or memory-constrained laptop cannot benchmark this.** Measured drift was ~23 ms per successive sample,
   and `bench` reported `+36.4% per sample ✗ DRIFTING`. Cross-run comparisons on such a machine are noise, including
   comparisons against numbers elsewhere in this file that were taken locally.
 
-### Planned: fixed light pool
+### The fixed light pool (implemented)
 
-The intended fix for both dominant costs. Not implemented.
+`src/render/LightPool.ts`. The problem was never only that 72 point lights are expensive per fragment; the *count* is
+baked into the program cache key, so it could not vary at runtime without relinking every material. That fact blocked
+zone culling, interior culling and any "lights off in rooms you cannot see" scheme. It no longer does: the count is
+`LIGHT_POOL_SLOTS` (8) for the whole session, `check:lights` enforces it, and any future zone-culling can now hide
+whole rooms without a doorway stutter.
 
-The problem is not only that 72 point lights are expensive per fragment; it is that the *count* is baked into the
-program cache key, so it can never be varied at runtime without relinking every material. That single fact blocks zone
-culling, interior culling and any "lights off in rooms you cannot see" scheme.
+What the plan called judgement calls, and how they were decided:
 
-The shape:
+- **Scoring**: `intensity × dimFactor² × priority × max(0, 1 − d/distance)`, incumbent keeps its slot until beaten by
+  30% (`HYSTERESIS`), slot intensity eases at 10/s. The dim factor appears *squared* in the rank on purpose: linear,
+  the priority-2 washes at 15% still outbid the disco lights and held half the pool during the party.
+- **`snap` lights** (muzzle flash, sale flash) bypass the fade — eased, a three-frame flash peaked at half value,
+  a frame late.
+- **`follow` mode** derives the light's world position from an `Object3D`'s `matrixWorld` each frame (elevator cabin,
+  saucer, buggy, guns, per-shop groups). `pool.update(camera)` runs after `sceneBatcher.update()` because that is what
+  refreshes the world matrices — that ordering is load-bearing.
+- **Migration landed in one commit**, not incrementally as planned — all 85 former `PointLight`s across 16 scene files.
+- **An unused slot is still not free.** The unrolled loop runs per fragment regardless of intensity. 8 is a choice,
+  not a law; from the far west end only 2 slots have anything in range, so there is room to size down if the look
+  tolerates it.
 
-- A `LightPool` owns a **fixed** number of real `THREE.PointLight`s (start at 8), added to the scene once and never
-  hidden. `NUM_POINT_LIGHTS` becomes constant for the whole session → one program set, no relinks, ever.
-- Features stop creating lights. They register a *virtual* light — a description (position, colour, intensity, distance,
-  decay) that is not a scene light — and get back a mutable handle they animate as they do now.
-- Each frame the pool scores the virtual lights against the camera and copies the best N into the real slots.
-- **An unused slot is not free.** The unrolled loop runs `getPointLightInfo` + `RE_Direct` per fragment regardless of
-  intensity; `light.visible` gates the contribution, not the maths. Size the pool as small as the look tolerates.
-- The scoring function is the real design decision (nearest? brightest contribution? on the player's deck? hysteresis so
-  a light does not flicker between slots?) and is a judgement call about how the mall should look.
-- Migrate incrementally: land the pool with zero registrations (no behaviour change), then convert one scene file at a
-  time. Each conversion is independently shippable and drops the count.
-- Once done, `Disco` and `AlienProbe` stop toggling group visibility and just move handle intensities — which makes
-  `App.warmup()`'s probe-variant pre-compile unnecessary, and it can be deleted.
-
-Expected win: cutting visible point lights 71 → 6 measured **2.0–2.6× the frame rate**, reproduced in both directions
-across several independent runs (the one light finding that survived the drift, because it was A-B-A-B).
+Expected win, still to be confirmed by a post-deploy snapshot: cutting visible point lights 71 → 6 measured
+**2.0–2.6× the frame rate** (A-B-A-B, the one light finding that survived the drift), and the cold load loses the
+cause of its 105-program link storm.
 
 ## Deploy
 

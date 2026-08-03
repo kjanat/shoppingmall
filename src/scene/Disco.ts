@@ -22,7 +22,7 @@ export class DiscoParty {
 	private savedFog: THREE.Fog | THREE.FogExp2 | null = null;
 	private pool: LightPool;
 	private daylight: DaylightDimmer;
-	/** Eén kleur voor alle dertien lampen: update() draaide er 26 per frame weg. */
+	/** One colour reused for all thirteen lights: update() used to allocate 26 per frame. */
 	private tint = new THREE.Color();
 
 	constructor(pool: LightPool, daylight: DaylightDimmer) {
@@ -51,8 +51,8 @@ export class DiscoParty {
 
 		spots.forEach(([x, y, z], i) => {
 			const col = at(colors, i);
-			// dimmable: false — de pool dimt tijdens het feest juist de zaallampen,
-			// en dan winnen déze lampen de sloten. Niets hoeft opgeslagen te worden.
+			// dimmable: false — during the party the pool dims the mall lights, so
+			// these win the slots on their own. Nothing needs to be saved/restored.
 			this.lights.push(
 				this.pool.register({
 					color: col,
@@ -67,8 +67,12 @@ export class DiscoParty {
 			const ball = new THREE.Mesh(
 				new THREE.IcosahedronGeometry(0.4, 1),
 				this.track(
+					// Dark body on purpose: metalness 0.95 used to kill the diffuse so
+					// the beat-driven emissive carried the whole look. Lambert has no
+					// metalness — with a light base colour the balls read as static
+					// white blobs and the colour pulse disappears.
 					new THREE.MeshLambertMaterial({
-						color: 0xeeeeee,
+						color: 0x1a1a1a,
 						emissive: col,
 						emissiveIntensity: 0.35,
 					}),
@@ -137,10 +141,10 @@ export class DiscoParty {
 			l.intensity = on ? 4.5 : 0;
 			l.distance = 22;
 		}
-		// De zaal uit: de vier echte lampen via Lighting, de puntlichten via de
-		// pool. De oude scene.traverse() ging langs elke THREE.Light in de scene en
-		// zette hem terug uit een eigen kopie; die kopie bestaat niet meer omdat de
-		// puntlichten geen scene-lights meer zijn.
+		// Lights down: the real lights via Lighting's dimmer, the point lights via
+		// the pool. The old scene.traverse() walked every THREE.Light and restored
+		// it from its own snapshot; that snapshot no longer exists because the
+		// point lights are not scene lights anymore.
 		this.daylight.dimDaylight(on);
 		this.pool.setDimFactor(on ? 0.15 : 1);
 		if (on) {

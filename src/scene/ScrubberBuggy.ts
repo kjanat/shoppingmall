@@ -346,7 +346,7 @@ export class ScrubberBuggy {
 		this.wetSign.add(wetL, wetR);
 		g.add(this.wetSign);
 
-		// Beacon light — de buggy rijdt, dus het zwaailicht volgt hem.
+		// Beacon light — the buggy drives, so the beacon follows it.
 		this.pool.register({
 			color: 0xffc107,
 			intensity: 2.5,

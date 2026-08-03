@@ -23,7 +23,7 @@ export class AlienProbe {
 	constructor(pool: LightPool) {
 		this.group.name = 'alienProbe';
 		this.saucer = this.buildSaucer();
-		// Volgt de schotel: die krijgt zijn positie pas als de probe start, dus een
+		// Follows the saucer: it only gets its position when the probe starts, so a
 		// vaste wereldpositie zou hier altijd de verkeerde zijn.
 		this.glow = pool.register({
 			color: 0x69f0ae,
@@ -87,8 +87,8 @@ export class AlienProbe {
 		this.active = true;
 		this.t = 0;
 		this.duration = 6 + Math.random() * 4;
-		// group.visible verbergt alleen nog de schotel zelf; het licht zit in de
-		// pool en telt dus niet meer mee voor NUM_POINT_LIGHTS.
+		// group.visible only hides the saucer meshes now; the light lives in the
+		// pool, so this no longer changes NUM_POINT_LIGHTS.
 		this.group.visible = true;
 		this.glow.intensity = 12;
 

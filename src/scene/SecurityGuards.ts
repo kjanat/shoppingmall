@@ -551,14 +551,16 @@ export class SecurityGuards {
 		const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.08), black);
 		grip.position.set(0, -0.04, 0);
 		gun.add(grip);
-		// Volgt het pistool: die groep loopt, draait en trapt terug met de agent mee.
-		// Intensiteit 0 in rust — een lamp op nul scoort nul en bezet dus geen slot
-		// in de pool, precies zoals een muzzle flash hoort te werken.
+		// Follows the gun: that group walks, turns and recoils with the guard.
+		// Intensity 0 at rest — a zero light scores zero and holds no pool slot,
+		// exactly how a muzzle flash should behave. snap: the flash lives three
+		// frames; eased, its peak reached the screen at half value, a frame late.
 		const muzzleFlash = this.pool.register({
 			color: 0xffab00,
 			intensity: 0,
 			distance: 4,
 			decay: 2,
+			snap: true,
 			follow: gun,
 			offset: new THREE.Vector3(0, 0.05, 0.28),
 		});

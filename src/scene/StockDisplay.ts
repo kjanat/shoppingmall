@@ -14,9 +14,9 @@ export class StockDisplay {
 	readonly group = new THREE.Group();
 	readonly registers = new Map<string, THREE.Group>();
 	/**
-	 * Kassalampen naast `registers`, per winkel-id. Ze stonden eerder in
-	 * `reg.userData['saleLight']`, wat flashSale dwong tot een cast terug naar
-	 * PointLight — precies het soort cast dat dit project niet wil.
+	 * Sale lights next to `registers`, per store id. They used to live in
+	 * `reg.userData['saleLight']`, which forced flashSale into a cast back to
+	 * PointLight — exactly the kind of cast this project bans.
 	 */
 	private saleLights = new Map<string, LightHandle>();
 	private materials: THREE.Material[] = [];
@@ -177,15 +177,18 @@ export class StockDisplay {
 		reg.userData['coinMesh'] = coin;
 		g.add(reg);
 		this.registers.set(store.id, reg);
-		// follow op reg en op g: beide groepen worden verplaatst en gedraaid nadat
-		// dit gebouwd is, dus een vaste wereldpositie zou hier de verkeerde zijn.
+		// follow on reg and on g: both groups are moved and rotated after this is
+		// built, so a fixed world position would be the wrong one here.
 		this.saleLights.set(
 			store.id,
+			// snap: flashSale jumps 0.6 -> 10 for half a second; the slot fade would
+			// smear that into a slow swell instead of a flash.
 			this.pool.register({
 				color: 0xffd700,
 				intensity: 0.6,
 				distance: 5,
 				decay: 2,
+				snap: true,
 				follow: reg,
 				offset: new THREE.Vector3(0, 0.4, 0.3),
 			}),

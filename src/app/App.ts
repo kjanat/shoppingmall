@@ -81,8 +81,19 @@ const TALK_RADIUS = 7;
 const DYN_RES_STEPS = [1, 0.85, 0.7, 0.6, 0.5];
 /** Boven dit gemiddelde (ms/frame) zakt de schaal een trede (≈ onder 42 fps). */
 const DYN_RES_SLOW_MS = 24;
-/** Onder dit gemiddelde mag hij een trede terug omhoog (ruim onder 60 fps-budget). */
-const DYN_RES_FAST_MS = 15;
+/**
+ * Omhoog mag pas als het gemiddelde onder gemeten-vsync × deze factor ligt. Een
+ * absolute drempel (15 ms) lag onder het 60Hz-interval van 16,7 ms, waardoor een
+ * kerngezond vsync-locked frame nooit als "ruim comfort" telde en de schaal na
+ * één dip voorgoed laag bleef.
+ */
+const DYN_RES_UP_FACTOR = 1.12;
+/**
+ * Eén sample boven deze grens is een tabwissel of laad-hik, geen frame. Kappen
+ * i.p.v. weggooien: een machine die echt 3 fps haalt (333 ms) zou anders nooit
+ * een sample leveren en de regelaar zou juist dáár bevriezen.
+ */
+const FRAME_MS_SPIKE = 250;
 
 export class App {
 	private renderer: THREE.WebGLRenderer;
@@ -164,7 +175,8 @@ export class App {
 	 * toegepast in applyPixelRatio(). Eerder schreef de kwaliteits-handler de
 	 * ratio rechtstreeks; een tweede schrijver zou daar stil mee vechten.
 	 */
-	private qualityRatio = Math.min(window.devicePixelRatio, 1.5);
+	/** De echte waarde komt uit bindQuality, dat synchroon in de constructor vuurt. */
+	private qualityRatio = 1;
 	private dynScale = 1;
 	private dynResOn = true;
 	private dynResIndex = 0;
@@ -174,6 +186,8 @@ export class App {
 	/** -1 = wil omhoog, 1 = wil omlaag, 0 = tevreden; richtingwissel reset de teller. */
 	private dynResDir = 0;
 	private dynResCooldown = 0;
+	/** Kleinste geziene frame-interval ≈ de vsync-periode van dit scherm. */
+	private vsyncMs = 50;
 	private lastRafTs: number | null = null;
 	/** Welk voertuig je bestuurt */
 	private vehicle: 'drone' | 'heli' | 'scrubber' | 'car' | null = null;
@@ -225,6 +239,9 @@ export class App {
 		// eigen PointLight. Zie src/render/LightPool.ts.
 		this.pool = new LightPool(this.scene);
 		const daylight = setupLighting(this.scene, this.pool);
+		// The catwalk spot is the one real light outside Lighting.ts; the old
+		// scene-traverse dimmer caught it implicitly, this list is explicit.
+		daylight.register(this.catwalk.spot, 0.15);
 		this.disco = new DiscoParty(this.pool, daylight);
 		this.stock = new StockDisplay(this.pool);
 		this.spaceship = new Spaceship(this.pool);
@@ -254,7 +271,9 @@ export class App {
 			antialias: false,
 			powerPreference: 'high-performance',
 		});
-		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+		// Geen setPixelRatio hier: bindQuality vuurt verderop in deze constructor
+		// synchroon met de opgeslagen tier en is via applyPixelRatio() de enige
+		// eigenaar — een tweede schrijver was precies wat daar wegmoest.
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -532,12 +551,19 @@ export class App {
 				this.renderer.shadowMap.enabled = true;
 			}
 			this.renderer.shadowMap.needsUpdate = true;
+			// Een nieuwe tier is een nieuwe basislijn: de oude schaaltrap en meting
+			// horen daar niet overheen te blijven hangen ('laag' op ×0.5 renderde
+			// anders stiekem op de helft van laag).
+			this.dynScale = 1;
+			this.dynResIndex = 0;
+			this.resetDynResMeting();
 			this.applyPixelRatio();
 		});
 		// Dynamische resolutie (⚙): rendert tijdelijk op een lagere schaal wanneer
 		// frames boven budget lopen; de canvas-CSS (100%) rekt het beeld weer op.
 		this.settingsUi.bindDynRes((on) => {
 			this.dynResOn = on;
+			this.resetDynResMeting();
 			if (!on && this.dynScale !== 1) {
 				this.dynScale = 1;
 				this.dynResIndex = 0;
@@ -1592,37 +1618,47 @@ export class App {
 	 * hem pas na lang comfort. Asymmetrisch en met afkoeltijd, anders pendelt
 	 * hij op de rand — en elke wissel kost een target-heralloc in de composer.
 	 */
-	private updateDynRes(frameMs: number, dt: number): void {
-		if (this.perfProbe || !this.dynResOn) return;
-		// Tabwissels en laad-hikken niet meemiddelen
-		if (frameMs <= 0 || frameMs > 250) return;
-		this.frameMsEma = this.frameMsEma === 0 ? frameMs : this.frameMsEma * 0.9 + frameMs * 0.1;
+	private updateDynRes(frameMs: number): void {
+		if (this.perfProbe || !this.dynResOn || frameMs <= 0) return;
+		// Tijd loopt hier in échte seconden (gekapt op de spike-grens), niet in het
+		// geklemde dt: bij 200ms-frames telde elke tik 0,05 s en duurde de
+		// beloofde halve seconde reactietijd in werkelijkheid twee seconden.
+		const sampleMs = Math.min(frameMs, FRAME_MS_SPIKE);
+		const sampleSec = sampleMs / 1000;
+		if (frameMs >= 4 && frameMs < this.vsyncMs) this.vsyncMs = frameMs;
+		this.frameMsEma = this.frameMsEma === 0 ? sampleMs : this.frameMsEma * 0.9 + sampleMs * 0.1;
 		if (this.dynResCooldown > 0) {
-			this.dynResCooldown -= dt;
+			this.dynResCooldown -= sampleSec;
 			return;
 		}
 		const wantDown = this.frameMsEma > DYN_RES_SLOW_MS && this.dynResIndex < DYN_RES_STEPS.length - 1;
-		const wantUp = this.frameMsEma < DYN_RES_FAST_MS && this.dynResIndex > 0;
+		const wantUp = this.frameMsEma < this.vsyncMs * DYN_RES_UP_FACTOR && this.dynResIndex > 0;
 		const dir = wantDown ? 1 : wantUp ? -1 : 0;
 		if (dir !== this.dynResDir) {
 			this.dynResDir = dir;
 			this.dynResHold = 0;
 		}
 		if (dir === 0) return;
-		this.dynResHold += dt;
+		this.dynResHold += sampleSec;
 		// Omlaag snel (0.5 s aanhoudend traag), omhoog traag (2 s ruim comfort)
 		if (dir === 1 && this.dynResHold >= 0.5) this.stepDynRes(this.dynResIndex + 1);
 		else if (dir === -1 && this.dynResHold >= 2) this.stepDynRes(this.dynResIndex - 1);
 	}
 
+	/** Verse meting: oude samples horen niet mee te tellen na een schaal- of standwissel. */
+	private resetDynResMeting(): void {
+		this.frameMsEma = 0;
+		this.dynResHold = 0;
+		this.dynResDir = 0;
+		this.dynResCooldown = 0;
+	}
+
 	private stepDynRes(index: number): void {
 		this.dynResIndex = index;
 		this.dynScale = DYN_RES_STEPS[index] ?? 1;
-		this.dynResHold = 0;
-		this.dynResDir = 0;
-		this.dynResCooldown = 1;
 		// Verse meting na de wissel — oude samples zouden meteen dóórstappen
-		this.frameMsEma = 0;
+		this.resetDynResMeting();
+		this.dynResCooldown = 1;
 		this.applyPixelRatio();
 	}
 
@@ -1797,7 +1833,7 @@ export class App {
 		// er ingegrepen moet worden — een 62ms-frame leest dan als 50.
 		const frameMs = timestamp !== undefined && this.lastRafTs !== null ? timestamp - this.lastRafTs : dt * 1000;
 		if (timestamp !== undefined) this.lastRafTs = timestamp;
-		this.updateDynRes(frameMs, dt);
+		this.updateDynRes(frameMs);
 
 		this.atmosphere.update(dt, this.camera.position);
 		this.pathMesh.update(dt);
@@ -1973,9 +2009,13 @@ export class App {
 		// FPS-teller: 2×/s verversen, kleur zegt genoeg. Op de ongeklemde
 		// frametijd — met het geklemde dt rapporteerde hij ~20 fps waar het er
 		// echt ~16 waren, juist in het gebied waar het cijfer ertoe doet.
-		// De 250ms-kap houdt één tabwissel-hik uit het gemiddelde.
-		this.fpsFrames++;
-		this.fpsT += Math.min(frameMs, 250) / 1000;
+		// Een spike-frame (tabwissel) telt helemaal niet mee, ook niet als
+		// frame: gekapt meetellen rapporteerde 4 fps op een machine die er 3
+		// haalde.
+		if (frameMs <= FRAME_MS_SPIKE) {
+			this.fpsFrames++;
+			this.fpsT += frameMs / 1000;
+		}
 		if (this.fpsT >= 0.5 && this.fpsEl) {
 			const fps = Math.round(this.fpsFrames / this.fpsT);
 			this.fpsFrames = 0;

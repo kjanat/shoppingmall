@@ -210,10 +210,17 @@ function controleBron(): void {
 	let gezien = 0;
 	for (const pad of bronBestanden()) {
 		const tekst = readFileSync(new URL(`../src/${pad}`, import.meta.url), 'utf8');
-		const treffers = tekst.match(/new THREE\.PointLight/g)?.length ?? 0;
-		if (treffers === 0) continue;
+		// Ook `new PointLight` na een named import telt: precies die vorm glipte
+		// eerder langs een letterlijke `new THREE.PointLight`-greep heen.
+		const treffers = tekst.match(/\bnew\s+(?:\w+\s*\.\s*)?PointLight\b/g)?.length ?? 0;
+		const importeert = /import\s*(?:type\s*)?\{[^}]*\bPointLight\b[^}]*\}\s*from\s*['"]three['"]/.test(tekst);
+		if (treffers === 0 && !importeert) continue;
 		if (pad === eigenaar) gezien = treffers;
-		else fout('bron', `src/${pad} bouwt ${treffers}× een eigen THREE.PointLight — registreer hem bij de LightPool`);
+		else if (treffers > 0) {
+			fout('bron', `src/${pad} bouwt ${treffers}× een eigen PointLight — registreer hem bij de LightPool`);
+		} else {
+			fout('bron', `src/${pad} importeert PointLight uit three — alleen de LightPool hoort dat te doen`);
+		}
 	}
 	if (gezien === 0) {
 		fout('bron', `src/${eigenaar} bouwt geen enkele PointLight meer — is de pool hernoemd of herschreven?`);

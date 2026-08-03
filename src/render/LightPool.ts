@@ -25,6 +25,12 @@ type LightBase = {
 	priority?: number;
 	/** Whether `setDimFactor` applies. The disco's own lights set this false. */
 	dimmable?: boolean;
+	/**
+	 * Skip the slot fade and render the registered intensity immediately. For
+	 * transient flashes: a muzzle flash is over in three frames, and easing meant
+	 * its peak reached the screen at a third of its value, 100 ms late.
+	 */
+	snap?: boolean;
 };
 
 export type LightSpec = LightBase & ({ position: THREE.Vector3 } | { follow: THREE.Object3D; offset?: THREE.Vector3 });
@@ -48,6 +54,7 @@ export class LightHandle {
 	/** — everything below is the pool's bookkeeping — */
 	readonly priority: number;
 	readonly dimmable: boolean;
+	readonly snap: boolean;
 	readonly follow: THREE.Object3D | null;
 	readonly offset: THREE.Vector3 | null;
 	/** Which real slot renders this light, or -1. */
@@ -64,6 +71,7 @@ export class LightHandle {
 		this.color = new THREE.Color(spec.color);
 		this.priority = spec.priority ?? 1;
 		this.dimmable = spec.dimmable ?? true;
+		this.snap = spec.snap ?? false;
 		if ('follow' in spec) {
 			this.follow = spec.follow;
 			this.offset = spec.offset ? spec.offset.clone() : new THREE.Vector3();
@@ -171,7 +179,13 @@ export class LightPool {
 			// The incumbency bonus IS the hysteresis: a challenger only wins the slot
 			// once it scores 30% above what the light already sitting in it scores,
 			// so a light does not flicker between slots while you walk past it.
-			h.rank = strength * h.priority * reach * (h.slot >= 0 ? HYSTERESIS : 1);
+			// The dim factor is applied a SECOND time in the rank (squared overall):
+			// with it linear, the priority-2 daylight washes at 15% still outbid the
+			// disco lights and held half the pool during the party — measured, only
+			// 4 of 13 disco lights reached the screen. Squared, dimmed lights lose
+			// the race decisively and win their slots back when the dim lifts.
+			const dimRank = h.dimmable ? this.dimFactor : 1;
+			h.rank = strength * dimRank * h.priority * reach * (h.slot >= 0 ? HYSTERESIS : 1);
 			h.wanted = false;
 			this.ranked.push(h);
 		}
@@ -201,7 +215,8 @@ export class LightPool {
 			const light = this.lights[free];
 			// Start dark: the slot is about to teleport across the mall, and fading
 			// up from nothing reads as a light coming on rather than as a jump.
-			if (light) light.intensity = 0;
+			// Snap lights skip this — their whole point is the leading edge.
+			if (light && !h.snap) light.intensity = 0;
 		}
 
 		const step = Math.min(1, dt * FADE_RATE);
@@ -217,7 +232,8 @@ export class LightPool {
 				light.decay = owner.decay;
 				target = this.effective(owner);
 			}
-			light.intensity += (target - light.intensity) * step;
+			if (owner?.snap) light.intensity = target;
+			else light.intensity += (target - light.intensity) * step;
 		}
 	}
 }

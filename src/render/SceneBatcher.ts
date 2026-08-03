@@ -4,6 +4,7 @@ type ColorMaterial = THREE.Material & { color?: THREE.Color };
 type SourceInstance = {
 	mesh: THREE.Mesh<THREE.BufferGeometry, ColorMaterial>;
 	instanceId: number;
+	geometryId: number;
 	/**
 	 * The values this instance was last given. Every setter on a BatchedMesh marks
 	 * one of its data textures dirty and a dirty texture is re-uploaded whole on
@@ -20,6 +21,26 @@ export type SceneBatchStats = { sourceMeshes: number; batchedMeshes: number; dra
 
 const WHITE = new THREE.Color(0xffffff);
 const INSTANCE_COLOR = new THREE.Vector4(1, 1, 1, 1);
+const MOVED_SPHERE = new THREE.Sphere();
+
+/**
+ * A moved instance leaves the batch's lazily-computed union bounding sphere
+ * stale — setMatrixAt never invalidates it — so grow the sphere to cover the
+ * new position. Growing is monotonic and can never under-cover; the batch keeps
+ * its frustum test at the cost of a sphere spanning the mover's travel
+ * envelope. Demoting the whole batch to frustumCulled=false was tried first
+ * and lost the two biggest batches (70% of all instances) within seconds,
+ * because the shared-material keys that make a batch big are exactly what pull
+ * in every animated limb. A null sphere needs nothing: the lazy compute reads
+ * the matrices as they are now.
+ */
+function growBounds(mesh: THREE.BatchedMesh, source: SourceInstance): void {
+	const sphere = mesh.boundingSphere;
+	if (!sphere) return;
+	// null only for an unknown geometryId, which addInstance guaranteed exists
+	const moved = mesh.getBoundingSphereAt(source.geometryId, MOVED_SPHERE);
+	if (moved) sphere.union(moved.applyMatrix4(source.matrix));
+}
 
 function instanceColor(material: ColorMaterial): THREE.Vector4 {
 	const color = material.color ?? WHITE;
@@ -29,7 +50,7 @@ function instanceColor(material: ColorMaterial): THREE.Vector4 {
 function materialKey(material: ColorMaterial): string {
 	// Only include properties that alter the shader program or cannot be carried
 	// per instance. Hundreds of scene materials differ only by UUID, base color
-	// or tiny roughness choices; those differences should not create draw calls.
+	// or an invisible emissive tint; those differences should not create draw calls.
 	const props = material as unknown as Record<string, unknown>;
 	const texture = (name: string): string => {
 		const value = props[name];
@@ -40,16 +61,16 @@ function materialKey(material: ColorMaterial): string {
 		return typeof value === 'number' ? value : fallback;
 	};
 	const quantize = (name: string): number => Math.round(number(name) * 4) / 4;
-	// Quantized per channel, like roughness above. The exact hex once split 71 of
-	// 141 batches: StockDisplay tints every product's emissive with its own colour
-	// at intensity 0.08, and 66 distinct hexes meant 66 near-identical batches for
-	// 792 instances. The batch keeps the first source's emissive, and at that
-	// intensity a quarter-step mismatch is invisible.
+	// Emissive splits a batch only when it is visible. The exact hex once split 71
+	// of 141 batches: StockDisplay tints every product's emissive with its own
+	// colour at intensity 0.08 — invisible — so an emissive whose quantized
+	// intensity rounds to zero collapses freely. Anything brighter keeps its exact
+	// colour: an earlier quarter-step-per-channel scheme quantized in LINEAR space,
+	// where every dark tone lands in the same bucket, and the beard cave's amber
+	// gold (#664400 @0.2) batched with the elevator's dark red frame (#8b0000
+	// @0.35) — the whole hoard rendered with a red cast, picked by traversal order.
 	const emissive = props['emissive'];
-	const emissiveKey =
-		emissive instanceof THREE.Color
-			? `${Math.round(emissive.r * 4)}/${Math.round(emissive.g * 4)}/${Math.round(emissive.b * 4)}`
-			: '';
+	const emissiveKey = emissive instanceof THREE.Color && quantize('emissiveIntensity') > 0 ? emissive.getHexString() : '';
 
 	return JSON.stringify({
 		type: material.type,
@@ -78,8 +99,9 @@ function materialKey(material: ColorMaterial): string {
 		toneMapped: material.toneMapped,
 		flatShading: props['flatShading'] === true,
 		wireframe: props['wireframe'] === true,
-		roughness: quantize('roughness'),
-		metalness: quantize('metalness'),
+		// roughness/metalness left the key with the move to MeshLambertMaterial —
+		// no material carries them anymore. If PBR materials ever return, their
+		// roughness/metalness must rejoin this key or unlike surfaces will merge.
 		emissive: emissiveKey,
 		emissiveIntensity: quantize('emissiveIntensity'),
 		normalScale: String(props['normalScale'] ?? ''),
@@ -170,9 +192,8 @@ export class SceneBatcher {
 			// update() below primes every instance matrix first and the batch sits at
 			// identity in the scene root. The trap: setMatrixAt never invalidates
 			// that sphere, so a batch whose source mesh moves after priming would be
-			// culled while visible. update() demotes such a batch back to
-			// frustumCulled=false the moment a primed source's matrix changes — the
-			// static majority keeps the test, animated batches render as before.
+			// culled while visible — update() grows the sphere over the mover
+			// (growBounds above) so the test stays sound for every batch.
 			batched.frustumCulled = true;
 			// Per-object culling is different: it makes BatchedMesh walk every
 			// instance and rewrite its indirect texture on every single render — its
@@ -200,6 +221,7 @@ export class SceneBatcher {
 				sources.push({
 					mesh,
 					instanceId,
+					geometryId,
 					matrix: new THREE.Matrix4(),
 					color: new THREE.Vector4(),
 					visible: true,
@@ -232,13 +254,10 @@ export class SceneBatcher {
 				if (!source.primed || !source.matrix.equals(world)) {
 					source.matrix.copy(world);
 					batch.mesh.setMatrixAt(source.instanceId, world);
-					// A moved instance leaves the lazily-computed bounding sphere
-					// stale (setMatrixAt never invalidates it), so this batch can no
-					// longer be trusted to a whole-object frustum test. Demoting is
-					// permanent and cheaper than recomputing the sphere every frame.
-					// Colour and visibility writes below don't move geometry: hidden
-					// instances are already inside the sphere, so they don't demote.
-					if (source.primed) batch.mesh.frustumCulled = false;
+					// Colour and visibility writes below don't move geometry — hidden
+					// instances are already inside the sphere — so only this branch
+					// has to keep the frustum sphere honest.
+					if (source.primed) growBounds(batch.mesh, source);
 				}
 
 				const color = instanceColor(source.mesh.material);
