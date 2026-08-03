@@ -13,7 +13,7 @@
 		"favicon": "npx -y --package=vite-svg-to-ico@latest svg-to-ico generate public/favicon.svg --out-dir public",
 		"fmt": "run lint --fix; dprint fmt .",
 		"lint": "biome check",
-		"prepare": "test -f .githooks/install && sh .githooks/install || true",
+		"prepare": "run scripts/install-hooks.ts || true",
 		"prestart": "run build",
 		"start": "NODE_ENV=production dist/mall",
 		"static": "run build.ts --static",

@@ -1,4 +1,4 @@
-# Gedeelde hooks. Eenmalig per machine: sh .githooks/install
+# Gedeelde hooks. Aangezet door scripts/install-hooks.ts bij elke bun install.
 [hook "checks-commit"]
 	event = pre-commit
 	command = .githooks/pre-commit
