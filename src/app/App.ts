@@ -410,6 +410,12 @@ export class App {
 		// Preserve every gameplay object, but submit compatible opaque meshes
 		// through a small number of GPU batches.
 		this.sceneBatcher = new SceneBatcher(this.scene);
+		// De renderer draait scene.updateMatrixWorld() nog een keer bij elke
+		// render — een tweede complete wandeling over ~7000 objecten, terwijl
+		// sceneBatcher.update() die vlak ervoor al geforceerd heeft gedaan. Uit
+		// dus: één matrixpas per frame in plaats van twee. Alles wat later aan
+		// de scene wordt toegevoegd komt gewoon mee, want die ene pas forceert.
+		this.scene.matrixWorldAutoUpdate = false;
 		console.info('[Mall] render batching', this.sceneBatcher.stats);
 		document.documentElement.dataset['batchSourceMeshes'] = String(this.sceneBatcher.stats.sourceMeshes);
 		document.documentElement.dataset['batchDrawCalls'] = String(this.sceneBatcher.stats.drawCalls);

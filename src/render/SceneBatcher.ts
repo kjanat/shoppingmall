@@ -14,7 +14,20 @@ type SourceInstance = {
 	color: THREE.Vector4;
 	visible: boolean;
 	primed: boolean;
+	/**
+	 * Consecutive checks in which nothing about this instance changed. Past
+	 * STATIC_STREAK it stops being looked at every frame: the mall is thousands
+	 * of walls, shelves and products that never move, and re-comparing their
+	 * matrices 60 times a second was the single biggest cost in the frame.
+	 */
+	streak: number;
 };
+
+/** Unchanged for this many checks in a row -> only re-checked once per shard. */
+const STATIC_STREAK = 60;
+/** Settled instances are spread over this many frames, so a change shows up
+ * within an eighth of a second even if nothing else touches it. */
+const COLD_SHARDS = 8;
 type Batch = { mesh: THREE.BatchedMesh; sources: SourceInstance[] };
 
 export type SceneBatchStats = { sourceMeshes: number; batchedMeshes: number; drawCalls: number };
@@ -139,6 +152,8 @@ export class SceneBatcher {
 	readonly stats: SceneBatchStats;
 	private readonly batches: Batch[] = [];
 	private readonly scene: THREE.Scene;
+	/** Which slice of the settled instances gets re-checked this frame. */
+	private shard = 0;
 
 	constructor(scene: THREE.Scene) {
 		this.scene = scene;
@@ -226,6 +241,7 @@ export class SceneBatcher {
 					color: new THREE.Vector4(),
 					visible: true,
 					primed: false,
+					streak: 0,
 				});
 			}
 
@@ -248,10 +264,18 @@ export class SceneBatcher {
 	 */
 	update(): void {
 		this.scene.updateMatrixWorld(true);
+		this.shard = (this.shard + 1) % COLD_SHARDS;
+		let index = 0;
 		for (const batch of this.batches) {
 			for (const source of batch.sources) {
+				// Settled instances are checked on their own frame out of eight.
+				const settled = source.streak >= STATIC_STREAK;
+				index++;
+				if (settled && index % COLD_SHARDS !== this.shard) continue;
 				const world = source.mesh.matrixWorld;
+				let changed = false;
 				if (!source.primed || !source.matrix.equals(world)) {
+					changed = true;
 					source.matrix.copy(world);
 					batch.mesh.setMatrixAt(source.instanceId, world);
 					// Colour and visibility writes below don't move geometry — hidden
@@ -262,17 +286,20 @@ export class SceneBatcher {
 
 				const color = instanceColor(source.mesh.material);
 				if (!source.primed || !source.color.equals(color)) {
+					changed = true;
 					source.color.copy(color);
 					batch.mesh.setColorAt(source.instanceId, color);
 				}
 
 				const visible = isVisible(source.mesh);
 				if (!source.primed || source.visible !== visible) {
+					changed = true;
 					source.visible = visible;
 					batch.mesh.setVisibleAt(source.instanceId, visible);
 				}
 
 				source.primed = true;
+				source.streak = changed ? 0 : source.streak + 1;
 			}
 		}
 	}
