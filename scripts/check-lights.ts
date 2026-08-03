@@ -6,8 +6,8 @@
  * programmacachesleutel. Zolang features hun eigen `THREE.PointLight` bouwden en
  * groepen aan- en uitzetten (disco, alienprobe) relinkte de mall middenin een
  * frame al zijn materialen, en linkte een koude start 105 programma's. Sinds
- * `LightPool` zijn het er acht, de hele sessie, en huren de ~85 virtuele lampen
- * daar om de beurt een slot.
+ * `LightPool` ligt het aantal vast voor de hele sessie (LIGHT_POOL_SLOTS) en
+ * huren de ~85 virtuele lampen daar om de beurt een slot.
  *
  * Dat is precies het soort afspraak dat in een comment niet standhoudt: één
  * `new THREE.PointLight` ergens in een nieuwe feature en de hele winst is weg,
@@ -126,8 +126,8 @@ async function bouwWereld(): Promise<{
 // ── 1. het aantal ──────────────────────────────────────────────────────────
 
 /**
- * Acht, en alle acht van de pool. LIGHT_POOL_SLOTS wordt geïmporteerd en niet
- * overgeschreven: een tweede kopie van dat getal is precies wat check-world
+ * Precies LIGHT_POOL_SLOTS, en allemaal van de pool. Dat getal wordt
+ * geïmporteerd en niet overgeschreven: een tweede kopie van dat getal is precies wat check-world
  * elders al probeert te voorkomen.
  */
 function controleAantal(scene: THREE.Scene): void {

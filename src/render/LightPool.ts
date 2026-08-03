@@ -3,11 +3,17 @@ import * as THREE from 'three';
 /**
  * How many real point lights the whole session ever has.
  *
+ * 16, not 8. Eight was picked when the point-light count looked like the thing
+ * costing the frame; it was not — the main thread was — and eight left the
+ * shops visibly dead, because a 6 m shop lamp never outscores a 35 m concourse
+ * wash. Sixteen lights the rooms you stand in and is still a quarter of the 72
+ * that used to be compiled into every shader.
+ *
  * Exported because `scripts/check-lights.ts` asserts against it: the number of
  * PointLights in the scene graph is the invariant this file exists to hold, and
  * a second copy of it in the check would be the first thing to drift.
  */
-export const LIGHT_POOL_SLOTS = 8;
+export const LIGHT_POOL_SLOTS = 16;
 
 /** How fast a slot's intensity walks to its target, per second. */
 const FADE_RATE = 10;

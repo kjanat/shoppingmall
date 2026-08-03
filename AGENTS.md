@@ -35,7 +35,7 @@ src/
   main.ts              boot; removes #app-loading after `await app.ready`
   scene/               the mall and everything living in it (plus city/ outside)
   render/SceneBatcher  merges compatible meshes into BatchedMeshes
-  render/LightPool     the only 8 real point lights; ~85 virtual lights rent slots
+  render/LightPool     the only real point lights (LIGHT_POOL_SLOTS); ~85 virtual lights rent slots
   physics/Collision.ts AABB world + walkable inclines
   player/Controls.ts   first-person walking
   camera/Director.ts   cinematics only
@@ -119,7 +119,7 @@ a light contributing zero still costs, there is no branch), and ~270 draw calls 
 one branch, **which has not been measured yet** — the next `run diagnose --url` against a deploy of it is the missing
 snapshot, and until it exists every number above is the *old* build:
 
-1. **The fixed light pool shipped** (`src/render/LightPool.ts`). Exactly 8 real `PointLight`s exist for the whole
+1. **The fixed light pool shipped** (`src/render/LightPool.ts`). Exactly `LIGHT_POOL_SLOTS` (16) real `PointLight`s exist for the whole
    session; every feature registers a *virtual* light and animates the returned handle. `NUM_POINT_LIGHTS` can no
    longer change, so there is one program set, no mid-session relinks, and `App.warmup()` is a single compile pass.
    The 52 s time-to-playable was 105 programs linking, which this removes the cause of. Scoring (decided, do not
