@@ -13,15 +13,23 @@ export type DaylightDimmer = {
 	register(light: THREE.Light, factor: number): void;
 };
 
-/** Warm daylight American mall — no neon club vibes. */
+/**
+ * Warm daylight American mall — no neon club vibes.
+ *
+ * Ambient and hemisphere are deliberately low. They light every surface from
+ * every side at once, so they carry no shape at all: with 71 point lights doing
+ * the local shading their flatness never showed, but at 8 pooled lights they
+ * became most of the picture and the mall read as a photocopy of itself. The
+ * sun and the pool do the modelling; these two only lift the shadows.
+ */
 export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimmer {
 	scene.background = new THREE.Color(0xc8d4e4);
 	scene.fog = new THREE.Fog(0xc8d4e4, 100, 200);
 
-	const ambient = new THREE.AmbientLight(0xfff6e8, 0.95);
+	const ambient = new THREE.AmbientLight(0xfff6e8, 0.55);
 	scene.add(ambient);
 
-	const hemi = new THREE.HemisphereLight(0xe8f0ff, 0xd4c4a8, 0.7);
+	const hemi = new THREE.HemisphereLight(0xe8f0ff, 0xd4c4a8, 0.45);
 	scene.add(hemi);
 
 	// Soft sun through skylight
