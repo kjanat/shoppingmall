@@ -69,14 +69,47 @@ is wrong — not the check.
 
 ## Performance
 
-The scene is **GPU-bound, and it is almost entirely the main scene pass.** Measured with per-render-target GPU timer
-queries on a GTX 1650:
+The scene is **GPU-bound, and it is almost entirely the main scene pass.**
+
+Authoritative measurement — **a snapshot, and only comparable against another snapshot that names its build:**
+
+|          |                                                                                                |
+| -------- | ---------------------------------------------------------------------------------------------- |
+| target   | `https://kruidvat.kajkowalski.nl/`                                                             |
+| build    | `b54404dd0819b6256b8aae5ae7a7ffb1f741a767` ("Install hooks from bun, mark scripts executable") |
+| contains | `e03b7e2` — the shader-warmup / `checkShaderErrors` / `SceneBatcher` fixes                     |
+| taken    | 2026-08-03 ~15:45 WEST                                                                         |
+| hardware | GTX 1650 Max-Q, 1600×900 / 1.44 Mpix, DPR 1                                                    |
+| command  | `run diagnose --url https://kruidvat.kajkowalski.nl/`                                          |
+
+The deployed build identifies itself at `/api/healthz` (`{ok, uptime, version}`), and `run diagnose --url` now reads it
+and prints the commit automatically. **Never record a perf number without the build it came from** — an unattributed
+snapshot cannot be compared against anything later, which is the only thing a snapshot is for.
+
+```
+time to playable   52.2 s (+7.5 s to settle)
+wall time          62.1 ms median, 78.4 mean, 91 p90   → 16.1 fps
+GPU time           63.97 ms  (82% of the frame)
+draw calls         269
+texture uploads    51.8/frame, 392.6 KB
+programs linked    105
+shader source      7842 KB total, largest 125.7 KB
+lights in shader   72 point, 2 directional, 1 spot
+```
 
 | Pass                 | GPU ms/frame | share |
 | -------------------- | ------------ | ----- |
-| main scene @1600×900 | 87.6         | 98.0% |
-| all postprocessing   | ~1.5         | 1.7%  |
-| shadow map @1024²    | 0.29         | 0.3%  |
+| main scene @1600×900 | 62.57        | 97.8% |
+| all postprocessing   | ~1.20        | 1.9%  |
+| shadow map @1024²    | 0.20         | 0.3%  |
+
+**The shader-compile stall is fixed and verified in production.** `getProgramInfoLog` / `getShaderInfoLog` are called
+**zero** times on the deployed build (`diagnose` warns whenever they are non-zero, and it stays silent). Those calls were
+~66% of all CPU time in the original traces. Do not re-investigate this.
+
+**`time to playable` is 52 s, and that is arguably worse than the framerate.** It is not the network — it is 105 programs
+of up to 125.7 KB linking, which is downstream of the light count. Anything that reduces lights shortens load *and*
+frame time together.
 
 **Do not optimise shadows or postprocessing.** They are rounding errors. Two things dominate:
 
@@ -106,7 +139,8 @@ queries on a GTX 1650:
 ```bash
 run build          # required first: the scripts serve dist/static
 run diagnose       # GPU, shaders, light counts, per-pass GPU time
-run diagnose --sweep   # + solves `fixed ms + ms/Mpix` with an A-B-A control
+run diagnose --sweep                 # + solves `fixed ms + ms/Mpix` with an A-B-A control
+run diagnose --url https://kruidvat.kajkowalski.nl/   # measure the deployed build
 run bench --save before
 run bench --compare before
 ```
@@ -128,6 +162,49 @@ dependencies and intends to keep it that way). `probe.ts` is injected before pag
 
 `.perf/` is gitignored and holds saved baselines plus a reused Chrome profile (its shader cache is what keeps repeat
 runs from paying the ~105 s cold link).
+
+### Known unknowns — do not re-derive these
+
+Written down because each one cost real time and produced a confident wrong answer:
+
+- **Whether frustum culling helps is UNKNOWN.** An A/B of `perObjectFrustumCulled` and `frustumCulled` appeared to show
+  culling made things 1.7× worse. It was drift: the control — the *original* config, re-measured — came back 106.4 ms
+  against its own earlier 38.8 ms. All four samples were invalid. The question is still open and needs a stable machine.
+- **The "RTX 4090 at 30 FPS / 30% GPU" figure is stale.** It predates the shader-stall fix and includes those stalls.
+  Do not reason from it. Re-trace before treating it as the target.
+- **Batches are not all mall-wide.** Median batch bounding radius is 6.7 m; 22 of 141 exceed 40 m and 53 exceed 20 m. The
+  mall-spanning ones are the shared-material batches (floors, walls). Spatial partitioning is therefore a narrower fix
+  than "every batch spans the building" would suggest.
+- **A thermally- or memory-constrained laptop cannot benchmark this.** Measured drift was ~23 ms per successive sample,
+  and `bench` reported `+36.4% per sample ✗ DRIFTING`. Cross-run comparisons on such a machine are noise, including
+  comparisons against numbers elsewhere in this file that were taken locally.
+
+### Planned: fixed light pool
+
+The intended fix for both dominant costs. Not implemented.
+
+The problem is not only that 72 point lights are expensive per fragment; it is that the *count* is baked into the
+program cache key, so it can never be varied at runtime without relinking every material. That single fact blocks zone
+culling, interior culling and any "lights off in rooms you cannot see" scheme.
+
+The shape:
+
+- A `LightPool` owns a **fixed** number of real `THREE.PointLight`s (start at 8), added to the scene once and never
+  hidden. `NUM_POINT_LIGHTS` becomes constant for the whole session → one program set, no relinks, ever.
+- Features stop creating lights. They register a *virtual* light — a description (position, colour, intensity, distance,
+  decay) that is not a scene light — and get back a mutable handle they animate as they do now.
+- Each frame the pool scores the virtual lights against the camera and copies the best N into the real slots.
+- **An unused slot is not free.** The unrolled loop runs `getPointLightInfo` + `RE_Direct` per fragment regardless of
+  intensity; `light.visible` gates the contribution, not the maths. Size the pool as small as the look tolerates.
+- The scoring function is the real design decision (nearest? brightest contribution? on the player's deck? hysteresis so
+  a light does not flicker between slots?) and is a judgement call about how the mall should look.
+- Migrate incrementally: land the pool with zero registrations (no behaviour change), then convert one scene file at a
+  time. Each conversion is independently shippable and drops the count.
+- Once done, `Disco` and `AlienProbe` stop toggling group visibility and just move handle intensities — which makes
+  `App.warmup()`'s probe-variant pre-compile unnecessary, and it can be deleted.
+
+Expected win: cutting visible point lights 71 → 6 measured **2.0–2.6× the frame rate**, reproduced in both directions
+across several independent runs (the one light finding that survived the drift, because it was A-B-A-B).
 
 ## Deploy
 

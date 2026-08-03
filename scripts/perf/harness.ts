@@ -59,8 +59,14 @@ export type GameSession = {
 /** Reused between runs so Chrome's compiled-shader cache survives; see Browser.launch. */
 const PROFILE_DIR = resolve(import.meta.dir, '../../.perf/chrome-profile');
 
-export async function openGame(width: number, height: number, freshProfile = false): Promise<GameSession> {
-	const server = serveGame();
+/**
+ * `url` points the run at a deployed site instead of the local build, which is
+ * the only way to check that a fix actually shipped: the probe reports
+ * `programInfoLogCalls`, and on a correct production build that is zero.
+ * Frame timings stay local — the network decides load time, not frame time.
+ */
+export async function openGame(width: number, height: number, freshProfile = false, url?: string): Promise<GameSession> {
+	const server: StaticServer = url ? { url, stop: async () => {} } : serveGame();
 	// A little taller than the viewport: Chrome's own chrome eats some of it, and
 	// a viewport override is applied afterwards anyway.
 	const browser = await Browser.launch(width, height + 120, freshProfile ? undefined : PROFILE_DIR);

@@ -19,6 +19,7 @@
  * Usage:  bun run diagnose            (needs `bun run build` first)
  *         bun run diagnose --sweep
  */
+import { isRecord, readNumber, readString } from './cdp.ts';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import type { Sample } from './probe.ts';
 
@@ -32,10 +33,33 @@ const SMALL_HEIGHT = 288;
 const DRIFT_TOLERANCE = 0.15;
 
 const sweep = process.argv.includes('--sweep');
+const urlIndex = process.argv.indexOf('--url');
+const targetUrl = urlIndex < 0 ? undefined : process.argv[urlIndex + 1];
 const notes: string[] = [];
 
 function note(message: string): void {
 	notes.push(message);
+}
+
+/**
+ * Which build produced these numbers?
+ *
+ * A perf snapshot with no commit attached cannot be compared against anything
+ * later, which makes it decoration rather than data. The server answers this on
+ * /api/healthz, so a `--url` run identifies its own target instead of trusting
+ * whoever writes the result down.
+ */
+async function deployedBuild(url: string): Promise<{ version: string; uptimeSeconds: number } | null> {
+	try {
+		const response = await fetch(`${new URL(url).origin}/api/healthz`);
+		if (!response.ok) return null;
+		const body: unknown = await response.json();
+		if (!isRecord(body)) return null;
+		const version = readString(body, 'version');
+		return version ? { version, uptimeSeconds: readNumber(body, 'uptime') } : null;
+	} catch {
+		return null;
+	}
 }
 
 function passTable(sample: Sample): string {
@@ -46,13 +70,23 @@ function passTable(sample: Sample): string {
 	return rows.join('\n');
 }
 
-const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'));
+const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), targetUrl);
 try {
 	const { readyMs, settleMs } = await session.boot();
 	const env = await session.environment();
 	const main = await session.sample(SAMPLE_MS);
 
 	console.log('\n── environment ─────────────────────────────────────────────');
+	console.log(bar('target', targetUrl ?? 'local dist/static'));
+	if (targetUrl) {
+		const build = await deployedBuild(targetUrl);
+		if (build) {
+			console.log(bar('deployed build', `${build.version.slice(0, 12)} (up ${Math.round(build.uptimeSeconds / 60)} min)`));
+		} else {
+			note('could not read /api/healthz — the measured build is unidentified.');
+			note('  Record which commit this was, or the numbers cannot be compared against anything later.');
+		}
+	}
 	console.log(bar('GPU', env.renderer));
 	console.log(bar('canvas', `${env.canvas} (${env.megapixels} Mpix, DPR ${env.devicePixelRatio})`));
 	console.log(bar('parallel shader compile', env.parallelShaderCompile ? 'yes' : 'NO — links will stall'));
