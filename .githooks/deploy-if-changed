@@ -22,7 +22,13 @@ fi
 
 # In de achtergrond: een push of pull mag niet minuten op docker wachten.
 # flock -n: loopt er al een deploy, dan vangt de volgende trigger dit op.
-echo "deploy: gestart, log in $gitdir/deploy.log"
+#
+# De marker krijgt de commit die gebouwd IS, niet HEAD na afloop. Verschuift
+# HEAD tijdens de build (een rebase doet dat), dan wijkt de marker daarna af en
+# deployt de volgende trigger opnieuw, in plaats van een commit te claimen die
+# nooit in de image zat.
+built="$(git rev-parse HEAD)"
+echo "deploy: gestart voor ${built%"${built#???????}"}, log in $gitdir/deploy.log"
 nohup flock -n "$gitdir/deploy.lock" sh -c \
-	"make live >> '$gitdir/deploy.log' 2>&1 && git rev-parse HEAD > '$marker'" \
+	"make live >> '$gitdir/deploy.log' 2>&1 && printf '%s\n' '$built' > '$marker'" \
 	>/dev/null 2>&1 &
