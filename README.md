@@ -24,7 +24,10 @@ bun install
 bun run dev
 ```
 
-Serves on `http://localhost:5174` (`PORT` overrides). Bun, not npm — there is no Vite here.
+Serves on `http://localhost:5174` (`PORT` overrides).
+
+Bun does all three jobs here: package manager, bundler and task runner. So it is `bun install`, not `npm install`, and
+the dev server is `bun --hot server/main.ts` — there is no Vite and no separate build tool.
 
 ## Controls
 
