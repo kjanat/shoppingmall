@@ -5,7 +5,7 @@ Night-neon **Three.js** kiosk experience: cinematic route from the directory to 
 ## House rules
 
 1. **Feature-gate every looks-vs-speed choice.** Build all the options behind a switch and let the maintainer try them.
-   Runtime knobs go in ⚙ Besturing ([src/render/graphicsPrefs.ts](src/render/graphicsPrefs.ts)). Shader-baked ones
+   Runtime knobs go in ⚙ Besturing, stored in [graphicsPrefs](src/render/graphicsPrefs.ts). Shader-baked ones
    reload the page on change. Code that should not ship at all uses `import { feature } from 'bun:bundle'` with
    `bun build --feature FLAG`.
 2. **Edit files with an editor, never a shell heredoc.** No live diff otherwise.

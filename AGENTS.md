@@ -64,8 +64,9 @@ Aliases: `@/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensi
 - **Use the Edit tool for file changes, never a shell heredoc.** A scripted rewrite does not show up as a live diff, so
   nobody sees the change while it happens. A silently non-matching replacement already shipped a panel that threw on
   boot because half of a two-part edit applied.
-- **In markdown, link files instead of backticking them:** [src/app/App.ts](src/app/App.ts), not `src/app/App.ts`.
-  Backticks stay for code, identifiers and commands.
+- **In markdown, link files instead of backticking them.** Usually the file or symbol name is the clearest label:
+  [LightPool](src/render/LightPool.ts). Use prose only where it genuinely reads better. Repeating the full path as the
+  label is noise. Backticks stay for code, identifiers and commands.
 - **No em dashes in prose, and no "X, not Y" constructions.** Write the plain sentence.
 
 ## Feature-gate judgement calls
@@ -73,9 +74,9 @@ Aliases: `@/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensi
 Anything trading looks against speed (light count, material model, ambient level, resolution scaling): build every
 option behind a switch, ship it, say "I built all three, try them". Do not pick one silently and do not debate it.
 
-- **Runtime setting** ([src/ui/SettingsPanel.ts](src/ui/SettingsPanel.ts) plus
-  [src/render/graphicsPrefs.ts](src/render/graphicsPrefs.ts)) when the options need comparing live. Shader-baked
-  options (light count, material model) reload the page on change, since that is when they are chosen.
+- **Runtime setting** ([SettingsPanel](src/ui/SettingsPanel.ts) plus [graphicsPrefs](src/render/graphicsPrefs.ts))
+  when the options need comparing live. Shader-baked options (light count, material model) reload the page on change,
+  since that is when they are chosen.
 - **Bun build-time flag** when the code should not ship: `import { feature } from 'bun:bundle'`, guard with
   `if (feature('FLAG'))`, build with `--feature FLAG` (or `features: [...]` in [build.ts](build.ts)). String literals
   only.
@@ -84,8 +85,8 @@ option behind a switch, ship it, say "I built all three, try them". Do not pick 
 
 ## World invariants
 
-[scripts/check-world.ts](scripts/check-world.ts) and [scripts/check-lights.ts](scripts/check-lights.ts) run on every
-build (headless, [scripts/stub-dom.ts](scripts/stub-dom.ts) provides the canvas/audio stubs). check-world boots the collision world and the two shop builders and asserts things like: ramps line
+[check-world](scripts/check-world.ts) and [check-lights](scripts/check-lights.ts) run on every build (headless, with the canvas and audio stubs from
+[stub-dom](scripts/stub-dom.ts)). check-world boots the collision world and the two shop builders and asserts things like: ramps line
 up with the floor holes cut for them, the ladder is actually climbable step by step, swimmers are inside the waterline,
 every shop has inventory. check-lights boots every light-owning feature against one `LightPool` and asserts the scene
 holds exactly `LIGHT_POOL_SLOTS` real `PointLight`s — including while the disco and the alien probe toggle — and greps
@@ -139,14 +140,14 @@ a light contributing zero still costs, there is no branch), and ~270 draw calls 
 one branch, **which has not been measured yet** — the next `run diagnose --url` against a deploy of it is the missing
 snapshot, and until it exists every number above is the *old* build:
 
-1. **The fixed light pool shipped** ([src/render/LightPool.ts](src/render/LightPool.ts)). Exactly `LIGHT_POOL_SLOTS` (16) real `PointLight`s exist for the whole
+1. **The fixed [light pool](src/render/LightPool.ts) shipped.** Exactly `LIGHT_POOL_SLOTS` (16) real `PointLight`s exist for the whole
    session; every feature registers a *virtual* light and animates the returned handle. `NUM_POINT_LIGHTS` can no
    longer change, so there is one program set, no mid-session relinks, and `App.warmup()` is a single compile pass.
    The 52 s time-to-playable was 105 programs linking, which this removes the cause of. Scoring (decided, do not
    re-litigate without a measurement): `intensity × dim² × priority × (1 − d/distance)`, an incumbent keeps its slot
    until beaten by 30%, slots fade at 10/s except `snap` lights (muzzle flashes, sale flashes) which write through.
-   The five 32–50 m washes in [src/scene/Lighting.ts](src/scene/Lighting.ts) carry `priority: 2` so nearby 6 m shop
-   lamps cannot starve the building.
+   The five 32–50 m washes in [Lighting](src/scene/Lighting.ts) carry `priority: 2` so nearby 6 m shop lamps
+   cannot starve the building.
 2. **Every scene material is `MeshLambertMaterial` now.** Nothing used a PBR feature (no env/normal/ao maps, no
    `scene.environment` — high metalness already rendered black), and the physical lights chunk is 22 KB against
    Lambert's 1 KB, multiplied by the unrolled light loop. Specular is gone; looks that depended on metalness darkening
@@ -171,7 +172,7 @@ renders the roof when it is on-screen.
   pool light `visible = false` — an invisible light is not counted by the renderer, so hiding one changes
   `NUM_POINT_LIGHTS` and triggers exactly the relink storm the pool kills. Unused slots sit at `intensity 0`.
 - **The disco dims through `DaylightDimmer` + `pool.setDimFactor`, not a traverse.** A real light added outside
-  [src/scene/Lighting.ts](src/scene/Lighting.ts) must be `register()`ed with the dimmer or it will blast through the party at full power (the catwalk
+  [Lighting](src/scene/Lighting.ts) must be `register()`ed with the dimmer or it will blast through the party at full power (the catwalk
   spot did). The Catwalk `SpotLight` count is likewise baked into programs (`NUM_SPOT_LIGHTS`); there is exactly one
   and nothing enforces that, so do not add a second casually.
 - **`renderer.debug.checkShaderErrors` is on in dev and off in production** (`App.ts`, gated on `import.meta.hot`). Each
@@ -198,8 +199,8 @@ run diagnose:headless                # no-GPU containers (remote agent envs, CI)
 dependencies and intends to keep it that way). `probe.ts` is injected before page scripts and wraps the WebGL context.
 
 **No-GPU containers** (remote agent environments, CI): `run diagnose:headless` / `run bench:headless` route Chrome
-through [scripts/perf/chrome-headless.sh](scripts/perf/chrome-headless.sh): headless SwiftShader, no sandbox, finds
-the Playwright-managed Chromium.
+through [chrome-headless.sh](scripts/perf/chrome-headless.sh): headless SwiftShader, no sandbox, finds the
+Playwright-managed Chromium.
 The *structural* numbers are exact there (lights in shader, programs linked, shader source KB, draw calls); every
 millisecond is the CPU rasterizer and is only comparable against the same rasterizer in the same container — never
 against a GPU snapshot, and never worth recording in this file.
@@ -244,7 +245,7 @@ Written down because each one cost real time and produced a confident wrong answ
 
 ### The fixed light pool (implemented)
 
-[src/render/LightPool.ts](src/render/LightPool.ts). The problem was never only that 72 point lights are expensive per fragment; the *count* is
+[LightPool](src/render/LightPool.ts). The problem was never only that 72 point lights are expensive per fragment; the *count* is
 baked into the program cache key, so it could not vary at runtime without relinking every material. That fact blocked
 zone culling, interior culling and any "lights off in rooms you cannot see" scheme. It no longer does: the count is
 `LIGHT_POOL_SLOTS` (8) for the whole session, `check:lights` enforces it, and any future zone-culling can now hide
