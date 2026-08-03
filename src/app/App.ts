@@ -72,6 +72,16 @@ const PLAYER_RADIUS = 0.4;
 const PERSIST_EVERY = 0.75; // seconds
 /** Praatafstand tot een verkoper — E praat én de E-melding luistert hiernaar. */
 const TALK_RADIUS = 7;
+/**
+ * Dynamische resolutie: vaste treden i.p.v. een glijdende schaal, want elke
+ * wissel laat composer.setSize twee HalfFloat-fullscreentargets heralloceren.
+ * Onder 0.5 wordt het beeld te papperig om nog wat te winnen.
+ */
+const DYN_RES_STEPS = [1, 0.85, 0.7, 0.6, 0.5];
+/** Boven dit gemiddelde (ms/frame) zakt de schaal een trede (≈ onder 42 fps). */
+const DYN_RES_SLOW_MS = 24;
+/** Onder dit gemiddelde mag hij een trede terug omhoog (ruim onder 60 fps-budget). */
+const DYN_RES_FAST_MS = 15;
 
 export class App {
 	private renderer: THREE.WebGLRenderer;
@@ -142,6 +152,22 @@ export class App {
 	private fpsFrames = 0;
 	private fpsT = 0;
 	private fpsEl: HTMLElement | null = null;
+	/**
+	 * Pixelratio heeft één eigenaar: kwaliteitstier × dynamische schaal, samen
+	 * toegepast in applyPixelRatio(). Eerder schreef de kwaliteits-handler de
+	 * ratio rechtstreeks; een tweede schrijver zou daar stil mee vechten.
+	 */
+	private qualityRatio = Math.min(window.devicePixelRatio, 1.5);
+	private dynScale = 1;
+	private dynResOn = true;
+	private dynResIndex = 0;
+	/** EMA van de ongeklemde frametijd; 0 = nog geen meting (net gereset). */
+	private frameMsEma = 0;
+	private dynResHold = 0;
+	/** -1 = wil omhoog, 1 = wil omlaag, 0 = tevreden; richtingwissel reset de teller. */
+	private dynResDir = 0;
+	private dynResCooldown = 0;
+	private lastRafTs: number | null = null;
 	/** Welk voertuig je bestuurt */
 	private vehicle: 'drone' | 'heli' | 'scrubber' | 'car' | null = null;
 	/** reused each frame for the monkey's target list */
@@ -471,17 +497,27 @@ export class App {
 		this.settingsUi.bindQuality((q) => {
 			const dpr = window.devicePixelRatio;
 			if (q === 'laag') {
-				this.renderer.setPixelRatio(1);
+				this.qualityRatio = 1;
 				this.renderer.shadowMap.enabled = false;
 			} else if (q === 'middel') {
-				this.renderer.setPixelRatio(Math.min(dpr, 1.25));
+				this.qualityRatio = Math.min(dpr, 1.25);
 				this.renderer.shadowMap.enabled = true;
 			} else {
-				this.renderer.setPixelRatio(Math.min(dpr, 1.75));
+				this.qualityRatio = Math.min(dpr, 1.75);
 				this.renderer.shadowMap.enabled = true;
 			}
 			this.renderer.shadowMap.needsUpdate = true;
-			this.onResize();
+			this.applyPixelRatio();
+		});
+		// Dynamische resolutie (⚙): rendert tijdelijk op een lagere schaal wanneer
+		// frames boven budget lopen; de canvas-CSS (100%) rekt het beeld weer op.
+		this.settingsUi.bindDynRes((on) => {
+			this.dynResOn = on;
+			if (!on && this.dynScale !== 1) {
+				this.dynScale = 1;
+				this.dynResIndex = 0;
+				this.applyPixelRatio();
+			}
 		});
 		// HRTF binaural on/off (koptelefoon)
 		this.settingsUi.bindBinaural((on) => {
@@ -1536,6 +1572,51 @@ export class App {
 		this.composer.setSize(w, h);
 	}
 
+	/** Eén schrijver voor de pixelratio; de composer volgt de drawing buffer. */
+	private applyPixelRatio(): void {
+		this.renderer.setPixelRatio(this.qualityRatio * this.dynScale);
+		this.onResize();
+	}
+
+	/**
+	 * Verlaag de renderschaal als frames aanhoudend boven budget lopen; verhoog
+	 * hem pas na lang comfort. Asymmetrisch en met afkoeltijd, anders pendelt
+	 * hij op de rand — en elke wissel kost een target-heralloc in de composer.
+	 */
+	private updateDynRes(frameMs: number, dt: number): void {
+		if (this.perfProbe || !this.dynResOn) return;
+		// Tabwissels en laad-hikken niet meemiddelen
+		if (frameMs <= 0 || frameMs > 250) return;
+		this.frameMsEma = this.frameMsEma === 0 ? frameMs : this.frameMsEma * 0.9 + frameMs * 0.1;
+		if (this.dynResCooldown > 0) {
+			this.dynResCooldown -= dt;
+			return;
+		}
+		const wantDown = this.frameMsEma > DYN_RES_SLOW_MS && this.dynResIndex < DYN_RES_STEPS.length - 1;
+		const wantUp = this.frameMsEma < DYN_RES_FAST_MS && this.dynResIndex > 0;
+		const dir = wantDown ? 1 : wantUp ? -1 : 0;
+		if (dir !== this.dynResDir) {
+			this.dynResDir = dir;
+			this.dynResHold = 0;
+		}
+		if (dir === 0) return;
+		this.dynResHold += dt;
+		// Omlaag snel (0.5 s aanhoudend traag), omhoog traag (2 s ruim comfort)
+		if (dir === 1 && this.dynResHold >= 0.5) this.stepDynRes(this.dynResIndex + 1);
+		else if (dir === -1 && this.dynResHold >= 2) this.stepDynRes(this.dynResIndex - 1);
+	}
+
+	private stepDynRes(index: number): void {
+		this.dynResIndex = index;
+		this.dynScale = DYN_RES_STEPS[index] ?? 1;
+		this.dynResHold = 0;
+		this.dynResDir = 0;
+		this.dynResCooldown = 1;
+		// Verse meting na de wissel — oude samples zouden meteen dóórstappen
+		this.frameMsEma = 0;
+		this.applyPixelRatio();
+	}
+
 	/**
 	 * Walls are the controller's job now; this only stops you standing inside Brad.
 	 * `climb` keeps the escalator/stairs volumes walkable.
@@ -1702,6 +1783,12 @@ export class App {
 		this.timer.update(timestamp);
 		const dt = Math.min(this.timer.getDelta(), 0.05);
 		const elapsed = this.timer.getElapsed();
+		// Ongeklemde frametijd uit de rAF-timestamps zelf: dt hierboven is op
+		// 50 ms afgekapt, en een meting die daarop leunt verzadigt precies waar
+		// er ingegrepen moet worden — een 62ms-frame leest dan als 50.
+		const frameMs = timestamp !== undefined && this.lastRafTs !== null ? timestamp - this.lastRafTs : dt * 1000;
+		if (timestamp !== undefined) this.lastRafTs = timestamp;
+		this.updateDynRes(frameMs, dt);
 
 		this.atmosphere.update(dt, this.camera.position);
 		this.pathMesh.update(dt);
@@ -1874,9 +1961,12 @@ export class App {
 		this.poolPeople.update(dt, elapsed);
 		this.tickSlide(dt);
 
-		// FPS-teller: 2×/s verversen, kleur zegt genoeg
+		// FPS-teller: 2×/s verversen, kleur zegt genoeg. Op de ongeklemde
+		// frametijd — met het geklemde dt rapporteerde hij ~20 fps waar het er
+		// echt ~16 waren, juist in het gebied waar het cijfer ertoe doet.
+		// De 250ms-kap houdt één tabwissel-hik uit het gemiddelde.
 		this.fpsFrames++;
-		this.fpsT += dt;
+		this.fpsT += Math.min(frameMs, 250) / 1000;
 		if (this.fpsT >= 0.5 && this.fpsEl) {
 			const fps = Math.round(this.fpsFrames / this.fpsT);
 			this.fpsFrames = 0;

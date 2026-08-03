@@ -4,6 +4,7 @@ import { qs } from '@/util/dom';
 const STORE_KEY = 'mallsim.controls.v1';
 const QUALITY_KEY = 'mallsim.quality.v1';
 const BINAURAL_KEY = 'mallsim.binaural.v1';
+const DYNRES_KEY = 'mallsim.dynres.v1';
 
 export type QualityLevel = 'laag' | 'middel' | 'hoog';
 
@@ -20,6 +21,17 @@ function loadBinaural(): boolean {
 	try {
 		const v = localStorage.getItem(BINAURAL_KEY);
 		// default ON — headphones get HRTF
+		if (v === null) return true;
+		return v !== '0' && v !== 'false';
+	} catch {
+		return true;
+	}
+}
+
+function loadDynRes(): boolean {
+	try {
+		const v = localStorage.getItem(DYNRES_KEY);
+		// default AAN — liever even zachter beeld dan een diavoorstelling
 		if (v === null) return true;
 		return v !== '0' && v !== 'false';
 	} catch {
@@ -45,6 +57,9 @@ export class SettingsPanel {
 	/** HRTF binaural — headphones recommended */
 	private binaural = loadBinaural();
 	private onBinaural: ((on: boolean) => void) | null = null;
+	/** Dynamische resolutie — render lager als de framerate zakt */
+	private dynRes = loadDynRes();
+	private onDynRes: ((on: boolean) => void) | null = null;
 
 	/** App meldt zich hier aan; krijgt meteen de opgeslagen stand. */
 	bindQuality(fn: (q: QualityLevel) => void): void {
@@ -55,6 +70,11 @@ export class SettingsPanel {
 	bindBinaural(fn: (on: boolean) => void): void {
 		this.onBinaural = fn;
 		fn(this.binaural);
+	}
+
+	bindDynRes(fn: (on: boolean) => void): void {
+		this.onDynRes = fn;
+		fn(this.dynRes);
 	}
 
 	constructor(root: HTMLElement, onChange: (s: ControlSettings) => void) {
@@ -152,6 +172,14 @@ export class SettingsPanel {
 
         <label class="settings-row">
           <span>
+            <b>Dynamische resolutie</b>
+            <small>Verlaagt de renderresolutie tijdelijk als de framerate zakt; scherp zodra het weer kan.</small>
+          </span>
+          <input type="checkbox" id="set-dynres" />
+        </label>
+
+        <label class="settings-row">
+          <span>
             <b>Binaural audio (HRTF)</b>
             <small>3D-geluid via koptelefoon: links/rechts/achter/hoogte. Speakers = soft stereo.</small>
           </span>
@@ -181,6 +209,18 @@ export class SettingsPanel {
 				/* private mode */
 			}
 			this.onQuality?.(this.quality);
+		});
+
+		const dynResCb = q<HTMLInputElement>('#set-dynres');
+		dynResCb.checked = this.dynRes;
+		dynResCb.addEventListener('change', () => {
+			this.dynRes = dynResCb.checked;
+			try {
+				localStorage.setItem(DYNRES_KEY, this.dynRes ? '1' : '0');
+			} catch {
+				/* private mode */
+			}
+			this.onDynRes?.(this.dynRes);
 		});
 
 		const binauralCb = q<HTMLInputElement>('#set-binaural');
@@ -252,6 +292,8 @@ export class SettingsPanel {
 		q('#set-sens-out').textContent = `${this.settings.sensitivity.toFixed(1)}×`;
 		const bin = this.host.querySelector<HTMLInputElement>('#set-binaural');
 		if (bin) bin.checked = this.binaural;
+		const dyn = this.host.querySelector<HTMLInputElement>('#set-dynres');
+		if (dyn) dyn.checked = this.dynRes;
 		// Sensitivity is meaningless without mouse look
 		q('#set-sens').closest('.settings-row')?.classList.toggle('settings-off', !this.settings.mouseLook);
 	}
