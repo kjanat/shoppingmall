@@ -4,10 +4,12 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"bench": "run scripts/perf/bench.ts",
 		"build": "run -s typecheck check build.ts",
 		"build:static": "run -s typecheck check static",
 		"check": "run scripts/check-world.ts",
 		"dev": "bun --hot server/main.ts",
+		"diagnose": "run scripts/perf/diagnose.ts",
 		"favicon": "npx -y --package=vite-svg-to-ico@latest svg-to-ico generate public/favicon.svg --out-dir public",
 		"fmt": "run lint --fix; dprint fmt .",
 		"lint": "biome check",

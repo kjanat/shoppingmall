@@ -25,3 +25,5 @@ dist-ssr
 .env
 public/dj-music/
 /trace-*.json
+# Saved `bun run bench` baselines: machine-specific, never comparable across two.
+/.perf/
