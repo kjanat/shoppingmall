@@ -92,8 +92,8 @@ export class CityGarage {
 	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
 	private readonly dummy = new THREE.Object3D();
 
-	private readonly beton: THREE.MeshLambertMaterial;
-	private readonly betonDonker: THREE.MeshLambertMaterial;
+	private readonly beton: THREE.MeshStandardMaterial;
+	private readonly betonDonker: THREE.MeshStandardMaterial;
 
 	private boomPivot!: THREE.Group;
 	/** 0 = slagboom dicht, 1 = open. Traag, zoals het hoort bij gemeentelijk staal. */
@@ -103,8 +103,8 @@ export class CityGarage {
 		this.group.name = 'city_garage';
 		this.geometries.push(this.unitBox);
 
-		this.beton = this.track(new THREE.MeshLambertMaterial({ color: 0x74787a }));
-		this.betonDonker = this.track(new THREE.MeshLambertMaterial({ color: 0x585c5e }));
+		this.beton = this.track(new THREE.MeshStandardMaterial({ color: 0x74787a, roughness: 0.95, metalness: 0.05 }));
+		this.betonDonker = this.track(new THREE.MeshStandardMaterial({ color: 0x585c5e, roughness: 0.9, metalness: 0.1 }));
 
 		const rand = mulberry32(0x9a1a9e); // garage, ongeveer, als je scheel kijkt
 		this.buildStructure();
@@ -239,9 +239,9 @@ export class CityGarage {
 		wheelGeo.rotateX(Math.PI / 2);
 		this.geometries.push(bodyGeo, cabinGeo, wheelGeo);
 
-		const bodyMat = this.track(new THREE.MeshLambertMaterial({ color: 0xffffff }));
-		const glassMat = this.track(new THREE.MeshLambertMaterial({ color: 0x1d262d }));
-		const wheelMat = this.track(new THREE.MeshLambertMaterial({ color: 0x101114 }));
+		const bodyMat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.3 }));
+		const glassMat = this.track(new THREE.MeshStandardMaterial({ color: 0x1d262d, roughness: 0.25, metalness: 0.5 }));
+		const wheelMat = this.track(new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.9 }));
 
 		// Bezetting per dek loopt af naar boven; niemand rijdt vrijwillig door.
 		const perDek = [6, 5, 4, 3];
@@ -288,7 +288,7 @@ export class CityGarage {
 
 	/** Slagboom + kaartautomaat bij de westingang. De oprit zelf heeft niets; daar heerst vertrouwen. */
 	private buildBoom(): void {
-		const wit = this.track(new THREE.MeshLambertMaterial({ color: 0xe8e8e2 }));
+		const wit = this.track(new THREE.MeshStandardMaterial({ color: 0xe8e8e2, roughness: 0.5, metalness: 0.2 }));
 		const rood = this.track(new THREE.MeshBasicMaterial({ color: 0xc62f28, toneMapped: false }));
 		const scherm = this.track(new THREE.MeshBasicMaterial({ color: 0x8fd8a0, toneMapped: false }));
 

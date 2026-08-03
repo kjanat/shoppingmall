@@ -180,10 +180,10 @@ export class Penguins {
 		const root = new THREE.Group();
 		const name = NAMES[i % NAMES.length] + (i >= NAMES.length ? ` ${i}` : '');
 
-		const black = this.track(new THREE.MeshLambertMaterial({ color: 0x1a1a1a }));
-		const white = this.track(new THREE.MeshLambertMaterial({ color: 0xf5f5f5 }));
-		const orange = this.track(new THREE.MeshLambertMaterial({ color: 0xff8f00 }));
-		const beakM = this.track(new THREE.MeshLambertMaterial({ color: 0xff6f00 }));
+		const black = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.75 }));
+		const white = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.85 }));
+		const orange = this.track(new THREE.MeshStandardMaterial({ color: 0xff8f00, roughness: 0.55 }));
+		const beakM = this.track(new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.5 }));
 
 		const body = new THREE.Group();
 		// Torso egg

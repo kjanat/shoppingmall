@@ -994,7 +994,7 @@ export class Americans {
 		body.add(legL.group, legR.group);
 
 		const torsoY = legLen + 0.08;
-		const belly = new THREE.Mesh(new THREE.SphereGeometry(bellyR, 12, 10), this.mat(f.shirt));
+		const belly = new THREE.Mesh(new THREE.SphereGeometry(bellyR, 12, 10), this.mat(f.shirt, 0.9));
 		if (isMiss) {
 			// tight waist
 			belly.scale.set(0.72, 1.0, 0.62);
@@ -1005,7 +1005,7 @@ export class Americans {
 		}
 		body.add(belly);
 
-		const chest = new THREE.Mesh(new THREE.SphereGeometry(bellyR * (isMiss ? 1.15 : 0.7), 10, 8), this.mat(f.shirt));
+		const chest = new THREE.Mesh(new THREE.SphereGeometry(bellyR * (isMiss ? 1.15 : 0.7), 10, 8), this.mat(f.shirt, 0.9));
 		// Miss: bigger chest, push forward
 		chest.scale.set(isMiss ? 1.55 : 1.3, isMiss ? 1.05 : 0.65, isMiss ? 1.05 : 0.85);
 		chest.position.set(0, torsoY + bellyR * (isMiss ? 1.35 : 1.0), isMiss ? 0.12 : 0);
@@ -1013,12 +1013,18 @@ export class Americans {
 
 		// Miss: hip flare + heels
 		if (isMiss) {
-			const hips = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), this.mat(f.pants));
+			const hips = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), this.mat(f.pants, 0.85));
 			hips.scale.set(1.45, 0.55, 0.85);
 			hips.position.set(0, torsoY - 0.08, 0.02);
 			body.add(hips);
-			// stiletto nubs under feet (leg groups already have feet)
-			const heelMat = this.track(new THREE.MeshLambertMaterial({ color: 0x1a1a1a }));
+			// stiletto nubs under feet (leg groups already have feet — add glamour shine)
+			const heelMat = this.track(
+				new THREE.MeshStandardMaterial({
+					color: 0x1a1a1a,
+					metalness: 0.4,
+					roughness: 0.35,
+				}),
+			);
 			for (const side of [-1, 1] as const) {
 				const heel = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 6), heelMat);
 				heel.position.set(side * 0.14, 0.02, 0.12);
@@ -1037,7 +1043,7 @@ export class Americans {
 			const limb = new THREE.Mesh(armGeo, this.mat(f.shirt));
 			limb.position.y = -(armLen / 2 + 0.09);
 			pivot.add(limb);
-			const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), this.mat(f.skin));
+			const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), this.mat(f.skin, 0.8));
 			hand.position.y = -(armLen + 0.13);
 			pivot.add(hand);
 			return pivot;
@@ -1049,7 +1055,7 @@ export class Americans {
 		const headY = torsoY + bellyR * 1.4 + 0.28;
 		const headR = isKid ? 0.2 : isMiss ? 0.23 : 0.24;
 		// Plain skin head — no painted texture face
-		const head = new THREE.Mesh(new THREE.SphereGeometry(headR, 16, 16), this.mat(f.skin));
+		const head = new THREE.Mesh(new THREE.SphereGeometry(headR, 16, 16), this.mat(f.skin, 0.85));
 		head.position.set(0, headY, 0);
 		body.add(head);
 
@@ -1114,7 +1120,13 @@ export class Americans {
 			// Crown
 			const crown = new THREE.Mesh(
 				new THREE.TorusGeometry(0.14, 0.025, 6, 12),
-				this.track(new THREE.MeshLambertMaterial({ color: 0xffd700 })),
+				this.track(
+					new THREE.MeshStandardMaterial({
+						color: 0xffd700,
+						metalness: 0.9,
+						roughness: 0.25,
+					}),
+				),
 			);
 			crown.rotation.x = Math.PI / 2;
 			crown.position.set(0, headY + 0.22, 0);
@@ -1122,7 +1134,7 @@ export class Americans {
 			// Sash
 			const sash = new THREE.Mesh(
 				new THREE.BoxGeometry(0.12, 0.9, 0.02),
-				this.track(new THREE.MeshLambertMaterial({ color: 0xffffff })),
+				this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 })),
 			);
 			sash.position.set(0.18, torsoY + 0.5, 0.2);
 			sash.rotation.z = -0.35;
@@ -1249,8 +1261,8 @@ export class Americans {
 		return sim;
 	}
 
-	private mat(color: number): THREE.MeshLambertMaterial {
-		return this.track(new THREE.MeshLambertMaterial({ color }));
+	private mat(color: number, rough = 0.85): THREE.MeshStandardMaterial {
+		return this.track(new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.05 }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
@@ -1278,7 +1290,7 @@ export class Americans {
 		knee.add(shin);
 
 		// BIG visible foot (pootje)
-		const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.34), this.mat(0xf5f5f5));
+		const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.34), this.mat(0xf5f5f5, 0.65));
 		foot.position.set(0, -legLen * 0.42, 0.1);
 		knee.add(foot);
 

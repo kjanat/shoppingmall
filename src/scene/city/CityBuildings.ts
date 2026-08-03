@@ -138,14 +138,16 @@ export class CityBuildings {
 	/** Eén InstancedMesh, per-instance nachttint, gedeelde raam-textuur die 's avonds gloeit. */
 	private buildTowers(specs: TowerSpec[], rand: Rand): void {
 		const tex = this.makeWindowTexture(rand);
-		const facade = new THREE.MeshLambertMaterial({
+		const facade = new THREE.MeshStandardMaterial({
 			color: 0xffffff,
 			map: tex,
 			emissive: 0xffffff,
 			emissiveMap: tex,
 			emissiveIntensity: 0.8,
+			roughness: 0.9,
+			metalness: 0.05,
 		});
-		const roof = new THREE.MeshLambertMaterial({ color: 0x171a22 });
+		const roof = new THREE.MeshStandardMaterial({ color: 0x171a22, roughness: 0.95 });
 		this.materials.push(facade, roof);
 
 		// BoxGeometry-groups: +x,-x,+y,-y,+z,-z → dak en bodem zónder raampjes,
@@ -220,8 +222,8 @@ export class CityBuildings {
 		const cyl = new THREE.CylinderGeometry(0.5, 0.62, 1, 7);
 		cyl.translate(0, 0.5, 0);
 		this.geometries.push(cyl);
-		const waterMat = new THREE.MeshLambertMaterial({ color: 0x4b3a30 });
-		const boxMat = new THREE.MeshLambertMaterial({ color: 0x262c36 });
+		const waterMat = new THREE.MeshStandardMaterial({ color: 0x4b3a30, roughness: 0.9 });
+		const boxMat = new THREE.MeshStandardMaterial({ color: 0x262c36, roughness: 0.85 });
 		this.materials.push(waterMat, boxMat);
 
 		const vul = (geo: THREE.BufferGeometry, mat: THREE.Material, list: Blob[], name: string) => {
@@ -248,7 +250,7 @@ export class CityBuildings {
 		const bulbGeo = new THREE.SphereGeometry(0.5, 10, 8);
 		const mastGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 6);
 		this.geometries.push(bulbGeo, mastGeo);
-		const mastMat = new THREE.MeshLambertMaterial({ color: 0x2b313c });
+		const mastMat = new THREE.MeshStandardMaterial({ color: 0x2b313c, roughness: 0.8 });
 		this.materials.push(mastMat);
 
 		const hoogste = [...specs].sort((a, b) => b.h - a.h).slice(0, 3);

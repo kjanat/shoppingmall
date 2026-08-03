@@ -351,14 +351,14 @@ export class CleaningCart {
 	private build(): THREE.Group {
 		const g = new THREE.Group();
 
-		const yellow = this.track(new THREE.MeshLambertMaterial({ color: 0xffc107 }));
-		const blue = this.track(new THREE.MeshLambertMaterial({ color: 0x1565c0 }));
-		const dark = this.track(new THREE.MeshLambertMaterial({ color: 0x263238 }));
-		const grey = this.track(new THREE.MeshLambertMaterial({ color: 0x90a4ae }));
-		const rubber = this.track(new THREE.MeshLambertMaterial({ color: 0x1a1a1a }));
-		const skin = this.track(new THREE.MeshLambertMaterial({ color: 0xc68642 }));
-		const hairM = this.track(new THREE.MeshLambertMaterial({ color: 0x111111 }));
-		const uni = this.track(new THREE.MeshLambertMaterial({ color: 0x00695c }));
+		const yellow = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.55, metalness: 0.2 }));
+		const blue = this.track(new THREE.MeshStandardMaterial({ color: 0x1565c0, roughness: 0.65 }));
+		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.3 }));
+		const grey = this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.4, roughness: 0.45 }));
+		const rubber = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }));
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }));
+		const hairM = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }));
+		const uni = this.track(new THREE.MeshStandardMaterial({ color: 0x00695c, roughness: 0.75 }));
 
 		// ── Ride-on scrubber chassis ──
 		const body = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.38, 1.35), yellow);
@@ -393,7 +393,7 @@ export class CleaningCart {
 		g.add(deck);
 		this.brush = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.34, 0.34, 0.06, 16),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x455a64 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.85 })),
 		);
 		this.brush.position.set(0, 0.06, 0.55);
 		g.add(this.brush);
@@ -402,7 +402,7 @@ export class CleaningCart {
 			const a = (i / 8) * Math.PI * 2;
 			const br = new THREE.Mesh(
 				new THREE.BoxGeometry(0.28, 0.02, 0.04),
-				this.track(new THREE.MeshLambertMaterial({ color: 0x78909c })),
+				this.track(new THREE.MeshStandardMaterial({ color: 0x78909c, roughness: 0.9 })),
 			);
 			br.position.set(Math.cos(a) * 0.05, 0.04, 0.55 + Math.sin(a) * 0.05);
 			br.rotation.y = a;
@@ -467,10 +467,11 @@ export class CleaningCart {
 		const vest = new THREE.Mesh(
 			new THREE.BoxGeometry(0.34, 0.12, 0.28),
 			this.track(
-				new THREE.MeshLambertMaterial({
+				new THREE.MeshStandardMaterial({
 					color: 0xffeb3b,
 					emissive: 0x665500,
 					emissiveIntensity: 0.25,
+					roughness: 0.6,
 				}),
 			),
 		);
@@ -497,7 +498,7 @@ export class CleaningCart {
 		// Optional face mask (common)
 		const mask = new THREE.Mesh(
 			new THREE.BoxGeometry(0.14, 0.07, 0.04),
-			this.track(new THREE.MeshLambertMaterial({ color: 0xeeeeee })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.7 })),
 		);
 		mask.position.set(0, 0.9, 0.12);
 		person.add(mask);
@@ -580,7 +581,7 @@ export class CleaningCart {
 		// Mop sticking out the side
 		const mopStick = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.015, 0.018, 1.1, 5),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x8d6e63 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.9 })),
 		);
 		mopStick.position.set(0.55, 0.9, -0.2);
 		mopStick.rotation.z = 0.25;
@@ -588,7 +589,7 @@ export class CleaningCart {
 		g.add(mopStick);
 		const mopHead = new THREE.Mesh(
 			new THREE.SphereGeometry(0.12, 8, 6),
-			this.track(new THREE.MeshLambertMaterial({ color: 0xeeeeee })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.95 })),
 		);
 		mopHead.scale.set(1, 0.5, 1.2);
 		mopHead.position.set(0.7, 0.45, 0.15);

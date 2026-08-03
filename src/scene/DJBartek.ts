@@ -149,10 +149,10 @@ export class DJBartek {
 		];
 		looks.forEach((L, i) => {
 			const g = new THREE.Group();
-			const skin = this.track(new THREE.MeshLambertMaterial({ color: 0xf5c9a8 }));
-			const top = this.track(new THREE.MeshLambertMaterial({ color: L.shirt }));
-			const legs = this.track(new THREE.MeshLambertMaterial({ color: 0x1a1a2e }));
-			const hairM = this.track(new THREE.MeshLambertMaterial({ color: L.hair }));
+			const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xf5c9a8, roughness: 0.8 }));
+			const top = this.track(new THREE.MeshStandardMaterial({ color: L.shirt, roughness: 0.55 }));
+			const legs = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7 }));
+			const hairM = this.track(new THREE.MeshStandardMaterial({ color: L.hair, roughness: 0.85 }));
 
 			const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.55, 4, 6), legs);
 			leg.position.y = 0.5;
@@ -179,7 +179,7 @@ export class DJBartek {
 			// phone / hand in air
 			const phone = new THREE.Mesh(
 				new THREE.BoxGeometry(0.08, 0.14, 0.02),
-				this.track(new THREE.MeshLambertMaterial({ color: 0x111111 })),
+				this.track(new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6 })),
 			);
 			phone.position.set(0.28, 1.7, 0.15);
 			phone.rotation.z = -0.4;
@@ -213,7 +213,7 @@ export class DJBartek {
 		// Stage platform at stair gap
 		const floor = new THREE.Mesh(
 			new THREE.BoxGeometry(4.2, 0.18, 3.2),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x1a1a2e })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7 })),
 		);
 		floor.position.set(0, 0.09, 0);
 		this.group.add(floor);
@@ -229,7 +229,7 @@ export class DJBartek {
 		// DJ desk
 		const desk = new THREE.Mesh(
 			new THREE.BoxGeometry(2.4, 0.9, 0.7),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x111827 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.4, roughness: 0.45 })),
 		);
 		desk.position.set(0, 0.55, 0.35);
 		this.group.add(desk);
@@ -238,7 +238,7 @@ export class DJBartek {
 		for (const sx of [-1.7, 1.7]) {
 			const sp = new THREE.Mesh(
 				new THREE.BoxGeometry(0.55, 1.1, 0.45),
-				this.track(new THREE.MeshLambertMaterial({ color: 0x0f172a })),
+				this.track(new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.85 })),
 			);
 			sp.position.set(sx, 0.7, -0.2);
 			this.group.add(sp);
@@ -262,7 +262,7 @@ export class DJBartek {
 		for (const dx of [-0.45, 0.45]) {
 			const deck = new THREE.Mesh(
 				new THREE.CylinderGeometry(0.28, 0.28, 0.06, 24),
-				this.track(new THREE.MeshLambertMaterial({ color: 0x1e293b })),
+				this.track(new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.7, roughness: 0.3 })),
 			);
 			deck.position.set(dx, 0, 0);
 			const disc = new THREE.Mesh(
@@ -278,7 +278,7 @@ export class DJBartek {
 		// Mixer
 		const mix = new THREE.Mesh(
 			new THREE.BoxGeometry(0.35, 0.08, 0.4),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x334155 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.5, roughness: 0.4 })),
 		);
 		mix.position.set(0, 0.02, 0);
 		g.add(mix);
@@ -289,9 +289,9 @@ export class DJBartek {
 		const body = new THREE.Group();
 		body.position.set(0, 0, -0.15);
 
-		const skin = this.track(new THREE.MeshLambertMaterial({ color: 0xe8b896 }));
-		const shirt = this.track(new THREE.MeshLambertMaterial({ color: 0x7c3aed }));
-		const pants = this.track(new THREE.MeshLambertMaterial({ color: 0x1e1b4b }));
+		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.85 }));
+		const shirt = this.track(new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.7 }));
+		const pants = this.track(new THREE.MeshStandardMaterial({ color: 0x1e1b4b, roughness: 0.9 }));
 
 		const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.55, 4, 8), pants);
 		legs.position.y = 0.55;
@@ -314,7 +314,7 @@ export class DJBartek {
 		// Headphones
 		const band = new THREE.Mesh(
 			new THREE.TorusGeometry(0.2, 0.03, 8, 16, Math.PI),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x111111 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6, roughness: 0.4 })),
 		);
 		band.rotation.z = Math.PI;
 		band.position.set(0, 1.92, 0);
@@ -322,7 +322,7 @@ export class DJBartek {
 		for (const sx of [-0.2, 0.2]) {
 			const cup = new THREE.Mesh(
 				new THREE.SphereGeometry(0.08, 10, 10),
-				this.track(new THREE.MeshLambertMaterial({ color: 0xec4899 })),
+				this.track(new THREE.MeshStandardMaterial({ color: 0xec4899, metalness: 0.5, roughness: 0.4 })),
 			);
 			cup.position.set(sx, 1.78, 0);
 			body.add(cup);
@@ -339,13 +339,13 @@ export class DJBartek {
 		// Cap
 		const cap = new THREE.Mesh(
 			new THREE.SphereGeometry(0.24, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x0f172a })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x0f172a })),
 		);
 		cap.position.set(0, 1.9, 0);
 		body.add(cap);
 		const brim = new THREE.Mesh(
 			new THREE.BoxGeometry(0.28, 0.03, 0.2),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x0f172a })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x0f172a })),
 		);
 		brim.position.set(0, 1.82, 0.18);
 		body.add(brim);
@@ -353,7 +353,7 @@ export class DJBartek {
 		// Mic arm
 		const mic = new THREE.Mesh(
 			new THREE.SphereGeometry(0.05, 8, 8),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x94a3b8 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.3 })),
 		);
 		mic.position.set(0.35, 1.55, 0.35);
 		body.add(mic);

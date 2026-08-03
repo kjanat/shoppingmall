@@ -15,7 +15,7 @@ export class BeardCave {
 	private materials: THREE.Material[] = [];
 	private lootGroup = new THREE.Group();
 	private pulseT = 0;
-	private glowMats: THREE.MeshLambertMaterial[] = [];
+	private glowMats: THREE.MeshStandardMaterial[] = [];
 	private pool: LightPool;
 
 	constructor(pool: LightPool) {
@@ -70,18 +70,23 @@ export class BeardCave {
 
 	private buildShell(): void {
 		const rock = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0x3e3429,
+				roughness: 0.95,
+				metalness: 0.05,
 			}),
 		);
 		const rockDark = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0x2a221c,
+				roughness: 0.98,
+				metalness: 0.02,
 			}),
 		);
 		const floorMat = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0x4a3f35,
+				roughness: 0.9,
 			}),
 		);
 
@@ -147,8 +152,10 @@ export class BeardCave {
 
 	private buildLoot(): void {
 		const gold = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0xffd700,
+				metalness: 0.95,
+				roughness: 0.22,
 				emissive: 0xaa7700,
 				emissiveIntensity: 0.3,
 			}),
@@ -156,8 +163,10 @@ export class BeardCave {
 		this.glowMats.push(gold);
 
 		const goldSoft = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0xe6b422,
+				metalness: 0.85,
+				roughness: 0.35,
 				emissive: 0x664400,
 				emissiveIntensity: 0.2,
 			}),
@@ -165,32 +174,40 @@ export class BeardCave {
 		this.glowMats.push(goldSoft);
 
 		const ruby = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0xc62828,
+				metalness: 0.4,
+				roughness: 0.15,
 				emissive: 0x4a0000,
 				emissiveIntensity: 0.35,
 			}),
 		);
 		const emerald = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0x00c853,
+				metalness: 0.45,
+				roughness: 0.18,
 				emissive: 0x003d1a,
 				emissiveIntensity: 0.3,
 			}),
 		);
 		const sapphire = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0x1565c0,
+				metalness: 0.5,
+				roughness: 0.16,
 				emissive: 0x001a40,
 				emissiveIntensity: 0.3,
 			}),
 		);
 		const silver = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0xc0c0c0,
+				metalness: 0.9,
+				roughness: 0.28,
 			}),
 		);
-		const wood = this.track(new THREE.MeshLambertMaterial({ color: 0x5d4037 }));
+		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.9 }));
 
 		// Treasure chest
 		const chest = new THREE.Group();
@@ -297,8 +314,10 @@ export class BeardCave {
 			const pearl = new THREE.Mesh(
 				new THREE.SphereGeometry(0.045, 8, 8),
 				this.track(
-					new THREE.MeshLambertMaterial({
+					new THREE.MeshStandardMaterial({
 						color: 0xfff8e7,
+						roughness: 0.25,
+						metalness: 0.15,
 					}),
 				),
 			);
@@ -309,15 +328,18 @@ export class BeardCave {
 
 	private buildTorch(): void {
 		const iron = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0x37474f,
+				metalness: 0.7,
+				roughness: 0.4,
 			}),
 		);
 		const flameMat = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0xff6d00,
 				emissive: 0xff3d00,
 				emissiveIntensity: 1.2,
+				roughness: 1,
 			}),
 		);
 		this.glowMats.push(flameMat);

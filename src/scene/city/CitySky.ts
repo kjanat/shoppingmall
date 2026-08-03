@@ -45,7 +45,7 @@ export class CitySky {
 	/** Driftsnelheid per cluster — ieder wolkje z'n eigen tempo. */
 	private readonly drift: number[] = [];
 	private readonly basisY: number[] = [];
-	private readonly cloudMat: THREE.MeshLambertMaterial;
+	private readonly cloudMat: THREE.MeshStandardMaterial;
 
 	private readonly regen: THREE.Points;
 	private readonly regenMat: THREE.PointsMaterial;
@@ -73,12 +73,13 @@ export class CitySky {
 		const puffGeo = new THREE.SphereGeometry(1, 10, 7);
 		this.geometries.push(puffGeo);
 		this.cloudMat = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: KLEUR_HELDER,
 				emissive: 0xbcd0ff,
 				emissiveIntensity: 0,
 				transparent: true,
 				opacity: 0.55,
+				roughness: 1,
 				depthWrite: false,
 			}),
 		);

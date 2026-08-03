@@ -178,7 +178,7 @@ export class RoofIsland {
 	private instanced: THREE.InstancedMesh[] = [];
 
 	// Animatie-referenties (geen allocaties in update)
-	private waterMat!: THREE.MeshLambertMaterial;
+	private waterMat!: THREE.MeshStandardMaterial;
 	private water!: THREE.Mesh;
 	private waterBaseY = 0;
 	private poolBall!: THREE.Mesh;
@@ -240,7 +240,7 @@ export class RoofIsland {
 	private buildDeck(): void {
 		const deck = new THREE.Mesh(
 			this.geo(new THREE.BoxGeometry(26, 0.35, 40)),
-			this.track(new THREE.MeshLambertMaterial({ color: 0xe6cf9c })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xe6cf9c, roughness: 0.95 })),
 		);
 		deck.position.set(-19, DECK_Y - 0.175, 0);
 		deck.receiveShadow = true;
@@ -268,7 +268,7 @@ export class RoofIsland {
 		// Tegelrand — licht verhoogd, zodat niemand 'per ongeluk' erin rijdt
 		const rim = new THREE.Mesh(
 			this.geo(new THREE.ExtrudeGeometry(outer, { depth: 0.12, bevelEnabled: false })),
-			this.track(new THREE.MeshLambertMaterial({ color: 0xf5f5f0 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.6 })),
 		);
 		rim.rotation.x = -Math.PI / 2;
 		rim.position.y = 0.005;
@@ -279,7 +279,7 @@ export class RoofIsland {
 		// de zwemmers af. De loopbare bak zit in poolFloorY.
 		const bottom = new THREE.Mesh(
 			this.geo(new THREE.ShapeGeometry(inner)),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x01579b })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x01579b, roughness: 0.85 })),
 		);
 		bottom.rotation.x = -Math.PI / 2;
 		bottom.position.y = 0.02;
@@ -287,8 +287,10 @@ export class RoofIsland {
 
 		// Waterspiegel — opacity pulseert in update()
 		this.waterMat = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0x29b6f6,
+				roughness: 0.15,
+				metalness: 0.1,
 				transparent: true,
 				opacity: 0.8,
 			}),
@@ -307,7 +309,7 @@ export class RoofIsland {
 	private buildSlide(): void {
 		const g = new THREE.Group();
 		g.name = 'slide';
-		const steel = this.track(new THREE.MeshLambertMaterial({ color: 0x90a4ae }));
+		const steel = this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.6, roughness: 0.4 }));
 
 		// Torenpoten + platform op DECK_Y + 4
 		const legGeo = this.geo(new THREE.CylinderGeometry(0.09, 0.09, 4, 8));
@@ -323,7 +325,7 @@ export class RoofIsland {
 		}
 		const platform = new THREE.Mesh(
 			this.geo(new THREE.BoxGeometry(1.9, 0.15, 1.9)),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x455a64 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.7 })),
 		);
 		platform.position.set(-28.5, DECK_Y + 4, -10);
 		g.add(platform);
@@ -371,7 +373,7 @@ export class RoofIsland {
 		this.slideCurve = curve;
 		const tube = new THREE.Mesh(
 			this.geo(new THREE.TubeGeometry(curve, 48, 0.5, 10, false)),
-			this.track(new THREE.MeshLambertMaterial({ color: 0xffca28, side: THREE.DoubleSide })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xffca28, roughness: 0.35, side: THREE.DoubleSide })),
 		);
 		g.add(tube);
 
@@ -400,7 +402,7 @@ export class RoofIsland {
 		const cx = -12.3;
 		const cz = 14.5;
 
-		const bamboo = this.track(new THREE.MeshLambertMaterial({ color: 0x9a7b4f }));
+		const bamboo = this.track(new THREE.MeshStandardMaterial({ color: 0x9a7b4f, roughness: 0.9 }));
 		const poleGeo = this.geo(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 7));
 		for (const [dx, dz] of [
 			[-1.4, -1.4],
@@ -416,7 +418,7 @@ export class RoofIsland {
 		// Bar zelf: één plank, oneindige dorst
 		const counter = new THREE.Mesh(
 			this.geo(new THREE.BoxGeometry(1.0, 1.1, 3.2)),
-			this.track(new THREE.MeshLambertMaterial({ color: 0x6d4c41 })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.8 })),
 		);
 		counter.position.set(cx - 0.6, DECK_Y + 0.55, cz);
 		g.add(counter);
@@ -424,14 +426,14 @@ export class RoofIsland {
 		// Rieten kegeldakje
 		const thatch = new THREE.Mesh(
 			this.geo(new THREE.ConeGeometry(2.7, 1.8, 9)),
-			this.track(new THREE.MeshLambertMaterial({ color: 0xb8935a })),
+			this.track(new THREE.MeshStandardMaterial({ color: 0xb8935a, roughness: 1 })),
 		);
 		thatch.position.set(cx, DECK_Y + 4.0, cz);
 		g.add(thatch);
 
 		// Krukken (instanced — drie krukken is ook een rij)
 		const stoolGeo = this.geo(new THREE.CylinderGeometry(0.24, 0.2, 0.68, 8));
-		const stoolMat = this.track(new THREE.MeshLambertMaterial({ color: 0x8d6e63 }));
+		const stoolMat = this.track(new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.85 }));
 		const stools = new THREE.InstancedMesh(stoolGeo, stoolMat, 3);
 		const d = new THREE.Object3D();
 		[13.2, 14.5, 15.8].forEach((z, i) => {
@@ -490,7 +492,7 @@ export class RoofIsland {
 		// Stammen (origin aan de voet)
 		const trunkGeo = this.geo(new THREE.CylinderGeometry(0.09, 0.17, 3.4, 7));
 		trunkGeo.translate(0, 1.7, 0);
-		const trunkMat = this.track(new THREE.MeshLambertMaterial({ color: 0x8b6914 }));
+		const trunkMat = this.track(new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 }));
 		const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
 		spots.forEach(([x, z, s], i) => {
 			d.position.set(x, DECK_Y, z);
@@ -505,7 +507,7 @@ export class RoofIsland {
 		// Bladeren: 9 per palm, één InstancedMesh, groentint via instanceColor
 		const frondGeo = this.geo(new THREE.PlaneGeometry(0.42, 2.1));
 		frondGeo.translate(0, 1.05, 0);
-		const frondMat = this.track(new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+		const frondMat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, side: THREE.DoubleSide }));
 		const perPalm = 9;
 		const fronds = new THREE.InstancedMesh(frondGeo, frondMat, spots.length * perPalm);
 		const greens = [0x1b7a3d, 0x2d8a4e, 0x3d9b55, 0x228b22];
@@ -530,7 +532,7 @@ export class RoofIsland {
 
 		// Kokosnoten: 2 per palm — genoeg voor de suggestie van gevaar
 		const cocoGeo = this.geo(new THREE.SphereGeometry(0.11, 6, 6));
-		const cocoMat = this.track(new THREE.MeshLambertMaterial({ color: 0x5c4033 }));
+		const cocoMat = this.track(new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 }));
 		const cocos = new THREE.InstancedMesh(cocoGeo, cocoMat, spots.length * 2);
 		spots.forEach(([x, z, s], i) => {
 			for (let j = 0; j < 2; j++) {
@@ -558,7 +560,7 @@ export class RoofIsland {
 	private buildLoungers(): void {
 		const spots = this.loungerSpots();
 		const d = new THREE.Object3D();
-		const plastic = this.track(new THREE.MeshLambertMaterial({ color: 0xf1f8f4 }));
+		const plastic = this.track(new THREE.MeshStandardMaterial({ color: 0xf1f8f4, roughness: 0.7 }));
 
 		const baseGeo = this.geo(new THREE.BoxGeometry(0.7, 0.16, 1.8));
 		const bases = new THREE.InstancedMesh(baseGeo, plastic, spots.length);
@@ -598,11 +600,11 @@ export class RoofIsland {
 
 		const poleGeo = this.geo(new THREE.CylinderGeometry(0.04, 0.04, 2.6, 6));
 		poleGeo.translate(0, 1.3, 0);
-		const poleMat = this.track(new THREE.MeshLambertMaterial({ color: 0xcfd8dc }));
+		const poleMat = this.track(new THREE.MeshStandardMaterial({ color: 0xcfd8dc, metalness: 0.5, roughness: 0.5 }));
 		const poles = new THREE.InstancedMesh(poleGeo, poleMat, spots.length);
 
 		const canopyGeo = this.geo(new THREE.ConeGeometry(1.5, 0.7, 8));
-		const canopyMat = this.track(new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+		const canopyMat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide }));
 		const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, spots.length);
 		const colors = [0xff5252, 0x40c4ff, 0xffd740, 0xff4081];
 		const col = new THREE.Color();
@@ -631,7 +633,7 @@ export class RoofIsland {
 		];
 		const geoT = this.geo(new THREE.PlaneGeometry(0.62, 1.5));
 		geoT.rotateX(-Math.PI / 2);
-		const mat = this.track(new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+		const mat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, side: THREE.DoubleSide }));
 		const towels = new THREE.InstancedMesh(geoT, mat, onLoungers.length + onDeck.length);
 		const colors = [0xef5350, 0x26c6da, 0xffee58, 0xab47bc, 0x66bb6a, 0xff7043, 0x5c6bc0, 0xec407a];
 		const d = new THREE.Object3D();
@@ -662,7 +664,7 @@ export class RoofIsland {
 	private buildProps(): void {
 		const bottleGeo = this.geo(new THREE.CylinderGeometry(0.14, 0.14, 0.45, 10));
 		const capGeo = this.geo(new THREE.CylinderGeometry(0.06, 0.06, 0.09, 8));
-		const capMat = this.track(new THREE.MeshLambertMaterial({ color: 0xd32f2f }));
+		const capMat = this.track(new THREE.MeshStandardMaterial({ color: 0xd32f2f, roughness: 0.5 }));
 
 		const glijTex = this.label((ctx, w, h) => {
 			ctx.fillStyle = '#ffffff';
@@ -683,7 +685,7 @@ export class RoofIsland {
 			ctx.fillText('niet voor consumptie', w * 0.25, 105);
 			ctx.fillText('niet voor consumptie', w * 0.75, 105);
 		});
-		const glijMat = this.track(new THREE.MeshLambertMaterial({ map: glijTex }));
+		const glijMat = this.track(new THREE.MeshStandardMaterial({ map: glijTex, roughness: 0.4 }));
 
 		const babyTex = this.label((ctx, w, h) => {
 			ctx.fillStyle = '#fce4ec';
@@ -698,7 +700,7 @@ export class RoofIsland {
 			ctx.fillText('glijbaan-approved', w * 0.25, 85);
 			ctx.fillText('glijbaan-approved', w * 0.75, 85);
 		});
-		const babyMat = this.track(new THREE.MeshLambertMaterial({ map: babyTex }));
+		const babyMat = this.track(new THREE.MeshStandardMaterial({ map: babyTex, roughness: 0.4 }));
 
 		const bottle = (mat: THREE.Material, x: number, y: number, z: number, tipped: boolean): void => {
 			const b = new THREE.Mesh(bottleGeo, mat);
@@ -729,7 +731,7 @@ export class RoofIsland {
 			});
 		});
 		const ballGeo = this.geo(new THREE.SphereGeometry(0.35, 12, 10));
-		const ballMat = this.track(new THREE.MeshLambertMaterial({ map: ballTex }));
+		const ballMat = this.track(new THREE.MeshStandardMaterial({ map: ballTex, roughness: 0.6 }));
 
 		// Eén dobbert in het bad (geanimeerd), twee liggen te wachten op wind
 		this.poolBall = new THREE.Mesh(ballGeo, ballMat);
@@ -752,7 +754,7 @@ export class RoofIsland {
 	/** Railing rondom, met een opening aan de oostkant (z -2.5..2.5) als entree. */
 	private buildRailing(): void {
 		const { minX, maxX, minZ, maxZ } = this.roofPad;
-		const metal = this.track(new THREE.MeshLambertMaterial({ color: 0xeceff1 }));
+		const metal = this.track(new THREE.MeshStandardMaterial({ color: 0xeceff1, metalness: 0.55, roughness: 0.4 }));
 
 		// Paaltjes instanced langs de omtrek
 		const positions: [number, number][] = [];

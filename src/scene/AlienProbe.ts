@@ -128,8 +128,10 @@ export class AlienProbe {
 		const disc = new THREE.Mesh(
 			new THREE.SphereGeometry(1.4, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
 			this.track(
-				new THREE.MeshLambertMaterial({
+				new THREE.MeshStandardMaterial({
 					color: 0xb0bec5,
+					metalness: 0.85,
+					roughness: 0.25,
 					emissive: 0x224422,
 					emissiveIntensity: 0.3,
 				}),
@@ -140,7 +142,7 @@ export class AlienProbe {
 		const dome = new THREE.Mesh(
 			new THREE.SphereGeometry(0.55, 16, 12),
 			this.track(
-				new THREE.MeshLambertMaterial({
+				new THREE.MeshStandardMaterial({
 					color: 0x69f0ae,
 					transparent: true,
 					opacity: 0.75,

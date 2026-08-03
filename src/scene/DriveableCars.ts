@@ -295,13 +295,14 @@ export class DriveableCars {
 
 	private makeCar(color: number): THREE.Group {
 		const g = new THREE.Group();
-		const bodyM = this.track(new THREE.MeshLambertMaterial({ color }));
-		const dark = this.track(new THREE.MeshLambertMaterial({ color: 0x111111 }));
+		const bodyM = this.track(new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.4 }));
+		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
 		const glass = this.track(
-			new THREE.MeshLambertMaterial({
+			new THREE.MeshStandardMaterial({
 				color: 0x90caf9,
 				transparent: true,
 				opacity: 0.5,
+				roughness: 0.15,
 			}),
 		);
 		const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 4.2), bodyM);
@@ -314,7 +315,7 @@ export class DriveableCars {
 		const stripe = new THREE.Mesh(
 			new THREE.BoxGeometry(1.7, 0.08, 0.05),
 			this.track(
-				new THREE.MeshLambertMaterial({
+				new THREE.MeshStandardMaterial({
 					color: 0xffc107,
 					emissive: 0xaa8800,
 					emissiveIntensity: 0.3,

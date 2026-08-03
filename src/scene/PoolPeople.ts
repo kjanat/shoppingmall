@@ -184,7 +184,7 @@ export class PoolPeople {
 	private materials: THREE.Material[] = [];
 	private geos: THREE.BufferGeometry[] = [];
 	private textures: THREE.Texture[] = [];
-	private matCache = new Map<number, THREE.MeshLambertMaterial>();
+	private matCache = new Map<string, THREE.MeshStandardMaterial>();
 
 	private readonly s: ReturnType<PoolPeople['buildShared']>;
 	private swimmers: Swimmer[] = [];
@@ -391,7 +391,7 @@ export class PoolPeople {
 
 	/** Sportzonnebril met zwart bandje — niemand kijkt hier iemand aan. */
 	private addShades(head: THREE.Group): void {
-		const dark = this.mat(0x121212);
+		const dark = this.mat(0x121212, 0.3, 0.35);
 		const lens = new THREE.Mesh(this.s.lens, dark);
 		lens.position.set(0, 0.02, 0.095);
 		head.add(lens);
@@ -402,8 +402,8 @@ export class PoolPeople {
 	}
 
 	private buildWoman(skinColor: number, kitColor: number, hairColor: number, hairStyle: 'long' | 'bun'): Rig {
-		const skin = this.mat(skinColor);
-		const kit = this.mat(kitColor);
+		const skin = this.mat(skinColor, 0.72);
+		const kit = this.mat(kitColor, 0.45, 0.1);
 		const rig = this.buildRig(this.s.torsoF, skin, skin, kit);
 
 		// Bikinibroekje: het bekken in felle kleur, klaar. Hangt aan de romp en
@@ -429,13 +429,13 @@ export class PoolPeople {
 			rig.body.add(cup);
 		}
 
-		const lips = new THREE.Mesh(this.s.lips, this.mat(0xc2185b));
+		const lips = new THREE.Mesh(this.s.lips, this.mat(0xc2185b, 0.35));
 		lips.scale.set(1.4, 0.65, 0.5);
 		lips.position.set(0, -0.052, 0.114);
 		rig.head.add(lips);
 		this.addShades(rig.head);
 
-		const hairMat = this.mat(hairColor);
+		const hairMat = this.mat(hairColor, 0.78);
 		const fringe = new THREE.Mesh(this.s.fringe, hairMat);
 		fringe.position.y = 0.02;
 		rig.head.add(fringe);
@@ -452,8 +452,8 @@ export class PoolPeople {
 	}
 
 	private buildMan(skinColor: number, torsoMat: THREE.Material, shortsColor: number): Rig {
-		const skin = this.mat(skinColor);
-		const shorts = this.mat(shortsColor);
+		const skin = this.mat(skinColor, 0.72);
+		const shorts = this.mat(shortsColor, 0.6);
 		const rig = this.buildRig(this.s.torsoM, torsoMat, skin, skin);
 
 		// Zwembroek/korte broek: bekken iets hoger geschaald zodat het kledt.
@@ -462,7 +462,7 @@ export class PoolPeople {
 		pelvis.position.y = 0.93 - WAIST_Y;
 		rig.body.add(pelvis);
 
-		const hairMat = this.mat(0x1a1a1a);
+		const hairMat = this.mat(0x1a1a1a, 0.8);
 		const cap = new THREE.Mesh(this.s.capHair, hairMat);
 		cap.position.y = 0.015;
 		rig.head.add(cap);
@@ -503,7 +503,7 @@ export class PoolPeople {
 	}
 
 	private buildSunbathers(): void {
-		const frameMat = this.mat(0xf2f2ee);
+		const frameMat = this.mat(0xf2f2ee, 0.5);
 		const towelColors = [0xff5b8d, 0x00bcd4, 0xffca28];
 		const loungerX = [-24, -21.2, -18.4];
 		const looks: [number, number, number, 'long' | 'bun'][] = [
@@ -529,7 +529,7 @@ export class PoolPeople {
 			back.position.set(0, LOUNGER.backY, LOUNGER.backZ);
 			back.rotation.x = LOUNGER.backTilt;
 			lounger.add(back);
-			const towel = new THREE.Mesh(this.s.towel, this.mat(at(towelColors, i)));
+			const towel = new THREE.Mesh(this.s.towel, this.mat(at(towelColors, i), 0.9));
 			towel.position.y = TOWEL_Y;
 			lounger.add(towel);
 			this.group.add(lounger);
@@ -569,9 +569,9 @@ export class PoolPeople {
 
 		// Oliefles-prop in de smeerhand, factor 30 zon, factor 0 bescherming.
 		const bottle = new THREE.Group();
-		const fles = new THREE.Mesh(this.s.bottle, this.mat(0xe07b1f));
+		const fles = new THREE.Mesh(this.s.bottle, this.mat(0xe07b1f, 0.35, 0.1));
 		bottle.add(fles);
-		const dop = new THREE.Mesh(this.s.bottleCap, this.mat(0xf6f6f2));
+		const dop = new THREE.Mesh(this.s.bottleCap, this.mat(0xf6f6f2, 0.5));
 		dop.position.y = 0.095;
 		bottle.add(dop);
 		bottle.position.set(0, -0.58, 0.04);
@@ -584,7 +584,7 @@ export class PoolPeople {
 	// ── zwemmers ───────────────────────────────────────────
 
 	private buildSwimmers(): void {
-		const bandMat = this.mat(0xff8c1a);
+		const bandMat = this.mat(0xff8c1a, 0.5, 0.1);
 		const casts: {
 			x: number;
 			z: number;
@@ -601,7 +601,7 @@ export class PoolPeople {
 
 		casts.forEach((c, i) => {
 			const rig = c.man
-				? this.buildMan(c.skin, this.mat(c.skin), c.kit)
+				? this.buildMan(c.skin, this.mat(c.skin, 0.72), c.kit)
 				: this.buildWoman(c.skin, c.kit, i % 2 === 0 ? 0x111111 : 0x8d4a2f, 'bun');
 
 			// Zwembandjes om de bovenarmen — volwassen mensen, nul vertrouwen.
@@ -620,7 +620,7 @@ export class PoolPeople {
 			let baseY = WATER_Y - 1.15; // borst op de waterlijn
 			if (c.ring) {
 				baseY = WATER_Y - 0.9; // in de band hang je hoger
-				const ring = new THREE.Mesh(this.s.ring, this.mat(0xff5b8d));
+				const ring = new THREE.Mesh(this.s.ring, this.mat(0xff5b8d, 0.45, 0.1));
 				ring.rotation.x = Math.PI / 2;
 				ring.position.y = 0.92;
 				rig.root.add(ring);
@@ -646,8 +646,8 @@ export class PoolPeople {
 	private buildAlZutCrew(): void {
 		// Vier mannen, identieke witte polo's, gouden kettingen, zonnebrillen.
 		// Ze staan bij de tiki-bar en zijn het overal collectief mee eens.
-		const polo = this.mat(0xf6f6f2);
-		const gold = this.mat(0xd4af37);
+		const polo = this.mat(0xf6f6f2, 0.55);
+		const gold = this.mat(0xd4af37, 0.25, 0.9);
 		const skins = [0xe8bd97, 0x8d5524, 0xd9a377, 0x5c3a21];
 
 		skins.forEach((skin, i) => {
@@ -678,10 +678,10 @@ export class PoolPeople {
 		// vroeger: op x -14,3 stak hij dwars door het tiki-bar-bord op x -13,85.
 		post.position.set(-15.6, DECK_Y, 15.2);
 
-		const paal = new THREE.Mesh(this.s.pole, this.mat(0x8a6a45));
+		const paal = new THREE.Mesh(this.s.pole, this.mat(0x8a6a45, 0.7));
 		paal.position.y = 1.35;
 		post.add(paal);
-		const kap = new THREE.Mesh(this.s.canopy, this.mat(0xc9a05a));
+		const kap = new THREE.Mesh(this.s.canopy, this.mat(0xc9a05a, 0.85));
 		kap.position.y = 2.75;
 		post.add(kap);
 
@@ -712,12 +712,13 @@ export class PoolPeople {
 
 	// ── boekhouding ────────────────────────────────────────
 
-	private mat(color: number): THREE.MeshLambertMaterial {
-		const hit = this.matCache.get(color);
+	private mat(color: number, roughness = 0.8, metalness = 0.05): THREE.MeshStandardMaterial {
+		const key = `${color}:${roughness}:${metalness}`;
+		const hit = this.matCache.get(key);
 		if (hit) return hit;
-		const m = new THREE.MeshLambertMaterial({ color });
+		const m = new THREE.MeshStandardMaterial({ color, roughness, metalness });
 		this.materials.push(m);
-		this.matCache.set(color, m);
+		this.matCache.set(key, m);
 		return m;
 	}
 

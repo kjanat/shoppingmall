@@ -112,9 +112,12 @@ function materialKey(material: ColorMaterial): string {
 		toneMapped: material.toneMapped,
 		flatShading: props['flatShading'] === true,
 		wireframe: props['wireframe'] === true,
-		// roughness/metalness left the key with the move to MeshLambertMaterial —
-		// no material carries them anymore. If PBR materials ever return, their
-		// roughness/metalness must rejoin this key or unlike surfaces will merge.
+		// Back in the key with MeshStandardMaterial: they change how a surface
+		// shades, so a matte wall and polished steel must not share a batch.
+		// Quantized to quarter steps — hundreds of materials differ only by a
+		// hair, and those differences should not each cost a draw call.
+		roughness: quantize('roughness'),
+		metalness: quantize('metalness'),
 		emissive: emissiveKey,
 		emissiveIntensity: quantize('emissiveIntensity'),
 		normalScale: String(props['normalScale'] ?? ''),

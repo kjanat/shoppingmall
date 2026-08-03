@@ -36,8 +36,10 @@ export class FoodCourt {
 		const floor = new THREE.Mesh(
 			new THREE.BoxGeometry(14, 0.06, 5.2),
 			this.track(
-				new THREE.MeshLambertMaterial({
+				new THREE.MeshStandardMaterial({
 					color: 0xe8dcc8,
+					roughness: 0.85,
+					metalness: 0.05,
 				}),
 			),
 		);
@@ -58,9 +60,9 @@ export class FoodCourt {
 	}
 
 	private buildTables(): void {
-		const wood = this.track(new THREE.MeshLambertMaterial({ color: 0x6d4c41 }));
-		const metal = this.track(new THREE.MeshLambertMaterial({ color: 0x90a4ae }));
-		const trayMat = this.track(new THREE.MeshLambertMaterial({ color: 0xf5f5f5 }));
+		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.75 }));
+		const metal = this.track(new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.5, roughness: 0.4 }));
+		const trayMat = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 }));
 
 		const spots: [number, number][] = [
 			[-4, -0.8],
@@ -100,7 +102,7 @@ export class FoodCourt {
 			g.add(tray);
 			const burger = new THREE.Mesh(
 				new THREE.CylinderGeometry(0.08, 0.09, 0.08, 10),
-				this.track(new THREE.MeshLambertMaterial({ color: 0xc4783a })),
+				this.track(new THREE.MeshStandardMaterial({ color: 0xc4783a, roughness: 0.7 })),
 			);
 			burger.position.set(0.1, 0.9, 0.05);
 			g.add(burger);
@@ -174,8 +176,10 @@ export class FoodCourt {
 			const counter = new THREE.Mesh(
 				new THREE.BoxGeometry(2.8, 1.0, 1.0),
 				this.track(
-					new THREE.MeshLambertMaterial({
+					new THREE.MeshStandardMaterial({
 						color: s.color,
+						roughness: 0.65,
+						metalness: 0.1,
 					}),
 				),
 			);
@@ -185,8 +189,10 @@ export class FoodCourt {
 			const top = new THREE.Mesh(
 				new THREE.BoxGeometry(2.9, 0.08, 1.1),
 				this.track(
-					new THREE.MeshLambertMaterial({
+					new THREE.MeshStandardMaterial({
 						color: 0xeceff1,
+						metalness: 0.4,
+						roughness: 0.4,
 					}),
 				),
 			);
@@ -196,14 +202,14 @@ export class FoodCourt {
 			// Back wall / menu board
 			const back = new THREE.Mesh(
 				new THREE.BoxGeometry(2.8, 1.6, 0.12),
-				this.track(new THREE.MeshLambertMaterial({ color: 0x212121 })),
+				this.track(new THREE.MeshStandardMaterial({ color: 0x212121, roughness: 0.8 })),
 			);
 			back.position.set(0, 1.9, -0.55);
 			g.add(back);
 
 			// Staanders: de achterwand begint op 1.1 m — zonder poten leek het
 			// vanaf de noordkant een rij zwevende planken
-			const postMat = this.track(new THREE.MeshLambertMaterial({ color: 0x37474f }));
+			const postMat = this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.6, roughness: 0.4 }));
 			for (const sx of [-1.32, 1.32]) {
 				const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.7, 8), postMat);
 				post.position.set(sx, 1.35, -0.55);
@@ -225,8 +231,8 @@ export class FoodCourt {
 			});
 
 			// Vendor blob
-			const skin = this.track(new THREE.MeshLambertMaterial({ color: 0xe8b896 }));
-			const uni = this.track(new THREE.MeshLambertMaterial({ color: s.accent }));
+			const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.85 }));
+			const uni = this.track(new THREE.MeshStandardMaterial({ color: s.accent, roughness: 0.7 }));
 			const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.4, 4, 6), uni);
 			body.position.set(0, 1.55, -0.15);
 			g.add(body);

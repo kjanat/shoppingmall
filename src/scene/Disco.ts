@@ -67,12 +67,13 @@ export class DiscoParty {
 			const ball = new THREE.Mesh(
 				new THREE.IcosahedronGeometry(0.4, 1),
 				this.track(
-					// Dark body on purpose: metalness 0.95 used to kill the diffuse so
-					// the beat-driven emissive carried the whole look. Lambert has no
-					// metalness — with a light base colour the balls read as static
-					// white blobs and the colour pulse disappears.
-					new THREE.MeshLambertMaterial({
-						color: 0x1a1a1a,
+					// metalness 0.95 kills the diffuse, so the beat-driven emissive
+					// carries the whole look — that is what makes these read as mirror
+					// balls instead of white spheres.
+					new THREE.MeshStandardMaterial({
+						color: 0xeeeeee,
+						metalness: 0.95,
+						roughness: 0.12,
 						emissive: col,
 						emissiveIntensity: 0.35,
 					}),
@@ -111,7 +112,7 @@ export class DiscoParty {
 		];
 		for (const [x, y, z, sx, sy, sz] of edges) {
 			const mat = this.track(
-				new THREE.MeshLambertMaterial({
+				new THREE.MeshStandardMaterial({
 					color: 0x00ffc8,
 					emissive: 0x00ffc8,
 					emissiveIntensity: 1.4,
@@ -185,7 +186,7 @@ export class DiscoParty {
 			const ball = at(this.balls, i);
 			ball.rotation.y += dt * (1.8 + i * 0.1);
 			ball.rotation.x += dt * 0.9;
-			const mat = ball.material as THREE.MeshLambertMaterial;
+			const mat = ball.material as THREE.MeshStandardMaterial;
 			mat.emissive.copy(c);
 			mat.emissiveIntensity = 0.35 + beat * 0.45;
 			const glow = at(this.floorGlow, i);
@@ -193,7 +194,7 @@ export class DiscoParty {
 			(glow.material as THREE.MeshBasicMaterial).opacity = 0.1 + beat * 0.14;
 		});
 		this.neonStrips.forEach((strip, i) => {
-			const m = strip.material as THREE.MeshLambertMaterial;
+			const m = strip.material as THREE.MeshStandardMaterial;
 			const c = this.tint.setHSL((this.t * 0.25 + i * 0.18) % 1, 1, 0.5);
 			m.color.copy(c);
 			m.emissive.copy(c);

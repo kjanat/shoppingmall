@@ -113,9 +113,9 @@ export class Catwalk {
 		this.group.add(this.spritz);
 
 		this.bottle = new THREE.Group();
-		const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.16, 8), this.mat(0xff7a2d));
+		const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.16, 8), this.mat(0xff7a2d, 0.25, 0.1));
 		this.bottle.add(glass);
-		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.02, 0.07, 8), this.mat(0x2a5c2a));
+		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.02, 0.07, 8), this.mat(0x2a5c2a, 0.4));
 		neck.position.y = 0.11;
 		this.bottle.add(neck);
 		this.bottle.visible = false;
@@ -315,11 +315,11 @@ export class Catwalk {
 	}
 
 	private buildModel(look: { gown: number; hair: number; skin: number; name: string }, index: number): Model {
-		const skin = this.mat(look.skin);
-		const gown = this.mat(look.gown);
-		const hairMat = this.mat(look.hair);
-		const heel = this.mat(0x1a1a1a);
-		const gold = this.mat(0xd4af37);
+		const skin = this.mat(look.skin, 0.72);
+		const gown = this.mat(look.gown, 0.42, 0.15);
+		const hairMat = this.mat(look.hair, 0.78);
+		const heel = this.mat(0x1a1a1a, 0.3, 0.3);
+		const gold = this.mat(0xd4af37, 0.25, 0.9);
 
 		const root = new THREE.Group();
 		root.position.set(RUNWAY_X, PODIUM_Y, START_Z);
@@ -436,7 +436,7 @@ export class Catwalk {
 		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.12, 8), skin);
 		neck.position.y = -0.14;
 		head.add(neck);
-		const dark = this.mat(0x141414);
+		const dark = this.mat(0x141414, 0.3);
 		for (const side of [-1, 1] as const) {
 			const eye = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), dark);
 			eye.position.set(side * 0.048, 0.02, 0.112);
@@ -448,11 +448,11 @@ export class Catwalk {
 			brow.rotation.z = side * -0.18;
 			head.add(brow);
 			// Gold hoop
-			const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.004, 6, 12), this.mat(0xd4af37));
+			const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.004, 6, 12), this.mat(0xd4af37, 0.25, 0.9));
 			hoop.position.set(side * 0.12, -0.045, 0);
 			head.add(hoop);
 		}
-		const lips = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), this.mat(0xc2185b));
+		const lips = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), this.mat(0xc2185b, 0.35));
 		lips.scale.set(1.4, 0.65, 0.5);
 		lips.position.set(0, -0.052, 0.114);
 		head.add(lips);
@@ -492,7 +492,10 @@ export class Catwalk {
 	// ── set dressing ───────────────────────────────────────
 
 	private buildRunway(): void {
-		const deck = new THREE.Mesh(new THREE.BoxGeometry(HALF_W * 2, PODIUM_Y, TIP_Z - START_Z + 2.4), this.mat(0xf7f5f2));
+		const deck = new THREE.Mesh(
+			new THREE.BoxGeometry(HALF_W * 2, PODIUM_Y, TIP_Z - START_Z + 2.4),
+			this.mat(0xf7f5f2, 0.25, 0.15),
+		);
 		deck.position.set(RUNWAY_X, PODIUM_Y / 2, (START_Z + TIP_Z) / 2);
 		deck.receiveShadow = true;
 		this.group.add(deck);
@@ -505,14 +508,14 @@ export class Catwalk {
 			this.group.add(led);
 		}
 		// Rounded tip
-		const tip = new THREE.Mesh(new THREE.CylinderGeometry(HALF_W, HALF_W, PODIUM_Y, 20), this.mat(0xf7f5f2));
+		const tip = new THREE.Mesh(new THREE.CylinderGeometry(HALF_W, HALF_W, PODIUM_Y, 20), this.mat(0xf7f5f2, 0.25, 0.15));
 		tip.position.set(RUNWAY_X, PODIUM_Y / 2, TIP_Z + 1.2);
 		this.group.add(tip);
 	}
 
 	private buildSeating(): void {
-		const seatMat = this.mat(0x2b2b33);
-		const chrome = this.mat(0xb0b6c0);
+		const seatMat = this.mat(0x2b2b33, 0.8);
+		const chrome = this.mat(0xb0b6c0, 0.35, 0.7);
 		// One geometry per part, shared by all 14 chairs
 		const seatGeo = new THREE.BoxGeometry(0.5, 0.08, 0.5);
 		const backGeo = new THREE.BoxGeometry(0.5, 0.5, 0.07);
@@ -547,7 +550,7 @@ export class Catwalk {
 	}
 
 	private buildBackdrop(): void {
-		const frame = this.mat(0x14141a);
+		const frame = this.mat(0x14141a, 0.7);
 		const wall = new THREE.Mesh(new THREE.BoxGeometry(5.4, 4.2, 0.18), frame);
 		wall.position.set(RUNWAY_X, 2.1, START_Z - 1.6);
 		this.group.add(wall);
@@ -575,7 +578,7 @@ export class Catwalk {
 		this.group.add(banner);
 
 		// Truss with lamps over the runway
-		const truss = this.mat(0x40454f);
+		const truss = this.mat(0x40454f, 0.5, 0.6);
 		for (const side of [-1, 1] as const) {
 			const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 4.6, 8), truss);
 			post.position.set(RUNWAY_X + side * 2.6, 2.3, TIP_Z - 3);
@@ -634,8 +637,8 @@ export class Catwalk {
 		if (dead.length) this.flashes = this.flashes.filter((f) => f.life > 0);
 	}
 
-	private mat(color: number) {
-		return this.track(new THREE.MeshLambertMaterial({ color }));
+	private mat(color: number, roughness = 0.8, metalness = 0.05) {
+		return this.track(new THREE.MeshStandardMaterial({ color, roughness, metalness }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
