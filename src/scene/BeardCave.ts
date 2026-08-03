@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -15,8 +16,10 @@ export class BeardCave {
 	private lootGroup = new THREE.Group();
 	private pulseT = 0;
 	private glowMats: THREE.MeshLambertMaterial[] = [];
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'beardCave';
 		this.group.position.set(this.entrance.x, 0, this.entrance.z);
 		this.buildShell();
@@ -132,9 +135,14 @@ export class BeardCave {
 		}
 
 		// Dim gold fill light from treasure
-		const pl = new THREE.PointLight(0xffc107, 1.6, 8, 2);
-		pl.position.set(-1.2, 1.4, 0);
-		this.group.add(pl);
+		this.pool.register({
+			color: 0xffc107,
+			intensity: 1.6,
+			distance: 8,
+			decay: 2,
+			follow: this.group,
+			offset: new THREE.Vector3(-1.2, 1.4, 0),
+		});
 	}
 
 	private buildLoot(): void {
@@ -322,9 +330,14 @@ export class BeardCave {
 		flame.position.set(0.35, 1.9, -1.85);
 		this.group.add(flame);
 
-		const torchLight = new THREE.PointLight(0xff6d00, 1.1, 6, 2);
-		torchLight.position.set(0.35, 1.95, -1.85);
-		this.group.add(torchLight);
+		this.pool.register({
+			color: 0xff6d00,
+			intensity: 1.1,
+			distance: 6,
+			decay: 2,
+			follow: this.group,
+			offset: new THREE.Vector3(0.35, 1.95, -1.85),
+		});
 	}
 
 	private buildSigns(): void {

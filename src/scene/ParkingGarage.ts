@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
+import type { LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
@@ -14,8 +15,10 @@ export class ParkingGarage {
 	readonly group = new THREE.Group();
 	readonly pos = new THREE.Vector3(0, GARAGE_Y, 0);
 	private materials: THREE.Material[] = [];
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'parkingGarage';
 		this.group.position.y = GARAGE_Y;
 		this.buildShell();
@@ -263,9 +266,13 @@ export class ParkingGarage {
 	private buildLights(): void {
 		// Dim fluorescent rows
 		for (let i = -3; i <= 3; i++) {
-			const light = new THREE.PointLight(0xfff3e0, 2.2, 16, 2);
-			light.position.set(i * 8, 4.0, 0);
-			this.group.add(light);
+			this.pool.register({
+				color: 0xfff3e0,
+				intensity: 2.2,
+				distance: 16,
+				decay: 2,
+				position: new THREE.Vector3(i * 8, GARAGE_Y + 4.0, 0),
+			});
 			const fixture = new THREE.Mesh(
 				new THREE.BoxGeometry(3.5, 0.08, 0.25),
 				this.track(
@@ -280,9 +287,13 @@ export class ParkingGarage {
 			this.group.add(fixture);
 		}
 		// Elevator area brighter
-		const elevL = new THREE.PointLight(0xe3f2fd, 4, 12, 2);
-		elevL.position.set(16, 3.5, -8);
-		this.group.add(elevL);
+		this.pool.register({
+			color: 0xe3f2fd,
+			intensity: 4,
+			distance: 12,
+			decay: 2,
+			position: new THREE.Vector3(16, GARAGE_Y + 3.5, -8),
+		});
 	}
 
 	private makeTextPlane(text: string, w: number, h: number, bg = '#1565c0', fg = '#ffffff'): THREE.Mesh {

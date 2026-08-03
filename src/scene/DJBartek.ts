@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { levelAt } from '@/data/levels';
+import type { LightHandle, LightPool } from '@/render/LightPool';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 
@@ -16,7 +17,7 @@ export class DJBartek {
 	private materials: THREE.Material[] = [];
 	private bobParts: THREE.Object3D[] = [];
 	private decks: THREE.Group;
-	private glow: THREE.PointLight;
+	private glow: LightHandle;
 	private nameSprite: THREE.Sprite;
 	private speechSprite: THREE.Sprite;
 	private speechTex: THREE.CanvasTexture;
@@ -27,7 +28,7 @@ export class DJBartek {
 	dramaCd = 8;
 	private groupies: THREE.Group[] = [];
 
-	constructor() {
+	constructor(pool: LightPool) {
 		this.group.name = 'djBartek';
 		this.group.position.copy(this.pos);
 
@@ -37,9 +38,13 @@ export class DJBartek {
 		this.group.add(this.decks);
 		this.buildGroupies();
 
-		this.glow = new THREE.PointLight(0xff00aa, 4, 10, 2);
-		this.glow.position.set(0, 2.2, 0.4);
-		this.group.add(this.glow);
+		this.glow = pool.register({
+			color: 0xff00aa,
+			intensity: 4,
+			distance: 10,
+			decay: 2,
+			position: new THREE.Vector3(this.pos.x, 2.2, this.pos.z + 0.4),
+		});
 
 		this.nameSprite = this.makeNamePlate();
 		this.group.add(this.nameSprite);

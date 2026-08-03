@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
+import type { LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
@@ -15,8 +16,10 @@ export class Helipad {
 	readonly group = new THREE.Group();
 	readonly padCenter = new THREE.Vector3(22, ROOF_Y, 16);
 	private materials: THREE.Material[] = [];
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'helipad';
 		this.buildSecretStairs();
 		this.buildRoofDeck();
@@ -227,9 +230,13 @@ export class Helipad {
 			bulb.position.set(this.padCenter.x + Math.cos(a) * 5.3, ROOF_Y + 0.2, this.padCenter.z + Math.sin(a) * 5.3);
 			this.group.add(bulb);
 		}
-		const pl = new THREE.PointLight(0xfff4e0, 14, 30, 1.8);
-		pl.position.set(this.padCenter.x, ROOF_Y + 4, this.padCenter.z);
-		this.group.add(pl);
+		this.pool.register({
+			color: 0xfff4e0,
+			intensity: 14,
+			distance: 30,
+			decay: 1.8,
+			position: new THREE.Vector3(this.padCenter.x, ROOF_Y + 4, this.padCenter.z),
+		});
 	}
 
 	private buildSigns(): void {

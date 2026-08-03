@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 
@@ -16,8 +17,10 @@ export class TravelAgency {
 	private bob: THREE.Object3D[] = [];
 	private t = 0;
 	private agentRoot!: THREE.Group;
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'travelAgency';
 		this.group.position.copy(this.pos);
 		this.buildShell();
@@ -90,9 +93,13 @@ export class TravelAgency {
 		this.group.add(fascia);
 
 		// Soft tropical light
-		const pl = new THREE.PointLight(0xffecb3, 1.4, 7, 2);
-		pl.position.set(0.2, 2.1, 0);
-		this.group.add(pl);
+		this.pool.register({
+			color: 0xffecb3,
+			intensity: 1.4,
+			distance: 7,
+			decay: 2,
+			position: new THREE.Vector3(this.pos.x + 0.2, 2.1, this.pos.z),
+		});
 	}
 
 	private buildDesk(): void {

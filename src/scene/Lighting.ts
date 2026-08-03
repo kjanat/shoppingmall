@@ -1,7 +1,11 @@
 import * as THREE from 'three';
+import type { LightPool } from '@/render/LightPool';
+
+/** Turns the daylight down for the disco and puts it back exactly as it was. */
+export type DaylightDimmer = { dimDaylight(on: boolean): void };
 
 /** Warm daylight American mall — no neon club vibes. */
-export function setupLighting(scene: THREE.Scene): void {
+export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimmer {
 	scene.background = new THREE.Color(0xc8d4e4);
 	scene.fog = new THREE.Fog(0xc8d4e4, 100, 200);
 
@@ -30,24 +34,46 @@ export function setupLighting(scene: THREE.Scene): void {
 	fill.position.set(-20, 30, -15);
 	scene.add(fill);
 
-	// Even interior wash (stable — no blinking)
-	const atrium = new THREE.PointLight(0xfff5e6, 25, 50, 1.5);
-	atrium.position.set(0, 12, 0);
-	scene.add(atrium);
+	// Even interior wash (stable — no blinking). These five reach 32–50 m and are
+	// what keeps the whole building lit, so they get priority 2: without it the
+	// handful of 6 m shop lamps standing right next to you would win every pool
+	// slot and the mall behind them would fall dark.
+	pool.register({
+		color: 0xfff5e6,
+		intensity: 25,
+		distance: 50,
+		decay: 1.5,
+		priority: 2,
+		position: new THREE.Vector3(0, 12, 0),
+	});
+	for (const [y, z, intensity, distance] of [
+		[5, -12, 12, 35],
+		[5, 12, 12, 35],
+		[10, -12, 10, 32],
+		[10, 12, 10, 32],
+	] as const) {
+		pool.register({
+			color: 0xfff8ee,
+			intensity,
+			distance,
+			decay: 1.8,
+			priority: 2,
+			position: new THREE.Vector3(0, y, z),
+		});
+	}
 
-	const washN = new THREE.PointLight(0xfff8ee, 12, 35, 1.8);
-	washN.position.set(0, 5, -12);
-	scene.add(washN);
-
-	const washS = new THREE.PointLight(0xfff8ee, 12, 35, 1.8);
-	washS.position.set(0, 5, 12);
-	scene.add(washS);
-
-	const washN1 = new THREE.PointLight(0xfff8ee, 10, 32, 1.8);
-	washN1.position.set(0, 10, -12);
-	scene.add(washN1);
-
-	const washS1 = new THREE.PointLight(0xfff8ee, 10, 32, 1.8);
-	washS1.position.set(0, 10, 12);
-	scene.add(washS1);
+	// De disco dimde vroeger via scene.traverse over álle lampen. Dat werkte
+	// alleen zolang die lampen echte scene-lights waren; de puntlichten zitten nu
+	// in de pool, dus de vier echte lampen die overblijven worden hier bij naam
+	// gedimd en op hun eigen beginwaarde hersteld — geen zoektocht, en geen kans
+	// meer om het licht van een andere feature "terug te zetten" op iets anders.
+	const base = { ambient: ambient.intensity, hemi: hemi.intensity, sun: sun.intensity, fill: fill.intensity };
+	return {
+		dimDaylight(on: boolean): void {
+			ambient.intensity = on ? base.ambient * 0.12 : base.ambient;
+			hemi.intensity = on ? base.hemi * 0.1 : base.hemi;
+			sun.intensity = on ? base.sun * 0.08 : base.sun;
+			fill.intensity = on ? base.fill * 0.08 : base.fill;
+		},
+	};
 }

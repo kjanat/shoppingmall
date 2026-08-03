@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -11,8 +12,10 @@ export class FoodCourt {
 	/** V1 south balcony strip — between atrium void and south store wall */
 	readonly pos = new THREE.Vector3(0, 6, 11.5);
 	private materials: THREE.Material[] = [];
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'foodCourt';
 		this.group.position.copy(this.pos);
 		this.buildFloor();
@@ -211,10 +214,15 @@ export class FoodCourt {
 			menu.position.set(0, 2.15, -0.46);
 			g.add(menu);
 
-			// Warm light
-			const lamp = new THREE.PointLight(0xffcc88, 4, 6, 2);
-			lamp.position.set(0, 2.4, 0.2);
-			g.add(lamp);
+			// Warm light — volgt de kraam: die wordt hieronder nog geplaatst en gedraaid.
+			this.pool.register({
+				color: 0xffcc88,
+				intensity: 4,
+				distance: 6,
+				decay: 2,
+				follow: g,
+				offset: new THREE.Vector3(0, 2.4, 0.2),
+			});
 
 			// Vendor blob
 			const skin = this.track(new THREE.MeshLambertMaterial({ color: 0xe8b896 }));
@@ -267,8 +275,13 @@ export class FoodCourt {
 	}
 
 	private buildLights(): void {
-		const pl = new THREE.PointLight(0xffe0b2, 10, 18, 1.6);
-		pl.position.set(0, 3.2, 0);
-		this.group.add(pl);
+		this.pool.register({
+			color: 0xffe0b2,
+			intensity: 10,
+			distance: 18,
+			decay: 1.6,
+			follow: this.group,
+			offset: new THREE.Vector3(0, 3.2, 0),
+		});
 	}
 }

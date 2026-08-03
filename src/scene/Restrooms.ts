@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -13,8 +14,10 @@ export class Restrooms {
 	/** West wall utility strip — clear of south-store fronts */
 	readonly pos = new THREE.Vector3(-30, 0, 12);
 	private materials: THREE.Material[] = [];
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'restrooms';
 		this.group.position.copy(this.pos);
 		this.buildShell();
@@ -69,9 +72,13 @@ export class Restrooms {
 		this.group.add(fascia);
 
 		// ceiling strip lights
-		const light = new THREE.PointLight(0xf5f0e6, 8, 12, 1.8);
-		light.position.set(0, 2.7, 0);
-		this.group.add(light);
+		this.pool.register({
+			color: 0xf5f0e6,
+			intensity: 8,
+			distance: 12,
+			decay: 1.8,
+			position: new THREE.Vector3(this.pos.x, 2.7, this.pos.z),
+		});
 	}
 
 	/** Local-X offset for men's room (negative = left) */

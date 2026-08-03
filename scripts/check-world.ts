@@ -22,6 +22,7 @@ import { LEVELS, levelY, SHOP_LEVELS } from '@/data/levels';
 import { STORES, shopStores } from '@/data/stores';
 import { CollisionWorld, WALK_STEP } from '@/physics/Collision';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '@/scene/RoofIsland';
+import { stubDocument } from './stub-dom.ts';
 
 /** Speling voor waarden die exact gelijk horen te zijn. */
 const EPS = 1e-6;
@@ -105,27 +106,6 @@ function spelerR(): number {
 
 // ── 1. voorraad ────────────────────────────────────────────────────────────
 
-/**
- * Canvasstub. Onbekende methodes geven de stub zelf terug, zodat ketens als
- * createLinearGradient().addColorStop() niet op undefined stuklopen.
- */
-function stubDocument(): void {
-	const ctx: Record<string | symbol, unknown> = {
-		measureText: (tekst: string) => ({ width: tekst.length * 8 }),
-	};
-	let stub: unknown;
-	stub = new Proxy(ctx, {
-		get: (doel, sleutel) => (sleutel in doel ? doel[sleutel] : () => stub),
-		set: (doel, sleutel, waarde) => {
-			doel[sleutel] = waarde;
-			return true;
-		},
-	});
-	(globalThis as unknown as { document: unknown }).document = {
-		createElement: (tag: string) => (tag === 'canvas' ? { width: 1, height: 1, getContext: () => stub } : {}),
-	};
-}
-
 function vergelijkWinkels(gebouwd: Set<string>, verwacht: Set<string>, meervoud: string, enkelvoud: string): void {
 	for (const id of gebouwd) {
 		if (!verwacht.has(id)) fout('voorraad', `${id} is een utility-bestemming maar krijgt ${meervoud}`);
@@ -144,12 +124,20 @@ function vergelijkWinkels(gebouwd: Set<string>, verwacht: Set<string>, meervoud:
  */
 async function controleVoorraad(): Promise<void> {
 	stubDocument();
-	const [{ MallBuilder }, { StockDisplay }] = await Promise.all([import('@/scene/MallBuilder'), import('@/scene/StockDisplay')]);
+	const [THREE, { MallBuilder }, { StockDisplay }, { LightPool }] = await Promise.all([
+		import('three'),
+		import('@/scene/MallBuilder'),
+		import('@/scene/StockDisplay'),
+		import('@/render/LightPool'),
+	]);
 	const verwacht = new Set(shopStores().map((s) => s.id));
 	const mall = new MallBuilder();
 	mall.build();
 	vergelijkWinkels(new Set(mall.storeMeshes.keys()), verwacht, 'een winkelpod', 'winkelpod');
-	vergelijkWinkels(new Set(new StockDisplay().registers.keys()), verwacht, 'winkelschappen', 'schappen');
+	// De schappen huren hun kassalampjes bij de lichtpool; hoeveel dat er zijn is
+	// hier niet de vraag, dat controleert check-lights.
+	const stock = new StockDisplay(new LightPool(new THREE.Scene()));
+	vergelijkWinkels(new Set(stock.registers.keys()), verwacht, 'winkelschappen', 'schappen');
 }
 
 // ── 2. hellingen ───────────────────────────────────────────────────────────

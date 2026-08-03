@@ -13,6 +13,7 @@ import { PathMesh } from '@/path/PathMesh';
 import { CollisionWorld } from '@/physics/Collision';
 import { PlayerControls } from '@/player/Controls';
 import { createComposer } from '@/post/Composer';
+import { LightPool } from '@/render/LightPool';
 import { SceneBatcher } from '@/render/SceneBatcher';
 import { AlienProbe } from '@/scene/AlienProbe';
 import { Amenities } from '@/scene/Amenities';
@@ -108,22 +109,28 @@ export class App {
 	private roofIsland = new RoofIsland();
 	private poolPeople = new PoolPeople();
 	private amenities = new Amenities();
-	private disco = new DiscoParty();
-	private stock = new StockDisplay();
-	private spaceship = new Spaceship();
+	/**
+	 * Elke feature hieronder huurt zijn puntlichten bij de pool en wordt daarom
+	 * in de constructor gebouwd, ná de pool — een veldinitialisator draait vóór
+	 * de constructorbody en zou de pool nog niet hebben.
+	 */
+	private pool: LightPool;
+	private disco: DiscoParty;
+	private stock: StockDisplay;
+	private spaceship: Spaceship;
 	private thief: BakerThief;
-	private beardCave = new BeardCave();
+	private beardCave: BeardCave;
 	private protest!: ProtestGroupies;
-	private travel = new TravelAgency();
+	private travel: TravelAgency;
 	private rat!: MallRat;
 	private cleaner!: CleaningCart;
-	private prayer = new PrayerRoom();
+	private prayer: PrayerRoom;
 	private penguins!: Penguins;
-	private restrooms = new Restrooms();
-	private helipad = new Helipad();
-	private foodCourt = new FoodCourt();
-	private elevator = new GlassElevator();
-	private parking = new ParkingGarage();
+	private restrooms: Restrooms;
+	private helipad: Helipad;
+	private foodCourt: FoodCourt;
+	private elevator: GlassElevator;
+	private parking: ParkingGarage;
 	private security!: SecurityGuards;
 	private nearElevHint = false;
 	private nearSecurityHint = false;
@@ -135,8 +142,8 @@ export class App {
 	private elevRiding = false;
 	private elevUi!: ElevatorPanel;
 	private bartekChat = new BartekChat();
-	private djBartek = new DJBartek();
-	private alienProbe = new AlienProbe();
+	private djBartek: DJBartek;
+	private alienProbe: AlienProbe;
 	private monkey!: Monkey;
 	private catwalk = new Catwalk();
 	private heli!: Helicopter;
@@ -213,14 +220,33 @@ export class App {
 	readonly ready: Promise<void>;
 
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
+		// Eerst de lichtpool, dan pas iets dat licht maakt: NUM_POINT_LIGHTS ligt
+		// hiermee voor de hele sessie vast en geen enkele feature bouwt nog een
+		// eigen PointLight. Zie src/render/LightPool.ts.
+		this.pool = new LightPool(this.scene);
+		const daylight = setupLighting(this.scene, this.pool);
+		this.disco = new DiscoParty(this.pool, daylight);
+		this.stock = new StockDisplay(this.pool);
+		this.spaceship = new Spaceship(this.pool);
+		this.beardCave = new BeardCave(this.pool);
+		this.travel = new TravelAgency(this.pool);
+		this.prayer = new PrayerRoom(this.pool);
+		this.restrooms = new Restrooms(this.pool);
+		this.helipad = new Helipad(this.pool);
+		this.foodCourt = new FoodCourt(this.pool);
+		this.elevator = new GlassElevator(this.pool);
+		this.parking = new ParkingGarage(this.pool);
+		this.djBartek = new DJBartek(this.pool);
+		this.alienProbe = new AlienProbe(this.pool);
+
 		this.atmosphere = new Atmosphere(this.world);
 		this.thief = new BakerThief(this.world, this.beardCave);
 		this.rat = new MallRat(this.world);
 		this.cleaner = new CleaningCart(this.world);
-		this.scrubber = new ScrubberBuggy(this.world);
+		this.scrubber = new ScrubberBuggy(this.world, this.pool);
 		this.driveCars = new DriveableCars(this.world);
 		this.protest = new ProtestGroupies(this.world);
-		this.security = new SecurityGuards(this.world);
+		this.security = new SecurityGuards(this.world, this.pool);
 		this.penguins = new Penguins(this.world, 12);
 
 		this.renderer = new THREE.WebGLRenderer({
@@ -249,7 +275,6 @@ export class App {
 		// Wider FOV feels more first-person / walking through a mall
 		this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.15, 200);
 
-		setupLighting(this.scene);
 		this.disco.bindScene(this.scene);
 		this.scene.add(this.mall.build());
 		// Wire Youssef + all keepers for speech bubbles + ElevenLabs
@@ -715,40 +740,24 @@ export class App {
 	}
 
 	/**
-	 * Link every lighting configuration the mall can be walked into.
+	 * Link the programs the mall needs, once, behind the loading screen.
 	 *
 	 * `NUM_POINT_LIGHTS` is substituted into the shader source and is part of the
-	 * program cache key, so the number of *visible* lights decides which program a
-	 * material gets. The alien probe shows its group — and with it one more point
-	 * light — on a 40-90s timer, which relinks every material in the mall at once,
-	 * about a minute into a session that had just settled down. Compiling with the
-	 * group shown puts that variant in the per-material program cache, which three
-	 * only drops when the material itself is disposed, so the probe's first
-	 * appearance is a cache hit instead.
+	 * program cache key, so the number of point lights the renderer can see used
+	 * to decide which program a material got — and the alien probe (one light, on
+	 * a 40-90s timer) and the disco (thirteen) changed that number mid-session,
+	 * relinking every material in the building. This used to compile a second
+	 * time with the probe shown just to seed that variant.
 	 *
-	 * The disco's thirteen lights are deliberately left out. It is a rare and
-	 * player-triggered event, and the two toggle independently, so covering it
-	 * would mean linking all four combinations for one hitch nobody has walked
-	 * into unprompted.
+	 * LightPool ended that: eight real point lights exist for the whole session
+	 * and are never hidden, so there is exactly one program set and no variant
+	 * left to pre-seed. One pass is the whole warmup.
 	 *
-	 * The budget spans the whole warmup rather than each step: it exists to bound
-	 * how long the loading screen can hold, and that is one promise to the player,
-	 * not one per program set.
+	 * The budget bounds how long the loading screen can hold, and that is one
+	 * promise to the player.
 	 */
 	private async warmup(deadline: number): Promise<void> {
 		await this.compileUntil(deadline);
-
-		const probe = this.alienProbe.group;
-		const wasVisible = probe.visible;
-		probe.visible = true;
-		try {
-			await this.compileUntil(deadline);
-		} finally {
-			// Restored here and not after the race in start(): a timeout that fired
-			// mid-variant would otherwise hand the frame loop a scene with a UFO
-			// parked in it.
-			probe.visible = wasVisible;
-		}
 	}
 
 	/** Compile the scene as it stands, giving up once `deadline` passes. */
@@ -2187,6 +2196,9 @@ export class App {
 
 		if (this.perfProbe) this.renderer.info.reset();
 		this.sceneBatcher.update();
+		// Ná sceneBatcher.update(): die roept scene.updateMatrixWorld(true) aan, dus
+		// de matrixWorld van elk object dat een lamp volgt is hier vers.
+		this.pool.update(this.camera);
 		this.composer.render(dt);
 		if (this.perfProbe) {
 			const totalCalls = this.renderer.info.render.calls;

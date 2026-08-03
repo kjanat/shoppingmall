@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { ShittyDiscoMusic } from '@/audio/ShittyDisco';
+import type { LightHandle, LightPool } from '@/render/LightPool';
+import type { DaylightDimmer } from '@/scene/Lighting';
 import { at } from '@/util/rand';
 
 /**
@@ -8,7 +10,7 @@ import { at } from '@/util/rand';
 export class DiscoParty {
 	readonly group = new THREE.Group();
 	active = false;
-	private lights: THREE.PointLight[] = [];
+	private lights: LightHandle[] = [];
 	private balls: THREE.Mesh[] = [];
 	private floorGlow: THREE.Mesh[] = [];
 	private neonStrips: THREE.Mesh[] = [];
@@ -18,10 +20,14 @@ export class DiscoParty {
 	private scene: THREE.Scene | null = null;
 	private savedBg: THREE.Color | null = null;
 	private savedFog: THREE.Fog | THREE.FogExp2 | null = null;
-	/** Mall daylight lights we dim during the party */
-	private dimmed: { light: THREE.Light; intensity: number }[] = [];
+	private pool: LightPool;
+	private daylight: DaylightDimmer;
+	/** Eén kleur voor alle dertien lampen: update() draaide er 26 per frame weg. */
+	private tint = new THREE.Color();
 
-	constructor() {
+	constructor(pool: LightPool, daylight: DaylightDimmer) {
+		this.pool = pool;
+		this.daylight = daylight;
 		this.group.name = 'disco';
 		this.group.visible = false;
 
@@ -45,10 +51,18 @@ export class DiscoParty {
 
 		spots.forEach(([x, y, z], i) => {
 			const col = at(colors, i);
-			const light = new THREE.PointLight(col, 0, 32, 1.5);
-			light.position.set(x, y, z);
-			this.group.add(light);
-			this.lights.push(light);
+			// dimmable: false — de pool dimt tijdens het feest juist de zaallampen,
+			// en dan winnen déze lampen de sloten. Niets hoeft opgeslagen te worden.
+			this.lights.push(
+				this.pool.register({
+					color: col,
+					intensity: 0,
+					distance: 32,
+					decay: 1.5,
+					dimmable: false,
+					position: new THREE.Vector3(x, y, z),
+				}),
+			);
 
 			const ball = new THREE.Mesh(
 				new THREE.IcosahedronGeometry(0.4, 1),
@@ -123,6 +137,12 @@ export class DiscoParty {
 			l.intensity = on ? 4.5 : 0;
 			l.distance = 22;
 		}
+		// De zaal uit: de vier echte lampen via Lighting, de puntlichten via de
+		// pool. De oude scene.traverse() ging langs elke THREE.Light in de scene en
+		// zette hem terug uit een eigen kopie; die kopie bestaat niet meer omdat de
+		// puntlichten geen scene-lights meer zijn.
+		this.daylight.dimDaylight(on);
+		this.pool.setDimFactor(on ? 0.15 : 1);
 		if (on) {
 			this.music.ensure();
 			this.music.start();
@@ -133,24 +153,6 @@ export class DiscoParty {
 				// Deep arcade night
 				this.scene.background = new THREE.Color(0x05030c);
 				this.scene.fog = new THREE.FogExp2(0x080510, 0.028);
-
-				// Dim all non-disco mall lights (daylight wash out)
-				this.dimmed = [];
-				this.scene.traverse((obj) => {
-					if (!(obj instanceof THREE.Light)) return;
-					if (this.lights.includes(obj as THREE.PointLight)) return;
-					// skip lights parented under disco group
-					let p: THREE.Object3D | null = obj.parent;
-					while (p) {
-						if (p === this.group) return;
-						p = p.parent;
-					}
-					this.dimmed.push({ light: obj, intensity: obj.intensity });
-					if (obj instanceof THREE.AmbientLight) obj.intensity *= 0.12;
-					else if (obj instanceof THREE.HemisphereLight) obj.intensity *= 0.1;
-					else if (obj instanceof THREE.DirectionalLight) obj.intensity *= 0.08;
-					else obj.intensity *= 0.15;
-				});
 			}
 		} else {
 			this.music.stop();
@@ -158,10 +160,6 @@ export class DiscoParty {
 				this.scene.background = this.savedBg;
 				this.scene.fog = this.savedFog;
 			}
-			for (const { light, intensity } of this.dimmed) {
-				light.intensity = intensity;
-			}
-			this.dimmed = [];
 		}
 	}
 
@@ -178,7 +176,7 @@ export class DiscoParty {
 		this.lights.forEach((l, i) => {
 			// Dim base + soft beat flash — not a nuclear flashbang
 			l.intensity = 2.8 + beat * 3.2 + Math.sin(this.t * 2 + i) * 0.6;
-			const c = new THREE.Color().setHSL((this.t * 0.18 + i * 0.11) % 1, 0.95, 0.48);
+			const c = this.tint.setHSL((this.t * 0.18 + i * 0.11) % 1, 0.95, 0.48);
 			l.color.copy(c);
 			const ball = at(this.balls, i);
 			ball.rotation.y += dt * (1.8 + i * 0.1);
@@ -192,7 +190,7 @@ export class DiscoParty {
 		});
 		this.neonStrips.forEach((strip, i) => {
 			const m = strip.material as THREE.MeshLambertMaterial;
-			const c = new THREE.Color().setHSL((this.t * 0.25 + i * 0.18) % 1, 1, 0.5);
+			const c = this.tint.setHSL((this.t * 0.25 + i * 0.18) % 1, 1, 0.5);
 			m.color.copy(c);
 			m.emissive.copy(c);
 			m.emissiveIntensity = 0.7 + beat * 0.9;

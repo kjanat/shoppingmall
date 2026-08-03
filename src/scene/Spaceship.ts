@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -15,12 +16,13 @@ export class Spaceship {
 	private ship: THREE.Group;
 	private beam: THREE.Mesh;
 	private ring: THREE.Mesh;
-	private lights: THREE.PointLight[] = [];
 	private materials: THREE.Material[] = [];
+	private pool: LightPool;
 	/** Hovers inside the atrium void — above floor 1, under the skylight */
 	private baseY = 9.6;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'spaceship';
 		// Dead centre of the mall: the saucer hangs in the void ("de weide"), so
 		// nothing intersects the floor-1 slab. It used to sit at z=16 and skewer it.
@@ -185,11 +187,16 @@ export class Spaceship {
 		ball.position.y = 2.1;
 		s.add(ball);
 
-		// Soft light from ship (stable) — scaled with smaller saucer
-		const pl = new THREE.PointLight(0x88ccff, 12, 22, 1.6);
-		pl.position.set(0, -0.8, 0);
-		s.add(pl);
-		this.lights.push(pl);
+		// Soft light from ship (stable) — scaled with smaller saucer. Volgt de
+		// schotel: die wordt hierna nog geschaald en op zijn zweefhoogte gezet.
+		this.pool.register({
+			color: 0x88ccff,
+			intensity: 12,
+			distance: 22,
+			decay: 1.6,
+			follow: s,
+			offset: new THREE.Vector3(0, -0.8, 0),
+		});
 
 		// Mall rooftop attraction sticker (family-friendly)
 		const { canvas, ctx } = labelCanvas(256, 128);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { speakLine } from '@/audio/ElevenVoice';
 import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '@/data/levels';
 import { EYE } from '@/player/Controls';
+import type { LightPool } from '@/render/LightPool';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
@@ -130,8 +131,10 @@ export class GlassElevator {
 	private ndc = new THREE.Vector2(0, 0); // screen center (FPS look)
 	/** Glowing roof call buttons (pulse in update) */
 	private roofCallBtns: THREE.Mesh[] = [];
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'glassElevator';
 		this.group.position.set(this.pos.x, 0, this.pos.z);
 		this.buildShaft();
@@ -541,13 +544,22 @@ export class GlassElevator {
 			}
 		}
 
-		// Soft light in shaft
-		const light = new THREE.PointLight(0xe3f2fd, 2.2, 14, 2);
-		light.position.set(0, 7, 0);
-		this.group.add(light);
-		const roofLight = new THREE.PointLight(0x00e676, 5, 18, 2);
-		roofLight.position.set(2.2, FLOOR2 + 2.5, 2.5);
-		this.group.add(roofLight);
+		// Soft light in shaft. De schacht staat stil, dus deze twee mogen een vaste
+		// wereldpositie hebben: group.position is hierboven al gezet.
+		this.pool.register({
+			color: 0xe3f2fd,
+			intensity: 2.2,
+			distance: 14,
+			decay: 2,
+			position: new THREE.Vector3(this.pos.x, 7, this.pos.z),
+		});
+		this.pool.register({
+			color: 0x00e676,
+			intensity: 5,
+			distance: 18,
+			decay: 2,
+			position: new THREE.Vector3(this.pos.x + 2.2, FLOOR2 + 2.5, this.pos.z + 2.5),
+		});
 	}
 
 	/** Painted path from helipad approach → lift hatch */
@@ -759,9 +771,15 @@ export class GlassElevator {
 		const ceil = new THREE.Mesh(new THREE.BoxGeometry(CABIN_W - 0.1, 0.08, CABIN_D - 0.1), chrome);
 		ceil.position.y = CABIN_H;
 		this.cabin.add(ceil);
-		const lamp = new THREE.PointLight(0xfff8e1, 3.5, 4, 2);
-		lamp.position.set(0, CABIN_H - 0.15, 0);
-		this.cabin.add(lamp);
+		// De cabine rijdt op en neer, dus dit lampje volgt hem.
+		this.pool.register({
+			color: 0xfff8e1,
+			intensity: 3.5,
+			distance: 4,
+			decay: 2,
+			follow: this.cabin,
+			offset: new THREE.Vector3(0, CABIN_H - 0.15, 0),
+		});
 
 		// Glass walls (N, W, E) + frame
 		const wallH = CABIN_H - 0.2;

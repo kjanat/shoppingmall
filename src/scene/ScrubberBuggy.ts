@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
+import type { LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /** Arcade drive input from the player */
@@ -31,6 +32,7 @@ export class ScrubberBuggy {
 	readonly radius = RADIUS;
 	ridden = false;
 	private world: CollisionWorld;
+	private pool: LightPool;
 	private mesh: THREE.Group;
 	private materials: THREE.Material[] = [];
 	private wheels: THREE.Object3D[] = [];
@@ -41,8 +43,9 @@ export class ScrubberBuggy {
 	private parkPos = PARK.clone();
 	private label!: THREE.Sprite;
 
-	constructor(world: CollisionWorld) {
+	constructor(world: CollisionWorld, pool: LightPool) {
 		this.world = world;
+		this.pool = pool;
 		this.group.name = 'scrubberBuggy';
 		this.mesh = this.build();
 		this.mesh.position.copy(this.parkPos);
@@ -343,10 +346,15 @@ export class ScrubberBuggy {
 		this.wetSign.add(wetL, wetR);
 		g.add(this.wetSign);
 
-		// Beacon light
-		const beacon = new THREE.PointLight(0xffc107, 2.5, 8, 2);
-		beacon.position.set(0, 1.3, -0.55);
-		g.add(beacon);
+		// Beacon light — de buggy rijdt, dus het zwaailicht volgt hem.
+		this.pool.register({
+			color: 0xffc107,
+			intensity: 2.5,
+			distance: 8,
+			decay: 2,
+			follow: g,
+			offset: new THREE.Vector3(0, 1.3, -0.55),
+		});
 
 		return g;
 	}

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
 import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
+import type { LightHandle, LightPool } from '@/render/LightPool';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
@@ -30,7 +31,7 @@ type Guard = {
 	speechTex: THREE.CanvasTexture;
 	speechCtx: CanvasRenderingContext2D;
 	speechLife: number;
-	muzzle: THREE.PointLight;
+	muzzle: LightHandle;
 	gun: THREE.Group;
 	/** arm for recoil */
 	armR: THREE.Object3D;
@@ -86,6 +87,7 @@ const NAMES = [
 export class SecurityGuards {
 	readonly group = new THREE.Group();
 	private world: CollisionWorld;
+	private pool: LightPool;
 	private guards: Guard[] = [];
 	private bullets: Bullet[] = [];
 	private materials: THREE.Material[] = [];
@@ -97,8 +99,9 @@ export class SecurityGuards {
 	private tmp = new THREE.Vector3();
 	private threats: Threat[] = [];
 
-	constructor(world: CollisionWorld) {
+	constructor(world: CollisionWorld, pool: LightPool) {
 		this.world = world;
+		this.pool = pool;
 		this.group.name = 'securityGuards';
 		// Four posts around the atrium ring — classic mall cop coverage
 		const routes: THREE.Vector3[][] = [
@@ -548,9 +551,17 @@ export class SecurityGuards {
 		const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.08), black);
 		grip.position.set(0, -0.04, 0);
 		gun.add(grip);
-		const muzzleFlash = new THREE.PointLight(0xffab00, 0, 4, 2);
-		muzzleFlash.position.set(0, 0.05, 0.28);
-		gun.add(muzzleFlash);
+		// Volgt het pistool: die groep loopt, draait en trapt terug met de agent mee.
+		// Intensiteit 0 in rust — een lamp op nul scoort nul en bezet dus geen slot
+		// in de pool, precies zoals een muzzle flash hoort te werken.
+		const muzzleFlash = this.pool.register({
+			color: 0xffab00,
+			intensity: 0,
+			distance: 4,
+			decay: 2,
+			follow: gun,
+			offset: new THREE.Vector3(0, 0.05, 0.28),
+		});
 		armR.add(gun);
 		root.add(armR);
 

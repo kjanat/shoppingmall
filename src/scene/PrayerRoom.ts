@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { spatial } from '@/audio/SpatialAudio';
+import type { LightPool } from '@/render/LightPool';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
@@ -53,8 +54,10 @@ export class PrayerRoom {
 	private trapAnalyser: AnalyserNode | null = null;
 	private trapFreq = new Uint8Array(128);
 	private lastBeat = -1;
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'prayerRoom';
 		this.group.position.copy(this.pos);
 		this.build();
@@ -385,9 +388,13 @@ export class PrayerRoom {
 		}
 
 		// soft lamp
-		const lamp = new THREE.PointLight(0xffe0b2, 6, 8, 2);
-		lamp.position.set(0, 2.6, 0);
-		this.group.add(lamp);
+		this.pool.register({
+			color: 0xffe0b2,
+			intensity: 6,
+			distance: 8,
+			decay: 2,
+			position: new THREE.Vector3(this.pos.x, 2.6, this.pos.z),
+		});
 
 		// sign
 		const { canvas: c, ctx } = labelCanvas(320, 96);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
 import { levelY } from '@/data/levels';
 import { type StoreDef, shopStores } from '@/data/stores';
+import type { LightHandle, LightPool } from '@/render/LightPool';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
@@ -12,9 +13,17 @@ import { at } from '@/util/rand';
 export class StockDisplay {
 	readonly group = new THREE.Group();
 	readonly registers = new Map<string, THREE.Group>();
+	/**
+	 * Kassalampen naast `registers`, per winkel-id. Ze stonden eerder in
+	 * `reg.userData['saleLight']`, wat flashSale dwong tot een cast terug naar
+	 * PointLight — precies het soort cast dat dit project niet wil.
+	 */
+	private saleLights = new Map<string, LightHandle>();
 	private materials: THREE.Material[] = [];
+	private pool: LightPool;
 
-	constructor() {
+	constructor(pool: LightPool) {
+		this.pool = pool;
 		this.group.name = 'stock';
 		for (const store of shopStores()) {
 			const inv = getInventory(store.id);
@@ -26,7 +35,7 @@ export class StockDisplay {
 	flashSale(storeId: string): void {
 		const reg = this.registers.get(storeId);
 		if (!reg) return;
-		const light = reg.userData['saleLight'] as THREE.PointLight | undefined;
+		const light = this.saleLights.get(storeId);
 		if (light) {
 			light.intensity = 10;
 			setTimeout(() => {
@@ -158,10 +167,6 @@ export class StockDisplay {
 		);
 		screen.position.set(0, 0.22, 0.05);
 		reg.add(screen);
-		const saleLight = new THREE.PointLight(0xffd700, 0.6, 5, 2);
-		saleLight.position.set(0, 0.4, 0.3);
-		reg.add(saleLight);
-		reg.userData['saleLight'] = saleLight;
 		const coin = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12),
 			this.track(new THREE.MeshLambertMaterial({ color: 0xffd700 })),
@@ -172,10 +177,28 @@ export class StockDisplay {
 		reg.userData['coinMesh'] = coin;
 		g.add(reg);
 		this.registers.set(store.id, reg);
+		// follow op reg en op g: beide groepen worden verplaatst en gedraaid nadat
+		// dit gebouwd is, dus een vaste wereldpositie zou hier de verkeerde zijn.
+		this.saleLights.set(
+			store.id,
+			this.pool.register({
+				color: 0xffd700,
+				intensity: 0.6,
+				distance: 5,
+				decay: 2,
+				follow: reg,
+				offset: new THREE.Vector3(0, 0.4, 0.3),
+			}),
+		);
 
-		const fill = new THREE.PointLight(0xfff8ee, 5, 11, 1.8);
-		fill.position.set(0, 2.4, midZ);
-		g.add(fill);
+		this.pool.register({
+			color: 0xfff8ee,
+			intensity: 5,
+			distance: 11,
+			decay: 1.8,
+			follow: g,
+			offset: new THREE.Vector3(0, 2.4, midZ),
+		});
 
 		this.group.add(g);
 	}

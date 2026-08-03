@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { LightHandle, LightPool } from '@/render/LightPool';
 import type { Americans } from './Americans';
 
 /**
@@ -17,10 +18,21 @@ export class AlienProbe {
 	private probeCd = 25;
 	private victims: { id: number; baseY: number }[] = [];
 	private americans: Americans | null = null;
+	private glow: LightHandle;
 
-	constructor() {
+	constructor(pool: LightPool) {
 		this.group.name = 'alienProbe';
 		this.saucer = this.buildSaucer();
+		// Volgt de schotel: die krijgt zijn positie pas als de probe start, dus een
+		// vaste wereldpositie zou hier altijd de verkeerde zijn.
+		this.glow = pool.register({
+			color: 0x69f0ae,
+			intensity: 0,
+			distance: 18,
+			decay: 2,
+			follow: this.saucer,
+			offset: new THREE.Vector3(0, -0.5, 0),
+		});
 		this.group.add(this.saucer);
 		this.beam = this.buildBeam();
 		this.group.add(this.beam);
@@ -75,7 +87,10 @@ export class AlienProbe {
 		this.active = true;
 		this.t = 0;
 		this.duration = 6 + Math.random() * 4;
+		// group.visible verbergt alleen nog de schotel zelf; het licht zit in de
+		// pool en telt dus niet meer mee voor NUM_POINT_LIGHTS.
 		this.group.visible = true;
+		this.glow.intensity = 12;
 
 		// Average position of victims
 		this.targetPos.set(0, 0, 0);
@@ -94,6 +109,7 @@ export class AlienProbe {
 	private endProbe(): void {
 		this.active = false;
 		this.group.visible = false;
+		this.glow.intensity = 0;
 		if (this.americans) {
 			for (const v of this.victims) {
 				this.americans.nudgeSimHeight?.(v.id, v.baseY);
@@ -135,9 +151,6 @@ export class AlienProbe {
 		);
 		dome.position.y = 0.35;
 		g.add(dome);
-		const light = new THREE.PointLight(0x69f0ae, 12, 18, 2);
-		light.position.y = -0.5;
-		g.add(light);
 		return g;
 	}
 
