@@ -1,9 +1,15 @@
 #!/bin/sh
-# Herdeployt alleen op machines waar `git config hooks.deploy true` staat, en
-# alleen als er sinds de vorige deploy iets in de deploybare paden veranderde.
+# Herdeployt alleen waar de container van dit project al draait, en alleen als
+# er sinds de vorige deploy iets in de deploybare paden veranderde. Een machine
+# die hem niet serveert deployt dus nooit, zonder dat daar iets voor ingesteld
+# hoeft te worden.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
-[ "$(git config --type=bool --default=false hooks.deploy)" = "true" ] || exit 0
+command -v docker >/dev/null 2>&1 || exit 0
+name="$(sed -n 's/^ *container_name: *//p' compose.yaml | head -1)"
+[ -n "$name" ] || exit 0
+# Geen daemon, geen rechten, geen container: alle drie hetzelfde antwoord.
+docker ps --filter "name=^${name}$" --format '{{.Names}}' 2>/dev/null | grep -qx "$name" || exit 0
 
 gitdir="$(git rev-parse --git-dir)"
 marker="$gitdir/last-deploy"
