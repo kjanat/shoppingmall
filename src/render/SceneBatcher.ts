@@ -40,7 +40,16 @@ function materialKey(material: ColorMaterial): string {
 		return typeof value === 'number' ? value : fallback;
 	};
 	const quantize = (name: string): number => Math.round(number(name) * 4) / 4;
+	// Quantized per channel, like roughness above. The exact hex once split 71 of
+	// 141 batches: StockDisplay tints every product's emissive with its own colour
+	// at intensity 0.08, and 66 distinct hexes meant 66 near-identical batches for
+	// 792 instances. The batch keeps the first source's emissive, and at that
+	// intensity a quarter-step mismatch is invisible.
 	const emissive = props['emissive'];
+	const emissiveKey =
+		emissive instanceof THREE.Color
+			? `${Math.round(emissive.r * 4)}/${Math.round(emissive.g * 4)}/${Math.round(emissive.b * 4)}`
+			: '';
 
 	return JSON.stringify({
 		type: material.type,
@@ -71,7 +80,7 @@ function materialKey(material: ColorMaterial): string {
 		wireframe: props['wireframe'] === true,
 		roughness: quantize('roughness'),
 		metalness: quantize('metalness'),
-		emissive: emissive instanceof THREE.Color ? emissive.getHex() : 0,
+		emissive: emissiveKey,
 		emissiveIntensity: quantize('emissiveIntensity'),
 		normalScale: String(props['normalScale'] ?? ''),
 		bumpScale: number('bumpScale', 1),
@@ -156,14 +165,23 @@ export class SceneBatcher {
 			batched.castShadow = first.castShadow;
 			batched.receiveShadow = first.receiveShadow;
 			batched.renderOrder = first.renderOrder;
-			batched.frustumCulled = false;
-			// Both of these make BatchedMesh walk every instance and rewrite its
-			// indirect texture on every single render — its onBeforeRender only
-			// skips that work when neither is set and no visibility changed. These
-			// batches hold static mall geometry on a modest triangle budget, so
-			// shading a few off-screen vertices is cheaper than a per-frame CPU pass
-			// plus a texture upload per batch. Sorting stays where it actually earns
-			// its keep: transparent materials, which need back-to-front order.
+			// Whole-object culling is one sphere-vs-frustum test per batch; three
+			// computes the union sphere lazily on first use, which is valid because
+			// update() below primes every instance matrix first and the batch sits at
+			// identity in the scene root. The trap: setMatrixAt never invalidates
+			// that sphere, so a batch whose source mesh moves after priming would be
+			// culled while visible. update() demotes such a batch back to
+			// frustumCulled=false the moment a primed source's matrix changes — the
+			// static majority keeps the test, animated batches render as before.
+			batched.frustumCulled = true;
+			// Per-object culling is different: it makes BatchedMesh walk every
+			// instance and rewrite its indirect texture on every single render — its
+			// onBeforeRender only skips that work when neither this nor sortObjects
+			// is set and no visibility changed. These batches hold static mall
+			// geometry on a modest triangle budget, so shading a few off-screen
+			// vertices is cheaper than a per-frame CPU pass plus a texture upload
+			// per batch. Sorting stays where it actually earns its keep: transparent
+			// materials, which need back-to-front order.
 			batched.perObjectFrustumCulled = false;
 			batched.sortObjects = material.transparent;
 
@@ -214,6 +232,13 @@ export class SceneBatcher {
 				if (!source.primed || !source.matrix.equals(world)) {
 					source.matrix.copy(world);
 					batch.mesh.setMatrixAt(source.instanceId, world);
+					// A moved instance leaves the lazily-computed bounding sphere
+					// stale (setMatrixAt never invalidates it), so this batch can no
+					// longer be trusted to a whole-object frustum test. Demoting is
+					// permanent and cheaper than recomputing the sphere every frame.
+					// Colour and visibility writes below don't move geometry: hidden
+					// instances are already inside the sphere, so they don't demote.
+					if (source.primed) batch.mesh.frustumCulled = false;
 				}
 
 				const color = instanceColor(source.mesh.material);
