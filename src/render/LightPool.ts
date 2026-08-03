@@ -129,6 +129,15 @@ export class LightPool {
 		}
 	}
 
+	/** Slots with a virtual light in them right now — for the perf HUD. */
+	get slotsInUse(): number {
+		let used = 0;
+		for (const owner of this.owners) {
+			if (owner) used++;
+		}
+		return used;
+	}
+
 	/** Register a virtual light. The handle is animated by the caller, forever. */
 	register(spec: LightSpec): LightHandle {
 		const handle = new LightHandle(spec);

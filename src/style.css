@@ -1026,21 +1026,87 @@ body {
 	cursor: pointer;
 }
 
-/* FPS-teller */
+/* FPS-teller + prestatiepaneel (I) */
 
-.fps-chip {
+.perf-hud {
 	position: absolute;
 	top: 64px;
 	right: 16px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 6px;
+	z-index: 15;
+}
+
+.perf-chip {
 	padding: 4px 10px;
+	border: 0;
 	border-radius: 99px;
 	background: rgba(15, 23, 42, 0.85);
 	font-family: var(--mono);
 	font-size: 0.68rem;
 	font-weight: 700;
 	color: #22c55e;
+	cursor: pointer;
+}
+
+.perf-panel {
+	width: 216px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: rgba(15, 23, 42, 0.92);
+	font-family: var(--mono);
+	font-size: 0.64rem;
+	color: #e2e8f0;
+	/* Klikken hoort de muis niet af te vangen: het paneel hangt over de wereld. */
 	pointer-events: none;
-	z-index: 15;
+}
+
+.perf-panel.hidden {
+	display: none;
+}
+
+.perf-graph-key,
+.perf-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.perf-graph-key {
+	margin: 3px 0 6px;
+	font-size: 0.56rem;
+	color: #64748b;
+}
+
+.perf-row {
+	line-height: 1.5;
+}
+
+.perf-hint {
+	margin-top: 6px;
+	font-size: 0.56rem;
+	color: #64748b;
+	text-align: right;
+}
+
+/* Eigen klassen i.p.v. `.perf-row span`: elders in dit bestand staan span- en
+   canvas-regels met hogere specificiteit, en dan is de volgorde hier aflopend. */
+
+.perf-graph {
+	display: block;
+	width: 100%;
+	border-radius: 4px;
+}
+
+.perf-label {
+	color: #94a3b8;
+}
+
+.perf-value {
+	font-weight: 700;
+	white-space: nowrap;
 }
 
 /* Crosshair — only while the mouse is captured */

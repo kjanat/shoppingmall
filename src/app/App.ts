@@ -13,7 +13,7 @@ import { PathMesh } from '@/path/PathMesh';
 import { CollisionWorld } from '@/physics/Collision';
 import { PlayerControls } from '@/player/Controls';
 import { createComposer } from '@/post/Composer';
-import { LightPool } from '@/render/LightPool';
+import { LIGHT_POOL_SLOTS, LightPool } from '@/render/LightPool';
 import { SceneBatcher } from '@/render/SceneBatcher';
 import { AlienProbe } from '@/scene/AlienProbe';
 import { Amenities } from '@/scene/Amenities';
@@ -63,6 +63,7 @@ import { DJWidget } from '@/ui/DJWidget';
 import { ElevatorPanel } from '@/ui/ElevatorPanel';
 import { KioskOverlay, type MapBlip } from '@/ui/KioskOverlay';
 import { type CastRow, PeopleDashboard } from '@/ui/PeopleDashboard';
+import { PerfOverlay } from '@/ui/PerfOverlay';
 import { SettingsPanel } from '@/ui/SettingsPanel';
 import { setLabelAnisotropy } from '@/util/label';
 import { at, pick } from '@/util/rand';
@@ -166,10 +167,10 @@ export class App {
 	private nearCarHint = false;
 	/** Glijbaan-rit: 0..1 langs de curve, -1 = niet aan het glijden */
 	private slideT = -1;
-	/** FPS-meting */
-	private fpsFrames = 0;
-	private fpsT = 0;
-	private fpsEl: HTMLElement | null = null;
+	/** FPS-chip + het uitklapbare prestatiepaneel */
+	private perfHud!: PerfOverlay;
+	/** Hergebruikt: getDrawingBufferSize schrijft in een doelvector, elk frame. */
+	private readonly bufferSize = new THREE.Vector2();
 	/**
 	 * Pixelratio heeft één eigenaar: kwaliteitstier × dynamische schaal, samen
 	 * toegepast in applyPixelRatio(). Eerder schreef de kwaliteits-handler de
@@ -285,7 +286,10 @@ export class App {
 		// and two Chrome traces put roughly two thirds of all CPU time inside them. The
 		// error text is worth the stall while developing; it is not worth shipping.
 		this.renderer.debug.checkShaderErrors = !!import.meta.hot;
-		if (this.perfProbe) this.renderer.info.autoReset = false;
+		// Zonder dit reset three de telling bij elke renderer.render(), en de
+		// composer doet er meerdere per frame — je leest dan alleen de laatste
+		// pass. Eén reset per frame in de loop geeft het frame als geheel.
+		this.renderer.info.autoReset = false;
 		// Before anything builds a label: name plates and signs are read at a
 		// slant almost always, and this is what keeps them legible there.
 		setLabelAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
@@ -500,11 +504,8 @@ export class App {
 		this.peopleUi = new PeopleDashboard(uiRoot, (id) => this.enterPossess(id));
 		new DJWidget(uiRoot, this.djPlayer, () => this.djUi.show());
 
-		// FPS-teller
-		this.fpsEl = document.createElement('div');
-		this.fpsEl.className = 'fps-chip';
-		this.fpsEl.textContent = '— fps';
-		uiRoot.appendChild(this.fpsEl);
+		// FPS-chip + prestatiepaneel (I): frametijdverdeling, niet alleen een gemiddelde
+		this.perfHud = new PerfOverlay(uiRoot);
 
 		// Wei Chen yells Chinese (pre-baked ElevenLabs) when you block his cart
 		this.cleaner.setYellCallback((label) => {
@@ -2013,25 +2014,6 @@ export class App {
 		this.poolPeople.update(dt, elapsed);
 		this.tickSlide(dt);
 
-		// FPS-teller: 2×/s verversen, kleur zegt genoeg. Op de ongeklemde
-		// frametijd — met het geklemde dt rapporteerde hij ~20 fps waar het er
-		// echt ~16 waren, juist in het gebied waar het cijfer ertoe doet. En
-		// élk frame telt mee, hoe traag ook: frames boven een drempel overslaan
-		// loog juist op machines waar bijna elk frame erboven zit (26 op het
-		// chipje bij 3-6 échte fps). Tabwissels zijn geen frames — die zijn al
-		// uit de keten geknipt via visibilitychange, niet via een drempel.
-		if (frameMs > 0) {
-			this.fpsFrames++;
-			this.fpsT += frameMs / 1000;
-		}
-		if (this.fpsT >= 0.5 && this.fpsEl) {
-			const fps = Math.round(this.fpsFrames / this.fpsT);
-			this.fpsFrames = 0;
-			this.fpsT = 0;
-			this.fpsEl.textContent = `${fps} fps`;
-			this.fpsEl.style.color = fps >= 45 ? '#22c55e' : fps >= 25 ? '#f59e0b' : '#ef4444';
-		}
-
 		// Feed the monkey its victim list, then let it aim
 		this.simPositions.length = 0;
 		for (const child of this.atmosphere.americans.group.children) {
@@ -2242,7 +2224,7 @@ export class App {
 		// on whatever deck the body was left standing on. Same deck as the minimap.
 		cullByLevel(levelAt(this.camera.position.y));
 
-		if (this.perfProbe) this.renderer.info.reset();
+		this.renderer.info.reset();
 		this.sceneBatcher.update();
 		// Ná sceneBatcher.update(): die roept scene.updateMatrixWorld(true) aan, dus
 		// de matrixWorld van elk object dat een lamp volgt is hier vers.
@@ -2260,5 +2242,22 @@ export class App {
 			document.documentElement.dataset['frameTriangles'] = String(totalTriangles);
 			this.renderer.shadowMap.enabled = true;
 		}
+
+		// Ná de render: de tellers van dit frame staan er nu in.
+		const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
+		this.perfHud.update({
+			frameMs,
+			drawCalls: this.renderer.info.render.calls,
+			triangles: this.renderer.info.render.triangles,
+			programs: this.renderer.info.programs?.length ?? 0,
+			geometries: this.renderer.info.memory.geometries,
+			textures: this.renderer.info.memory.textures,
+			bufferWidth: buffer.width,
+			bufferHeight: buffer.height,
+			renderScale: this.dynScale,
+			lightsUsed: this.pool.slotsInUse,
+			lightsTotal: LIGHT_POOL_SLOTS,
+			batches: this.sceneBatcher.stats.drawCalls,
+		});
 	};
 }
