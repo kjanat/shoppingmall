@@ -351,7 +351,16 @@ function installProbe(): void {
 		/** Resolve when the game is actually running, not merely constructed. */
 		ready: async (timeoutMs: number): Promise<number> => {
 			const start = performance.now();
-			while (document.querySelector('#app-loading') && performance.now() - start < timeoutMs) {
+			// The first poll can land on the navigation's initial empty document,
+			// before the parser has produced #app-loading at all. Polling only for
+			// its absence then declares the game playable at 0 ms — every number
+			// after that measures a blank page (this happened on a slow container;
+			// a fast desktop wins the race by accident). So: wait for the loading
+			// screen to have existed, or for a fully loaded document without one.
+			let seen = false;
+			while (performance.now() - start < timeoutMs) {
+				if (document.querySelector('#app-loading')) seen = true;
+				else if (seen || document.readyState === 'complete') break;
 				await sleep(100);
 			}
 			return Math.round(performance.now() - start);

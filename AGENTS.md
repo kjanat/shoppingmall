@@ -170,10 +170,17 @@ run diagnose --sweep                 # + solves `fixed ms + ms/Mpix` with an A-B
 run diagnose --url https://kruidvat.kajkowalski.nl/   # measure the deployed build
 run bench --save before
 run bench --compare before
+run diagnose:headless                # no-GPU containers (remote agent envs, CI) — see below
 ```
 
 `scripts/perf/` drives a real GPU-backed Chrome over a hand-rolled CDP client (no Playwright — this repo has six
 dependencies and intends to keep it that way). `probe.ts` is injected before page scripts and wraps the WebGL context.
+
+**No-GPU containers** (remote agent environments, CI): `run diagnose:headless` / `run bench:headless` route Chrome
+through `scripts/perf/chrome-headless.sh` — headless SwiftShader, no sandbox, finds the Playwright-managed Chromium.
+The *structural* numbers are exact there (lights in shader, programs linked, shader source KB, draw calls); every
+millisecond is the CPU rasterizer and is only comparable against the same rasterizer in the same container — never
+against a GPU snapshot, and never worth recording in this file.
 
 **Read the measurement rules before trusting any number:**
 
