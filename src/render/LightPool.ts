@@ -135,6 +135,11 @@ export class LightPool {
 		}
 	}
 
+	/** How many real lights this pool was built with (the Lampen setting). */
+	get slots(): number {
+		return this.lights.length;
+	}
+
 	/** Slots with a virtual light in them right now — for the perf HUD. */
 	get slotsInUse(): number {
 		let used = 0;

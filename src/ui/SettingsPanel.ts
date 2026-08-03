@@ -1,4 +1,14 @@
 import { type ControlSettings, DEFAULT_SETTINGS } from '@/player/Controls';
+import {
+	FILL_CHOICES,
+	fillScale,
+	LAMP_CHOICES,
+	lampCount,
+	shineOn,
+	writeFill,
+	writeLamps,
+	writeShine,
+} from '@/render/graphicsPrefs';
 import { qs } from '@/util/dom';
 
 const STORE_KEY = 'mallsim.controls.v1';
@@ -63,6 +73,13 @@ export class SettingsPanel {
 	/** Dynamische resolutie — render lager als de framerate zakt */
 	private dynRes = loadDynRes();
 	private onDynRes: ((on: boolean) => void) | null = null;
+	/** Zaallicht: leeft direct, de andere twee kunnen alleen bij het opbouwen. */
+	private onFill: ((scale: number) => void) | null = null;
+
+	bindFill(fn: (scale: number) => void): void {
+		this.onFill = fn;
+		fn(fillScale());
+	}
 
 	/** App meldt zich hier aan; krijgt meteen de opgeslagen stand. */
 	bindQuality(fn: (q: QualityLevel) => void): void {
@@ -175,6 +192,37 @@ export class SettingsPanel {
 
         <label class="settings-row">
           <span>
+            <b>Glans</b>
+            <small>Hoogsels en metaal. Uit = goedkopere belichting per pixel, maar alles wordt mat. Herlaadt.</small>
+          </span>
+          <input type="checkbox" id="set-shine" />
+        </label>
+
+        <label class="settings-row">
+          <span>
+            <b>Lampen</b>
+            <small>Hoeveel lampen tegelijk kunnen branden. Meer = levendiger winkels, elke lamp kost elke pixel. Herlaadt.</small>
+          </span>
+          <select id="set-lamps">
+            ${LAMP_CHOICES.map((n) => `<option value="${n}">${n}</option>`).join('')}
+          </select>
+        </label>
+
+        <label class="settings-row">
+          <span>
+            <b>Zaallicht</b>
+            <small>Het schijnsel dat overal tegelijk op valt. Lager = meer diepte en schaduw, hoger = vlakker.</small>
+          </span>
+          <select id="set-fill">
+            <option value="0.4">Laag</option>
+            <option value="0.7">Gedempt</option>
+            <option value="1">Normaal</option>
+            <option value="1.4">Hoog</option>
+          </select>
+        </label>
+
+        <label class="settings-row">
+          <span>
             <b>Dynamische resolutie</b>
             <small>Verlaagt de renderresolutie tijdelijk als de framerate zakt; scherp zodra het weer kan. Standaard uit — het beeld wordt er zichtbaar zachter van.</small>
           </span>
@@ -212,6 +260,31 @@ export class SettingsPanel {
 				/* private mode */
 			}
 			this.onQuality?.(this.quality);
+		});
+
+		// Glans en lampenaantal zitten in de shaders zelf: die kunnen alleen bij
+		// het opbouwen van de wereld gekozen worden, dus herladen we meteen.
+		const shineCb = q<HTMLInputElement>('#set-shine');
+		shineCb.checked = shineOn();
+		shineCb.addEventListener('change', () => {
+			writeShine(shineCb.checked);
+			location.reload();
+		});
+
+		const lampsSel = q<HTMLSelectElement>('#set-lamps');
+		lampsSel.value = String(lampCount());
+		lampsSel.addEventListener('change', () => {
+			writeLamps(Number(lampsSel.value));
+			location.reload();
+		});
+
+		const fillSel = q<HTMLSelectElement>('#set-fill');
+		fillSel.value = String(fillScale());
+		fillSel.addEventListener('change', () => {
+			const scale = Number(fillSel.value);
+			if (!FILL_CHOICES.includes(scale)) return;
+			writeFill(scale);
+			this.onFill?.(scale);
 		});
 
 		const dynResCb = q<HTMLInputElement>('#set-dynres');

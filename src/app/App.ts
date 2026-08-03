@@ -13,7 +13,8 @@ import { PathMesh } from '@/path/PathMesh';
 import { CollisionWorld } from '@/physics/Collision';
 import { PlayerControls } from '@/player/Controls';
 import { createComposer } from '@/post/Composer';
-import { LIGHT_POOL_SLOTS, LightPool } from '@/render/LightPool';
+import { lampCount, shineOn, stripShine } from '@/render/graphicsPrefs';
+import { LightPool } from '@/render/LightPool';
 import { SceneBatcher } from '@/render/SceneBatcher';
 import { AlienProbe } from '@/scene/AlienProbe';
 import { Amenities } from '@/scene/Amenities';
@@ -38,7 +39,7 @@ import { FoodCourt } from '@/scene/FoodCourt';
 import { GlassElevator } from '@/scene/GlassElevator';
 import { Helicopter } from '@/scene/Helicopter';
 import { Helipad } from '@/scene/Helipad';
-import { setupLighting } from '@/scene/Lighting';
+import { type DaylightDimmer, setupLighting } from '@/scene/Lighting';
 import { MallBuilder } from '@/scene/MallBuilder';
 import { MallRat } from '@/scene/MallRat';
 import { Monkey } from '@/scene/Monkey';
@@ -169,6 +170,8 @@ export class App {
 	private slideT = -1;
 	/** FPS-chip + het uitklapbare prestatiepaneel */
 	private perfHud!: PerfOverlay;
+	/** Zaallicht-schaal en de discodim lopen allebei hierlangs. */
+	private daylight!: DaylightDimmer;
 	/** Hergebruikt: getDrawingBufferSize schrijft in een doelvector, elk frame. */
 	private readonly bufferSize = new THREE.Vector2();
 	/**
@@ -238,8 +241,9 @@ export class App {
 		// Eerst de lichtpool, dan pas iets dat licht maakt: NUM_POINT_LIGHTS ligt
 		// hiermee voor de hele sessie vast en geen enkele feature bouwt nog een
 		// eigen PointLight. Zie src/render/LightPool.ts.
-		this.pool = new LightPool(this.scene);
+		this.pool = new LightPool(this.scene, lampCount());
 		const daylight = setupLighting(this.scene, this.pool);
+		this.daylight = daylight;
 		// The catwalk spot is the one real light outside Lighting.ts; the old
 		// scene-traverse dimmer caught it implicitly, this list is explicit.
 		daylight.register(this.catwalk.spot, 0.15);
@@ -409,6 +413,9 @@ export class App {
 
 		// Preserve every gameplay object, but submit compatible opaque meshes
 		// through a small number of GPU batches.
+		// Vóór de batcher: die kloont per batch een materiaal en groepeert op het
+		// type, dus een wissel achteraf laat de batches met het oude shaden.
+		if (!shineOn()) stripShine(this.scene);
 		this.sceneBatcher = new SceneBatcher(this.scene);
 		// De renderer draait scene.updateMatrixWorld() nog een keer bij elke
 		// render — een tweede complete wandeling over ~7000 objecten, terwijl
@@ -577,6 +584,7 @@ export class App {
 				this.applyPixelRatio();
 			}
 		});
+		this.settingsUi.bindFill((scale) => this.daylight.setFill(scale));
 		// HRTF binaural on/off (koptelefoon)
 		this.settingsUi.bindBinaural((on) => {
 			spatial.setBinaural(on);
@@ -2276,7 +2284,7 @@ export class App {
 			batchMs: afterBatch - afterLogic,
 			submitMs: afterRender - afterBatch,
 			lightsUsed: this.pool.slotsInUse,
-			lightsTotal: LIGHT_POOL_SLOTS,
+			lightsTotal: this.pool.slots,
 			batches: this.sceneBatcher.stats.drawCalls,
 		});
 	};

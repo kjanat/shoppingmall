@@ -61,6 +61,30 @@ Aliases: `@/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensi
   follow whichever the file already uses.
 - **Never duplicate a constant across two files.** `bun run check` exists because that kept happening, and it reads
   values back out of the source rather than restating them.
+- **Use the Edit tool for file changes, never a shell heredoc.** A scripted rewrite does not show up as a live diff, so
+  nobody sees what you changed while you change it — and a silently non-matching replacement already shipped a panel
+  that threw on boot because half of a two-part edit applied.
+
+## Judgement calls are feature-gated, not decided for me
+
+If a change trades looks against speed — light count, material model, ambient level, resolution scaling, anything where
+"better" depends on the machine and the eye — **do not pick for me, and do not open a debate about it either.** Build
+every option, put it behind a switch, ship it, and say: *I built all three, try them and tell me which you like.*
+
+Reaching for that pattern is never wrong here. Deciding silently is: eight pooled lights, no specular and a
+default-on resolution scaler each shipped as somebody's taste baked into the source, and each one turned out to be the
+wrong call on the machine that actually runs this.
+
+Two mechanisms, pick by whether I need to compare them *live*:
+
+- **Runtime setting** (`SettingsPanel` + `src/render/graphicsPrefs.ts`) when the whole point is trying both. Anything
+  baked into the shaders — light count, material model — can only be chosen while the world is built, so its handler
+  reloads the page; that is fine and better than pretending it is live.
+- **Bun build-time flag** when the code should not ship at all: `import { feature } from 'bun:bundle'`, guard with
+  `if (feature('FLAG'))`, build with `--feature FLAG` (or `features: [...]` in `build.ts`). It is replaced with a
+  constant and the dead branch is dropped by the minifier, and the `bun:bundle` import disappears. Only string literals
+  work. Declare known flags in a `.d.ts` (`declare module 'bun:bundle' { interface Registry { features: 'A' | 'B' } }`)
+  so a typo is a type error.
 
 ## World invariants
 

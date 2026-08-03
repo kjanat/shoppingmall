@@ -11,6 +11,8 @@ export type DaylightDimmer = {
 	 * (the catwalk spot did exactly that).
 	 */
 	register(light: THREE.Light, factor: number): void;
+	/** Scale the everywhere-light. Live, no rebuild: it is only an intensity. */
+	setFill(scale: number): void;
 };
 
 /**
@@ -84,17 +86,28 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 	// that had since changed owners. The point lights live in the pool now, so
 	// the real lights that remain are dimmed here by name and restored to their
 	// own captured base value. Lights owned by other files join via register().
-	const entries: { light: THREE.Light; factor: number; base: number }[] = [
-		{ light: ambient, factor: 0.12, base: ambient.intensity },
-		{ light: hemi, factor: 0.1, base: hemi.intensity },
+	// `fills` marks the two that light everything from every side — the ones the
+	// Zaallicht setting scales. The sun and its fill carry direction, so they
+	// keep their shape whatever the player picks.
+	const entries: { light: THREE.Light; factor: number; base: number; fills?: boolean }[] = [
+		{ light: ambient, factor: 0.12, base: ambient.intensity, fills: true },
+		{ light: hemi, factor: 0.1, base: hemi.intensity, fills: true },
 		{ light: sun, factor: 0.08, base: sun.intensity },
 		{ light: fill, factor: 0.08, base: fill.intensity },
 	];
 	let active = false;
+	let fill_ = 1;
+	const apply = (): void => {
+		for (const e of entries) e.light.intensity = (active ? e.base * e.factor : e.base) * (e.fills ? fill_ : 1);
+	};
 	return {
 		dimDaylight(on: boolean): void {
 			active = on;
-			for (const e of entries) e.light.intensity = on ? e.base * e.factor : e.base;
+			apply();
+		},
+		setFill(scale: number): void {
+			fill_ = scale;
+			apply();
 		},
 		register(light: THREE.Light, factor: number): void {
 			const entry = { light, factor, base: light.intensity };
