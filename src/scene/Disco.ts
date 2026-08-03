@@ -51,7 +51,7 @@ export class DiscoParty {
 
 		spots.forEach(([x, y, z], i) => {
 			const col = at(colors, i);
-			// dimmable: false — during the party the pool dims the mall lights, so
+			// dimmable: false, because during the party the pool dims the mall lights, so
 			// these win the slots on their own. Nothing needs to be saved/restored.
 			this.lights.push(
 				this.pool.register({
@@ -68,7 +68,7 @@ export class DiscoParty {
 				new THREE.IcosahedronGeometry(0.4, 1),
 				this.track(
 					// metalness 0.95 kills the diffuse, so the beat-driven emissive
-					// carries the whole look — that is what makes these read as mirror
+					// carries the whole look, which is what makes these read as mirror
 					// balls instead of white spheres.
 					new THREE.MeshStandardMaterial({
 						color: 0xeeeeee,

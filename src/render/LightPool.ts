@@ -4,7 +4,7 @@ import * as THREE from 'three';
  * How many real point lights the whole session ever has.
  *
  * 16, not 8. Eight was picked when the point-light count looked like the thing
- * costing the frame; it was not — the main thread was — and eight left the
+ * costing the frame. It was not, the main thread was, and eight left the
  * shops visibly dead, because a 6 m shop lamp never outscores a 35 m concourse
  * wash. Sixteen lights the rooms you stand in and is still a quarter of the 72
  * that used to be compiled into every shader.
@@ -19,7 +19,7 @@ export const LIGHT_POOL_SLOTS = 16;
 const FADE_RATE = 10;
 /** A challenger has to beat the light already in the slot by this much. */
 const HYSTERESIS = 1.3;
-/** Clamp on the internally derived frame time — a backgrounded tab must not jump. */
+/** Clamp on the internally derived frame time, so a backgrounded tab cannot jump. */
 const MAX_DT = 0.1;
 
 type LightBase = {
@@ -57,7 +57,7 @@ export class LightHandle {
 	 */
 	readonly position = new THREE.Vector3();
 
-	/** — everything below is the pool's bookkeeping — */
+	/** Everything below is the pool's own bookkeeping. */
 	readonly priority: number;
 	readonly dimmable: boolean;
 	readonly snap: boolean;
@@ -116,7 +116,7 @@ export class LightPool {
 	/** Which handle currently rents each slot. */
 	private readonly owners: (LightHandle | null)[] = [];
 	private readonly virtuals: LightHandle[] = [];
-	/** Reused every frame — sorting must not allocate. */
+	/** Reused every frame, because sorting must not allocate. */
 	private readonly ranked: LightHandle[] = [];
 	private dimFactor = 1;
 	/** `update` takes no dt (it is called from the frame loop with the camera). */
@@ -140,7 +140,7 @@ export class LightPool {
 		return this.lights.length;
 	}
 
-	/** Slots with a virtual light in them right now — for the perf HUD. */
+	/** Slots with a virtual light in them right now, for the perf HUD. */
 	get slotsInUse(): number {
 		let used = 0;
 		for (const owner of this.owners) {
@@ -201,7 +201,7 @@ export class LightPool {
 			// so a light does not flicker between slots while you walk past it.
 			// The dim factor is applied a SECOND time in the rank (squared overall):
 			// with it linear, the priority-2 daylight washes at 15% still outbid the
-			// disco lights and held half the pool during the party — measured, only
+			// disco lights and held half the pool during the party. Measured: only
 			// 4 of 13 disco lights reached the screen. Squared, dimmed lights lose
 			// the race decisively and win their slots back when the dim lifts.
 			const dimRank = h.dimmable ? this.dimFactor : 1;
@@ -235,7 +235,7 @@ export class LightPool {
 			const light = this.lights[free];
 			// Start dark: the slot is about to teleport across the mall, and fading
 			// up from nothing reads as a light coming on rather than as a jump.
-			// Snap lights skip this — their whole point is the leading edge.
+			// Snap lights skip this, since their whole point is the leading edge.
 			if (light && !h.snap) light.intensity = 0;
 		}
 

@@ -203,7 +203,7 @@ export class Spaceship {
 		ball.position.y = 2.1;
 		s.add(ball);
 
-		// Soft light from ship (stable) — scaled with smaller saucer. Follows the
+		// Soft light from ship (stable), scaled with smaller saucer. Follows the
 		// saucer: it still gets scaled and lifted to its hover height after this.
 		this.pool.register({
 			color: 0x88ccff,

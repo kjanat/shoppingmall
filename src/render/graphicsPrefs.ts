@@ -4,7 +4,7 @@ import * as THREE from 'three';
  * The three knobs that decide what the mall costs and what it looks like.
  *
  * They exist because every one of them was first shipped as somebody's taste
- * baked into the source — no shine, eight lights, ambient at 0.95 — and each
+ * baked into the source (no shine, eight lights, ambient at 0.95), and each
  * time the answer turned out to be "depends on the machine and the eye". Two
  * of them can only be applied while the world is being built, so changing them
  * reloads the page; that is honest and instant enough for a setting nobody
@@ -15,7 +15,7 @@ const LAMPS_KEY = 'mallsim.lamps.v1';
 const FILL_KEY = 'mallsim.fill.v1';
 
 /** Pool sizes offered. Each one is a different NUM_POINT_LIGHTS, so each is a
- * different set of shader programs — hence the reload. */
+ * different set of shader programs, hence the reload. */
 export const LAMP_CHOICES: readonly number[] = [8, 16, 24, 32];
 /** Multiplier on the ambient + hemisphere "everywhere" light. */
 export const FILL_CHOICES: readonly number[] = [0.4, 0.7, 1, 1.4];
@@ -76,7 +76,7 @@ export function writeFill(scale: number): void {
  * Done here in one pass rather than at each of the ~390 construction sites:
  * the source keeps the richer material, and this strips it back when the
  * player asks for speed. Lambert has no roughness/metalness and no specular
- * lobe — that is the whole point, it drops the expensive part of the light
+ * lobe. That is the whole point: it drops the expensive part of the light
  * loop, which is multiplied by the number of pooled lights in every fragment.
  * Everything else (colour, map, emissive, transparency, side) carries over.
  *

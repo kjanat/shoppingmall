@@ -15,7 +15,7 @@ Bun, not npm. There is no Vite in this project.
 | `run build:static` | same, Pages target (no `/api`)                                                     |
 | `run typecheck`    | `tsc --noEmit`                                                                     |
 | `run lint`         | `biome check` (`bun run fmt` to fix + dprint)                                      |
-| `run check`        | `check-world.ts` + `check-lights.ts` — world & light invariants, no browser needed |
+| `run check`        | `check-world.ts` + `check-lights.ts`, world & light invariants, no browser needed  |
 | `run diagnose`     | what a frame is made of (see Performance)                                          |
 | `run bench`        | frame-time benchmark with drift detection                                          |
 | `run live`         | rebuild + swap the Docker container (compose, behind traefik)                      |
@@ -89,15 +89,15 @@ option behind a switch, ship it, say "I built all three, try them". Do not pick 
 [stub-dom](scripts/stub-dom.ts)). check-world boots the collision world and the two shop builders and asserts things like: ramps line
 up with the floor holes cut for them, the ladder is actually climbable step by step, swimmers are inside the waterline,
 every shop has inventory. check-lights boots every light-owning feature against one `LightPool` and asserts the scene
-holds exactly `LIGHT_POOL_SLOTS` real `PointLight`s — including while the disco and the alien probe toggle — and greps
+holds exactly `LIGHT_POOL_SLOTS` real `PointLight`s, including while the disco and the alien probe toggle, and greps
 `src/` so a `new PointLight` (or a named `PointLight` import) anywhere outside the pool fails the build. If you move
-geometry or add a light and a check fails, the world is wrong — not the check.
+geometry or add a light and a check fails, the world is wrong. The check is right.
 
 ## Performance
 
 The scene is **GPU-bound, and it is almost entirely the main scene pass.**
 
-Last authoritative measurement — **a snapshot, and only comparable against another snapshot that names its build.** It
+Last authoritative measurement. **A snapshot, and only comparable against another snapshot that names its build.** It
 predates the light pool / Lambert / culling / dynamic-resolution branch below, so it is the *before* picture:
 
 |          |                                                                                                |
@@ -134,10 +134,10 @@ lights in shader   72 point, 2 directional, 1 spot
 **zero** times on the deployed build (`diagnose` warns whenever they are non-zero, and it stays silent). Those calls were
 ~66% of all CPU time in the original traces. Do not re-investigate this.
 
-**Do not optimise shadows or postprocessing.** They are rounding errors. In the snapshot above two things dominated —
+**Do not optimise shadows or postprocessing.** They are rounding errors. In the snapshot above two things dominated.
 72 point lights unrolled into every fragment (`NUM_POINT_LIGHTS` is pasted into the shader and `#pragma unroll_loop`ed;
 a light contributing zero still costs, there is no branch), and ~270 draw calls with no culling. Both were attacked in
-one branch, **which has not been measured yet** — the next `run diagnose --url` against a deploy of it is the missing
+one branch, **which has not been measured yet**. The next `run diagnose --url` against a deploy of it is the missing
 snapshot, and until it exists every number above is the *old* build:
 
 1. **The fixed [light pool](src/render/LightPool.ts) shipped.** Exactly `LIGHT_POOL_SLOTS` (16) real `PointLight`s exist for the whole
@@ -149,11 +149,11 @@ snapshot, and until it exists every number above is the *old* build:
    The five 32–50 m washes in [Lighting](src/scene/Lighting.ts) carry `priority: 2` so nearby 6 m shop lamps
    cannot starve the building.
 2. **Every scene material is `MeshLambertMaterial` now.** Nothing used a PBR feature (no env/normal/ao maps, no
-   `scene.environment` — high metalness already rendered black), and the physical lights chunk is 22 KB against
+   `scene.environment`, so high metalness already rendered black), and the physical lights chunk is 22 KB against
    Lambert's 1 KB, multiplied by the unrolled light loop. Specular is gone; looks that depended on metalness darkening
    encode it in the base colour instead (see the disco balls).
 3. **Whole-batch frustum culling is on** (`SceneBatcher`): one sphere test per batch. `setMatrixAt` never invalidates
-   the lazily-computed sphere, so when a source moves the sphere is *grown* over the mover (`growBounds`) — monotonic,
+   the lazily-computed sphere, so when a source moves the sphere is *grown* over the mover (`growBounds`): monotonic,
    never under-covers. `perObjectFrustumCulled` stays off; its per-instance walk is the cost the file comment
    describes. Batch count also dropped: an emissive whose quantized intensity rounds to zero no longer splits a batch
    (StockDisplay's 66 invisible product tints were 71 of the 141 batches); visible emissives keep their exact colour.
@@ -168,8 +168,8 @@ renders the roof when it is on-screen.
 
 - **`NUM_POINT_LIGHTS` is part of the program cache key.** Changing the number of *visible* lights relinks every
   material in the mall, mid-frame. The `LightPool` exists to make that impossible: never construct a raw
-  `THREE.PointLight` (register a virtual light instead — `check:lights` fails the build otherwise), and never set a
-  pool light `visible = false` — an invisible light is not counted by the renderer, so hiding one changes
+  `THREE.PointLight` (register a virtual light instead; `check:lights` fails the build otherwise), and never set a
+  pool light `visible = false`. An invisible light is not counted by the renderer, so hiding one changes
   `NUM_POINT_LIGHTS` and triggers exactly the relink storm the pool kills. Unused slots sit at `intensity 0`.
 - **The disco dims through `DaylightDimmer` + `pool.setDimFactor`, not a traverse.** A real light added outside
   [Lighting](src/scene/Lighting.ts) must be `register()`ed with the dimmer or it will blast through the party at full power (the catwalk
@@ -192,7 +192,7 @@ run diagnose --sweep                 # + solves `fixed ms + ms/Mpix` with an A-B
 run diagnose --url https://kruidvat.kajkowalski.nl/   # measure the deployed build
 run bench --save before
 run bench --compare before
-run diagnose:headless                # no-GPU containers (remote agent envs, CI) — see below
+run diagnose:headless                # no-GPU containers (remote agent envs, CI), see below
 ```
 
 `scripts/perf/` drives a real GPU-backed Chrome over a hand-rolled CDP client (no Playwright — this repo has six
@@ -202,7 +202,7 @@ dependencies and intends to keep it that way). `probe.ts` is injected before pag
 through [chrome-headless.sh](scripts/perf/chrome-headless.sh): headless SwiftShader, no sandbox, finds the
 Playwright-managed Chromium.
 The *structural* numbers are exact there (lights in shader, programs linked, shader source KB, draw calls); every
-millisecond is the CPU rasterizer and is only comparable against the same rasterizer in the same container — never
+millisecond is the CPU rasterizer and is only comparable against the same rasterizer in the same container. Never
 against a GPU snapshot, and never worth recording in this file.
 
 **Read the measurement rules before trusting any number:**
@@ -217,7 +217,7 @@ against a GPU snapshot, and never worth recording in this file.
 - Chrome may sit on the integrated GPU on a laptop even with `powerPreference: 'high-performance'`. `diagnose` warns.
   Windows: Settings → Display → Graphics → Chrome → High performance.
 - **Dynamic resolution is disabled under `?perf-probe` but live in a normal browser tab.** Measuring the shipped build
-  without the probe means the renderer may quietly lower its own pixel count mid-run — turn the setting off (⚙) or use
+  without the probe means the renderer may quietly lower its own pixel count mid-run. Turn the setting off (⚙) or use
   the perf scripts, or an A-B-A will look stable while the resolution moves underneath it.
 
 `.perf/` is gitignored and holds saved baselines plus a reused Chrome profile (its shader cache is what keeps repeat
@@ -227,15 +227,15 @@ runs from paying the ~105 s cold link).
 
 Written down because each one cost real time and produced a confident wrong answer:
 
-- **How much whole-batch frustum culling wins is UNKNOWN — it shipped unmeasured.** An early A/B appeared to show
-  culling made things 1.7× worse; it was drift (the control re-measured 106.4 ms against its own earlier 38.8 ms — all
+- **How much whole-batch frustum culling wins is UNKNOWN. It shipped unmeasured.** An early A/B appeared to show
+  culling made things 1.7× worse; it was drift (the control re-measured 106.4 ms against its own earlier 38.8 ms, so all
   four samples invalid). Headless sphere-vs-frustum modelling said 13–81% of draw calls cull depending on viewpoint,
   but the scene is ~98% fill-bound, so expect a modest win at best; the A-B-A on a stable machine is still owed.
   `perObjectFrustumCulled` (a different mechanism with a real per-frame CPU cost) remains off and untested.
 - **The "RTX 4090 at 30 FPS / 30% GPU" figure is stale.** It predates the shader-stall fix and includes those stalls.
   Do not reason from it. Re-trace before treating it as the target.
 - **Batches are not all mall-wide.** Pre-branch: median batch bounding radius 6.7 m; 22 of 141 exceeded 40 m and 53
-  exceeded 20 m — the mall-spanning ones are the shared-material batches (floors, walls), and they are also the ones
+  exceeded 20 m. The mall-spanning ones are the shared-material batches (floors, walls), and they are also the ones
   whose spheres now grow over every animated limb they contain. Spatial partitioning is therefore a narrower fix than
   "every batch spans the building" would suggest. The 141 itself is stale since the emissive-key change merged the
   per-product batches; re-derive before leaning on any of these numbers.
@@ -256,12 +256,12 @@ What the plan called judgement calls, and how they were decided:
 - **Scoring**: `intensity × dimFactor² × priority × max(0, 1 − d/distance)`, incumbent keeps its slot until beaten by
   30% (`HYSTERESIS`), slot intensity eases at 10/s. The dim factor appears *squared* in the rank on purpose: linear,
   the priority-2 washes at 15% still outbid the disco lights and held half the pool during the party.
-- **`snap` lights** (muzzle flash, sale flash) bypass the fade — eased, a three-frame flash peaked at half value,
+- **`snap` lights** (muzzle flash, sale flash) bypass the fade. Eased, a three-frame flash peaked at half value,
   a frame late.
 - **`follow` mode** derives the light's world position from an `Object3D`'s `matrixWorld` each frame (elevator cabin,
   saucer, buggy, guns, per-shop groups). `pool.update(camera)` runs after `sceneBatcher.update()` because that is what
-  refreshes the world matrices — that ordering is load-bearing.
-- **Migration landed in one commit**, not incrementally as planned — all 85 former `PointLight`s across 16 scene files.
+  refreshes the world matrices. That ordering is load-bearing.
+- **Migration landed in one commit** instead of incrementally: all 85 former `PointLight`s across 16 scene files.
 - **An unused slot is still not free.** The unrolled loop runs per fragment regardless of intensity. 8 is a choice,
   not a law; from the far west end only 2 slots have anything in range, so there is room to size down if the look
   tolerates it.

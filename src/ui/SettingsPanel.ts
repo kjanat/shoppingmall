@@ -43,7 +43,7 @@ function loadDynRes(): boolean {
 		const v = localStorage.getItem(DYNRES_KEY);
 		// Standaard UIT. Aan-als-default ruilde stilzwijgend scherpte in voor
 		// framerate: op een trage machine zakt hij door tot 0.5 en dan kijk je
-		// naar een kwart van de pixels, opgerekt — waziger beeld zonder dat
+		// naar een kwart van de pixels, opgerekt: waziger beeld zonder dat
 		// iemand erom vroeg. Wie de ruil wil, zet hem zelf aan.
 		if (v === null) return false;
 		return v !== '0' && v !== 'false';
@@ -70,7 +70,7 @@ export class SettingsPanel {
 	/** HRTF binaural — headphones recommended */
 	private binaural = loadBinaural();
 	private onBinaural: ((on: boolean) => void) | null = null;
-	/** Dynamische resolutie — render lager als de framerate zakt */
+	/** Dynamische resolutie: render lager als de framerate zakt */
 	private dynRes = loadDynRes();
 	private onDynRes: ((on: boolean) => void) | null = null;
 	/** Zaallicht: leeft direct, de andere twee kunnen alleen bij het opbouwen. */
@@ -224,7 +224,7 @@ export class SettingsPanel {
         <label class="settings-row">
           <span>
             <b>Dynamische resolutie</b>
-            <small>Verlaagt de renderresolutie tijdelijk als de framerate zakt; scherp zodra het weer kan. Standaard uit — het beeld wordt er zichtbaar zachter van.</small>
+            <small>Verlaagt de renderresolutie tijdelijk als de framerate zakt; scherp zodra het weer kan. Standaard uit, want het beeld wordt er zichtbaar zachter van.</small>
           </span>
           <input type="checkbox" id="set-dynres" />
         </label>

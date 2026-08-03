@@ -43,8 +43,8 @@ function puntlichten(scene: THREE.Scene): THREE.PointLight[] {
 /**
  * Alles wat licht maakt, gebouwd tegen één pool op één kale scene.
  *
- * De hele App booten lukt hier niet — die wil een canvas, een WebGL-context en
- * een renderer — dus dit doet wat check-world met de winkelbouwers doet: de
+ * De hele App booten lukt hier niet, want die wil een canvas, een WebGL-context
+ * en een renderer. Dit doet daarom wat check-world met de winkelbouwers doet: de
  * features zelf bouwen, zoals App ze bouwt, en op het resultaat toetsen.
  */
 async function bouwWereld(): Promise<{
@@ -135,7 +135,7 @@ function controleAantal(scene: THREE.Scene): void {
 	if (lampen.length !== LIGHT_POOL_SLOTS) {
 		fout(
 			'aantal',
-			`${lampen.length} echte puntlichten in de scene in plaats van ${LIGHT_POOL_SLOTS} — bouwt een feature er weer zelf een?`,
+			`${lampen.length} echte puntlichten in de scene in plaats van ${LIGHT_POOL_SLOTS}. Bouwt een feature er weer zelf een?`,
 		);
 	}
 	// De pool hangt zijn lampen recht onder de scene; alles wat een feature zou
@@ -147,7 +147,7 @@ function controleAantal(scene: THREE.Scene): void {
 		if (!l.visible) {
 			// Een onzichtbaar licht telt de renderer niet mee: dan verandert
 			// NUM_POINT_LIGHTS alsnog en relinkt de hele mall.
-			fout('aantal', `poollamp '${l.name}' staat op visible=false — dat verandert NUM_POINT_LIGHTS`);
+			fout('aantal', `poollamp '${l.name}' staat op visible=false, en dat verandert NUM_POINT_LIGHTS`);
 		}
 		if (l.castShadow) fout('aantal', `poollamp '${l.name}' werpt schaduw: dat is een cubemap-pass per frame`);
 	}
@@ -217,13 +217,13 @@ function controleBron(): void {
 		if (treffers === 0 && !importeert) continue;
 		if (pad === eigenaar) gezien = treffers;
 		else if (treffers > 0) {
-			fout('bron', `src/${pad} bouwt ${treffers}× een eigen PointLight — registreer hem bij de LightPool`);
+			fout('bron', `src/${pad} bouwt ${treffers}× een eigen PointLight. Registreer hem bij de LightPool`);
 		} else {
-			fout('bron', `src/${pad} importeert PointLight uit three — alleen de LightPool hoort dat te doen`);
+			fout('bron', `src/${pad} importeert PointLight uit three. Alleen de LightPool hoort dat te doen`);
 		}
 	}
 	if (gezien === 0) {
-		fout('bron', `src/${eigenaar} bouwt geen enkele PointLight meer — is de pool hernoemd of herschreven?`);
+		fout('bron', `src/${eigenaar} bouwt geen enkele PointLight meer. Is de pool hernoemd of herschreven?`);
 	}
 }
 
@@ -251,7 +251,7 @@ for (const c of controles) {
 }
 
 if (fouten.length === 0) {
-	console.log(`check-lights: ${controles.length} controles geslaagd — ${LIGHT_POOL_SLOTS} echte puntlichten`);
+	console.log(`check-lights: ${controles.length} controles geslaagd, ${LIGHT_POOL_SLOTS} echte puntlichten`);
 } else {
 	console.error(`check-lights: ${fouten.length} ${fouten.length === 1 ? 'probleem' : 'problemen'} met het licht\n`);
 	for (const f of fouten) console.error(`  ✗ ${f}`);

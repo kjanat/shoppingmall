@@ -124,7 +124,7 @@ export class App {
 	private amenities = new Amenities();
 	/**
 	 * Elke feature hieronder huurt zijn puntlichten bij de pool en wordt daarom
-	 * in de constructor gebouwd, ná de pool — een veldinitialisator draait vóór
+	 * in de constructor gebouwd, ná de pool. Een veldinitialisator draait vóór
 	 * de constructorbody en zou de pool nog niet hebben.
 	 */
 	private pool: LightPool;
@@ -278,7 +278,7 @@ export class App {
 		});
 		// Geen setPixelRatio hier: bindQuality vuurt verderop in deze constructor
 		// synchroon met de opgeslagen tier en is via applyPixelRatio() de enige
-		// eigenaar — een tweede schrijver was precies wat daar wegmoest.
+		// eigenaar; een tweede schrijver was precies wat daar wegmoest.
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -291,7 +291,7 @@ export class App {
 		// error text is worth the stall while developing; it is not worth shipping.
 		this.renderer.debug.checkShaderErrors = !!import.meta.hot;
 		// Zonder dit reset three de telling bij elke renderer.render(), en de
-		// composer doet er meerdere per frame — je leest dan alleen de laatste
+		// composer doet er meerdere per frame, dus je leest alleen de laatste
 		// pass. Eén reset per frame in de loop geeft het frame als geheel.
 		this.renderer.info.autoReset = false;
 		// Before anything builds a label: name plates and signs are read at a
@@ -418,7 +418,7 @@ export class App {
 		if (!shineOn()) stripShine(this.scene);
 		this.sceneBatcher = new SceneBatcher(this.scene);
 		// De renderer draait scene.updateMatrixWorld() nog een keer bij elke
-		// render — een tweede complete wandeling over ~7000 objecten, terwijl
+		// render: een tweede complete wandeling over ~7000 objecten, terwijl
 		// sceneBatcher.update() die vlak ervoor al geforceerd heeft gedaan. Uit
 		// dus: één matrixpas per frame in plaats van twee. Alles wat later aan
 		// de scene wordt toegevoegd komt gewoon mee, want die ene pas forceert.
@@ -596,7 +596,7 @@ export class App {
 		window.addEventListener('resize', () => this.onResize());
 		// Een tabwissel is één reusachtig rAF-interval dat geen frame is. De
 		// timestamp-keten breekt hier, zodat dat gat nooit in de FPS-teller of
-		// de dynamische-resolutieregelaar belandt — een groottedrempel kan een
+		// de dynamische-resolutieregelaar belandt. Een groottedrempel kan een
 		// tabwissel niet van een écht traag frame onderscheiden.
 		document.addEventListener('visibilitychange', () => {
 			this.lastRafTs = null;
@@ -792,7 +792,7 @@ export class App {
 	 *
 	 * `NUM_POINT_LIGHTS` is substituted into the shader source and is part of the
 	 * program cache key, so the number of point lights the renderer can see used
-	 * to decide which program a material got — and the alien probe (one light, on
+	 * to decide which program a material got, and the alien probe (one light, on
 	 * a 40-90s timer) and the disco (thirteen) changed that number mid-session,
 	 * relinking every material in the building. This used to compile a second
 	 * time with the probe shown just to seed that variant.
@@ -1638,7 +1638,7 @@ export class App {
 	/**
 	 * Verlaag de renderschaal als frames aanhoudend boven budget lopen; verhoog
 	 * hem pas na lang comfort. Asymmetrisch en met afkoeltijd, anders pendelt
-	 * hij op de rand — en elke wissel kost een target-heralloc in de composer.
+	 * hij op de rand, en elke wissel kost een target-heralloc in de composer.
 	 */
 	private updateDynRes(frameMs: number): void {
 		if (this.perfProbe || !this.dynResOn || frameMs <= 0) return;
@@ -1678,7 +1678,7 @@ export class App {
 	private stepDynRes(index: number): void {
 		this.dynResIndex = index;
 		this.dynScale = DYN_RES_STEPS[index] ?? 1;
-		// Verse meting na de wissel — oude samples zouden meteen dóórstappen
+		// Verse meting na de wissel, want oude samples stappen meteen dóór
 		this.resetDynResMeting();
 		this.dynResCooldown = 1;
 		this.applyPixelRatio();
@@ -1852,7 +1852,7 @@ export class App {
 		const elapsed = this.timer.getElapsed();
 		// Ongeklemde frametijd uit de rAF-timestamps zelf: dt hierboven is op
 		// 50 ms afgekapt, en een meting die daarop leunt verzadigt precies waar
-		// er ingegrepen moet worden — een 62ms-frame leest dan als 50.
+		// er ingegrepen moet worden: een 62ms-frame leest dan als 50.
 		const frameMs = timestamp !== undefined && this.lastRafTs !== null ? timestamp - this.lastRafTs : dt * 1000;
 		if (timestamp !== undefined) this.lastRafTs = timestamp;
 		this.updateDynRes(frameMs);
@@ -2251,7 +2251,7 @@ export class App {
 		const afterBatch = performance.now();
 		this.composer.render(dt);
 		// Let op bij het lezen: dit is de tijd om het frame te versturen, niet om
-		// het te tekenen. De driver blokkeert hier pas als hij achterloopt — dan
+		// het te tekenen. De driver blokkeert hier pas als hij achterloopt, en dan
 		// loopt juist dít getal op terwijl de GPU de echte schuldige is.
 		const afterRender = performance.now();
 		if (this.perfProbe) {

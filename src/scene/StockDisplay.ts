@@ -16,7 +16,7 @@ export class StockDisplay {
 	/**
 	 * Sale lights next to `registers`, per store id. They used to live in
 	 * `reg.userData['saleLight']`, which forced flashSale into a cast back to
-	 * PointLight — exactly the kind of cast this project bans.
+	 * PointLight, exactly the kind of cast this project bans.
 	 */
 	private saleLights = new Map<string, LightHandle>();
 	private materials: THREE.Material[] = [];

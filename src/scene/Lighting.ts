@@ -6,8 +6,8 @@ export type DaylightDimmer = {
 	dimDaylight(on: boolean): void;
 	/**
 	 * A real light owned elsewhere that must follow the dim. The old traverse
-	 * caught every light in the scene; this list is what replaces that reach —
-	 * miss one and it blasts at full power through the "deep arcade night"
+	 * caught every light in the scene; this list is what replaces that reach.
+	 * Miss one and it blasts at full power through the "deep arcade night"
 	 * (the catwalk spot did exactly that).
 	 */
 	register(light: THREE.Light, factor: number): void;
@@ -16,7 +16,7 @@ export type DaylightDimmer = {
 };
 
 /**
- * Warm daylight American mall — no neon club vibes.
+ * Warm daylight American mall, no neon club vibes.
  *
  * Ambient and hemisphere are deliberately low. They light every surface from
  * every side at once, so they carry no shape at all: with 71 point lights doing
@@ -53,7 +53,7 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 	fill.position.set(-20, 30, -15);
 	scene.add(fill);
 
-	// Even interior wash (stable — no blinking). These five reach 32–50 m and are
+	// Even interior wash, stable and never blinking. These five reach 32–50 m and are
 	// what keeps the whole building lit, so they get priority 2: without it the
 	// handful of 6 m shop lamps standing right next to you would win every pool
 	// slot and the mall behind them would fall dark.
@@ -82,11 +82,11 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 	}
 
 	// The disco used to dim by traversing every light in the scene and restoring
-	// from its own snapshot — which could hand a stale intensity back to a light
+	// from its own snapshot, which could hand a stale intensity back to a light
 	// that had since changed owners. The point lights live in the pool now, so
 	// the real lights that remain are dimmed here by name and restored to their
 	// own captured base value. Lights owned by other files join via register().
-	// `fills` marks the two that light everything from every side — the ones the
+	// `fills` marks the two that light everything from every side, the ones the
 	// Zaallicht setting scales. The sun and its fill carry direction, so they
 	// keep their shape whatever the player picks.
 	const entries: { light: THREE.Light; factor: number; base: number; fills?: boolean }[] = [

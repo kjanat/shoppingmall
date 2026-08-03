@@ -38,7 +38,7 @@ const MOVED_SPHERE = new THREE.Sphere();
 
 /**
  * A moved instance leaves the batch's lazily-computed union bounding sphere
- * stale — setMatrixAt never invalidates it — so grow the sphere to cover the
+ * stale, because setMatrixAt never invalidates it, so grow the sphere over the
  * new position. Growing is monotonic and can never under-cover; the batch keeps
  * its frustum test at the cost of a sphere spanning the mover's travel
  * envelope. Demoting the whole batch to frustumCulled=false was tried first
@@ -76,12 +76,12 @@ function materialKey(material: ColorMaterial): string {
 	const quantize = (name: string): number => Math.round(number(name) * 4) / 4;
 	// Emissive splits a batch only when it is visible. The exact hex once split 71
 	// of 141 batches: StockDisplay tints every product's emissive with its own
-	// colour at intensity 0.08 — invisible — so an emissive whose quantized
+	// colour at intensity 0.08, which is invisible, so an emissive whose quantized
 	// intensity rounds to zero collapses freely. Anything brighter keeps its exact
 	// colour: an earlier quarter-step-per-channel scheme quantized in LINEAR space,
 	// where every dark tone lands in the same bucket, and the beard cave's amber
 	// gold (#664400 @0.2) batched with the elevator's dark red frame (#8b0000
-	// @0.35) — the whole hoard rendered with a red cast, picked by traversal order.
+	// @0.35), so the whole hoard rendered with a red cast, picked by traversal order.
 	const emissive = props['emissive'];
 	const emissiveKey = emissive instanceof THREE.Color && quantize('emissiveIntensity') > 0 ? emissive.getHexString() : '';
 
@@ -114,7 +114,7 @@ function materialKey(material: ColorMaterial): string {
 		wireframe: props['wireframe'] === true,
 		// Back in the key with MeshStandardMaterial: they change how a surface
 		// shades, so a matte wall and polished steel must not share a batch.
-		// Quantized to quarter steps — hundreds of materials differ only by a
+		// Quantized to quarter steps, since hundreds of materials differ only by a
 		// hair, and those differences should not each cost a draw call.
 		roughness: quantize('roughness'),
 		metalness: quantize('metalness'),
@@ -210,7 +210,7 @@ export class SceneBatcher {
 			// update() below primes every instance matrix first and the batch sits at
 			// identity in the scene root. The trap: setMatrixAt never invalidates
 			// that sphere, so a batch whose source mesh moves after priming would be
-			// culled while visible — update() grows the sphere over the mover
+			// culled while visible. update() grows the sphere over the mover
 			// (growBounds above) so the test stays sound for every batch.
 			batched.frustumCulled = true;
 			// Per-object culling is different: it makes BatchedMesh walk every
@@ -281,8 +281,8 @@ export class SceneBatcher {
 					changed = true;
 					source.matrix.copy(world);
 					batch.mesh.setMatrixAt(source.instanceId, world);
-					// Colour and visibility writes below don't move geometry — hidden
-					// instances are already inside the sphere — so only this branch
+					// Colour and visibility writes below don't move geometry, and
+					// hidden instances are already inside the sphere, so only this branch
 					// has to keep the frustum sphere honest.
 					if (source.primed) growBounds(batch.mesh, source);
 				}

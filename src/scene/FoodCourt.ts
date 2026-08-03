@@ -220,7 +220,7 @@ export class FoodCourt {
 			menu.position.set(0, 2.15, -0.46);
 			g.add(menu);
 
-			// Warm light — volgt de kraam: die wordt hieronder nog geplaatst en gedraaid.
+			// Warm light, volgt de kraam: die wordt hieronder nog geplaatst en gedraaid.
 			this.pool.register({
 				color: 0xffcc88,
 				intensity: 4,

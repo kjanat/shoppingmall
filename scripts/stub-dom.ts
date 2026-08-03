@@ -1,7 +1,7 @@
 /**
  * De browserstubs die de controlescripts nodig hebben om de scene kaal in Bun te
  * bouwen. Stonden eerst alleen in check-world; check-lights bouwt dezelfde
- * bouwers en heeft ze dus ook nodig — en twee kopieën van een stub lopen net zo
+ * bouwers en heeft ze dus ook nodig, en twee kopieën van een stub lopen net zo
  * hard uit elkaar als twee kopieën van een getal.
  */
 

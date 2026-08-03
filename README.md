@@ -70,7 +70,7 @@ works from `kjanat.github.io/shoppingmall/` and from a domain root alike.
 
 ## Stack
 
-- Bun + TypeScript (bundler, server and task runner — no Vite)
+- Bun + TypeScript (bundler, server and task runner, so no Vite)
 - Three.js
 - GSAP (camera director)
 - postprocessing (vignette, ACES, SMAA)

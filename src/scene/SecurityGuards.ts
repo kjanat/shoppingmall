@@ -558,7 +558,7 @@ export class SecurityGuards {
 		grip.position.set(0, -0.04, 0);
 		gun.add(grip);
 		// Follows the gun: that group walks, turns and recoils with the guard.
-		// Intensity 0 at rest — a zero light scores zero and holds no pool slot,
+		// Intensity 0 at rest, so it scores zero and holds no pool slot,
 		// exactly how a muzzle flash should behave. snap: the flash lives three
 		// frames; eased, its peak reached the screen at half value, a frame late.
 		const muzzleFlash = this.pool.register({

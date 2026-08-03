@@ -11,7 +11,7 @@ const GRAPH_H = 34;
 const GRAPH_MAX_MS = 50;
 const VSYNC_MS = 1000 / 60;
 
-/** Every value row, in order. The markup and the lookup both read this — two
+/** Every value row, in order. The markup and the lookup both read this. Two
  * copies of the list drifted apart the moment a row was added, and the panel
  * threw on a missing element. */
 const ROWS: [id: string, label: string][] = [
@@ -77,9 +77,9 @@ function heapMb(): number | null {
 /**
  * A frame-time HUD, because the plain fps number is the one metric that hides
  * exactly what you feel: an average of 60 with one 200 ms frame per second
- * reads as smooth and plays as a stutter. So this shows the distribution —
- * the worst 1% of frames, the worst single frame, and the last few seconds as
- * a graph — next to what the frame is actually made of.
+ * reads as smooth and plays as a stutter. So this shows the distribution: the
+ * worst 1% of frames, the worst single frame, and the last few seconds as a
+ * graph, next to what the frame is actually made of.
  *
  * Every frame counts, however slow. Tab switches never reach here: App breaks
  * its timestamp chain on `visibilitychange`, because no size threshold can
@@ -105,7 +105,7 @@ export class PerfOverlay {
 	private textTurn = false;
 	private open: boolean;
 	private last: PerfFrame | null = null;
-	/** Main-thread blocks ≥50 ms — GC pauses and the like — in the last second. */
+	/** Main-thread blocks of 50 ms or more (GC pauses and the like) in the last second. */
 	private longTasks: number[] = [];
 
 	constructor(root: HTMLElement) {
@@ -162,7 +162,7 @@ export class PerfOverlay {
 			});
 			observer.observe({ entryTypes: ['longtask'] });
 		} catch {
-			// Not supported — the row stays at 0 rather than lying.
+			// Not supported, so the row stays at 0 rather than lying.
 		}
 	}
 

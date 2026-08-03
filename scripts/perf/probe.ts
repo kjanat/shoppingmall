@@ -353,7 +353,7 @@ function installProbe(): void {
 			const start = performance.now();
 			// The first poll can land on the navigation's initial empty document,
 			// before the parser has produced #app-loading at all. Polling only for
-			// its absence then declares the game playable at 0 ms — every number
+			// its absence then declares the game playable at 0 ms, and every number
 			// after that measures a blank page (this happened on a slow container;
 			// a fast desktop wins the race by accident). So: wait for the loading
 			// screen to have existed, or for a fully loaded document without one.
