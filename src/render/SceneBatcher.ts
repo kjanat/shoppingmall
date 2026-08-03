@@ -214,7 +214,7 @@ export class SceneBatcher {
 			// (growBounds above) so the test stays sound for every batch.
 			batched.frustumCulled = true;
 			// Per-object culling is different: it makes BatchedMesh walk every
-			// instance and rewrite its indirect texture on every single render — its
+			// instance and rewrite its indirect texture on every single render. Its
 			// onBeforeRender only skips that work when neither this nor sortObjects
 			// is set and no visibility changed. These batches hold static mall
 			// geometry on a modest triangle budget, so shading a few off-screen
