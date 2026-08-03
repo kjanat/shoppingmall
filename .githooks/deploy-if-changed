@@ -1,0 +1,22 @@
+#!/bin/sh
+# Herdeployt alleen op machines waar `git config hooks.deploy true` staat, en
+# alleen als er sinds de vorige deploy iets in de deploybare paden veranderde.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+[ "$(git config --type=bool --default=false hooks.deploy)" = "true" ] || exit 0
+
+gitdir="$(git rev-parse --git-dir)"
+marker="$gitdir/last-deploy"
+paths="src server public scripts Dockerfile Makefile compose.yaml build.ts index.html package.json bun.lock tsconfig.json"
+
+# shellcheck disable=SC2086
+if [ -f "$marker" ] && git diff --quiet "$(cat "$marker")" HEAD -- $paths 2>/dev/null; then
+	exit 0
+fi
+
+# In de achtergrond: een push of pull mag niet minuten op docker wachten.
+# flock -n: loopt er al een deploy, dan vangt de volgende trigger dit op.
+echo "deploy: gestart, log in $gitdir/deploy.log"
+nohup flock -n "$gitdir/deploy.lock" sh -c \
+	"make live >> '$gitdir/deploy.log' 2>&1 && git rev-parse HEAD > '$marker'" \
+	>/dev/null 2>&1 &

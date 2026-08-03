@@ -1,0 +1,13 @@
+# Gedeelde hooks. Eenmalig per machine: sh .githooks/install
+[hook "checks-commit"]
+	event = pre-commit
+	command = .githooks/pre-commit
+[hook "checks-push"]
+	event = pre-push
+	command = .githooks/pre-push
+[hook "deploy-merge"]
+	event = post-merge
+	command = .githooks/post-merge
+[hook "deploy-rebase"]
+	event = post-rewrite
+	command = .githooks/post-rewrite

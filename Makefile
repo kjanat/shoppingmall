@@ -1,6 +1,9 @@
 # Live container: the compiled binary (game + DJ API), behind traefik.
 COMPOSE := docker compose
 
+# Versie voor /api/healthz: zonder tags faalt describe, dan de volle SHA.
+export GIT_DESCRIBE := $(shell git describe --tags --dirty 2>/dev/null || git rev-parse HEAD)
+
 .PHONY: help live build up restart stop logs ps sh
 
 help: ## show targets

@@ -5,11 +5,13 @@ WORKDIR /app
 COPY --from=kjanat/runner:latest /run /runner /usr/local/bin/
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
-COPY build.ts index.html tsconfig.json ./
+COPY build.ts globals.d.ts index.html tsconfig.json ./
 COPY public ./public
 COPY scripts ./scripts
 COPY server ./server
 COPY src ./src
+ARG GIT_DESCRIBE
+ENV GIT_DESCRIBE=$GIT_DESCRIBE
 RUN bun run build
 
 # ── runtime: ./mall ──────────────────────────────────────────────────────
@@ -34,5 +36,5 @@ COPY --from=build --chown=mall:mall /app/dist/static ./dist/static
 USER mall
 EXPOSE 5174
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD ["bun", "-e", "fetch('http://localhost:5174/api/dj/status').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+  CMD ["bun", "-e", "fetch('http://localhost:5174/api/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 CMD ["./mall"]

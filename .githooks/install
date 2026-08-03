@@ -1,0 +1,13 @@
+#!/bin/sh
+# Eenmalig per machine. Kiest config-hooks (git >= 2.54) of core.hooksPath.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+v="$(git version | sed 's/^git version //')"
+if [ "$(printf '%s\n2.54\n' "$v" | sort -V | head -1)" = "2.54" ]; then
+	git config include.path ../hooks.gitconfig
+	echo "hooks: via include.path (git $v)"
+else
+	git config core.hooksPath .githooks
+	echo "hooks: via core.hooksPath (git $v)"
+fi
+echo "deploy aanzetten op de deploy-machine: git config hooks.deploy true"

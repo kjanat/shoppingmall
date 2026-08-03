@@ -1,0 +1,4 @@
+#!/bin/sh
+# Alleen na een rebase (pull --rebase); een amend is geen nieuwe staat van elders.
+[ "${1:-}" = "rebase" ] || exit 0
+exec "$(git rev-parse --show-toplevel)/.githooks/deploy-if-changed"

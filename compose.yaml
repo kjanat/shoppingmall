@@ -1,6 +1,10 @@
 services:
   mall:
-    build: .
+    build:
+      context: .
+      args:
+        # De image heeft geen git-repo; de Makefile rekent dit uit.
+        GIT_DESCRIBE: ${GIT_DESCRIBE:-}
     image: mall-sim
     container_name: mall-sim
     restart: unless-stopped

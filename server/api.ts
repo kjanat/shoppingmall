@@ -6,7 +6,8 @@
  * - POST /api/sim/chat     → OpenRouter SDK (sims talk; Broadcast user/session/trace)
  * - GET  /api/dj/playlist  → list public/dj-music/*
  * - POST /api/dj/request   → YouTube API search + yt-dlp download
- * - GET  /api/dj/status    → health + key presence
+ * - GET  /api/dj/status    → DJ state + key presence
+ * - GET  /api/healthz      → liveness; version alleen voor eigen afzenders
  */
 
 import { mkdir } from 'node:fs/promises';
@@ -15,6 +16,9 @@ import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { OpenRouter } from '@openrouter/sdk';
 import { env } from 'bun';
+import { clientIp, isOurs } from './net.ts';
+
+const BOOT = Date.now();
 
 /** Music library. public/ is read from the working directory, like public/ in main.ts. */
 const MUSIC_DIR = resolve('public/dj-music');
@@ -581,8 +585,17 @@ async function requestTrack(
 }
 
 /** Returns null when the request is not an API route (caller serves static). */
-export async function handleApi(req: Request, ip: string): Promise<Response> {
+export async function handleApi(req: Request, peer: string): Promise<Response> {
 	const url = new URL(req.url).pathname;
+	// De peer is de proxy, niet de bezoeker: op de peer limiteren betekent
+	// iedereen samen in één emmer.
+	const ip = clientIp(req, peer);
+
+	if (url === '/api/healthz' && req.method === 'GET') {
+		const body: Record<string, unknown> = { ok: true, uptime: Math.round((Date.now() - BOOT) / 1000) };
+		if (await isOurs(ip)) body['version'] = typeof __GIT_DESCRIBE__ === 'undefined' ? 'dev' : __GIT_DESCRIBE__;
+		return json(200, body);
+	}
 
 	if (crossSite(req)) return json(403, { error: 'cross_site_blocked' });
 	if (rateLimited(ip, url)) {

@@ -15,11 +15,23 @@ await $`rm -rf dist`.cwd(import.meta.dir);
 
 const pages = !!env['GITHUB_ACTIONS'] || argv.includes('--static');
 
+/**
+ * Versie voor /api/healthz. Uit GIT_DESCRIBE als die er is: in de image
+ * bestaat geen git-repo, dus daar komt hij als build-arg binnen. Zonder tags
+ * faalt `describe`, dan de volle SHA.
+ */
+const version =
+	env['GIT_DESCRIBE']?.trim() ||
+	(await $`git describe --tags --dirty`.nothrow().quiet().text()).trim() ||
+	(await $`git rev-parse HEAD`.nothrow().quiet().text()).trim() ||
+	'unknown';
+
 const shared = {
 	minify: true,
 	root: '.',
 	publicPath: '/',
 	splitting: true,
+	define: { __GIT_DESCRIBE__: JSON.stringify(version) },
 } as const;
 
 const [out1, out2] = await Promise.all([
