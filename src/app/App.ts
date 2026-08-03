@@ -579,6 +579,13 @@ export class App {
 		});
 
 		window.addEventListener('resize', () => this.onResize());
+		// Een tabwissel is één reusachtig rAF-interval dat geen frame is. De
+		// timestamp-keten breekt hier, zodat dat gat nooit in de FPS-teller of
+		// de dynamische-resolutieregelaar belandt — een groottedrempel kan een
+		// tabwissel niet van een écht traag frame onderscheiden.
+		document.addEventListener('visibilitychange', () => {
+			this.lastRafTs = null;
+		});
 		window.addEventListener('keydown', (e) => {
 			// DJ booth captures typing — don't steal keys
 			if (this.djUi.isOpen() && e.key !== 'Escape' && e.key !== 'e' && e.key !== 'E') {
@@ -2008,11 +2015,12 @@ export class App {
 
 		// FPS-teller: 2×/s verversen, kleur zegt genoeg. Op de ongeklemde
 		// frametijd — met het geklemde dt rapporteerde hij ~20 fps waar het er
-		// echt ~16 waren, juist in het gebied waar het cijfer ertoe doet.
-		// Een spike-frame (tabwissel) telt helemaal niet mee, ook niet als
-		// frame: gekapt meetellen rapporteerde 4 fps op een machine die er 3
-		// haalde.
-		if (frameMs <= FRAME_MS_SPIKE) {
+		// echt ~16 waren, juist in het gebied waar het cijfer ertoe doet. En
+		// élk frame telt mee, hoe traag ook: frames boven een drempel overslaan
+		// loog juist op machines waar bijna elk frame erboven zit (26 op het
+		// chipje bij 3-6 échte fps). Tabwissels zijn geen frames — die zijn al
+		// uit de keten geknipt via visibilitychange, niet via een drempel.
+		if (frameMs > 0) {
 			this.fpsFrames++;
 			this.fpsT += frameMs / 1000;
 		}
