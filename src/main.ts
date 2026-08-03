@@ -10,7 +10,10 @@ if (!canvasRoot || !uiRoot) {
 const boot = async () => {
 	try {
 		const { App } = await import('./app/App');
-		new App(canvasRoot, uiRoot);
+		const app = new App(canvasRoot, uiRoot);
+		// Hold the loading screen until the shaders are linked. The alternative is
+		// handing the player a mall that stutters its way through the first minute.
+		await app.ready;
 		document.querySelector('#app-loading')?.remove();
 	} catch (error) {
 		const loading = document.querySelector<HTMLElement>('#app-loading');

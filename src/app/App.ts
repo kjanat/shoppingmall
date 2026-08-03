@@ -183,6 +183,8 @@ export class App {
 	private restoredFromSave = false;
 	private sceneBatcher!: SceneBatcher;
 	private readonly perfProbe = new URLSearchParams(window.location.search).has('perf-probe');
+	/** Resolves once the shaders are linked and the frame loop is running. */
+	readonly ready: Promise<void>;
 
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
 		this.atmosphere = new Atmosphere(this.world);
@@ -206,6 +208,12 @@ export class App {
 		this.renderer.shadowMap.type = THREE.PCFShadowMap;
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 		this.renderer.toneMapping = THREE.NoToneMapping;
+		// three.js validates every program the first time it is *rendered* by reading
+		// getProgramInfoLog()/getShaderInfoLog()/LINK_STATUS back from the driver. Each
+		// of those is a hard CPU-GPU sync that blocks the frame until the link is done,
+		// and two Chrome traces put roughly two thirds of all CPU time inside them. The
+		// error text is worth the stall while developing; it is not worth shipping.
+		this.renderer.debug.checkShaderErrors = !!import.meta.hot;
 		if (this.perfProbe) this.renderer.info.autoReset = false;
 		// Before anything builds a label: name plates and signs are read at a
 		// slant almost always, and this is what keeps them legible there.
@@ -644,7 +652,82 @@ export class App {
 
 		// Page Visibility: avoid huge dt spikes after tab switch
 		this.timer.connect(document);
+		this.ready = this.start();
+	}
+
+	/**
+	 * Link the programs the opening view needs, then start the frame loop.
+	 *
+	 * three.js builds a material's program the first time that material is actually
+	 * rendered, so without a warmup the driver links mid-frame, once per material,
+	 * spread over the whole session — which is what turned walking round a corner
+	 * into a stutter. compileAsync polls KHR_parallel_shader_compile rather than
+	 * blocking on it, so the links run in parallel while the loader is still up.
+	 *
+	 * The wait is capped and every failure is swallowed: a driver that reports a
+	 * program ready late may cost frames, but it must never strand the player on a
+	 * spinner.
+	 */
+	private async start(): Promise<void> {
+		const warmupBudgetMs = 8000;
+		try {
+			await this.warmup(performance.now() + warmupBudgetMs);
+		} catch (error) {
+			console.warn('[Mall] shader warmup failed, starting anyway', error);
+		}
 		this.animate();
+	}
+
+	/**
+	 * Link every lighting configuration the mall can be walked into.
+	 *
+	 * `NUM_POINT_LIGHTS` is substituted into the shader source and is part of the
+	 * program cache key, so the number of *visible* lights decides which program a
+	 * material gets. The alien probe shows its group — and with it one more point
+	 * light — on a 40-90s timer, which relinks every material in the mall at once,
+	 * about a minute into a session that had just settled down. Compiling with the
+	 * group shown puts that variant in the per-material program cache, which three
+	 * only drops when the material itself is disposed, so the probe's first
+	 * appearance is a cache hit instead.
+	 *
+	 * The disco's thirteen lights are deliberately left out. It is a rare and
+	 * player-triggered event, and the two toggle independently, so covering it
+	 * would mean linking all four combinations for one hitch nobody has walked
+	 * into unprompted.
+	 *
+	 * The budget spans the whole warmup rather than each step: it exists to bound
+	 * how long the loading screen can hold, and that is one promise to the player,
+	 * not one per program set.
+	 */
+	private async warmup(deadline: number): Promise<void> {
+		await this.compileUntil(deadline);
+
+		const probe = this.alienProbe.group;
+		const wasVisible = probe.visible;
+		probe.visible = true;
+		try {
+			await this.compileUntil(deadline);
+		} finally {
+			// Restored here and not after the race in start(): a timeout that fired
+			// mid-variant would otherwise hand the frame loop a scene with a UFO
+			// parked in it.
+			probe.visible = wasVisible;
+		}
+	}
+
+	/** Compile the scene as it stands, giving up once `deadline` passes. */
+	private async compileUntil(deadline: number): Promise<void> {
+		let timer = 0;
+		try {
+			await Promise.race([
+				this.renderer.compileAsync(this.scene, this.camera),
+				new Promise<void>((resolve) => {
+					timer = window.setTimeout(resolve, Math.max(0, deadline - performance.now()));
+				}),
+			]);
+		} finally {
+			window.clearTimeout(timer);
+		}
 	}
 
 	/** Snapshot player + progress into sessionStorage */
