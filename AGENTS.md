@@ -197,9 +197,6 @@ run bench --compare before
 run diagnose:headless                # no-GPU containers (remote agent envs, CI), see below
 ```
 
-`scripts/perf/` drives a real GPU-backed Chrome over a hand-rolled CDP client (no Playwright — this repo has six
-dependencies and intends to keep it that way). `probe.ts` is injected before page scripts and wraps the WebGL context.
-
 **No-GPU containers** (remote agent environments, CI): `run diagnose:headless` / `run bench:headless` route Chrome
 through [chrome-headless.sh](scripts/perf/chrome-headless.sh): headless SwiftShader, no sandbox, finds the
 Playwright-managed Chromium.
