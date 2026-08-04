@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle';
 import * as THREE from 'three';
 import { shineOn } from '@/render/graphicsPrefs';
 
@@ -15,7 +16,12 @@ import { shineOn } from '@/render/graphicsPrefs';
  * Lambert has no `roughness` or `metalness`, so those are dropped when it wins.
  * Everything else in the parameters carries over untouched.
  */
-const SHINE = shineOn();
+/**
+ * `FORCE_LAMBERT` settles it at build time and takes the PBR branch out of the
+ * bundle entirely, for a target that will never want it. Without the flag the
+ * player decides and both branches ship.
+ */
+const SHINE = feature('FORCE_LAMBERT') ? false : shineOn();
 
 /** What a caller may ask for. A superset: the PBR fields are dropped without it. */
 export type LitParams = THREE.MeshStandardMaterialParameters;

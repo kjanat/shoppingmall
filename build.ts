@@ -26,11 +26,23 @@ const version =
 	(await $`git rev-parse HEAD`.nothrow().quiet().text()).trim() ||
 	'unknown';
 
+/**
+ * Build-time vlaggen. Ze verwijderen code, dus een niet-gezette vlag levert de
+ * volledige build op: dat is ook wat de dev-server geeft, die geen vlaggen kan
+ * meegeven. Zie src/bun-features.d.ts voor wat elke vlag precies weghaalt.
+ */
+const features = [
+	...(argv.includes('--no-perf-hud') ? ['NO_PERF_HUD'] : []),
+	...(argv.includes('--force-lambert') ? ['FORCE_LAMBERT'] : []),
+];
+if (features.length > 0) console.log(`features: ${features.join(', ')}`);
+
 const shared = {
 	minify: true,
 	root: '.',
 	publicPath: '/',
 	splitting: true,
+	features,
 	define: { __GIT_DESCRIBE__: JSON.stringify(version) },
 } as const;
 

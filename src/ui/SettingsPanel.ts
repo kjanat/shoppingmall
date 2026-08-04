@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle';
 import { type ControlSettings, DEFAULT_SETTINGS } from '@/player/Controls';
 import {
 	FILL_CHOICES,
@@ -190,13 +191,20 @@ export class SettingsPanel {
           </select>
         </label>
 
+        ${
+					// Onder FORCE_LAMBERT staat de keuze al vast in de bundle, dus dan hoort
+					// er ook geen schakelaar te zijn die doet alsof er iets te kiezen valt.
+					feature('FORCE_LAMBERT')
+						? ''
+						: `
         <label class="settings-row">
           <span>
             <b>Glans</b>
             <small>Hoogsels en metaal. Uit = goedkopere belichting per pixel, maar alles wordt mat. Herlaadt.</small>
           </span>
           <input type="checkbox" id="set-shine" />
-        </label>
+        </label>`
+				}
 
         <label class="settings-row">
           <span>
@@ -264,12 +272,14 @@ export class SettingsPanel {
 
 		// Glans en lampenaantal zitten in de shaders zelf: die kunnen alleen bij
 		// het opbouwen van de wereld gekozen worden, dus herladen we meteen.
-		const shineCb = q<HTMLInputElement>('#set-shine');
-		shineCb.checked = shineOn();
-		shineCb.addEventListener('change', () => {
-			writeShine(shineCb.checked);
-			location.reload();
-		});
+		if (!feature('FORCE_LAMBERT')) {
+			const shineCb = q<HTMLInputElement>('#set-shine');
+			shineCb.checked = shineOn();
+			shineCb.addEventListener('change', () => {
+				writeShine(shineCb.checked);
+				location.reload();
+			});
+		}
 
 		const lampsSel = q<HTMLSelectElement>('#set-lamps');
 		lampsSel.value = String(lampCount());

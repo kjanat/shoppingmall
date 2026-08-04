@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle';
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
 import { BartekChat } from '@/audio/BartekChat';
@@ -64,7 +65,7 @@ import { DJWidget } from '@/ui/DJWidget';
 import { ElevatorPanel } from '@/ui/ElevatorPanel';
 import { KioskOverlay, type MapBlip } from '@/ui/KioskOverlay';
 import { type CastRow, PeopleDashboard } from '@/ui/PeopleDashboard';
-import { PerfOverlay } from '@/ui/PerfOverlay';
+import type { PerfOverlay } from '@/ui/PerfOverlay';
 import { SettingsPanel } from '@/ui/SettingsPanel';
 import { setLabelAnisotropy } from '@/util/label';
 import { at, pick } from '@/util/rand';
@@ -169,7 +170,7 @@ export class App {
 	/** Glijbaan-rit: 0..1 langs de curve, -1 = niet aan het glijden */
 	private slideT = -1;
 	/** FPS-chip + het uitklapbare prestatiepaneel */
-	private perfHud!: PerfOverlay;
+	private perfHud: PerfOverlay | null = null;
 	/** Zaallicht-schaal en de discodim lopen allebei hierlangs. */
 	private daylight!: DaylightDimmer;
 	/** Hergebruikt: getDrawingBufferSize schrijft in een doelvector, elk frame. */
@@ -513,8 +514,17 @@ export class App {
 		this.peopleUi = new PeopleDashboard(uiRoot, (id) => this.enterPossess(id));
 		new DJWidget(uiRoot, this.djPlayer, () => this.djUi.show());
 
-		// FPS-chip + prestatiepaneel (I): frametijdverdeling, niet alleen een gemiddelde
-		this.perfHud = new PerfOverlay(uiRoot);
+		// FPS-chip + prestatiepaneel (I): frametijdverdeling in plaats van alleen
+		// een gemiddelde. Diagnostisch gereedschap, dus onder NO_PERF_HUD hoort
+		// het uit de bundle te verdwijnen. Vandaar een dynamische import: met een
+		// gewone import blijft de module bestaan ook als elke verwijzing ernaar
+		// in dode code staat, en dan valt alleen het aanroepen weg (1,9 KB) in
+		// plaats van het paneel zelf. Het laadt tijdens de laadscreen.
+		if (!feature('NO_PERF_HUD')) {
+			void import('@/ui/PerfOverlay').then(({ PerfOverlay }) => {
+				this.perfHud = new PerfOverlay(uiRoot);
+			});
+		}
 
 		// Wei Chen yells Chinese (pre-baked ElevenLabs) when you block his cart
 		this.cleaner.setYellCallback((label) => {
@@ -2251,25 +2261,28 @@ export class App {
 		// loopt juist dít getal op terwijl de GPU de echte schuldige is.
 		const afterRender = performance.now();
 
-		// Ná de render: de tellers van dit frame staan er nu in.
-		const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
-		this.perfHud.update({
-			frameMs,
-			drawCalls: this.renderer.info.render.calls,
-			triangles: this.renderer.info.render.triangles,
-			programs: this.renderer.info.programs?.length ?? 0,
-			geometries: this.renderer.info.memory.geometries,
-			textures: this.renderer.info.memory.textures,
-			bufferWidth: buffer.width,
-			bufferHeight: buffer.height,
-			renderScale: this.dynScale,
-			cpuMs: afterRender - cpuStart,
-			logicMs: afterLogic - cpuStart,
-			batchMs: afterBatch - afterLogic,
-			submitMs: afterRender - afterBatch,
-			lightsUsed: this.pool.slotsInUse,
-			lightsTotal: this.pool.slots,
-			batches: this.sceneBatcher.stats.drawCalls,
-		});
+		// Ná de render: de tellers van dit frame staan er nu in. Onder NO_PERF_HUD
+		// valt dit hele blok weg, inclusief het uitlezen van renderer.info.
+		if (!feature('NO_PERF_HUD')) {
+			const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
+			this.perfHud?.update({
+				frameMs,
+				drawCalls: this.renderer.info.render.calls,
+				triangles: this.renderer.info.render.triangles,
+				programs: this.renderer.info.programs?.length ?? 0,
+				geometries: this.renderer.info.memory.geometries,
+				textures: this.renderer.info.memory.textures,
+				bufferWidth: buffer.width,
+				bufferHeight: buffer.height,
+				renderScale: this.dynScale,
+				cpuMs: afterRender - cpuStart,
+				logicMs: afterLogic - cpuStart,
+				batchMs: afterBatch - afterLogic,
+				submitMs: afterRender - afterBatch,
+				lightsUsed: this.pool.slotsInUse,
+				lightsTotal: this.pool.slots,
+				batches: this.sceneBatcher.stats.drawCalls,
+			});
+		}
 	};
 }

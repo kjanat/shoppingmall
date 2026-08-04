@@ -77,11 +77,12 @@ option behind a switch, ship it, say "I built all three, try them". Do not pick 
 - **Runtime setting** ([SettingsPanel](src/ui/SettingsPanel.ts) plus [graphicsPrefs](src/render/graphicsPrefs.ts))
   when the options need comparing live. Shader-baked options (light count, material model) reload the page on change,
   since that is when they are chosen.
-- **Bun build-time flag** when the code should not ship: `import { feature } from 'bun:bundle'`, guard with
-  `if (feature('FLAG'))`, build with `--feature FLAG` (or `features: [...]` in [build.ts](build.ts)). String literals
-  only.
-  Declare flags in a `.d.ts` (`declare module 'bun:bundle' { interface Registry { features: 'A' | 'B' } }`) so typos
-  are type errors.
+- **Bun build-time flag** when the code should not ship. Declared in [bun-features.d.ts](src/bun-features.d.ts), passed
+  by [build.ts](build.ts): `bun build.ts --no-perf-hud --force-lambert`. Three things bite. `feature()` may only be the
+  condition of an `if` or a ternary, never assigned or passed. An unset flag is `false` and the dev server passes none,
+  so name flags for what they remove. And a static import keeps its module alive even when every reference sits in dead
+  code: the perf HUD only actually left the bundle (23 KB) once its import became `import('@/ui/PerfOverlay')` inside
+  the guard.
 
 ## World invariants
 
