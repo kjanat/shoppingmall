@@ -65,13 +65,19 @@ const PROFILE_DIR = resolve(import.meta.dir, '../../.perf/chrome-profile');
  * `programInfoLogCalls`, and on a correct production build that is zero.
  * Frame timings stay local — the network decides load time, not frame time.
  */
-export async function openGame(width: number, height: number, freshProfile = false, url?: string): Promise<GameSession> {
+export async function openGame(
+	width: number,
+	height: number,
+	freshProfile = false,
+	url?: string,
+	batchOverride?: string,
+): Promise<GameSession> {
 	const server: StaticServer = url ? { url, stop: async () => {} } : serveGame();
 	// A little taller than the viewport: Chrome's own chrome eats some of it, and
 	// a viewport override is applied afterwards anyway.
 	const browser = await Browser.launch(width, height + 120, freshProfile ? undefined : PROFILE_DIR);
 	await browser.attachToPage();
-	await browser.onNewDocument(probeSource());
+	await browser.onNewDocument(probeSource(batchOverride));
 	await browser.setViewport(width, height);
 
 	const session: GameSession = {
@@ -140,6 +146,12 @@ export function parseEnvironment(value: unknown): Environment {
 		canvas: readString(value, 'canvas', '?'),
 		megapixels: readNumber(value, 'megapixels'),
 		devicePixelRatio: readNumber(value, 'devicePixelRatio', 1),
+		batchMode: readString(value, 'batchMode', 'unknown'),
+		batchSourceMeshes: readNumber(value, 'batchSourceMeshes'),
+		batchDynamicSources: readNumber(value, 'batchDynamicSources'),
+		batchDrawCalls: readNumber(value, 'batchDrawCalls'),
+		batchLargestRadius: readNumber(value, 'batchLargestRadius'),
+		warmupPrograms: readNumber(value, 'warmupPrograms'),
 		programsLinked: readNumber(value, 'programsLinked'),
 		shaderCount: readNumber(value, 'shaderCount'),
 		shaderKbTotal: readNumber(value, 'shaderKbTotal'),

@@ -256,6 +256,11 @@ export class MallBuilder {
 		}
 	}
 
+	/** The rest of the mall is immutable after build; only these step nodes move. */
+	get dynamicRoots(): readonly THREE.Object3D[] {
+		return this.escSteps.map((step) => step.node);
+	}
+
 	dispose(): void {
 		this.group.traverse((obj) => {
 			if (obj instanceof THREE.Mesh) {

@@ -27,6 +27,8 @@
  * when the canvas was created.
  */
 
+import { BATCH_KEY, isBatchMode } from '@/render/graphicsPrefs';
+
 /** One render target + viewport size, e.g. the main pass or the shadow map. */
 export type PassTiming = {
 	pass: string;
@@ -67,6 +69,12 @@ export type Environment = {
 	canvas: string;
 	megapixels: number;
 	devicePixelRatio: number;
+	batchMode: string;
+	batchSourceMeshes: number;
+	batchDynamicSources: number;
+	batchDrawCalls: number;
+	batchLargestRadius: number;
+	warmupPrograms: number;
 	/** Programs linked, and how big their source was, since page load. */
 	programsLinked: number;
 	shaderCount: number;
@@ -101,20 +109,25 @@ declare global {
 }
 
 /** The probe source, ready to hand to Page.addScriptToEvaluateOnNewDocument. */
-export function probeSource(): string {
-	return `(${installProbe.toString()})();`;
+export function probeSource(batchOverride?: string): string {
+	const mode = isBatchMode(batchOverride) ? batchOverride : undefined;
+	return `(${installProbe.toString()})(${JSON.stringify(BATCH_KEY)}, ${JSON.stringify(mode)});`;
 }
 
 // Everything below runs in the browser. It must stay self-contained: it is
 // stringified, so a reference to anything outside this function will not exist
 // at the other end.
-function installProbe(): void {
+function installProbe(batchKey: string, batchOverride?: string): void {
+	// App uses its own GPU query for the HUD. Two TIME_ELAPSED_EXT queries cannot
+	// overlap on one context, so announce the external probe before App starts.
+	Object.defineProperty(globalThis, '__mallPerfProbeActive', { value: true, configurable: true });
 	// This runs before the page's own scripts, so the setting is already off by
 	// the time App reads it. Without this a stored preference could have the
 	// renderer lowering its own pixel count halfway through a run, and an A-B-A
 	// would look stable while the resolution moved underneath it.
 	try {
 		localStorage.setItem('mallsim.dynres.v1', '0');
+		if (batchOverride) localStorage.setItem(batchKey, batchOverride);
 	} catch {
 		// Storage blocked. The run is still valid as long as nobody turned the
 		// setting on in this profile.
@@ -152,6 +165,7 @@ function installProbe(): void {
 	let viewportW = 0;
 	let viewportH = 0;
 	let target = 'default';
+	let sampling = false;
 
 	/** Narrow the untyped getExtension result without an assertion. */
 	const readTimerExt = (value: unknown): TimerExt | null => {
@@ -182,6 +196,7 @@ function installProbe(): void {
 	};
 
 	const openSegment = (): void => {
+		if (!sampling) return;
 		const ctx = context();
 		if (!ctx || !timer || active) return;
 		const query = ctx.createQuery();
@@ -308,6 +323,7 @@ function installProbe(): void {
 	// Opening a segment here as a fallback is what guarantees coverage: a draw
 	// that arrives with no segment open would otherwise be untimed and invisible.
 	const noteDraw = (): void => {
+		if (!sampling) return;
 		counters.draws++;
 		if (!active) openSegment();
 		if (active) {
@@ -332,13 +348,48 @@ function installProbe(): void {
 		drawArraysInstanced.apply(this, args);
 	};
 
+	// THREE.BatchedMesh submits through WEBGL_multi_draw when the extension is
+	// present. Those functions live on the extension object, outside the WebGL2
+	// prototype patched above. Missing them made the busiest scene pass report
+	// zero draws and falsely claim complete timing coverage.
+	const patchedExtensions = new WeakSet<object>();
+	const patchMultiDraw = (value: unknown): void => {
+		if (typeof value !== 'object' || value === null || patchedExtensions.has(value)) return;
+		patchedExtensions.add(value);
+		for (const name of [
+			'multiDrawArraysWEBGL',
+			'multiDrawElementsWEBGL',
+			'multiDrawArraysInstancedWEBGL',
+			'multiDrawElementsInstancedWEBGL',
+		]) {
+			const original = Reflect.get(value, name);
+			if (typeof original !== 'function') continue;
+			Reflect.set(value, name, function (this: unknown, ...args: unknown[]): unknown {
+				noteDraw();
+				return Reflect.apply(original, this, args);
+			});
+		}
+	};
+	const getExtension = proto.getExtension;
+	Object.defineProperty(proto, 'getExtension', {
+		configurable: true,
+		writable: true,
+		value: function (this: WebGL2RenderingContext, name: string): unknown {
+			const extension = Reflect.apply(getExtension, this, [name]);
+			if (name.toLowerCase() === 'webgl_multi_draw') patchMultiDraw(extension);
+			return extension;
+		},
+	});
+
 	let previous = performance.now();
 	const tick = (now: number): void => {
-		counters.frames++;
-		wall.push(now - previous);
+		if (sampling) {
+			counters.frames++;
+			wall.push(now - previous);
+			closeSegment();
+			collect();
+		}
 		previous = now;
-		closeSegment();
-		collect();
 		requestAnimationFrame(tick);
 	};
 	requestAnimationFrame(tick);
@@ -393,6 +444,14 @@ function installProbe(): void {
 		},
 
 		sample: async (durationMs: number): Promise<Sample> => {
+			if (sampling) throw new Error('probe sample already in progress');
+			closeSegment();
+			collect();
+			const ctx = context();
+			if (ctx) {
+				for (const segment of pending) ctx.deleteQuery(segment.query);
+			}
+			pending.length = 0;
 			totals.clear();
 			wall.length = 0;
 			counters.frames = 0;
@@ -402,10 +461,21 @@ function installProbe(): void {
 			counters.texBytes = 0;
 			counters.disjointDrops = 0;
 			const linksBefore = counters.links;
+			previous = performance.now();
+			sampling = true;
 
 			await sleep(durationMs);
+			sampling = false;
+			closeSegment();
+			const drainDeadline = performance.now() + Math.max(2000, Math.min(30_000, durationMs * 5));
+			while (pending.length > 0 && performance.now() < drainDeadline) {
+				collect();
+				if (pending.length > 0) await sleep(16);
+			}
 
-			const frames = Math.max(1, counters.frames);
+			const frames = counters.frames;
+			if (frames === 0) throw new Error(`probe sampled zero frames in ${durationMs} ms`);
+			const resolvedDraws = [...totals.values()].reduce((sum, total) => sum + total.draws, 0);
 			const passes: PassTiming[] = [...totals.entries()]
 				.map(([pass, t]) => ({
 					pass,
@@ -425,7 +495,7 @@ function installProbe(): void {
 				drawsPerFrame: round(counters.draws / frames, 1),
 				texUploadsPerFrame: round(counters.texUploads / frames, 1),
 				texUploadKbPerFrame: round(counters.texBytes / frames / 1024, 1),
-				drawCoverage: counters.draws === 0 ? 1 : round(counters.drawsTimed / counters.draws, 4),
+				drawCoverage: counters.draws === 0 ? 1 : round(resolvedDraws / counters.draws, 4),
 				disjointDrops: counters.disjointDrops,
 				linksDuringSample: counters.links - linksBefore,
 			};
@@ -455,6 +525,12 @@ function installProbe(): void {
 				canvas: `${width}x${height}`,
 				megapixels: round((width * height) / 1e6),
 				devicePixelRatio: window.devicePixelRatio,
+				batchMode: document.documentElement.dataset['batchMode'] ?? 'unknown',
+				batchSourceMeshes: Number(document.documentElement.dataset['batchSourceMeshes'] ?? 0),
+				batchDynamicSources: Number(document.documentElement.dataset['batchDynamicSources'] ?? 0),
+				batchDrawCalls: Number(document.documentElement.dataset['batchDrawCalls'] ?? 0),
+				batchLargestRadius: Number(document.documentElement.dataset['batchLargestRadius'] ?? 0),
+				warmupPrograms: Number(document.documentElement.dataset['warmupPrograms'] ?? 0),
 				programsLinked: counters.links,
 				shaderCount: counters.shaders,
 				shaderKbTotal: round(counters.shaderBytes / 1024, 1),

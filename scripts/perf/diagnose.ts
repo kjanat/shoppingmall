@@ -23,9 +23,12 @@ import { isRecord, readNumber, readString } from './cdp.ts';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import type { Sample } from './probe.ts';
 
-const SAMPLE_MS = 6000;
-const WIDTH = 1600;
-const HEIGHT = 900;
+const softwareHeadless = process.env['CHROME_PATH']?.endsWith('chrome-headless.sh') === true;
+// Structural checks do not need 1.44 million software-rasterized pixels. Keep
+// the same aspect ratio so frustum coverage stays representative.
+const SAMPLE_MS = softwareHeadless ? 3000 : 6000;
+const WIDTH = softwareHeadless ? 800 : 1600;
+const HEIGHT = softwareHeadless ? 450 : 900;
 /** Small enough that fill is nearly nothing, large enough that Chrome allows it. */
 const SMALL_WIDTH = 512;
 const SMALL_HEIGHT = 288;
@@ -35,6 +38,8 @@ const DRIFT_TOLERANCE = 0.15;
 const sweep = process.argv.includes('--sweep');
 const urlIndex = process.argv.indexOf('--url');
 const targetUrl = urlIndex < 0 ? undefined : process.argv[urlIndex + 1];
+const batchIndex = process.argv.indexOf('--batch-mode');
+const batchOverride = batchIndex < 0 ? undefined : process.argv[batchIndex + 1];
 const notes: string[] = [];
 
 function note(message: string): void {
@@ -70,7 +75,7 @@ function passTable(sample: Sample): string {
 	return rows.join('\n');
 }
 
-const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), targetUrl);
+const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), targetUrl, batchOverride);
 try {
 	const { readyMs, settleMs } = await session.boot();
 	const env = await session.environment();
@@ -92,6 +97,7 @@ try {
 	console.log(bar('parallel shader compile', env.parallelShaderCompile ? 'yes' : 'NO — links will stall'));
 	console.log(bar('GPU timer queries', env.timerQuery ? 'yes' : 'NO — no per-pass timing'));
 	console.log(bar('time to playable', `${(readyMs / 1000).toFixed(1)} s (+${(settleMs / 1000).toFixed(1)} s to settle)`));
+	console.log(bar('batch mode', env.batchMode));
 
 	if (/(Intel|AMD).*(Graphics|Vega|Radeon\(TM\) Graphics)/i.test(env.renderer) && !/RTX|GTX|Arc/i.test(env.renderer)) {
 		note(`Chrome is on what looks like an integrated GPU (${env.renderer}).`);
@@ -103,6 +109,12 @@ try {
 	console.log(bar('programs linked', String(env.programsLinked)));
 	console.log(bar('shader source', `${env.shaderKbTotal} KB total, largest ${env.largestShaderKb} KB`));
 	console.log(bar('lights in shader', `${env.numPointLights} point, ${env.numDirLights} directional, ${env.numSpotLights} spot`));
+	console.log(bar('programs warmed', String(env.warmupPrograms)));
+
+	console.log('\n── batching ────────────────────────────────────────────────');
+	console.log(bar('source meshes', `${env.batchSourceMeshes} (${env.batchDynamicSources} dynamic)`));
+	console.log(bar('batch draw calls', String(env.batchDrawCalls)));
+	console.log(bar('largest batch radius', `${env.batchLargestRadius} m`));
 
 	if (env.programInfoLogCalls > 0 || env.shaderInfoLogCalls > 0) {
 		note(

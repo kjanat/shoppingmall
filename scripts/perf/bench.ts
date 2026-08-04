@@ -107,7 +107,7 @@ async function readBaseline(name: string): Promise<Run | null> {
 	};
 }
 
-const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'));
+const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), undefined, flagValue('--batch-mode'));
 let run: Run;
 const warnings: string[] = [];
 

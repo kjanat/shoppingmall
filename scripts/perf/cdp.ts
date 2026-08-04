@@ -1,15 +1,9 @@
 /**
- * A Chrome DevTools Protocol client small enough to keep in the repo.
- *
- * Playwright would do this in three lines, but it also drags in a few hundred
- * megabytes of browsers for a project whose entire dependency list is six
- * packages. The protocol itself is a WebSocket that takes `{id, method, params}`
- * and answers `{id, result}`, which is all the perf scripts need.
- *
  * Chrome must be a real, GPU-backed Chrome: the whole point of these scripts is
  * to measure a driver, and a headless software rasteriser cannot show a win that
- * only exists when shaders compile in parallel. Hence `--headless=new` is *not*
- * used and the window is genuinely shown.
+ * only exists when shaders compile in parallel. Normal diagnose and bench runs
+ * therefore show a real window. The explicit headless commands use SwiftShader
+ * for structural checks whose millisecond values are intentionally discarded.
  */
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -50,7 +44,10 @@ export function readArray(source: Record<string, unknown>, key: string): unknown
  */
 function findChrome(): string {
 	const override = process.env['CHROME_PATH'];
-	if (override) {
+	// The headless command uses a POSIX wrapper to locate Playwright Chromium in
+	// Linux containers. Windows cannot execute that file, so use installed Chrome
+	// there and apply the same headless SwiftShader flags in launch().
+	if (override && !(process.platform === 'win32' && override.endsWith('.sh'))) {
 		if (!existsSync(override)) throw new Error(`CHROME_PATH points at nothing: ${override}`);
 		return override;
 	}
@@ -107,6 +104,12 @@ export class Browser {
 			if (isRecord(error)) waiting.reject(new Error(readString(error, 'message', 'CDP error')));
 			else waiting.resolve(isRecord(parsed['result']) ? parsed['result'] : {});
 		});
+		const rejectPending = (): void => {
+			for (const waiting of this.pending.values()) waiting.reject(new Error('Chrome debugging connection closed'));
+			this.pending.clear();
+		};
+		this.socket.addEventListener('close', rejectPending);
+		this.socket.addEventListener('error', rejectPending);
 	}
 
 	/**
@@ -119,14 +122,24 @@ export class Browser {
 		const port = await freePort();
 		const profileDir = profile ?? (await mkdtemp(join(tmpdir(), 'mall-perf-')));
 		const disposable = profile === undefined;
+		const wrapperHeadless = process.env['CHROME_PATH']?.endsWith('chrome-headless.sh') === true;
+		const windowsHeadless = process.platform === 'win32' && wrapperHeadless;
+		const headlessArgs = windowsHeadless
+			? ['--headless=new', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox']
+			: [];
 		const child = Bun.spawn(
 			[
 				findChrome(),
+				...headlessArgs,
 				`--remote-debugging-port=${port}`,
 				`--user-data-dir=${profileDir}`,
 				`--window-size=${windowWidth},${windowHeight}`,
 				'--no-first-run',
 				'--no-default-browser-check',
+				'--disable-translate',
+				'--disable-features=Translate,TranslateUI',
+				'--disable-session-crashed-bubble',
+				'--hide-crash-restore-bubble',
 				'--disable-extensions',
 				'--disable-background-timer-throttling',
 				'--disable-renderer-backgrounding',
@@ -229,9 +242,15 @@ export class Browser {
 
 	async close(): Promise<void> {
 		this.socket.close();
+		const exited = this.process.exited;
 		this.process.kill();
-		await this.process.exited;
+		let stopped = await Promise.race([exited.then(() => true), Bun.sleep(3000).then(() => false)]);
+		if (!stopped) {
+			this.process.kill(9);
+			stopped = await Promise.race([exited.then(() => true), Bun.sleep(2000).then(() => false)]);
+		}
 		// A reused profile is kept: its shader cache is the reason the next run is fast.
-		if (this.disposableProfile) await rm(this.profileDir, { recursive: true, force: true });
+		if (this.disposableProfile && stopped) await rm(this.profileDir, { recursive: true, force: true });
+		if (!stopped) console.warn('[perf] Chrome did not exit after forced termination; continuing without waiting');
 	}
 }

@@ -416,16 +416,55 @@ export class App {
 
 		// Preserve every gameplay object, but submit compatible opaque meshes
 		// through a small number of GPU batches.
-		this.sceneBatcher = new SceneBatcher(this.scene);
-		// De renderer draait scene.updateMatrixWorld() nog een keer bij elke
-		// render: een tweede complete wandeling over ~7000 objecten, terwijl
-		// sceneBatcher.update() die vlak ervoor al geforceerd heeft gedaan. Uit
-		// dus: één matrixpas per frame in plaats van twee. Alles wat later aan
-		// de scene wordt toegevoegd komt gewoon mee, want die ene pas forceert.
+		this.sceneBatcher = new SceneBatcher(this.scene, [
+			...this.mall.dynamicRoots,
+			this.palms.group,
+			this.walkways.group,
+			this.amenities.group,
+			this.disco.group,
+			this.stock.group,
+			this.spaceship.group,
+			this.atmosphere.group,
+			this.thief.group,
+			this.beardCave.group,
+			this.protest.group,
+			this.travel.group,
+			this.rat.group,
+			this.cleaner.group,
+			this.scrubber.group,
+			this.driveCars.group,
+			this.security.group,
+			this.prayer.group,
+			this.penguins.group,
+			this.elevator.group,
+			this.cityBuildings.group,
+			this.cityRoads.group,
+			this.cityTraffic.group,
+			this.cityPark.group,
+			this.cityTheatre.group,
+			this.cityGarage.group,
+			this.citySky.group,
+			this.cityBirds.group,
+			this.roofIsland.group,
+			this.poolPeople.group,
+			this.pathMesh.group,
+			this.djBartek.group,
+			this.alienProbe.group,
+			this.heli.group,
+			this.drone.group,
+			this.catwalk.group,
+			this.monkey.group,
+		]);
+		// De statische wereldmatrix is hierboven eenmaal vastgelegd. Vanaf nu
+		// ververst SceneBatcher alleen de expliciet bewegende wortels. De algemene
+		// rendererwandeling over circa 7000 objecten blijft daarom uit.
 		this.scene.matrixWorldAutoUpdate = false;
 		console.info('[Mall] render batching', this.sceneBatcher.stats);
 		document.documentElement.dataset['batchSourceMeshes'] = String(this.sceneBatcher.stats.sourceMeshes);
 		document.documentElement.dataset['batchDrawCalls'] = String(this.sceneBatcher.stats.drawCalls);
+		document.documentElement.dataset['batchMode'] = this.sceneBatcher.stats.mode;
+		document.documentElement.dataset['batchDynamicSources'] = String(this.sceneBatcher.stats.dynamicSources);
+		document.documentElement.dataset['batchLargestRadius'] = this.sceneBatcher.stats.largestRadius.toFixed(1);
 
 		// Hypersensitive mall cops — open fire → panic sims / graze player
 		this.security.setOpenFireCallback((msg) => this.ui.setStatus(msg));
@@ -523,7 +562,8 @@ export class App {
 		// gewone import blijft de module bestaan ook als elke verwijzing ernaar
 		// in dode code staat, en dan valt alleen het aanroepen weg (1,9 KB) in
 		// plaats van het paneel zelf. Het laadt tijdens de laadscreen.
-		if (!feature('NO_PERF_HUD')) {
+		const externalPerfProbe = Reflect.get(window, '__mallPerfProbeActive') === true;
+		if (!feature('NO_PERF_HUD') && !externalPerfProbe) {
 			const gl = this.renderer.getContext();
 			if (gl instanceof WebGL2RenderingContext) this.gpuTimer = new GpuTimer(gl);
 			void import('@/ui/PerfOverlay').then(({ PerfOverlay }) => {
@@ -816,7 +856,37 @@ export class App {
 	 * promise to the player.
 	 */
 	private async warmup(deadline: number): Promise<void> {
-		await this.compileUntil(deadline);
+		const hidden: THREE.Object3D[] = [];
+		this.scene.traverse((object) => {
+			if (!object.visible) {
+				hidden.push(object);
+				object.visible = true;
+			}
+		});
+		try {
+			await this.compileUntil(deadline);
+			this.primeProgramInterfaces();
+		} finally {
+			for (const object of hidden) object.visible = false;
+		}
+
+		// compileAsync covers scene materials. The composer owns its own fullscreen
+		// programs, so submit one real frame while the loading screen still covers it.
+		this.camera.updateWorldMatrix(true, false);
+		this.sceneBatcher.update();
+		this.pool.update(this.camera);
+		this.composer.render(0);
+		this.primeProgramInterfaces();
+		document.documentElement.dataset['warmupPrograms'] = String(this.renderer.info.programs?.length ?? 0);
+	}
+
+	/**
+	 * compileAsync waits for linking, but WebGLProgram's uniform table remains
+	 * lazy. Asking for it here moves ACTIVE_UNIFORMS and ACTIVE_ATTRIBUTES driver
+	 * synchronization behind the loader instead of the first crowded frame.
+	 */
+	private primeProgramInterfaces(): void {
+		for (const program of this.renderer.info.programs ?? []) program.getUniforms();
 	}
 
 	/** Compile the scene as it stands, giving up once `deadline` passes. */
@@ -2255,9 +2325,10 @@ export class App {
 
 		const afterLogic = performance.now();
 		this.renderer.info.reset();
+		this.camera.updateWorldMatrix(true, false);
 		this.sceneBatcher.update();
-		// Ná sceneBatcher.update(): die roept scene.updateMatrixWorld(true) aan, dus
-		// de matrixWorld van elk object dat een lamp volgt is hier vers.
+		// Na sceneBatcher.update(): alleen de expliciet dynamische wortels zijn
+		// ververst, waaronder ieder object dat een virtuele lamp volgt.
 		this.pool.update(this.camera);
 		const afterBatch = performance.now();
 		this.gpuTimer?.begin();

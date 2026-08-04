@@ -254,6 +254,9 @@ export class LightPool {
 			}
 			if (owner?.snap) light.intensity = target;
 			else light.intensity += (target - light.intensity) * step;
+			// App disables the scene-wide matrix walk. These real lights move after
+			// the dynamic roots have updated, so refresh their world matrix directly.
+			light.updateWorldMatrix(true, false);
 		}
 	}
 }

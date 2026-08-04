@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { levelAt } from '@/data/levels';
+import { type BatchMode, batchMode } from '@/render/graphicsPrefs';
 
 type ColorMaterial = THREE.Material & { color?: THREE.Color };
 type SourceInstance = {
@@ -13,24 +15,27 @@ type SourceInstance = {
 	matrix: THREE.Matrix4;
 	color: THREE.Vector4;
 	visible: boolean;
-	primed: boolean;
-	/**
-	 * Consecutive checks in which nothing about this instance changed. Past
-	 * STATIC_STREAK it stops being looked at every frame: the mall is thousands
-	 * of walls, shelves and products that never move, and re-comparing their
-	 * matrices 60 times a second was the single biggest cost in the frame.
-	 */
 	streak: number;
 };
 
-/** Unchanged for this many checks in a row -> only re-checked once per shard. */
-const STATIC_STREAK = 60;
-/** Settled instances are spread over this many frames, so a change shows up
- * within an eighth of a second even if nothing else touches it. */
-const COLD_SHARDS = 8;
-type Batch = { mesh: THREE.BatchedMesh; sources: SourceInstance[] };
+type Batch = { mesh: THREE.BatchedMesh; sources: SourceInstance[]; dynamicRoot: THREE.Object3D | null };
 
-export type SceneBatchStats = { sourceMeshes: number; batchedMeshes: number; drawCalls: number };
+export type SceneBatchStats = {
+	mode: BatchMode;
+	sourceMeshes: number;
+	dynamicSources: number;
+	batchedMeshes: number;
+	drawCalls: number;
+	largestRadius: number;
+};
+
+/** A cell is wide enough to avoid turning every shop into its own draw call,
+ * while keeping shared wall and floor materials out of a mall-wide sphere. */
+const CELL_SIZE = 32;
+/** Small compatible groups gain nothing from being split into mostly singles. */
+const MIN_SPATIAL_GROUP = 12;
+const STATIC_STREAK = 60;
+const COLD_SHARDS = 8;
 
 const WHITE = new THREE.Color(0xffffff);
 const INSTANCE_COLOR = new THREE.Vector4(1, 1, 1, 1);
@@ -154,13 +159,29 @@ function isVisible(object: THREE.Object3D): boolean {
 export class SceneBatcher {
 	readonly stats: SceneBatchStats;
 	private readonly batches: Batch[] = [];
-	private readonly scene: THREE.Scene;
-	/** Which slice of the settled instances gets re-checked this frame. */
+	private readonly dynamicRoots: THREE.Object3D[];
 	private shard = 0;
 
-	constructor(scene: THREE.Scene) {
-		this.scene = scene;
-		const groups = new Map<string, THREE.Mesh<THREE.BufferGeometry, ColorMaterial>[]>();
+	constructor(scene: THREE.Scene, dynamicRoots: readonly THREE.Object3D[] = []) {
+		const mode = batchMode();
+		// Build-time is the one full hierarchy pass. From the first live frame on,
+		// only explicitly animated roots are refreshed.
+		scene.updateMatrixWorld(true);
+		const ownerByObject = new WeakMap<THREE.Object3D, THREE.Object3D>();
+		const rootSet = new Set(dynamicRoots);
+		this.dynamicRoots = dynamicRoots.filter((root) => {
+			for (let parent = root.parent; parent; parent = parent.parent) {
+				if (rootSet.has(parent)) return false;
+			}
+			return true;
+		});
+		for (const root of this.dynamicRoots) root.traverse((object) => ownerByObject.set(object, root));
+
+		type CompatibleGroup = {
+			dynamicRoot: THREE.Object3D | null;
+			meshes: THREE.Mesh<THREE.BufferGeometry, ColorMaterial>[];
+		};
+		const compatible = new Map<string, CompatibleGroup>();
 
 		scene.traverse((object) => {
 			if (!(object instanceof THREE.Mesh) || object instanceof THREE.BatchedMesh || object instanceof THREE.InstancedMesh) {
@@ -170,20 +191,61 @@ export class SceneBatcher {
 			if (Object.keys(object.geometry.morphAttributes).length > 0) return;
 
 			const material = object.material as ColorMaterial;
+			const dynamicRoot = ownerByObject.get(object) ?? null;
 			const key = [
 				materialKey(material),
 				geometryLayoutKey(object.geometry),
 				object.castShadow ? 'cast' : '',
 				object.receiveShadow ? 'receive' : '',
 				String(object.renderOrder),
+				dynamicRoot?.uuid ?? 'static',
 			].join('::');
-			const group = groups.get(key);
-			if (group) group.push(object as THREE.Mesh<THREE.BufferGeometry, ColorMaterial>);
-			else groups.set(key, [object as THREE.Mesh<THREE.BufferGeometry, ColorMaterial>]);
+			const group = compatible.get(key);
+			if (group) group.meshes.push(object as THREE.Mesh<THREE.BufferGeometry, ColorMaterial>);
+			else compatible.set(key, { dynamicRoot, meshes: [object as THREE.Mesh<THREE.BufferGeometry, ColorMaterial>] });
 		});
 
 		let sourceMeshes = 0;
-		for (const meshes of groups.values()) {
+		let dynamicSources = 0;
+		let largestRadius = 0;
+		const groups: CompatibleGroup[] = [];
+		for (const group of compatible.values()) {
+			let minX = Number.POSITIVE_INFINITY;
+			let maxX = Number.NEGATIVE_INFINITY;
+			let minZ = Number.POSITIVE_INFINITY;
+			let maxZ = Number.NEGATIVE_INFINITY;
+			for (const mesh of group.meshes) {
+				const x = mesh.matrixWorld.elements[12] ?? 0;
+				const z = mesh.matrixWorld.elements[14] ?? 0;
+				minX = Math.min(minX, x);
+				maxX = Math.max(maxX, x);
+				minZ = Math.min(minZ, z);
+				maxZ = Math.max(maxZ, z);
+			}
+			const geographicallyLocal = maxX - minX <= CELL_SIZE && maxZ - minZ <= CELL_SIZE;
+			if (
+				mode === 'global' ||
+				(mode === 'spatial' && group.dynamicRoot !== null) ||
+				(group.meshes.length < MIN_SPATIAL_GROUP && geographicallyLocal)
+			) {
+				groups.push(group);
+				continue;
+			}
+			const cells = new Map<string, THREE.Mesh<THREE.BufferGeometry, ColorMaterial>[]>();
+			for (const mesh of group.meshes) {
+				const x = mesh.matrixWorld.elements[12] ?? 0;
+				const y = mesh.matrixWorld.elements[13] ?? 0;
+				const z = mesh.matrixWorld.elements[14] ?? 0;
+				const cell = `${levelAt(y)}:${Math.floor(x / CELL_SIZE)}:${Math.floor(z / CELL_SIZE)}`;
+				const meshes = cells.get(cell);
+				if (meshes) meshes.push(mesh);
+				else cells.set(cell, [mesh]);
+			}
+			for (const meshes of cells.values()) groups.push({ dynamicRoot: group.dynamicRoot, meshes });
+		}
+
+		for (const group of groups) {
+			const { dynamicRoot, meshes } = group;
 			if (meshes.length < 2) continue;
 			const first = meshes[0];
 			if (!first) continue;
@@ -213,16 +275,13 @@ export class SceneBatcher {
 			// culled while visible. update() grows the sphere over the mover
 			// (growBounds above) so the test stays sound for every batch.
 			batched.frustumCulled = true;
-			// Per-object culling is different: it makes BatchedMesh walk every
-			// instance and rewrite its indirect texture on every single render. Its
-			// onBeforeRender only skips that work when neither this nor sortObjects
-			// is set and no visibility changed. These batches hold static mall
-			// geometry on a modest triangle budget, so shading a few off-screen
-			// vertices is cheaper than a per-frame CPU pass plus a texture upload
-			// per batch. Sorting stays where it actually earns its keep: transparent
-			// materials, which need back-to-front order.
-			batched.perObjectFrustumCulled = false;
-			batched.sortObjects = material.transparent;
+			// The aggressive mode deliberately keeps per-instance culling and opaque
+			// front-to-back sorting available for A/B measurement. Both walk every
+			// instance and dirty the indirect texture on every render, so the default
+			// spatial mode relies on cheap whole-batch culling. Transparent instances
+			// still require back-to-front order in every mode.
+			batched.perObjectFrustumCulled = mode === 'spatial-sort';
+			batched.sortObjects = material.transparent || mode === 'spatial-sort';
 
 			const geometryIds = new Map<string, number>();
 			for (const geometry of geometries.values()) geometryIds.set(geometry.uuid, batched.addGeometry(geometry));
@@ -233,6 +292,8 @@ export class SceneBatcher {
 				if (geometryId === undefined) continue;
 				const instanceId = batched.addInstance(geometryId);
 				batched.setColorAt(instanceId, instanceColor(mesh.material));
+				batched.setMatrixAt(instanceId, mesh.matrixWorld);
+				batched.setVisibleAt(instanceId, isVisible(mesh));
 				// Layer zero is used by all game/shadow cameras. A zero mask avoids
 				// drawing the source without destroying its visible state.
 				mesh.layers.mask = 0;
@@ -242,19 +303,32 @@ export class SceneBatcher {
 					geometryId,
 					matrix: new THREE.Matrix4(),
 					color: new THREE.Vector4(),
-					visible: true,
-					primed: false,
+					visible: isVisible(mesh),
 					streak: 0,
 				});
+				const source = sources[sources.length - 1];
+				if (source) {
+					source.matrix.copy(mesh.matrixWorld);
+					source.color.copy(instanceColor(mesh.material));
+				}
 			}
 
 			sourceMeshes += sources.length;
-			this.batches.push({ mesh: batched, sources });
+			if (dynamicRoot) dynamicSources += sources.length;
+			batched.computeBoundingSphere();
+			largestRadius = Math.max(largestRadius, batched.boundingSphere?.radius ?? 0);
+			this.batches.push({ mesh: batched, sources, dynamicRoot });
 			scene.add(batched);
 		}
 
-		this.stats = { sourceMeshes, batchedMeshes: this.batches.length, drawCalls: this.batches.length };
-		this.update();
+		this.stats = {
+			mode,
+			sourceMeshes,
+			dynamicSources,
+			batchedMeshes: this.batches.length,
+			drawCalls: this.batches.length,
+			largestRadius,
+		};
 	}
 
 	/**
@@ -266,42 +340,39 @@ export class SceneBatcher {
 	 * against the one the batch was last given, and only differences are sent.
 	 */
 	update(): void {
-		this.scene.updateMatrixWorld(true);
+		for (const root of this.dynamicRoots) root.updateWorldMatrix(true, true);
 		this.shard = (this.shard + 1) % COLD_SHARDS;
 		let index = 0;
 		for (const batch of this.batches) {
+			if (!batch.dynamicRoot) continue;
 			for (const source of batch.sources) {
-				// Settled instances are checked on their own frame out of eight.
-				const settled = source.streak >= STATIC_STREAK;
 				index++;
-				if (settled && index % COLD_SHARDS !== this.shard) continue;
+				if (source.streak >= STATIC_STREAK && index % COLD_SHARDS !== this.shard) continue;
 				const world = source.mesh.matrixWorld;
 				let changed = false;
-				if (!source.primed || !source.matrix.equals(world)) {
+				if (!source.matrix.equals(world)) {
 					changed = true;
 					source.matrix.copy(world);
 					batch.mesh.setMatrixAt(source.instanceId, world);
 					// Colour and visibility writes below don't move geometry, and
 					// hidden instances are already inside the sphere, so only this branch
 					// has to keep the frustum sphere honest.
-					if (source.primed) growBounds(batch.mesh, source);
+					growBounds(batch.mesh, source);
 				}
 
 				const color = instanceColor(source.mesh.material);
-				if (!source.primed || !source.color.equals(color)) {
+				if (!source.color.equals(color)) {
 					changed = true;
 					source.color.copy(color);
 					batch.mesh.setColorAt(source.instanceId, color);
 				}
 
 				const visible = isVisible(source.mesh);
-				if (!source.primed || source.visible !== visible) {
+				if (source.visible !== visible) {
 					changed = true;
 					source.visible = visible;
 					batch.mesh.setVisibleAt(source.instanceId, visible);
 				}
-
-				source.primed = true;
 				source.streak = changed ? 0 : source.streak + 1;
 			}
 		}

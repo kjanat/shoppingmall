@@ -1,11 +1,14 @@
 import { feature } from 'bun:bundle';
 import { type ControlSettings, DEFAULT_SETTINGS } from '@/player/Controls';
 import {
+	batchMode,
 	FILL_CHOICES,
 	fillScale,
+	isBatchMode,
 	LAMP_CHOICES,
 	lampCount,
 	shineOn,
+	writeBatchMode,
 	writeFill,
 	writeLamps,
 	writeShine,
@@ -149,6 +152,18 @@ export class SettingsPanel {
 
         <label class="settings-row">
           <span>
+            <b>Scene-batches</b>
+            <small>Globaal = minst CPU. Ruimtelijk = lokale batches. Sorteren test extra zichtculling, maar kan veel GPU-data uploaden. Herlaadt.</small>
+          </span>
+          <select id="set-batches">
+            <option value="global">Globaal</option>
+            <option value="spatial">Ruimtelijk</option>
+            <option value="spatial-sort">Ruimtelijk + sorteren</option>
+          </select>
+        </label>
+
+        <label class="settings-row">
+          <span>
             <b>Muis kijken</b>
             <small>Uit = helemaal geen muis nodig. Kijken met Q/E (draaien) en R/F (omhoog/omlaag).</small>
           </span>
@@ -285,6 +300,15 @@ export class SettingsPanel {
 		lampsSel.value = String(lampCount());
 		lampsSel.addEventListener('change', () => {
 			writeLamps(Number(lampsSel.value));
+			location.reload();
+		});
+
+		const batchSel = q<HTMLSelectElement>('#set-batches');
+		batchSel.value = batchMode();
+		batchSel.addEventListener('change', () => {
+			const mode = batchSel.value;
+			if (!isBatchMode(mode)) return;
+			writeBatchMode(mode);
 			location.reload();
 		});
 

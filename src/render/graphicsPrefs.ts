@@ -11,6 +11,14 @@
 const SHINE_KEY = 'mallsim.shine.v1';
 const LAMPS_KEY = 'mallsim.lamps.v1';
 const FILL_KEY = 'mallsim.fill.v1';
+export const BATCH_KEY = 'mallsim.batch.v1';
+
+export type BatchMode = 'global' | 'spatial' | 'spatial-sort';
+export const BATCH_CHOICES: readonly BatchMode[] = ['global', 'spatial', 'spatial-sort'];
+
+export function isBatchMode(value: unknown): value is BatchMode {
+	return typeof value === 'string' && BATCH_CHOICES.some((choice) => choice === value);
+}
 
 /** Pool sizes offered. Each one is a different NUM_POINT_LIGHTS, so each is a
  * different set of shader programs, hence the reload. */
@@ -44,6 +52,20 @@ export function fillScale(): number {
 	return readNumberPref(FILL_KEY, FILL_CHOICES, 1);
 }
 
+/**
+ * How compatible meshes are submitted. The modes deliberately stay available
+ * side by side because cell size, extra draw calls and per-instance sorting are
+ * a machine-dependent tradeoff that must be measured on the target GPU.
+ */
+export function batchMode(): BatchMode {
+	try {
+		const value = localStorage.getItem(BATCH_KEY);
+		return isBatchMode(value) ? value : 'spatial';
+	} catch {
+		return 'spatial';
+	}
+}
+
 export function writeShine(on: boolean): void {
 	try {
 		localStorage.setItem(SHINE_KEY, on ? '1' : '0');
@@ -63,6 +85,14 @@ export function writeLamps(n: number): void {
 export function writeFill(scale: number): void {
 	try {
 		localStorage.setItem(FILL_KEY, String(scale));
+	} catch {
+		/* private mode */
+	}
+}
+
+export function writeBatchMode(mode: BatchMode): void {
+	try {
+		localStorage.setItem(BATCH_KEY, mode);
 	} catch {
 		/* private mode */
 	}
