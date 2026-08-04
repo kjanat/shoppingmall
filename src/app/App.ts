@@ -99,6 +99,9 @@ const DYN_RES_UP_FACTOR = 1.12;
  */
 const FRAME_MS_SPIKE = 250;
 
+type PerfPose = { x: number; y: number; z: number; lookX: number; lookY: number; lookZ: number };
+type PerfCpuFrame = { logicMs: number; batchMs: number; submitMs: number };
+
 export class App {
 	private renderer: THREE.WebGLRenderer;
 	private scene = new THREE.Scene();
@@ -174,6 +177,9 @@ export class App {
 	private perfHud: PerfOverlay | null = null;
 	/** Alleen aanwezig als het paneel meekomt: het is puur meetgereedschap. */
 	private gpuTimer: GpuTimer | null = null;
+	/** Populated only through the pre-document profiling probe. */
+	private perfPose: PerfPose | null = null;
+	private readonly perfCpuFrame: PerfCpuFrame = { logicMs: 0, batchMs: 0, submitMs: 0 };
 	/** Zaallicht-schaal en de discodim lopen allebei hierlangs. */
 	private daylight!: DaylightDimmer;
 	/** Hergebruikt: getDrawingBufferSize schrijft in een doelvector, elk frame. */
@@ -563,6 +569,30 @@ export class App {
 		// in dode code staat, en dan valt alleen het aanroepen weg (1,9 KB) in
 		// plaats van het paneel zelf. Het laadt tijdens de laadscreen.
 		const externalPerfProbe = Reflect.get(window, '__mallPerfProbeActive') === true;
+		if (externalPerfProbe) {
+			Reflect.set(window, '__mallPerfControl', {
+				setPose: (x: unknown, y: unknown, z: unknown, lookX: unknown, lookY: unknown, lookZ: unknown): boolean => {
+					const values = [x, y, z, lookX, lookY, lookZ];
+					if (!values.every((value) => typeof value === 'number' && Number.isFinite(value))) return false;
+					if (
+						typeof x !== 'number' ||
+						typeof y !== 'number' ||
+						typeof z !== 'number' ||
+						typeof lookX !== 'number' ||
+						typeof lookY !== 'number' ||
+						typeof lookZ !== 'number'
+					) {
+						return false;
+					}
+					this.perfPose = { x, y, z, lookX, lookY, lookZ };
+					return true;
+				},
+				clearPose: (): void => {
+					this.perfPose = null;
+				},
+				readCpuFrame: (): PerfCpuFrame => this.perfCpuFrame,
+			});
+		}
 		if (!feature('NO_PERF_HUD') && !externalPerfProbe) {
 			const gl = this.renderer.getContext();
 			if (gl instanceof WebGL2RenderingContext) this.gpuTimer = new GpuTimer(gl);
@@ -2317,6 +2347,14 @@ export class App {
 			this.persistNow();
 		}
 
+		// The route profiler owns the final camera pose. Applying it here keeps
+		// gameplay and simulation running while preventing Director or Controls
+		// from overwriting the deterministic course before the draw.
+		if (this.perfPose) {
+			this.camera.position.set(this.perfPose.x, this.perfPose.y, this.perfPose.z);
+			this.camera.lookAt(this.perfPose.lookX, this.perfPose.lookY, this.perfPose.lookZ);
+		}
+
 		// Last thing before the draw: every update() above has moved something.
 		// Keyed on the camera, not on the player body: in guest view and on the
 		// cinematic tour `player.update()` never runs, so `player.level` is frozen
@@ -2338,6 +2376,9 @@ export class App {
 		// het te tekenen. De driver blokkeert hier pas als hij achterloopt, en dan
 		// loopt juist dít getal op terwijl de GPU de echte schuldige is.
 		const afterRender = performance.now();
+		this.perfCpuFrame.logicMs = afterLogic - cpuStart;
+		this.perfCpuFrame.batchMs = afterBatch - afterLogic;
+		this.perfCpuFrame.submitMs = afterRender - afterBatch;
 
 		// Ná de render: de tellers van dit frame staan er nu in. Onder NO_PERF_HUD
 		// valt dit hele blok weg, inclusief het uitlezen van renderer.info.

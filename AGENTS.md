@@ -18,6 +18,7 @@ Bun, not npm. There is no Vite in this project.
 | `run check`        | `check-world.ts` + `check-lights.ts`, world & light invariants, no browser needed  |
 | `run diagnose`     | what a frame is made of (see Performance)                                          |
 | `run bench`        | frame-time benchmark with drift detection                                          |
+| `run profile`      | traverse the named mall route and compare every segment                            |
 | `run live`         | rebuild + swap the Docker container (compose, behind traefik)                      |
 
 Flags pass through the task runner: `bun run bench --samples 8` works.
@@ -194,10 +195,14 @@ run diagnose --sweep                 # + solves `fixed ms + ms/Mpix` with an A-B
 run diagnose --url https://kruidvat.kajkowalski.nl/   # measure the deployed build
 run bench --save before
 run bench --compare before
+run profile --save before            # two identical laps, segment hotspots + drift
+run profile --compare before         # same route against a named saved artifact
+run profile --batch-mode spatial     # force one batching mode before page scripts
 run diagnose:headless                # no-GPU containers (remote agent envs, CI), see below
 ```
 
-**No-GPU containers** (remote agent environments, CI): `run diagnose:headless` / `run bench:headless` route Chrome
+**No-GPU containers** (remote agent environments, CI): `run diagnose:headless`, `run bench:headless` and
+`run profile:headless` route Chrome
 through [chrome-headless.sh](scripts/perf/chrome-headless.sh): headless SwiftShader, no sandbox, finds the
 Playwright-managed Chromium.
 The *structural* numbers are exact there (lights in shader, programs linked, shader source KB, draw calls); every
@@ -219,8 +224,10 @@ against a GPU snapshot, and never worth recording in this file.
   `diagnose` or `bench` measures a fixed pixel count. Watching the framerate in a normal tab does not get that: if the
   setting is on there, the renderer lowers its own resolution mid-run and an A-B-A looks stable while the pixels move.
 
-`.perf/` is gitignored and holds saved baselines plus a reused Chrome profile (its shader cache is what keeps repeat
-runs from paying the ~105 s cold link).
+`.perf/` is gitignored and holds saved baselines, route artifacts and a reused Chrome profile (its shader cache is what
+keeps repeat runs from paying the ~105 s cold link). Route artifacts name the build, GPU, canvas, batch mode, every
+segment sample and repeated-lap drift. A profile run drives the camera through the probe-only control boundary; the
+ordinary game never exposes that control.
 
 ### Known unknowns — do not re-derive these
 

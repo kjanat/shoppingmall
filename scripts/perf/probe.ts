@@ -59,6 +59,18 @@ export type Sample = {
 	disjointDrops: number;
 	/** Programs linked during the sample. Non-zero means it was not settled. */
 	linksDuringSample: number;
+	cpuLogicMsMean: number;
+	cpuBatchMsMean: number;
+	cpuSubmitMsMean: number;
+};
+
+export type RoutePose = {
+	x: number;
+	y: number;
+	z: number;
+	lookX: number;
+	lookY: number;
+	lookZ: number;
 };
 
 export type Environment = {
@@ -100,6 +112,7 @@ type ProbeApi = {
 	ready: (timeoutMs: number) => Promise<number>;
 	settle: (quietMs: number, maxWaitMs: number) => Promise<number>;
 	sample: (durationMs: number) => Promise<Sample>;
+	routeSegment: (from: RoutePose, to: RoutePose, durationMs: number) => Promise<Sample>;
 	environment: () => Environment;
 };
 
@@ -153,6 +166,9 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 	};
 	const lights = { point: 0, directional: 0, spot: 0 };
 	const wall: number[] = [];
+	const cpuLogic: number[] = [];
+	const cpuBatch: number[] = [];
+	const cpuSubmit: number[] = [];
 	const totals = new Map<string, Totals>();
 
 	const proto = WebGL2RenderingContext.prototype;
@@ -223,6 +239,26 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 			}
 			ctx.deleteQuery(seg.query);
 			pending.splice(i, 1);
+		}
+	};
+
+	const invokeControl = (name: string, args: unknown[] = []): unknown => {
+		const control = Reflect.get(globalThis, '__mallPerfControl');
+		if (typeof control !== 'object' || control === null) return undefined;
+		const fn = Reflect.get(control, name);
+		return typeof fn === 'function' ? Reflect.apply(fn, control, args) : undefined;
+	};
+
+	const collectCpuFrame = (): void => {
+		const frame = invokeControl('readCpuFrame');
+		if (typeof frame !== 'object' || frame === null) return;
+		for (const [key, target] of [
+			['logicMs', cpuLogic],
+			['batchMs', cpuBatch],
+			['submitMs', cpuSubmit],
+		] as const) {
+			const value = Reflect.get(frame, key);
+			if (typeof value === 'number' && Number.isFinite(value)) target.push(value);
 		}
 	};
 
@@ -386,6 +422,7 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 		if (sampling) {
 			counters.frames++;
 			wall.push(now - previous);
+			collectCpuFrame();
 			closeSegment();
 			collect();
 		}
@@ -408,6 +445,32 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 		return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
 	};
 	const round = (value: number, digits = 2): number => Number(value.toFixed(digits));
+	const mean = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+	const setPose = (pose: RoutePose): void => {
+		const accepted = invokeControl('setPose', [pose.x, pose.y, pose.z, pose.lookX, pose.lookY, pose.lookZ]);
+		if (accepted !== true) throw new Error('App rejected route-profiler pose');
+	};
+	const move = (from: RoutePose, to: RoutePose, durationMs: number): Promise<void> => {
+		setPose(from);
+		return new Promise((resolve) => {
+			let started = 0;
+			const frame = (now: number): void => {
+				if (started === 0) started = now;
+				const t = Math.min(1, Math.max(0, (now - started) / durationMs));
+				setPose({
+					x: from.x + (to.x - from.x) * t,
+					y: from.y + (to.y - from.y) * t,
+					z: from.z + (to.z - from.z) * t,
+					lookX: from.lookX + (to.lookX - from.lookX) * t,
+					lookY: from.lookY + (to.lookY - from.lookY) * t,
+					lookZ: from.lookZ + (to.lookZ - from.lookZ) * t,
+				});
+				if (t < 1) requestAnimationFrame(frame);
+				else resolve();
+			};
+			requestAnimationFrame(frame);
+		});
+	};
 
 	globalThis.__mallProbe = {
 		/** Resolve when the game is actually running, not merely constructed. */
@@ -454,6 +517,9 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 			pending.length = 0;
 			totals.clear();
 			wall.length = 0;
+			cpuLogic.length = 0;
+			cpuBatch.length = 0;
+			cpuSubmit.length = 0;
 			counters.frames = 0;
 			counters.draws = 0;
 			counters.drawsTimed = 0;
@@ -498,7 +564,20 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 				drawCoverage: counters.draws === 0 ? 1 : round(resolvedDraws / counters.draws, 4),
 				disjointDrops: counters.disjointDrops,
 				linksDuringSample: counters.links - linksBefore,
+				cpuLogicMsMean: round(mean(cpuLogic)),
+				cpuBatchMsMean: round(mean(cpuBatch)),
+				cpuSubmitMsMean: round(mean(cpuSubmit)),
 			};
+		},
+
+		routeSegment: async (from: RoutePose, to: RoutePose, durationMs: number): Promise<Sample> => {
+			if (!Number.isFinite(durationMs) || durationMs < 250) throw new Error('route segment must last at least 250 ms');
+			setPose(from);
+			await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+			const api = globalThis.__mallProbe;
+			if (!api) throw new Error('probe API disappeared before route segment');
+			const [result] = await Promise.all([api.sample(durationMs), move(from, to, durationMs)]);
+			return result;
 		},
 
 		environment: (): Environment => {

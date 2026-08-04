@@ -11,7 +11,7 @@
 import { existsSync } from 'node:fs';
 import { join, normalize, resolve, sep } from 'node:path';
 import { Browser, isRecord, readArray, readBoolean, readNumber, readString } from './cdp.ts';
-import type { Environment, PassTiming, Sample } from './probe.ts';
+import type { Environment, PassTiming, RoutePose, Sample } from './probe.ts';
 import { probeSource } from './probe.ts';
 
 const STATIC_DIR = resolve(import.meta.dir, '../../dist/static');
@@ -51,6 +51,7 @@ export type GameSession = {
 	/** Load the game and wait until it is genuinely running and settled. */
 	boot: (options?: { settleQuietMs?: number }) => Promise<{ readyMs: number; settleMs: number }>;
 	sample: (durationMs: number) => Promise<Sample>;
+	routeSegment: (from: RoutePose, to: RoutePose, durationMs: number) => Promise<Sample>;
 	environment: () => Promise<Environment>;
 	setViewport: (width: number, height: number) => Promise<void>;
 	close: () => Promise<void>;
@@ -93,6 +94,13 @@ export async function openGame(
 			return { readyMs, settleMs };
 		},
 		sample: async (durationMs) => parseSample(await browser.evaluate(`__mallProbe.sample(${durationMs})`, durationMs + 60_000)),
+		routeSegment: async (from, to, durationMs) =>
+			parseSample(
+				await browser.evaluate(
+					`__mallProbe.routeSegment(${JSON.stringify(from)}, ${JSON.stringify(to)}, ${durationMs})`,
+					durationMs + 60_000,
+				),
+			),
 		environment: async () => parseEnvironment(await browser.evaluate('__mallProbe.environment()')),
 		setViewport: (w, h) => browser.setViewport(w, h),
 		close: async () => {
@@ -133,6 +141,9 @@ export function parseSample(value: unknown): Sample {
 		drawCoverage: readNumber(value, 'drawCoverage'),
 		disjointDrops: readNumber(value, 'disjointDrops'),
 		linksDuringSample: readNumber(value, 'linksDuringSample'),
+		cpuLogicMsMean: readNumber(value, 'cpuLogicMsMean'),
+		cpuBatchMsMean: readNumber(value, 'cpuBatchMsMean'),
+		cpuSubmitMsMean: readNumber(value, 'cpuSubmitMsMean'),
 	};
 }
 

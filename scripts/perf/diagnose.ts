@@ -142,6 +142,9 @@ try {
 	);
 	console.log(bar('draw calls', String(main.drawsPerFrame)));
 	console.log(bar('texture uploads', `${main.texUploadsPerFrame}/frame, ${main.texUploadKbPerFrame} KB`));
+	console.log(
+		bar('CPU phases', `${main.cpuLogicMsMean} ms logic, ${main.cpuBatchMsMean} ms batch, ${main.cpuSubmitMsMean} ms submit`),
+	);
 	console.log('\n  GPU time by render target:');
 	console.log(passTable(main));
 
