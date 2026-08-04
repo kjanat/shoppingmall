@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LightHandle, LightPool } from '@/render/LightPool';
+import { lit } from '@/render/material';
 import type { Americans } from './Americans';
 
 /**
@@ -128,7 +129,7 @@ export class AlienProbe {
 		const disc = new THREE.Mesh(
 			new THREE.SphereGeometry(1.4, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0xb0bec5,
 					metalness: 0.85,
 					roughness: 0.25,
@@ -142,7 +143,7 @@ export class AlienProbe {
 		const dome = new THREE.Mesh(
 			new THREE.SphereGeometry(0.55, 16, 12),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x69f0ae,
 					transparent: true,
 					opacity: 0.75,

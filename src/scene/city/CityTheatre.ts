@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -104,9 +105,9 @@ export class CityTheatre {
 
 	/** Hoofdmassa: kalksteen blok + kroonlijst + attiek + podium + brede trap. */
 	private buildBlok(): void {
-		const steen = new THREE.MeshStandardMaterial({ color: 0xcfc5ad, roughness: 0.9, metalness: 0.02 });
-		const donker = new THREE.MeshStandardMaterial({ color: 0x3c3833, roughness: 0.95 });
-		const deur = new THREE.MeshStandardMaterial({ color: 0x2a211b, roughness: 0.7, metalness: 0.15 });
+		const steen = lit({ color: 0xcfc5ad, roughness: 0.9, metalness: 0.02 });
+		const donker = lit({ color: 0x3c3833, roughness: 0.95 });
+		const deur = lit({ color: 0x2a211b, roughness: 0.7, metalness: 0.15 });
 		this.materials.push(steen, donker, deur);
 
 		// Zaalblok: x 58..86, z -66..-52, 13 hoog. Ramen heeft een theater niet nodig.
@@ -131,7 +132,7 @@ export class CityTheatre {
 
 	/** Acht zuilen + basementen + kapitelen (instanced) en het hoofdgestel. */
 	private buildZuilen(): void {
-		const steen = new THREE.MeshStandardMaterial({ color: 0xd8cfba, roughness: 0.85, metalness: 0.02 });
+		const steen = lit({ color: 0xd8cfba, roughness: 0.85, metalness: 0.02 });
 		this.materials.push(steen);
 
 		const zuilGeo = new THREE.CylinderGeometry(0.55, 0.6, 8.1, 10);
@@ -169,9 +170,9 @@ export class CityTheatre {
 
 	/** Marquee-luifel boven de trap: slab, gloed-onderkant, ophangstangen en 40 bollen. */
 	private buildMarquee(): THREE.InstancedMesh {
-		const bordeaux = new THREE.MeshStandardMaterial({ color: 0x531523, roughness: 0.6, metalness: 0.2 });
+		const bordeaux = lit({ color: 0x531523, roughness: 0.6, metalness: 0.2 });
 		const gloed = new THREE.MeshBasicMaterial({ color: 0xffdf9e, toneMapped: false });
-		const staal = new THREE.MeshStandardMaterial({ color: 0x6b7078, roughness: 0.4, metalness: 0.7 });
+		const staal = lit({ color: 0x6b7078, roughness: 0.4, metalness: 0.7 });
 		this.materials.push(bordeaux, gloed, staal);
 
 		// Slab: x 63..81, y 6.2..7.8, z -49.1..-44.5 — hangt boven trap én tapijt.
@@ -224,8 +225,8 @@ export class CityTheatre {
 
 	/** Canvas-borden: naambord op de marquee, letterbak vooraan, twee posters. */
 	private buildBorden(): THREE.MeshBasicMaterial {
-		const bordeaux = new THREE.MeshStandardMaterial({ color: 0x531523, roughness: 0.6, metalness: 0.2 });
-		const goudLijst = new THREE.MeshStandardMaterial({ color: 0x8a6d2f, roughness: 0.45, metalness: 0.7 });
+		const bordeaux = lit({ color: 0x531523, roughness: 0.6, metalness: 0.2 });
+		const goudLijst = lit({ color: 0x8a6d2f, roughness: 0.45, metalness: 0.7 });
 		this.materials.push(bordeaux, goudLijst);
 
 		// Groot naambord bovenop de marquee — vanaf de straat én de drone leesbaar.
@@ -336,9 +337,9 @@ export class CityTheatre {
 
 	/** Rood tapijt: van de deuren, het podium af, de trap af, tot de stoep. */
 	private buildTapijt(): void {
-		const rood = new THREE.MeshStandardMaterial({ color: 0x9c0f2e, roughness: 1.0 });
-		const goud = new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.85 });
-		const koord = new THREE.MeshStandardMaterial({ color: 0x7a1230, roughness: 0.8 });
+		const rood = lit({ color: 0x9c0f2e, roughness: 1.0 });
+		const goud = lit({ color: 0xc9a227, roughness: 0.3, metalness: 0.85 });
+		const koord = lit({ color: 0x7a1230, roughness: 0.8 });
 		this.materials.push(rood, goud, koord);
 
 		const loper = (w: number, d: number, x: number, y: number, z: number, plat: boolean) => {

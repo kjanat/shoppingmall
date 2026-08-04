@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { type LitMaterial, lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -75,8 +76,8 @@ export class Drone {
 		for (const m of this.materials) m.dispose();
 	}
 
-	private mat(color: number, roughness = 0.5, metalness = 0.5): THREE.MeshStandardMaterial {
-		const m = new THREE.MeshStandardMaterial({ color, roughness, metalness });
+	private mat(color: number, roughness = 0.5, metalness = 0.5): LitMaterial {
+		const m = lit({ color, roughness, metalness });
 		this.materials.push(m);
 		return m;
 	}
@@ -84,7 +85,7 @@ export class Drone {
 	private build(): void {
 		const frame = this.mat(0x1e88e5, 0.4, 0.6); // mall-blauw
 		const dark = this.mat(0x263238, 0.5, 0.5);
-		const glass = new THREE.MeshStandardMaterial({
+		const glass = lit({
 			color: 0xbfe3f7,
 			roughness: 0.1,
 			metalness: 0.15,

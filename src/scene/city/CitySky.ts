@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { type LitMaterial, lit } from '@/render/material';
 import { at } from '@/util/rand';
 
 /**
@@ -45,7 +46,7 @@ export class CitySky {
 	/** Driftsnelheid per cluster — ieder wolkje z'n eigen tempo. */
 	private readonly drift: number[] = [];
 	private readonly basisY: number[] = [];
-	private readonly cloudMat: THREE.MeshStandardMaterial;
+	private readonly cloudMat: LitMaterial;
 
 	private readonly regen: THREE.Points;
 	private readonly regenMat: THREE.PointsMaterial;
@@ -73,7 +74,7 @@ export class CitySky {
 		const puffGeo = new THREE.SphereGeometry(1, 10, 7);
 		this.geometries.push(puffGeo);
 		this.cloudMat = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: KLEUR_HELDER,
 				emissive: 0xbcd0ff,
 				emissiveIntensity: 0,

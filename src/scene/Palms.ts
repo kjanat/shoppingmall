@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { lit } from '@/render/material';
 
 /** Florida / California mall energy: palms everywhere. */
 export class PalmForest {
@@ -80,7 +81,7 @@ export class PalmForest {
 		// Pot
 		const pot = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.55, 0.65, 0.55, 10),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xa08060, roughness: 0.85 })),
+			this.track(lit({ color: 0xa08060, roughness: 0.85 })),
 		);
 		pot.position.y = 0.28;
 		pot.castShadow = true;
@@ -88,13 +89,13 @@ export class PalmForest {
 
 		const dirt = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.48, 0.48, 0.08, 10),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x3d2914, roughness: 1 })),
+			this.track(lit({ color: 0x3d2914, roughness: 1 })),
 		);
 		dirt.position.y = 0.55;
 		g.add(dirt);
 
 		// Trunk segments (slight curve)
-		const trunkMat = this.track(new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.9 }));
+		const trunkMat = this.track(lit({ color: 0x8b6914, roughness: 0.9 }));
 		const trunkH = 2.6;
 		const segs = 5;
 		for (let i = 0; i < segs; i++) {
@@ -113,7 +114,7 @@ export class PalmForest {
 		for (let i = 0; i < leafCount; i++) {
 			const a = (i / leafCount) * Math.PI * 2;
 			const leafMat = this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: greens[i % greens.length],
 					roughness: 0.85,
 					side: THREE.DoubleSide,
@@ -140,7 +141,7 @@ export class PalmForest {
 		}
 
 		// coconut cluster
-		const cocoMat = this.track(new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 }));
+		const cocoMat = this.track(lit({ color: 0x5c4033, roughness: 0.9 }));
 		for (let i = 0; i < 3; i++) {
 			const c = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), cocoMat);
 			const a = (i / 3) * Math.PI * 2;

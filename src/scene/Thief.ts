@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 import type { BeardCave } from './BeardCave';
@@ -107,11 +108,11 @@ export class BakerThief {
 
 	private build(): THREE.Group {
 		const g = new THREE.Group();
-		const skin = new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.85 });
-		const shirt = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.9 });
-		const pants = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.85 });
-		const beardMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.95 });
-		const gold = new THREE.MeshStandardMaterial({
+		const skin = lit({ color: 0xe8b896, roughness: 0.85 });
+		const shirt = lit({ color: 0xf5f5f5, roughness: 0.9 });
+		const pants = lit({ color: 0x1a1a2e, roughness: 0.85 });
+		const beardMat = lit({ color: 0x3e2723, roughness: 0.95 });
+		const gold = lit({
 			color: 0xffd700,
 			metalness: 0.9,
 			roughness: 0.25,

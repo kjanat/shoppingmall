@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
@@ -638,7 +639,7 @@ export class Catwalk {
 	}
 
 	private mat(color: number, roughness = 0.8, metalness = 0.05) {
-		return this.track(new THREE.MeshStandardMaterial({ color, roughness, metalness }));
+		return this.track(lit({ color, roughness, metalness }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
 import type { LightPool } from '@/render/LightPool';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
@@ -36,8 +37,8 @@ export class ParkingGarage {
 	}
 
 	private buildShell(): void {
-		const concrete = this.track(new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.95 }));
-		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.9 }));
+		const concrete = this.track(lit({ color: 0x5a5a5a, roughness: 0.95 }));
+		const dark = this.track(lit({ color: 0x37474f, roughness: 0.9 }));
 		// Deck floor
 		const floor = new THREE.Mesh(new THREE.BoxGeometry(64, 0.25, 42), concrete);
 		floor.position.y = 0;
@@ -126,7 +127,7 @@ export class ParkingGarage {
 
 	private buildPillars(): void {
 		const mat = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x78909c,
 				roughness: 0.75,
 				metalness: 0.1,
@@ -196,10 +197,10 @@ export class ParkingGarage {
 
 	private makeCar(color: number): THREE.Group {
 		const g = new THREE.Group();
-		const bodyM = this.track(new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.35 }));
-		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
+		const bodyM = this.track(lit({ color, roughness: 0.45, metalness: 0.35 }));
+		const dark = this.track(lit({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
 		const glass = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x90caf9,
 				transparent: true,
 				opacity: 0.55,
@@ -230,14 +231,14 @@ export class ParkingGarage {
 	private buildBooth(): void {
 		const booth = new THREE.Group();
 		booth.position.set(22, 0, -4);
-		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.7 }));
+		const wood = this.track(lit({ color: 0xffc107, roughness: 0.7 }));
 		const box = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.4, 2.0), wood);
 		box.position.y = 1.2;
 		booth.add(box);
 		const win = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.2, 0.8),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x81d4fa,
 					transparent: true,
 					opacity: 0.5,
@@ -279,7 +280,7 @@ export class ParkingGarage {
 			const fixture = new THREE.Mesh(
 				new THREE.BoxGeometry(3.5, 0.08, 0.25),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					lit({
 						color: 0xfffde7,
 						emissive: 0xfff9c4,
 						emissiveIntensity: 0.6,

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 
@@ -136,7 +137,7 @@ export class CityPark {
 		const geo = new THREE.PlaneGeometry(PARK_W, PARK_D);
 		geo.rotateX(-Math.PI / 2);
 		this.geometries.push(geo);
-		const ground = new THREE.Mesh(geo, this.track(new THREE.MeshStandardMaterial({ map: tex, roughness: 1 })));
+		const ground = new THREE.Mesh(geo, this.track(lit({ map: tex, roughness: 1 })));
 		ground.position.set(CX, GROUND_Y, CZ);
 		ground.receiveShadow = true;
 		this.group.add(ground);
@@ -151,12 +152,9 @@ export class CityPark {
 		const waterGeo = new THREE.CircleGeometry(POND_R, 36);
 		waterGeo.rotateX(-Math.PI / 2);
 		this.geometries.push(rimGeo, waterGeo);
-		const rim = new THREE.Mesh(rimGeo, this.track(new THREE.MeshStandardMaterial({ color: 0x24506e, roughness: 0.7 })));
+		const rim = new THREE.Mesh(rimGeo, this.track(lit({ color: 0x24506e, roughness: 0.7 })));
 		rim.position.set(CX, GROUND_Y + 0.02, CZ);
-		const water = new THREE.Mesh(
-			waterGeo,
-			this.track(new THREE.MeshStandardMaterial({ color: 0x3d84c4, roughness: 0.25, metalness: 0.1 })),
-		);
+		const water = new THREE.Mesh(waterGeo, this.track(lit({ color: 0x3d84c4, roughness: 0.25, metalness: 0.1 })));
 		water.position.set(CX, GROUND_Y + 0.035, CZ);
 		water.receiveShadow = true;
 		this.group.add(rim, water);
@@ -175,8 +173,8 @@ export class CityPark {
 		const leafGeo = new THREE.SphereGeometry(1.15, 8, 6);
 		leafGeo.translate(0, 2.4, 0);
 		this.geometries.push(trunkGeo, leafGeo);
-		const trunkMat = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4632, roughness: 0.9 }));
-		const leafMat = this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85 }));
+		const trunkMat = this.track(lit({ color: 0x5d4632, roughness: 0.9 }));
+		const leafMat = this.track(lit({ color: 0xffffff, roughness: 0.85 }));
 		this.trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, TREES);
 		this.leaves = new THREE.InstancedMesh(leafGeo, leafMat, TREES);
 
@@ -236,8 +234,8 @@ export class CityPark {
 		const backGeo = new THREE.BoxGeometry(1.7, 0.5, 0.08);
 		const legGeo = new THREE.BoxGeometry(0.09, 0.44, 0.46);
 		this.geometries.push(seatGeo, backGeo, legGeo);
-		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0x7a5638, roughness: 0.8 }));
-		const steel = this.track(new THREE.MeshStandardMaterial({ color: 0x2f3438, metalness: 0.5, roughness: 0.5 }));
+		const wood = this.track(lit({ color: 0x7a5638, roughness: 0.8 }));
+		const steel = this.track(lit({ color: 0x2f3438, metalness: 0.5, roughness: 0.5 }));
 		const spots: readonly [number, number][] = [
 			[-83, -66],
 			[-68, -64],
@@ -275,7 +273,7 @@ export class CityPark {
 		const bulbGeo = new THREE.SphereGeometry(0.24, 10, 8);
 		const capGeo = new THREE.ConeGeometry(0.3, 0.26, 8);
 		this.geometries.push(poleGeo, bulbGeo, capGeo);
-		const poleMat = this.track(new THREE.MeshStandardMaterial({ color: 0x2c353c, metalness: 0.6, roughness: 0.45 }));
+		const poleMat = this.track(lit({ color: 0x2c353c, metalness: 0.6, roughness: 0.45 }));
 		const bulbMat = this.track(new THREE.MeshBasicMaterial({ color: 0xffd98a, toneMapped: false }));
 		const spots: readonly [number, number][] = [
 			[-87.5, -59],
@@ -303,7 +301,7 @@ export class CityPark {
 		const splashGeo = new THREE.SphereGeometry(0.5, 10, 8);
 		splashGeo.scale(1, 0.22, 1);
 		this.geometries.push(pedGeo, jetGeo, splashGeo);
-		const stone = this.track(new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.85 }));
+		const stone = this.track(lit({ color: 0x9aa0a6, roughness: 0.85 }));
 		const waterJet = this.track(
 			new THREE.MeshBasicMaterial({
 				color: 0xbfe4ff,
@@ -335,11 +333,11 @@ export class CityPark {
 		beakGeo.rotateX(Math.PI / 2); // punt naar voren, zoals bij echte eenden
 		const eyeGeo = new THREE.SphereGeometry(0.03, 6, 4);
 		this.geometries.push(bodyGeo, headGeo, beakGeo, eyeGeo);
-		const black = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4 }));
+		const black = this.track(lit({ color: 0x111111, roughness: 0.4 }));
 		const makeDuck = (bodyHex: number, headHex: number, beakHex: number): THREE.Group => {
-			const bodyMat = this.track(new THREE.MeshStandardMaterial({ color: bodyHex, roughness: 0.8 }));
-			const headMat = this.track(new THREE.MeshStandardMaterial({ color: headHex, roughness: 0.8 }));
-			const beakMat = this.track(new THREE.MeshStandardMaterial({ color: beakHex, roughness: 0.6 }));
+			const bodyMat = this.track(lit({ color: bodyHex, roughness: 0.8 }));
+			const headMat = this.track(lit({ color: headHex, roughness: 0.8 }));
+			const beakMat = this.track(lit({ color: beakHex, roughness: 0.6 }));
 			const d = new THREE.Group();
 			d.add(new THREE.Mesh(bodyGeo, bodyMat));
 			const head = new THREE.Mesh(headGeo, headMat);

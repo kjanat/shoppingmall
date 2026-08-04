@@ -109,6 +109,17 @@ export function probeSource(): string {
 // stringified, so a reference to anything outside this function will not exist
 // at the other end.
 function installProbe(): void {
+	// This runs before the page's own scripts, so the setting is already off by
+	// the time App reads it. Without this a stored preference could have the
+	// renderer lowering its own pixel count halfway through a run, and an A-B-A
+	// would look stable while the resolution moved underneath it.
+	try {
+		localStorage.setItem('mallsim.dynres.v1', '0');
+	} catch {
+		// Storage blocked. The run is still valid as long as nobody turned the
+		// setting on in this profile.
+	}
+
 	type TimerExt = { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number };
 	type Segment = { query: WebGLQuery; pass: string; draws: number };
 	type Totals = { ms: number; draws: number };

@@ -3,6 +3,7 @@ import { speakLine } from '@/audio/ElevenVoice';
 import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '@/data/levels';
 import { EYE } from '@/player/Controls';
 import type { LightPool } from '@/render/LightPool';
+import { type LitMaterial, lit } from '@/render/material';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
@@ -318,7 +319,7 @@ export class GlassElevator {
 		const pulse = 0.75 + 0.45 * Math.sin(this.t * 4.2);
 		const scale = 1 + 0.12 * Math.sin(this.t * 3.1);
 		for (const btn of this.roofCallBtns) {
-			const mat = btn.material as THREE.MeshStandardMaterial;
+			const mat = btn.material as LitMaterial;
 			if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = pulse;
 			btn.scale.setScalar(scale);
 		}
@@ -451,14 +452,14 @@ export class GlassElevator {
 
 	private buildShaft(): void {
 		const chrome = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xb0bec5,
 				metalness: 0.85,
 				roughness: 0.25,
 			}),
 		);
 		const glass = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xa8d4f0,
 				transparent: true,
 				opacity: 0.18,
@@ -497,15 +498,15 @@ export class GlassElevator {
 		}
 
 		// Floor plates at landings P1 / V0 / V1 / dak
-		const padMat = this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.4, roughness: 0.5 }));
+		const padMat = this.track(lit({ color: 0x37474f, metalness: 0.4, roughness: 0.5 }));
 		const roofPadMat = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x546e7a,
 				metalness: 0.5,
 				roughness: 0.45,
 			}),
 		);
-		const garagePadMat = this.track(new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.85 }));
+		const garagePadMat = this.track(lit({ color: 0x455a64, roughness: 0.85 }));
 		for (const { id, y, code } of LEVELS) {
 			const isRoof = id === 'roof';
 			const isGarage = id === 'p1';
@@ -533,7 +534,7 @@ export class GlassElevator {
 				const btn = new THREE.Mesh(
 					new THREE.BoxGeometry(0.32, 0.5, 0.14),
 					this.track(
-						new THREE.MeshStandardMaterial({
+						lit({
 							color: isGarage ? 0x42a5f5 : 0xffc107,
 							emissive: isGarage ? 0x1565c0 : 0xaa8800,
 							emissiveIntensity: 0.55,
@@ -604,14 +605,14 @@ export class GlassElevator {
 		station.position.set(localX, FLOOR2, localZ);
 
 		const metal = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x263238,
 				metalness: 0.55,
 				roughness: 0.4,
 			}),
 		);
 		const green = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x00e676,
 				emissive: 0x00c853,
 				emissiveIntensity: 1.1,
@@ -620,7 +621,7 @@ export class GlassElevator {
 			}),
 		);
 		const redFrame = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xc62828,
 				emissive: 0x8b0000,
 				emissiveIntensity: 0.35,
@@ -688,7 +689,7 @@ export class GlassElevator {
 		const ring = new THREE.Mesh(
 			new THREE.TorusGeometry(CALL_BASE_R * 2.3, 0.035, 6, 24),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0xffc107,
 					metalness: 0.6,
 					roughness: 0.3,
@@ -758,14 +759,14 @@ export class GlassElevator {
 
 	private buildCabin(): void {
 		const chrome = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xcfd8dc,
 				metalness: 0.7,
 				roughness: 0.3,
 			}),
 		);
 		const glass = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xb3e5fc,
 				transparent: true,
 				opacity: 0.28,
@@ -776,7 +777,7 @@ export class GlassElevator {
 			}),
 		);
 		const floorMat = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x455a64,
 				metalness: 0.45,
 				roughness: 0.4,
@@ -830,7 +831,7 @@ export class GlassElevator {
 		// Control panel (look + E)
 		const panel = new THREE.Mesh(
 			new THREE.BoxGeometry(0.32, 0.6, 0.1),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x263238, metalness: 0.5, roughness: 0.4 })),
+			this.track(lit({ color: 0x263238, metalness: 0.5, roughness: 0.4 })),
 		);
 		panel.position.set(0.75, 1.25, -0.85);
 		this.cabin.add(panel);
@@ -839,7 +840,7 @@ export class GlassElevator {
 			const b = new THREE.Mesh(
 				new THREE.CircleGeometry(0.045, 10),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					lit({
 						color: i === 0 ? 0x42a5f5 : i === 3 ? 0x00e676 : 0xffc107,
 						emissive: i === 0 ? 0x1565c0 : i === 3 ? 0x00c853 : 0xaa8800,
 						emissiveIntensity: 0.5,
@@ -859,17 +860,17 @@ export class GlassElevator {
 		g.position.set(-0.62, 0.02, -0.62);
 		g.rotation.y = Math.PI * 0.75;
 
-		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }));
-		const uni = this.track(new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.7 }));
-		const pants = this.track(new THREE.MeshStandardMaterial({ color: 0x0d1545, roughness: 0.8 }));
+		const skin = this.track(lit({ color: 0xc68642, roughness: 0.85 }));
+		const uni = this.track(lit({ color: 0x1a237e, roughness: 0.7 }));
+		const pants = this.track(lit({ color: 0x0d1545, roughness: 0.8 }));
 		const gold = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xffd700,
 				metalness: 0.7,
 				roughness: 0.3,
 			}),
 		);
-		const hairM = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }));
+		const hairM = this.track(lit({ color: 0x1a1a1a, roughness: 0.9 }));
 
 		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.42, 3, 6), pants);
 		const legR = legL.clone();
@@ -907,10 +908,7 @@ export class GlassElevator {
 		g.add(badge);
 
 		// Moustache
-		const stache = new THREE.Mesh(
-			new THREE.BoxGeometry(0.1, 0.02, 0.03),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.9 })),
-		);
+		const stache = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.03), this.track(lit({ color: 0x3e2723, roughness: 0.9 })));
 		stache.position.set(0, 1.44, 0.13);
 		g.add(stache);
 

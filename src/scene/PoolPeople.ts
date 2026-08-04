@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { levelY } from '@/data/levels';
+import { type LitMaterial, lit } from '@/render/material';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at } from '@/util/rand';
 import { inPool, POOL_CENTER, POOL_WATER_Y, rimDistance } from './RoofIsland';
@@ -184,7 +185,7 @@ export class PoolPeople {
 	private materials: THREE.Material[] = [];
 	private geos: THREE.BufferGeometry[] = [];
 	private textures: THREE.Texture[] = [];
-	private matCache = new Map<string, THREE.MeshStandardMaterial>();
+	private matCache = new Map<string, LitMaterial>();
 
 	private readonly s: ReturnType<PoolPeople['buildShared']>;
 	private swimmers: Swimmer[] = [];
@@ -712,11 +713,11 @@ export class PoolPeople {
 
 	// ── boekhouding ────────────────────────────────────────
 
-	private mat(color: number, roughness = 0.8, metalness = 0.05): THREE.MeshStandardMaterial {
+	private mat(color: number, roughness = 0.8, metalness = 0.05): LitMaterial {
 		const key = `${color}:${roughness}:${metalness}`;
 		const hit = this.matCache.get(key);
 		if (hit) return hit;
-		const m = new THREE.MeshStandardMaterial({ color, roughness, metalness });
+		const m = lit({ color, roughness, metalness });
 		this.materials.push(m);
 		this.matCache.set(key, m);
 		return m;

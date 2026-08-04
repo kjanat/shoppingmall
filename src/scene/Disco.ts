@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ShittyDiscoMusic } from '@/audio/ShittyDisco';
 import type { LightHandle, LightPool } from '@/render/LightPool';
+import { type LitMaterial, lit } from '@/render/material';
 import type { DaylightDimmer } from '@/scene/Lighting';
 import { at } from '@/util/rand';
 
@@ -70,7 +71,7 @@ export class DiscoParty {
 					// metalness 0.95 kills the diffuse, so the beat-driven emissive
 					// carries the whole look, which is what makes these read as mirror
 					// balls instead of white spheres.
-					new THREE.MeshStandardMaterial({
+					lit({
 						color: 0xeeeeee,
 						metalness: 0.95,
 						roughness: 0.12,
@@ -112,7 +113,7 @@ export class DiscoParty {
 		];
 		for (const [x, y, z, sx, sy, sz] of edges) {
 			const mat = this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x00ffc8,
 					emissive: 0x00ffc8,
 					emissiveIntensity: 1.4,
@@ -186,7 +187,7 @@ export class DiscoParty {
 			const ball = at(this.balls, i);
 			ball.rotation.y += dt * (1.8 + i * 0.1);
 			ball.rotation.x += dt * 0.9;
-			const mat = ball.material as THREE.MeshStandardMaterial;
+			const mat = ball.material as LitMaterial;
 			mat.emissive.copy(c);
 			mat.emissiveIntensity = 0.35 + beat * 0.45;
 			const glow = at(this.floorGlow, i);
@@ -194,7 +195,7 @@ export class DiscoParty {
 			(glow.material as THREE.MeshBasicMaterial).opacity = 0.1 + beat * 0.14;
 		});
 		this.neonStrips.forEach((strip, i) => {
-			const m = strip.material as THREE.MeshStandardMaterial;
+			const m = strip.material as LitMaterial;
 			const c = this.tint.setHSL((this.t * 0.25 + i * 0.18) % 1, 1, 0.5);
 			m.color.copy(c);
 			m.emissive.copy(c);

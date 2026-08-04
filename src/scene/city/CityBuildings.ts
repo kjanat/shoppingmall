@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { pickWith } from '@/util/rand';
 
@@ -138,7 +139,7 @@ export class CityBuildings {
 	/** Eén InstancedMesh, per-instance nachttint, gedeelde raam-textuur die 's avonds gloeit. */
 	private buildTowers(specs: TowerSpec[], rand: Rand): void {
 		const tex = this.makeWindowTexture(rand);
-		const facade = new THREE.MeshStandardMaterial({
+		const facade = lit({
 			color: 0xffffff,
 			map: tex,
 			emissive: 0xffffff,
@@ -147,7 +148,7 @@ export class CityBuildings {
 			roughness: 0.9,
 			metalness: 0.05,
 		});
-		const roof = new THREE.MeshStandardMaterial({ color: 0x171a22, roughness: 0.95 });
+		const roof = lit({ color: 0x171a22, roughness: 0.95 });
 		this.materials.push(facade, roof);
 
 		// BoxGeometry-groups: +x,-x,+y,-y,+z,-z → dak en bodem zónder raampjes,
@@ -222,8 +223,8 @@ export class CityBuildings {
 		const cyl = new THREE.CylinderGeometry(0.5, 0.62, 1, 7);
 		cyl.translate(0, 0.5, 0);
 		this.geometries.push(cyl);
-		const waterMat = new THREE.MeshStandardMaterial({ color: 0x4b3a30, roughness: 0.9 });
-		const boxMat = new THREE.MeshStandardMaterial({ color: 0x262c36, roughness: 0.85 });
+		const waterMat = lit({ color: 0x4b3a30, roughness: 0.9 });
+		const boxMat = lit({ color: 0x262c36, roughness: 0.85 });
 		this.materials.push(waterMat, boxMat);
 
 		const vul = (geo: THREE.BufferGeometry, mat: THREE.Material, list: Blob[], name: string) => {
@@ -250,7 +251,7 @@ export class CityBuildings {
 		const bulbGeo = new THREE.SphereGeometry(0.5, 10, 8);
 		const mastGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 6);
 		this.geometries.push(bulbGeo, mastGeo);
-		const mastMat = new THREE.MeshStandardMaterial({ color: 0x2b313c, roughness: 0.8 });
+		const mastMat = lit({ color: 0x2b313c, roughness: 0.8 });
 		this.materials.push(mastMat);
 
 		const hoogste = [...specs].sort((a, b) => b.h - a.h).slice(0, 3);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { type LitMaterial, lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { ROOF_Y } from './Helipad';
 
@@ -208,8 +209,8 @@ export class Helicopter {
 		this.stateT = 0;
 	}
 
-	private mat(color: number, roughness = 0.5, metalness = 0.4): THREE.MeshStandardMaterial {
-		const m = new THREE.MeshStandardMaterial({ color, roughness, metalness });
+	private mat(color: number, roughness = 0.5, metalness = 0.4): LitMaterial {
+		const m = lit({ color, roughness, metalness });
 		this.materials.push(m);
 		return m;
 	}
@@ -217,7 +218,7 @@ export class Helicopter {
 	private build(): void {
 		const hull = this.mat(0xc62828, 0.35, 0.55); // mall-rood
 		const dark = this.mat(0x263238, 0.5, 0.5);
-		const glassMat = new THREE.MeshStandardMaterial({
+		const glassMat = lit({
 			color: 0x9ad4f5,
 			roughness: 0.12,
 			metalness: 0.2,

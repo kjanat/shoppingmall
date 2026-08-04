@@ -3,6 +3,7 @@ import { spatial } from '@/audio/SpatialAudio';
 import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
 import type { LightHandle, LightPool } from '@/render/LightPool';
+import { lit } from '@/render/material';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
@@ -463,12 +464,12 @@ export class SecurityGuards {
 		const start = at(patrol, 0).clone();
 		root.position.copy(start);
 
-		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xe0a878, roughness: 0.88 }));
-		const navy = this.track(new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.75 }));
-		const vest = this.track(new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.7, metalness: 0.15 }));
-		const black = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.3 }));
+		const skin = this.track(lit({ color: 0xe0a878, roughness: 0.88 }));
+		const navy = this.track(lit({ color: 0x1a237e, roughness: 0.75 }));
+		const vest = this.track(lit({ color: 0x263238, roughness: 0.7, metalness: 0.15 }));
+		const black = this.track(lit({ color: 0x111111, roughness: 0.6, metalness: 0.3 }));
 		const gold = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xffd54f,
 				metalness: 0.7,
 				roughness: 0.35,
@@ -514,14 +515,14 @@ export class SecurityGuards {
 		// Sunglasses
 		const shades = new THREE.Mesh(
 			new THREE.BoxGeometry(0.22, 0.06, 0.04),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6, roughness: 0.2 })),
+			this.track(lit({ color: 0x111111, metalness: 0.6, roughness: 0.2 })),
 		);
 		shades.position.set(0, 1.64, 0.14);
 		root.add(shades);
 		// Buzzcut / high-and-tight
 		const hair = new THREE.Mesh(
 			new THREE.SphereGeometry(0.165, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.9 })),
+			this.track(lit({ color: 0x3e2723, roughness: 0.9 })),
 		);
 		hair.position.set(0, 1.68, 0);
 		root.add(hair);

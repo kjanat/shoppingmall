@@ -13,7 +13,7 @@ import { PathMesh } from '@/path/PathMesh';
 import { CollisionWorld } from '@/physics/Collision';
 import { PlayerControls } from '@/player/Controls';
 import { createComposer } from '@/post/Composer';
-import { lampCount, shineOn, stripShine } from '@/render/graphicsPrefs';
+import { lampCount } from '@/render/graphicsPrefs';
 import { LightPool } from '@/render/LightPool';
 import { SceneBatcher } from '@/render/SceneBatcher';
 import { AlienProbe } from '@/scene/AlienProbe';
@@ -233,7 +233,6 @@ export class App {
 	private persistT = 0;
 	private restoredFromSave = false;
 	private sceneBatcher!: SceneBatcher;
-	private readonly perfProbe = new URLSearchParams(window.location.search).has('perf-probe');
 	/** Resolves once the shaders are linked and the frame loop is running. */
 	readonly ready: Promise<void>;
 
@@ -413,9 +412,6 @@ export class App {
 
 		// Preserve every gameplay object, but submit compatible opaque meshes
 		// through a small number of GPU batches.
-		// Vóór de batcher: die kloont per batch een materiaal en groepeert op het
-		// type, dus een wissel achteraf laat de batches met het oude shaden.
-		if (!shineOn()) stripShine(this.scene);
 		this.sceneBatcher = new SceneBatcher(this.scene);
 		// De renderer draait scene.updateMatrixWorld() nog een keer bij elke
 		// render: een tweede complete wandeling over ~7000 objecten, terwijl
@@ -1641,7 +1637,7 @@ export class App {
 	 * hij op de rand, en elke wissel kost een target-heralloc in de composer.
 	 */
 	private updateDynRes(frameMs: number): void {
-		if (this.perfProbe || !this.dynResOn || frameMs <= 0) return;
+		if (!this.dynResOn || frameMs <= 0) return;
 		// Tijd loopt hier in échte seconden (gekapt op de spike-grens), niet in het
 		// geklemde dt: bij 200ms-frames telde elke tik 0,05 s en duurde de
 		// beloofde halve seconde reactietijd in werkelijkheid twee seconden.
@@ -1845,7 +1841,7 @@ export class App {
 	}
 
 	private animate = (timestamp?: number): void => {
-		if (!this.perfProbe) requestAnimationFrame(this.animate);
+		requestAnimationFrame(this.animate);
 		// THREE.Timer: update once per frame, then query delta/elapsed (stable multi-read)
 		this.timer.update(timestamp);
 		const dt = Math.min(this.timer.getDelta(), 0.05);
@@ -2254,18 +2250,6 @@ export class App {
 		// het te tekenen. De driver blokkeert hier pas als hij achterloopt, en dan
 		// loopt juist dít getal op terwijl de GPU de echte schuldige is.
 		const afterRender = performance.now();
-		if (this.perfProbe) {
-			const totalCalls = this.renderer.info.render.calls;
-			const totalTriangles = this.renderer.info.render.triangles;
-			this.renderer.shadowMap.enabled = false;
-			this.renderer.info.reset();
-			this.composer.render(dt);
-			const mainCalls = this.renderer.info.render.calls;
-			document.documentElement.dataset['frameDrawCalls'] = String(mainCalls);
-			document.documentElement.dataset['shadowDrawCalls'] = String(Math.max(0, totalCalls - mainCalls));
-			document.documentElement.dataset['frameTriangles'] = String(totalTriangles);
-			this.renderer.shadowMap.enabled = true;
-		}
 
 		// Ná de render: de tellers van dit frame staan er nu in.
 		const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);

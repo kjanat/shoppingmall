@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LightPool } from '@/render/LightPool';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { tagLevelCulled } from '@/util/visibility';
 
@@ -64,15 +65,15 @@ export class TravelAgency {
 	}
 
 	private buildShell(): void {
-		const wall = this.track(new THREE.MeshStandardMaterial({ color: 0x0d3b4c, roughness: 0.85 }));
+		const wall = this.track(lit({ color: 0x0d3b4c, roughness: 0.85 }));
 		const trim = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xffd54f,
 				metalness: 0.45,
 				roughness: 0.4,
 			}),
 		);
-		const floor = this.track(new THREE.MeshStandardMaterial({ color: 0xe0f2f1, roughness: 0.7 }));
+		const floor = this.track(lit({ color: 0xe0f2f1, roughness: 0.7 }));
 
 		const slab = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.1, 3.8), floor);
 		slab.position.set(0, 0.05, 0);
@@ -105,9 +106,9 @@ export class TravelAgency {
 	}
 
 	private buildDesk(): void {
-		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.8 }));
+		const wood = this.track(lit({ color: 0x5d4037, roughness: 0.8 }));
 		const top = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xffecb3,
 				roughness: 0.45,
 				metalness: 0.1,
@@ -121,10 +122,7 @@ export class TravelAgency {
 		this.group.add(deskTop);
 
 		// Computer
-		const mon = new THREE.Mesh(
-			new THREE.BoxGeometry(0.45, 0.32, 0.04),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.5 })),
-		);
+		const mon = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.32, 0.04), this.track(lit({ color: 0x111111, metalness: 0.5 })));
 		mon.position.set(0.3, 1.25, -0.1);
 		mon.rotation.y = 0.3;
 		this.group.add(mon);
@@ -141,7 +139,7 @@ export class TravelAgency {
 			const b = new THREE.Mesh(
 				new THREE.BoxGeometry(0.22, 0.02, 0.28),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					lit({
 						color: [0xff7043, 0x29b6f6, 0xffee58, 0x66bb6a][i],
 						roughness: 0.7,
 					}),
@@ -159,10 +157,10 @@ export class TravelAgency {
 		g.position.set(-0.15, 0, -0.15);
 		g.rotation.y = Math.PI / 2;
 
-		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.85 }));
-		const shirt = this.track(new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.7 }));
-		const pants = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.8 }));
-		const hairM = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }));
+		const skin = this.track(lit({ color: 0xc68642, roughness: 0.85 }));
+		const shirt = this.track(lit({ color: 0xff6f00, roughness: 0.7 }));
+		const pants = this.track(lit({ color: 0xf5f5f5, roughness: 0.8 }));
+		const hairM = this.track(lit({ color: 0x1a1a1a, roughness: 0.9 }));
 
 		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.45, 3, 6), pants);
 		const legR = legL.clone();
@@ -176,10 +174,7 @@ export class TravelAgency {
 
 		// Flower pattern dots
 		for (let i = 0; i < 6; i++) {
-			const dot = new THREE.Mesh(
-				new THREE.SphereGeometry(0.04, 6, 6),
-				this.track(new THREE.MeshStandardMaterial({ color: 0xe91e63, roughness: 0.6 })),
-			);
+			const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), this.track(lit({ color: 0xe91e63, roughness: 0.6 })));
 			dot.position.set(((i % 3) - 1) * 0.12, 0.95 + Math.floor(i / 3) * 0.2, 0.22);
 			g.add(dot);
 		}
@@ -195,7 +190,7 @@ export class TravelAgency {
 		const shades = new THREE.Mesh(
 			new THREE.BoxGeometry(0.22, 0.06, 0.04),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x111111,
 					metalness: 0.7,
 					roughness: 0.25,
@@ -206,10 +201,7 @@ export class TravelAgency {
 		g.add(shades);
 
 		// Clipboard
-		const clip = new THREE.Mesh(
-			new THREE.BoxGeometry(0.18, 0.24, 0.02),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6 })),
-		);
+		const clip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.02), this.track(lit({ color: 0xeeeeee, roughness: 0.6 })));
 		clip.position.set(0.28, 1.2, 0.2);
 		clip.rotation.z = -0.3;
 		g.add(clip);
@@ -357,13 +349,13 @@ export class TravelAgency {
 
 	private buildProps(): void {
 		// Suitcase
-		const caseM = this.track(new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.6, metalness: 0.2 }));
+		const caseM = this.track(lit({ color: 0x37474f, roughness: 0.6, metalness: 0.2 }));
 		const bag = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.22), caseM);
 		bag.position.set(1.2, 0.3, 1.1);
 		this.group.add(bag);
 		const handle = new THREE.Mesh(
 			new THREE.TorusGeometry(0.1, 0.02, 6, 12, Math.PI),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xffd54f, metalness: 0.6, roughness: 0.3 })),
+			this.track(lit({ color: 0xffd54f, metalness: 0.6, roughness: 0.3 })),
 		);
 		handle.position.set(1.2, 0.6, 1.1);
 		handle.rotation.x = Math.PI;
@@ -373,7 +365,7 @@ export class TravelAgency {
 		const globe = new THREE.Mesh(
 			new THREE.SphereGeometry(0.18, 16, 12),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x1565c0,
 					roughness: 0.5,
 					metalness: 0.2,
@@ -387,10 +379,7 @@ export class TravelAgency {
 		this.bob.push(globe);
 		// Continents blobs
 		for (let i = 0; i < 5; i++) {
-			const land = new THREE.Mesh(
-				new THREE.SphereGeometry(0.06, 6, 6),
-				this.track(new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 })),
-			);
+			const land = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), this.track(lit({ color: 0x2e7d32, roughness: 0.9 })));
 			const a = (i / 5) * Math.PI * 2;
 			land.position.set(1.05 + Math.cos(a) * 0.14, 1.2 + Math.sin(a * 1.3) * 0.1, -0.2 + Math.sin(a) * 0.14);
 			this.group.add(land);
@@ -401,7 +390,7 @@ export class TravelAgency {
 		const fus = new THREE.Mesh(
 			new THREE.CapsuleGeometry(0.04, 0.28, 4, 6),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0xffffff,
 					metalness: 0.4,
 					roughness: 0.4,
@@ -410,10 +399,7 @@ export class TravelAgency {
 		);
 		fus.rotation.z = Math.PI / 2;
 		plane.add(fus);
-		const wing = new THREE.Mesh(
-			new THREE.BoxGeometry(0.35, 0.02, 0.1),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xb0bec5, metalness: 0.5 })),
-		);
+		const wing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.02, 0.1), this.track(lit({ color: 0xb0bec5, metalness: 0.5 })));
 		plane.add(wing);
 		plane.position.set(0.85, 1.05, -0.25);
 		plane.rotation.y = -0.5;
@@ -425,24 +411,21 @@ export class TravelAgency {
 		// "No cameras" bin
 		const bin = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.18, 0.15, 0.4, 10),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x212121, roughness: 0.7 })),
+			this.track(lit({ color: 0x212121, roughness: 0.7 })),
 		);
 		bin.position.set(1.3, 0.22, -1.2);
 		this.group.add(bin);
-		const cam = new THREE.Mesh(
-			new THREE.BoxGeometry(0.14, 0.1, 0.08),
-			this.track(new THREE.MeshStandardMaterial({ color: 0x424242, metalness: 0.4 })),
-		);
+		const cam = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.08), this.track(lit({ color: 0x424242, metalness: 0.4 })));
 		cam.position.set(1.3, 0.48, -1.2);
 		this.group.add(cam);
 	}
 
 	private buildPalm(): void {
-		const trunkM = this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.9 }));
-		const leafM = this.track(new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.85 }));
+		const trunkM = this.track(lit({ color: 0x6d4c41, roughness: 0.9 }));
+		const leafM = this.track(lit({ color: 0x2e7d32, roughness: 0.85 }));
 		const pot = new THREE.Mesh(
 			new THREE.CylinderGeometry(0.22, 0.18, 0.35, 10),
-			this.track(new THREE.MeshStandardMaterial({ color: 0xbf360c, roughness: 0.7 })),
+			this.track(lit({ color: 0xbf360c, roughness: 0.7 })),
 		);
 		pot.position.set(1.35, 0.18, 0.9);
 		this.group.add(pot);

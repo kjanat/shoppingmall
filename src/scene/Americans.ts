@@ -4,6 +4,7 @@ import { getOwner } from '@/data/shopOwners';
 import { STORES, type StoreDef } from '@/data/stores';
 import { Pathfinder } from '@/path/Pathfinder';
 import type { CollisionWorld } from '@/physics/Collision';
+import { type LitMaterial, lit } from '@/render/material';
 import { fetchSimChat, type SimPersona } from '@/sim/SimChat';
 
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
@@ -1019,7 +1020,7 @@ export class Americans {
 			body.add(hips);
 			// stiletto nubs under feet (leg groups already have feet — add glamour shine)
 			const heelMat = this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x1a1a1a,
 					metalness: 0.4,
 					roughness: 0.35,
@@ -1121,7 +1122,7 @@ export class Americans {
 			const crown = new THREE.Mesh(
 				new THREE.TorusGeometry(0.14, 0.025, 6, 12),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					lit({
 						color: 0xffd700,
 						metalness: 0.9,
 						roughness: 0.25,
@@ -1132,10 +1133,7 @@ export class Americans {
 			crown.position.set(0, headY + 0.22, 0);
 			body.add(crown);
 			// Sash
-			const sash = new THREE.Mesh(
-				new THREE.BoxGeometry(0.12, 0.9, 0.02),
-				this.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 })),
-			);
+			const sash = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.9, 0.02), this.track(lit({ color: 0xffffff, roughness: 0.6 })));
 			sash.position.set(0.18, torsoY + 0.5, 0.2);
 			sash.rotation.z = -0.35;
 			body.add(sash);
@@ -1261,8 +1259,8 @@ export class Americans {
 		return sim;
 	}
 
-	private mat(color: number, rough = 0.85): THREE.MeshStandardMaterial {
-		return this.track(new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.05 }));
+	private mat(color: number, rough = 0.85): LitMaterial {
+		return this.track(lit({ color, roughness: rough, metalness: 0.05 }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {

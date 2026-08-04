@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { level, levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { GARAGE_Y } from './ParkingGarage';
 import type { DriveInput } from './ScrubberBuggy';
@@ -295,10 +296,10 @@ export class DriveableCars {
 
 	private makeCar(color: number): THREE.Group {
 		const g = new THREE.Group();
-		const bodyM = this.track(new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.4 }));
-		const dark = this.track(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
+		const bodyM = this.track(lit({ color, roughness: 0.4, metalness: 0.4 }));
+		const dark = this.track(lit({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
 		const glass = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x90caf9,
 				transparent: true,
 				opacity: 0.5,
@@ -315,7 +316,7 @@ export class DriveableCars {
 		const stripe = new THREE.Mesh(
 			new THREE.BoxGeometry(1.7, 0.08, 0.05),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0xffc107,
 					emissive: 0xaa8800,
 					emissiveIntensity: 0.3,

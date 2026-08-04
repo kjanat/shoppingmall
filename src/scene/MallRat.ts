@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
+import { lit } from '@/render/material';
 import { at, pick } from '@/util/rand';
 
 /**
@@ -92,8 +93,8 @@ export class MallRat {
 
 	private build(): THREE.Group {
 		const g = new THREE.Group();
-		const fur = this.track(new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 }));
-		const pink = this.track(new THREE.MeshStandardMaterial({ color: 0xf8a0a0, roughness: 0.7 }));
+		const fur = this.track(lit({ color: 0x5c4033, roughness: 0.9 }));
+		const pink = this.track(lit({ color: 0xf8a0a0, roughness: 0.7 }));
 		const body = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), fur);
 		body.scale.set(1.4, 0.85, 1.1);
 		body.position.y = 0.12;

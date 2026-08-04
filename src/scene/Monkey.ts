@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelAt } from '@/data/levels';
 import type { CollisionWorld } from '@/physics/Collision';
+import { type LitMaterial, lit } from '@/render/material';
 import { ctx2d } from '@/util/dom';
 import { labelCanvas, labelTexture } from '@/util/label';
 import { at, pick } from '@/util/rand';
@@ -83,7 +84,7 @@ export class Monkey {
 	private materials: THREE.Material[] = [];
 	private poops: Poop[] = [];
 	private splats: Splat[] = [];
-	private poopMats: THREE.MeshStandardMaterial[] = [];
+	private poopMats: LitMaterial[] = [];
 
 	private perch = 0;
 	private cooldown = 4;
@@ -105,21 +106,21 @@ export class Monkey {
 		// Soft, wet-looking dung palette (not a flat brown ball)
 		this.poopMats = [
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x3e2723,
 					roughness: 0.92,
 					metalness: 0.02,
 				}),
 			),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x5d4037,
 					roughness: 0.88,
 					metalness: 0.04,
 				}),
 			),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x4e342e,
 					roughness: 0.95,
 					metalness: 0,
@@ -570,9 +571,9 @@ export class Monkey {
 	}
 
 	private build(): void {
-		const fur = this.track(new THREE.MeshStandardMaterial({ color: 0x6d4c33, roughness: 0.9 }));
-		const skin = this.track(new THREE.MeshStandardMaterial({ color: 0xc79a7a, roughness: 0.8 }));
-		const eye = this.track(new THREE.MeshStandardMaterial({ color: 0x141414 }));
+		const fur = this.track(lit({ color: 0x6d4c33, roughness: 0.9 }));
+		const skin = this.track(lit({ color: 0xc79a7a, roughness: 0.8 }));
+		const eye = this.track(lit({ color: 0x141414 }));
 
 		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.22, 4, 8), fur);
 		torso.position.y = 0.3;

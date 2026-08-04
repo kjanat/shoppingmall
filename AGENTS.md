@@ -216,9 +216,9 @@ against a GPU snapshot, and never worth recording in this file.
   what. Only per-pass queries summed together are real GPU work.
 - Chrome may sit on the integrated GPU on a laptop even with `powerPreference: 'high-performance'`. `diagnose` warns.
   Windows: Settings → Display → Graphics → Chrome → High performance.
-- **Dynamic resolution is disabled under `?perf-probe` but live in a normal browser tab.** Measuring the shipped build
-  without the probe means the renderer may quietly lower its own pixel count mid-run. Turn the setting off (⚙) or use
-  the perf scripts, or an A-B-A will look stable while the resolution moves underneath it.
+- **The probe forces dynamic resolution off** by writing its localStorage key before the page loads, so any run through
+  `diagnose` or `bench` measures a fixed pixel count. Watching the framerate in a normal tab does not get that: if the
+  setting is on there, the renderer lowers its own resolution mid-run and an A-B-A looks stable while the pixels move.
 
 `.perf/` is gitignored and holds saved baselines plus a reused Chrome profile (its shader cache is what keeps repeat
 runs from paying the ~105 s cold link).

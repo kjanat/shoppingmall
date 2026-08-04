@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LightPool } from '@/render/LightPool';
+import { type LitMaterial, lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -15,7 +16,7 @@ export class BeardCave {
 	private materials: THREE.Material[] = [];
 	private lootGroup = new THREE.Group();
 	private pulseT = 0;
-	private glowMats: THREE.MeshStandardMaterial[] = [];
+	private glowMats: LitMaterial[] = [];
 	private pool: LightPool;
 
 	constructor(pool: LightPool) {
@@ -70,21 +71,21 @@ export class BeardCave {
 
 	private buildShell(): void {
 		const rock = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x3e3429,
 				roughness: 0.95,
 				metalness: 0.05,
 			}),
 		);
 		const rockDark = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x2a221c,
 				roughness: 0.98,
 				metalness: 0.02,
 			}),
 		);
 		const floorMat = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x4a3f35,
 				roughness: 0.9,
 			}),
@@ -152,7 +153,7 @@ export class BeardCave {
 
 	private buildLoot(): void {
 		const gold = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xffd700,
 				metalness: 0.95,
 				roughness: 0.22,
@@ -163,7 +164,7 @@ export class BeardCave {
 		this.glowMats.push(gold);
 
 		const goldSoft = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xe6b422,
 				metalness: 0.85,
 				roughness: 0.35,
@@ -174,7 +175,7 @@ export class BeardCave {
 		this.glowMats.push(goldSoft);
 
 		const ruby = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xc62828,
 				metalness: 0.4,
 				roughness: 0.15,
@@ -183,7 +184,7 @@ export class BeardCave {
 			}),
 		);
 		const emerald = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x00c853,
 				metalness: 0.45,
 				roughness: 0.18,
@@ -192,7 +193,7 @@ export class BeardCave {
 			}),
 		);
 		const sapphire = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x1565c0,
 				metalness: 0.5,
 				roughness: 0.16,
@@ -201,13 +202,13 @@ export class BeardCave {
 			}),
 		);
 		const silver = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xc0c0c0,
 				metalness: 0.9,
 				roughness: 0.28,
 			}),
 		);
-		const wood = this.track(new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.9 }));
+		const wood = this.track(lit({ color: 0x5d4037, roughness: 0.9 }));
 
 		// Treasure chest
 		const chest = new THREE.Group();
@@ -314,7 +315,7 @@ export class BeardCave {
 			const pearl = new THREE.Mesh(
 				new THREE.SphereGeometry(0.045, 8, 8),
 				this.track(
-					new THREE.MeshStandardMaterial({
+					lit({
 						color: 0xfff8e7,
 						roughness: 0.25,
 						metalness: 0.15,
@@ -328,14 +329,14 @@ export class BeardCave {
 
 	private buildTorch(): void {
 		const iron = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x37474f,
 				metalness: 0.7,
 				roughness: 0.4,
 			}),
 		);
 		const flameMat = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xff6d00,
 				emissive: 0xff3d00,
 				emissiveIntensity: 1.2,

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '@/physics/Collision';
+import { lit } from '@/render/material';
 import { fitText, labelCanvas, labelTexture } from '@/util/label';
 import { pick } from '@/util/rand';
 import { tagLevelCulled } from '@/util/visibility';
@@ -180,10 +181,10 @@ export class Penguins {
 		const root = new THREE.Group();
 		const name = NAMES[i % NAMES.length] + (i >= NAMES.length ? ` ${i}` : '');
 
-		const black = this.track(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.75 }));
-		const white = this.track(new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.85 }));
-		const orange = this.track(new THREE.MeshStandardMaterial({ color: 0xff8f00, roughness: 0.55 }));
-		const beakM = this.track(new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.5 }));
+		const black = this.track(lit({ color: 0x1a1a1a, roughness: 0.75 }));
+		const white = this.track(lit({ color: 0xf5f5f5, roughness: 0.85 }));
+		const orange = this.track(lit({ color: 0xff8f00, roughness: 0.55 }));
+		const beakM = this.track(lit({ color: 0xff6f00, roughness: 0.5 }));
 
 		const body = new THREE.Group();
 		// Torso egg

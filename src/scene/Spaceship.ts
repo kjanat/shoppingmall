@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LightPool } from '@/render/LightPool';
+import { lit } from '@/render/material';
 import { labelCanvas, labelTexture } from '@/util/label';
 
 /**
@@ -122,21 +123,21 @@ export class Spaceship {
 		const s = new THREE.Group();
 
 		const hull = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0xc0c8d4,
 				metalness: 0.85,
 				roughness: 0.25,
 			}),
 		);
 		const dark = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x2a3038,
 				metalness: 0.7,
 				roughness: 0.35,
 			}),
 		);
 		const glow = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x4fc3f7,
 				emissive: 0x29b6f6,
 				emissiveIntensity: 0.55,
@@ -144,7 +145,7 @@ export class Spaceship {
 			}),
 		);
 		const green = this.track(
-			new THREE.MeshStandardMaterial({
+			lit({
 				color: 0x00a651,
 				emissive: 0x00a651,
 				emissiveIntensity: 0.35,
@@ -169,7 +170,7 @@ export class Spaceship {
 		const dome = new THREE.Mesh(
 			new THREE.SphereGeometry(1.4, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.55),
 			this.track(
-				new THREE.MeshStandardMaterial({
+				lit({
 					color: 0x88ccee,
 					metalness: 0.3,
 					roughness: 0.15,

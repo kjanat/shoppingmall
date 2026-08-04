@@ -1,5 +1,3 @@
-import * as THREE from 'three';
-
 /**
  * The three knobs that decide what the mall costs and what it looks like.
  *
@@ -68,60 +66,4 @@ export function writeFill(scale: number): void {
 	} catch {
 		/* private mode */
 	}
-}
-
-/**
- * Swap every MeshStandardMaterial in the scene for a Lambert one.
- *
- * Done here in one pass rather than at each of the ~390 construction sites:
- * the source keeps the richer material, and this strips it back when the
- * player asks for speed. Lambert has no roughness/metalness and no specular
- * lobe. That is the whole point: it drops the expensive part of the light
- * loop, which is multiplied by the number of pooled lights in every fragment.
- * Everything else (colour, map, emissive, transparency, side) carries over.
- *
- * Must run before SceneBatcher: the batcher clones a material per batch and
- * keys its grouping on the type, so swapping afterwards would leave the
- * batches shading with the old one.
- */
-export function stripShine(scene: THREE.Scene): number {
-	const swapped = new Map<THREE.Material, THREE.MeshLambertMaterial>();
-	let count = 0;
-	scene.traverse((object) => {
-		if (!(object instanceof THREE.Mesh) || Array.isArray(object.material)) return;
-		const source = object.material;
-		if (!(source instanceof THREE.MeshStandardMaterial)) return;
-		const existing = swapped.get(source);
-		if (existing) {
-			object.material = existing;
-			return;
-		}
-		const lambert = new THREE.MeshLambertMaterial({
-			color: source.color,
-			map: source.map,
-			emissive: source.emissive,
-			emissiveMap: source.emissiveMap,
-			emissiveIntensity: source.emissiveIntensity,
-			alphaMap: source.alphaMap,
-			aoMap: source.aoMap,
-			aoMapIntensity: source.aoMapIntensity,
-			lightMap: source.lightMap,
-			lightMapIntensity: source.lightMapIntensity,
-			transparent: source.transparent,
-			opacity: source.opacity,
-			side: source.side,
-			depthWrite: source.depthWrite,
-			depthTest: source.depthTest,
-			alphaTest: source.alphaTest,
-			vertexColors: source.vertexColors,
-			fog: source.fog,
-			toneMapped: source.toneMapped,
-			wireframe: source.wireframe,
-			flatShading: source.flatShading,
-		});
-		swapped.set(source, lambert);
-		object.material = lambert;
-		count++;
-	});
-	return count;
 }
