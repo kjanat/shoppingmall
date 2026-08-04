@@ -10,6 +10,7 @@ import type {
 	WorldEntity,
 } from '#/data/spatial';
 import { shopStores } from '#/data/stores';
+import { half, midpoint } from '#/util/math';
 
 export type WorldCategory = 'floor' | 'ceiling' | 'wall' | 'opening' | 'shop' | 'vertical-circulation' | 'parking';
 
@@ -49,11 +50,49 @@ export const SHOP_HEIGHT = 4.2;
 export const SHOP_ROOM_DEPTH_FACTOR = 0.92;
 export const ELEVATOR_SPEC = {
 	center: { x: 16, z: -8 },
-	cabin: { width: 2, depth: 2, height: 2.55 },
+	cabin: {
+		width: 2,
+		depth: 2,
+		height: 2.55,
+		wallThickness: 0.04,
+		wallInset: 0.05,
+		doorThickness: 0.05,
+		doorPanelWidth: 0.9,
+		doorClosedOffset: 0.42,
+		doorOpenOffset: 0.95,
+	},
+	shaft: {
+		wallOffset: 1.12,
+		panelSpan: 2.15,
+		panelThickness: 0.04,
+		postOffset: 1.1,
+		postThickness: 0.12,
+		bottomOverrun: 0.2,
+		topOverrun: 3,
+	},
 	shaftGap: 0.12,
 	padHalf: 2.75,
 	speed: 1.85,
 } as const;
+
+/** Fixed shaft panels. The south face is intentionally open at every landing. */
+export const ELEVATOR_SHAFT_WALLS = [
+	{
+		id: 'north',
+		center: { x: ELEVATOR_SPEC.center.x, z: ELEVATOR_SPEC.center.z - ELEVATOR_SPEC.shaft.wallOffset },
+		size: { width: ELEVATOR_SPEC.shaft.panelSpan, depth: ELEVATOR_SPEC.shaft.panelThickness },
+	},
+	{
+		id: 'west',
+		center: { x: ELEVATOR_SPEC.center.x - ELEVATOR_SPEC.shaft.wallOffset, z: ELEVATOR_SPEC.center.z },
+		size: { width: ELEVATOR_SPEC.shaft.panelThickness, depth: ELEVATOR_SPEC.shaft.panelSpan },
+	},
+	{
+		id: 'east',
+		center: { x: ELEVATOR_SPEC.center.x + ELEVATOR_SPEC.shaft.wallOffset, z: ELEVATOR_SPEC.center.z },
+		size: { width: ELEVATOR_SPEC.shaft.panelThickness, depth: ELEVATOR_SPEC.shaft.panelSpan },
+	},
+] as const;
 export const PARKING_EXIT_RAMP = {
 	id: 'parking-exit-ramp',
 	start: { x: -30, y: levelY('p1'), z: 0 },
@@ -469,17 +508,17 @@ const MALL_WALL_MAX_Y = MALL_WALL_MIN_Y + MALL_WALL_HEIGHT;
 const MALL_WALL_THICKNESS = 0.4;
 
 const MALL_WALLS: readonly MallWorldEntity[] = [
-	['north', 0, -MALL_FOOTPRINT.halfDepth, MALL_FOOTPRINT.width + 1, MALL_WALL_THICKNESS],
-	['south', 0, MALL_FOOTPRINT.halfDepth, MALL_FOOTPRINT.width + 1, MALL_WALL_THICKNESS],
-	['west', -MALL_FOOTPRINT.halfWidth, 0, MALL_WALL_THICKNESS, MALL_FOOTPRINT.depth],
-	['east', MALL_FOOTPRINT.halfWidth, 0, MALL_WALL_THICKNESS, MALL_FOOTPRINT.depth],
+	['north', 0, -half(MALL_FOOTPRINT.depth), MALL_FOOTPRINT.width + 1, MALL_WALL_THICKNESS],
+	['south', 0, half(MALL_FOOTPRINT.depth), MALL_FOOTPRINT.width + 1, MALL_WALL_THICKNESS],
+	['west', -half(MALL_FOOTPRINT.width), 0, MALL_WALL_THICKNESS, MALL_FOOTPRINT.depth],
+	['east', half(MALL_FOOTPRINT.width), 0, MALL_WALL_THICKNESS, MALL_FOOTPRINT.depth],
 ].map(([side, x, z, width, depth]) => ({
 	id: `mall-wall-${String(side)}`,
 	label: `${String(side)} mall wall`,
 	category: 'wall',
 	levels: ['v0', 'v1'],
 	transform: {
-		position: { x: Number(x), y: (MALL_WALL_MIN_Y + MALL_WALL_MAX_Y) / 2, z: Number(z) },
+		position: { x: Number(x), y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: Number(z) },
 		rotation: ZERO_ROTATION,
 	},
 	volumes: [solidPrism('wall', rectangle(Number(x), Number(z), Number(width), Number(depth)), MALL_WALL_MIN_Y, MALL_WALL_MAX_Y)],

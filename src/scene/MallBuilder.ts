@@ -6,6 +6,7 @@ import { type StoreDef, shopStores } from '#/data/stores';
 import { ELEVATOR_OPENING_ROOF, ELEVATOR_OPENING_V0, ELEVATOR_OPENING_V1, ESCALATOR, SECRET_STAIRS, STAIRS } from '#/data/world';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { half, midpoint } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** One storey, straight from the deck heights. */
@@ -81,7 +82,7 @@ const ESC_RAIL_R = 0.05;
 const ESC_RAIL_GAP = 0.02;
 /** De balustradekop is halfrond om het midden van het glas. */
 const ESC_GLASS_R = (ESC_GLASS_HI - ESC_GLASS_LO) / 2;
-const ESC_GLASS_MID = (ESC_GLASS_HI + ESC_GLASS_LO) / 2;
+const ESC_GLASS_MID = midpoint(ESC_GLASS_HI, ESC_GLASS_LO);
 /**
  * De leuning draait concentrisch om die kop, op vaste speling. Daar volgen zowel
  * de omkeerstraal als de hoogte van het leuninghart uit. Kies je die twee los,
@@ -331,10 +332,10 @@ export class MallBuilder {
 		// The lift travels to P1, so V0 needs a real shaft opening too. The old
 		// BoxGeometry made the cabin pass through a solid ground-floor slab.
 		const floor0Shape = new THREE.Shape();
-		floor0Shape.moveTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
-		floor0Shape.lineTo(MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
-		floor0Shape.lineTo(MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
-		floor0Shape.lineTo(-MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
+		floor0Shape.moveTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
+		floor0Shape.lineTo(half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
+		floor0Shape.lineTo(half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
+		floor0Shape.lineTo(-half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
 		floor0Shape.closePath();
 		rectHole(
 			floor0Shape,
@@ -353,16 +354,16 @@ export class MallBuilder {
 		// Floor 1 ring: atrium void + REAL openings where stairs/escalator meet floor 1
 		const floor1Mat = this.track(floorMat.clone());
 		const f1Shape = new THREE.Shape();
-		f1Shape.moveTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
-		f1Shape.lineTo(MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
-		f1Shape.lineTo(MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
-		f1Shape.lineTo(-MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
-		f1Shape.lineTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+		f1Shape.moveTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
+		f1Shape.lineTo(half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
+		f1Shape.lineTo(half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
+		f1Shape.lineTo(-half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
+		f1Shape.lineTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
 
 		const addRectHole = (cx: number, cz: number, hw: number, hd: number) => rectHole(f1Shape, cx, cz, hw, hd);
 
 		// Center atrium
-		addRectHole(0, 0, ATRIUM_VOID.halfWidth, ATRIUM_VOID.halfDepth);
+		addRectHole(0, 0, half(ATRIUM_VOID.width), half(ATRIUM_VOID.depth));
 
 		// The openings must sit OVER the flights, not next to their top landings —
 		// each hole spans from just past the top down to where the incline is ~2 m
@@ -406,10 +407,10 @@ export class MallBuilder {
 
 		const walls: [number, number, number, number, number, number][] = [
 			// w, h, d, x, y, z
-			[MALL_FOOTPRINT.width + 1, wallH, 0.4, 0, wallH / 2 - 0.3, -MALL_FOOTPRINT.halfDepth],
-			[MALL_FOOTPRINT.width + 1, wallH, 0.4, 0, wallH / 2 - 0.3, MALL_FOOTPRINT.halfDepth],
-			[0.4, wallH, MALL_FOOTPRINT.depth, -MALL_FOOTPRINT.halfWidth, wallH / 2 - 0.3, 0],
-			[0.4, wallH, MALL_FOOTPRINT.depth, MALL_FOOTPRINT.halfWidth, wallH / 2 - 0.3, 0],
+			[MALL_FOOTPRINT.width + 1, wallH, 0.4, 0, half(wallH) - 0.3, -half(MALL_FOOTPRINT.depth)],
+			[MALL_FOOTPRINT.width + 1, wallH, 0.4, 0, half(wallH) - 0.3, half(MALL_FOOTPRINT.depth)],
+			[0.4, wallH, MALL_FOOTPRINT.depth, -half(MALL_FOOTPRINT.width), half(wallH) - 0.3, 0],
+			[0.4, wallH, MALL_FOOTPRINT.depth, half(MALL_FOOTPRINT.width), half(wallH) - 0.3, 0],
 		];
 		for (const [w, h, d, x, y, z] of walls) {
 			const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
@@ -431,12 +432,12 @@ export class MallBuilder {
 		// stairwell holes (gaping holes above nothing) and lacked the one opening
 		// it actually needs, where the secret service stairs exit to the roof.
 		const ceilShape = new THREE.Shape();
-		ceilShape.moveTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
-		ceilShape.lineTo(MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
-		ceilShape.lineTo(MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
-		ceilShape.lineTo(-MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
-		ceilShape.lineTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
-		rectHole(ceilShape, 0, 0, ATRIUM_VOID.halfWidth, ATRIUM_VOID.halfDepth);
+		ceilShape.moveTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
+		ceilShape.lineTo(half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
+		ceilShape.lineTo(half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
+		ceilShape.lineTo(-half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
+		ceilShape.lineTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
+		rectHole(ceilShape, 0, 0, half(ATRIUM_VOID.width), half(ATRIUM_VOID.depth));
 		// Secret stairs run (26, y6, z14) → (26, roof, z18); hole matches the ramp
 		rectHole(
 			ceilShape,
@@ -697,7 +698,7 @@ export class MallBuilder {
 		const shape = new THREE.Shape();
 		const cap = (zEnd: number, outward: number, a0: number, a1: number) => {
 			if (!opts.round) return;
-			const cy = escLine(zEnd) + (opts.below + opts.above) / 2;
+			const cy = escLine(zEnd) + midpoint(opts.below, opts.above);
 			const r = (opts.above - opts.below) / 2;
 			for (let k = 1; k < 8; k++) {
 				const a = a0 + ((a1 - a0) * k) / 8;
@@ -1090,8 +1091,8 @@ export class MallBuilder {
 				if (i < steps - 1) {
 					const z2 = z0 + dir * (i + 1.5) * stepDepth;
 					const y2 = (i + 2) * stepRise + 0.75;
-					const midZ = (z + z2) / 2;
-					const midY = (y + y2) / 2;
+					const midZ = midpoint(z, z2);
+					const midY = midpoint(y, y2);
 					const segLen = Math.hypot(z2 - z, y2 - y);
 					const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, segLen), railMat);
 					rail.position.set(sx, midY, midZ);

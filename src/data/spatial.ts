@@ -1,3 +1,5 @@
+import { clamp01, half, midpoint } from '#/util/math';
+
 export type Vec2 = Readonly<{ x: number; z: number }>;
 export type Vec3 = Readonly<{ x: number; y: number; z: number }>;
 
@@ -274,13 +276,13 @@ function planBounds(shape: PlanShape): Readonly<{ minX: number; maxX: number; mi
 	if (shape.kind === 'rectangle') {
 		const cosine = Math.abs(Math.cos(shape.yaw));
 		const sine = Math.abs(Math.sin(shape.yaw));
-		const halfX = (shape.width * cosine + shape.depth * sine) / 2;
-		const halfZ = (shape.width * sine + shape.depth * cosine) / 2;
+		const extentX = half(shape.width * cosine + shape.depth * sine);
+		const extentZ = half(shape.width * sine + shape.depth * cosine);
 		return {
-			minX: shape.center.x - halfX,
-			maxX: shape.center.x + halfX,
-			minZ: shape.center.z - halfZ,
-			maxZ: shape.center.z + halfZ,
+			minX: shape.center.x - extentX,
+			maxX: shape.center.x + extentX,
+			minZ: shape.center.z - extentZ,
+			maxZ: shape.center.z + extentZ,
 		};
 	}
 	let minX = Number.POSITIVE_INFINITY;
@@ -303,21 +305,21 @@ export function geometryBounds(geometry: SpatialGeometry): Bounds3 {
 			return {
 				minX: geometry.center.x - geometry.radius,
 				maxX: geometry.center.x + geometry.radius,
-				minY: geometry.center.y - geometry.height / 2,
-				maxY: geometry.center.y + geometry.height / 2,
+				minY: geometry.center.y - half(geometry.height),
+				maxY: geometry.center.y + half(geometry.height),
 				minZ: geometry.center.z - geometry.radius,
 				maxZ: geometry.center.z + geometry.radius,
 			};
 		}
-		const halfX = geometry.axis === 'x' ? geometry.height / 2 : geometry.radius;
-		const halfZ = geometry.axis === 'z' ? geometry.height / 2 : geometry.radius;
+		const extentX = geometry.axis === 'x' ? half(geometry.height) : geometry.radius;
+		const extentZ = geometry.axis === 'z' ? half(geometry.height) : geometry.radius;
 		return {
-			minX: geometry.center.x - halfX,
-			maxX: geometry.center.x + halfX,
+			minX: geometry.center.x - extentX,
+			maxX: geometry.center.x + extentX,
 			minY: geometry.center.y - geometry.radius,
 			maxY: geometry.center.y + geometry.radius,
-			minZ: geometry.center.z - halfZ,
-			maxZ: geometry.center.z + halfZ,
+			minZ: geometry.center.z - extentZ,
+			maxZ: geometry.center.z + extentZ,
 		};
 	}
 	const deltaX = geometry.end.x - geometry.start.x;
@@ -373,7 +375,7 @@ function pointInPlan(shape: PlanShape, x: number, z: number): boolean {
 function planSamples(shape: PlanShape): readonly Vec2[] {
 	const bounds = planBounds(shape);
 	return [
-		{ x: (bounds.minX + bounds.maxX) / 2, z: (bounds.minZ + bounds.maxZ) / 2 },
+		{ x: midpoint(bounds.minX, bounds.maxX), z: midpoint(bounds.minZ, bounds.maxZ) },
 		{ x: bounds.minX, z: bounds.minZ },
 		{ x: bounds.minX, z: bounds.maxZ },
 		{ x: bounds.maxX, z: bounds.minZ },
@@ -415,7 +417,7 @@ function flightSurfaceY(geometry: StairGeometry | RampGeometry | FlightClearance
 	const dz = geometry.end.z - geometry.start.z;
 	const lengthSquared = dx * dx + dz * dz;
 	if (lengthSquared <= EPSILON) return geometry.start.y;
-	const t = Math.max(0, Math.min(1, ((x - geometry.start.x) * dx + (z - geometry.start.z) * dz) / lengthSquared));
+	const t = clamp01(((x - geometry.start.x) * dx + (z - geometry.start.z) * dz) / lengthSquared);
 	return geometry.start.y + (geometry.end.y - geometry.start.y) * t;
 }
 
@@ -448,8 +450,8 @@ function prismFlightOverlap(prism: PrismGeometry, flight: StairGeometry | RampGe
 	const minZ = Math.max(flightBounds.minZ, prismBounds.minZ);
 	const maxZ = Math.min(flightBounds.maxZ, prismBounds.maxZ);
 	const points: Vec2[] = [];
-	for (const x of [minX, (minX + maxX) / 2, maxX]) {
-		for (const z of [minZ, (minZ + maxZ) / 2, maxZ]) {
+	for (const x of [minX, midpoint(minX, maxX), maxX]) {
+		for (const z of [minZ, midpoint(minZ, maxZ), maxZ]) {
 			const point = { x, z };
 			if (prismContainsPlanPoint(prism, point) && pointInFlightPlan(flight, x, z)) points.push(point);
 		}
@@ -467,8 +469,8 @@ function prismFlightClearanceOverlap(prism: PrismGeometry, flight: FlightClearan
 	const maxX = Math.min(flightBounds.maxX, prismBounds.maxX);
 	const minZ = Math.max(flightBounds.minZ, prismBounds.minZ);
 	const maxZ = Math.min(flightBounds.maxZ, prismBounds.maxZ);
-	for (const x of [minX, (minX + maxX) / 2, maxX]) {
-		for (const z of [minZ, (minZ + maxZ) / 2, maxZ]) {
+	for (const x of [minX, midpoint(minX, maxX), maxX]) {
+		for (const z of [minZ, midpoint(minZ, maxZ), maxZ]) {
 			const point = { x, z };
 			if (!prismContainsPlanPoint(prism, point) || !pointInClearancePlan(flight, x, z)) continue;
 			const surfaceY = flightSurfaceY(flight, x, z);

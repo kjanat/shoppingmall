@@ -1,12 +1,10 @@
 export type Footprint = Readonly<{
 	width: number;
 	depth: number;
-	halfWidth: number;
-	halfDepth: number;
 }>;
 
 function footprint(width: number, depth: number): Footprint {
-	return { width, depth, halfWidth: width / 2, halfDepth: depth / 2 };
+	return { width, depth };
 }
 
 function expanded(source: Footprint, margin: number): Footprint {

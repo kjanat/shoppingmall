@@ -21,9 +21,11 @@ import { getInventory } from '#/data/inventory';
 import { ATRIUM_VOID } from '#/data/layout';
 import { LEVELS, levelY, SHOP_LEVELS } from '#/data/levels';
 import { STORES, shopStores } from '#/data/stores';
-import { ESCALATOR, PARKING_EXIT_RAMP, STAIRS } from '#/data/world';
+import { ELEVATOR_SHAFT_WALLS, ELEVATOR_SPEC, ESCALATOR, PARKING_EXIT_RAMP, STAIRS } from '#/data/world';
 import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
+import { PLAYER_RADIUS } from '#/player/constants';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
+import { half, midpoint } from '#/util/math';
 import { stubDocument } from './stub-dom.ts';
 
 /** Speling voor waarden die exact gelijk horen te zijn. */
@@ -83,15 +85,6 @@ function eist(tekst: string, fragment: string, wat: string): void {
 	if (!tekst.includes(fragment)) throw new Error(`${wat} staat niet meer in de bron: \`${fragment}\``);
 }
 
-/**
- * De straal waarmee de wereld hier belopen wordt. Controls houdt RADIUS
- * module-privé, dus hij komt uit de bron: hier 0.4 overschrijven levert precies
- * de tweede kopie op die dit script hoort te voorkomen.
- */
-function spelerR(): number {
-	return getal(bron('player/Controls.ts'), /const RADIUS = (-?[\d.]+);/, 'Controls.RADIUS');
-}
-
 // ── 1. voorraad ────────────────────────────────────────────────────────────
 
 function vergelijkWinkels(gebouwd: Set<string>, verwacht: Set<string>, meervoud: string, enkelvoud: string): void {
@@ -126,6 +119,69 @@ async function controleVoorraad(): Promise<void> {
 	// hier niet de vraag, dat controleert check-lights.
 	const stock = new StockDisplay(new LightPool(new THREE.Scene()));
 	vergelijkWinkels(new Set(stock.registers.keys()), verwacht, 'winkelschappen', 'schappen');
+}
+
+async function controleLift(): Promise<void> {
+	stubDocument();
+	const [THREE, { GlassElevator }, { LightPool }] = await Promise.all([
+		import('three'),
+		import('#/scene/GlassElevator'),
+		import('#/render/LightPool'),
+	]);
+	const lift = new GlassElevator(new LightPool(new THREE.Scene()));
+	const collision = new CollisionWorld();
+	for (const collider of lift.getColliders()) {
+		collision.addBox(collider.minX, collider.maxX, collider.minZ, collider.maxZ, {
+			minY: collider.minY,
+			maxY: collider.maxY,
+			label: collider.label,
+			climbable: collider.climbable,
+		});
+	}
+	const y = levelY('v0') + 1;
+	for (const wall of ELEVATOR_SHAFT_WALLS) {
+		const solved = collision.resolveCircle(wall.center.x, wall.center.z, y, PLAYER_RADIUS, 3, true);
+		if (Math.hypot(solved.x - wall.center.x, solved.z - wall.center.z) <= EPS) {
+			fout('lift', `speler gaat door de ${wall.id} glazen schachtwand`);
+		}
+	}
+	const cabinCenter = collision.resolveCircle(ELEVATOR_SPEC.center.x, ELEVATOR_SPEC.center.z, y, PLAYER_RADIUS, 3, true);
+	if (Math.hypot(cabinCenter.x - ELEVATOR_SPEC.center.x, cabinCenter.z - ELEVATOR_SPEC.center.z) > EPS) {
+		fout('lift', 'de speler wordt door de sim-poort uit het midden van de cabine geduwd');
+	}
+	const simAtDoor = collision.resolveCircle(
+		ELEVATOR_SPEC.center.x,
+		ELEVATOR_SPEC.center.z + half(ELEVATOR_SPEC.cabin.depth) - 0.1,
+		y,
+		PLAYER_RADIUS,
+		3,
+		false,
+	);
+	if (
+		Math.hypot(
+			simAtDoor.x - ELEVATOR_SPEC.center.x,
+			simAtDoor.z - (ELEVATOR_SPEC.center.z + half(ELEVATOR_SPEC.cabin.depth) - 0.1),
+		) <= EPS
+	) {
+		fout('lift', 'een sim loopt via de open zuidzijde de liftschacht in');
+	}
+	const openExit = lift.resolvePassenger(
+		ELEVATOR_SPEC.center.x,
+		ELEVATOR_SPEC.center.z + ELEVATOR_SPEC.cabin.depth,
+		PLAYER_RADIUS,
+	);
+	if (!bijna(openExit.z, ELEVATOR_SPEC.center.z + ELEVATOR_SPEC.cabin.depth)) {
+		fout('lift', 'de open liftdeur houdt een uitstappende speler binnen');
+	}
+	lift.update(3);
+	if (!lift.isMoving) fout('lift', 'test kon de lege lift niet in beweging zetten');
+	const closed = lift.resolvePassenger(ELEVATOR_SPEC.center.x + 10, ELEVATOR_SPEC.center.z + 10, PLAYER_RADIUS);
+	if (
+		closed.x >= ELEVATOR_SPEC.center.x + half(ELEVATOR_SPEC.cabin.width) ||
+		closed.z >= ELEVATOR_SPEC.center.z + half(ELEVATOR_SPEC.cabin.depth)
+	) {
+		fout('lift', 'de gesloten bewegende cabine houdt de speler niet achter glas en deuren');
+	}
 }
 
 // ── 2. hellingen ───────────────────────────────────────────────────────────
@@ -183,8 +239,8 @@ function controleVloergat(): void {
 			fout('vloergat', `geen ramp '${connector.id}' in CollisionWorld, terwijl het wereldmanifest er een definieert`);
 			continue;
 		}
-		const midX = (ramp.minX + ramp.maxX) / 2;
-		const halfX = (ramp.maxX - ramp.minX) / 2;
+		const midX = midpoint(ramp.minX, ramp.maxX);
+		const rampExtentX = half(ramp.maxX - ramp.minX);
 		if (!bijna(connector.x, midX, 1e-3)) {
 			fout('vloergat', `${connector.id}.x ${nr(connector.x)} ligt niet op het midden van zijn ramp (${nr(midX)})`);
 		}
@@ -198,18 +254,18 @@ function controleVloergat(): void {
 			}
 		}
 		const cz = connector.opening.center.z;
-		const halfD = connector.opening.size.depth / 2;
-		const halfW = connector.opening.size.width / 2;
-		if (!bijna(cz - halfD, ramp.openMinZ, 1e-3) || !bijna(cz + halfD, ramp.openMaxZ, 1e-3)) {
+		const openingExtentZ = half(connector.opening.size.depth);
+		const openingExtentX = half(connector.opening.size.width);
+		if (!bijna(cz - openingExtentZ, ramp.openMinZ, 1e-3) || !bijna(cz + openingExtentZ, ramp.openMaxZ, 1e-3)) {
 			fout(
 				'vloergat',
-				`${connector.id} snijdt z ${nr(cz - halfD)}..${nr(cz + halfD)} maar de ramp rekent met ${nr(ramp.openMinZ)}..${nr(ramp.openMaxZ)}`,
+				`${connector.id} snijdt z ${nr(cz - openingExtentZ)}..${nr(cz + openingExtentZ)} maar de ramp rekent met ${nr(ramp.openMinZ)}..${nr(ramp.openMaxZ)}`,
 			);
 		}
-		if (halfW + 1e-3 < halfX) {
+		if (openingExtentX + 1e-3 < rampExtentX) {
 			fout(
 				'vloergat',
-				`${connector.id} halfWidth ${nr(halfW)} is smaller dan de loopband (${nr(halfX)}): het vakwerk prikt door de plaat`,
+				`${connector.id} opening width ${nr(connector.opening.size.width)} is smaller than the ramp width (${nr(ramp.maxX - ramp.minX)}): het vakwerk prikt door de plaat`,
 			);
 		}
 		const snelheid = 'carrySpeed' in connector.collision ? connector.collision.carrySpeed : undefined;
@@ -226,12 +282,12 @@ function controleVloergat(): void {
 	}
 
 	// Het atriumgat: MallBuilder snijdt het, Collision laat je er doorheen vallen.
-	eist(mb, 'addRectHole(0, 0, ATRIUM_VOID.halfWidth, ATRIUM_VOID.halfDepth);', 'het atriumgat');
+	eist(mb, 'addRectHole(0, 0, half(ATRIUM_VOID.width), half(ATRIUM_VOID.depth));', 'het atriumgat');
 	const binnen: [number, number][] = [
-		[ATRIUM_VOID.halfWidth - 0.1, 0],
-		[-(ATRIUM_VOID.halfWidth - 0.1), 0],
-		[0, ATRIUM_VOID.halfDepth - 0.1],
-		[0, -(ATRIUM_VOID.halfDepth - 0.1)],
+		[half(ATRIUM_VOID.width) - 0.1, 0],
+		[-(half(ATRIUM_VOID.width) - 0.1), 0],
+		[0, half(ATRIUM_VOID.depth) - 0.1],
+		[0, -(half(ATRIUM_VOID.depth) - 0.1)],
 	];
 	for (const [x, z] of binnen) {
 		const grond = wereld.groundHeightAt(x, z, V1, WALK_STEP);
@@ -239,10 +295,10 @@ function controleVloergat(): void {
 			fout('vloergat', `atriumgat (${nr(x)}, ${nr(z)}): op V1 ligt er vloer op ${nr(grond)} terwijl daar een gat gesneden is`);
 	}
 	const buiten: [number, number][] = [
-		[ATRIUM_VOID.halfWidth + 0.5, 0],
-		[-(ATRIUM_VOID.halfWidth + 0.5), 0],
-		[0, ATRIUM_VOID.halfDepth + 0.5],
-		[0, -(ATRIUM_VOID.halfDepth + 0.5)],
+		[half(ATRIUM_VOID.width) + 0.5, 0],
+		[-(half(ATRIUM_VOID.width) + 0.5), 0],
+		[0, half(ATRIUM_VOID.depth) + 0.5],
+		[0, -(half(ATRIUM_VOID.depth) + 0.5)],
 	];
 	for (const [x, z] of buiten) {
 		const grond = wereld.groundHeightAt(x, z, V1, WALK_STEP);
@@ -262,7 +318,7 @@ function controleHellinglijn(): void {
 	for (const r of wereld.ramps) {
 		// Ook langs de randen van de loopband, niet alleen over het hart: een
 		// helling die maar op zijn middellijn draagt is een helling met een gleuf.
-		const banen = [r.minX + 0.1, (r.minX + r.maxX) / 2, r.maxX - 0.1];
+		const banen = [r.minX + 0.1, midpoint(r.minX, r.maxX), r.maxX - 0.1];
 		let padVanaf = Number.POSITIVE_INFINITY;
 		let padTot = Number.NEGATIVE_INFINITY;
 		let padY = 0;
@@ -357,7 +413,7 @@ function controleLadder(): void {
 		fout('ladder', "geen ramp 'slide_ladder' meer in CollisionWorld");
 		return;
 	}
-	const x = (r.minX + r.maxX) / 2;
+	const x = midpoint(r.minX, r.maxX);
 	const dz = 0.05; // ongeveer één frame lopen
 	const stappen = Math.max(1, Math.ceil(Math.abs(r.zTop - r.zBottom) / dz));
 	let y = r.yBottom;
@@ -381,15 +437,17 @@ function controleLadder(): void {
  * had geen bovengrens en duwde je van het dak af.
  */
 function controleGlazenDak(): void {
-	const halfW = ATRIUM_VOID.halfWidth;
-	const halfD = ATRIUM_VOID.halfDepth;
-	const straal = spelerR();
+	const minX = -half(ATRIUM_VOID.width);
+	const maxX = half(ATRIUM_VOID.width);
+	const minZ = -half(ATRIUM_VOID.depth);
+	const maxZ = half(ATRIUM_VOID.depth);
+	const straal = PLAYER_RADIUS;
 	const stap = 0.4;
 	let gaten = 0;
 	let duwen = 0;
 	let vast = 0;
-	for (let x = -halfW + 0.05; x <= halfW; x += stap) {
-		for (let z = -halfD + 0.05; z <= halfD; z += stap) {
+	for (let x = minX + 0.05; x <= maxX; x += stap) {
+		for (let z = minZ + 0.05; z <= maxZ; z += stap) {
 			const grond = wereld.groundHeightAt(x, z, DAK, WALK_STEP);
 			if (!bijna(grond, DAK)) {
 				gaten++;
@@ -402,7 +460,7 @@ function controleGlazenDak(): void {
 					fout('glazendak', `op (${nr(x)}, ${nr(z)}) word je van het glazen dak geduwd naar (${nr(opDak.x)}, ${nr(opDak.z)})`);
 			}
 			const opV1 = wereld.resolveCircle(x, z, V1, straal, 3, true, false);
-			if (Math.abs(opV1.x) < halfW && Math.abs(opV1.z) < halfD) {
+			if (opV1.x > minX && opV1.x < maxX && opV1.z > minZ && opV1.z < maxZ) {
 				vast++;
 				if (vast === 1)
 					fout('glazendak', `op V1 blijf je op (${nr(x)}, ${nr(z)}) boven het gat hangen in plaats van eruit geduwd te worden`);
@@ -569,7 +627,7 @@ async function controleBadgasten(): Promise<void> {
 
 /** Sta je op een platformdek, dan is dat dek de vloer en duwt niets je eraf. */
 function controlePlatforms(): void {
-	const straal = spelerR();
+	const straal = PLAYER_RADIUS;
 	for (const p of wereld.platforms) {
 		for (let x = p.minX + 0.05; x <= p.maxX; x += 0.25) {
 			for (let z = p.minZ + 0.05; z <= p.maxZ; z += 0.25) {
@@ -609,6 +667,7 @@ function controleWinkeldata(): void {
 
 const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'voorraad', draai: controleVoorraad },
+	{ naam: 'lift', draai: controleLift },
 	{ naam: 'hellingen', draai: controleHellingen },
 	{ naam: 'vloergat', draai: controleVloergat },
 	{ naam: 'hellinglijn', draai: controleHellinglijn },

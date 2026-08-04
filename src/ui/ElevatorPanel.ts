@@ -1,4 +1,4 @@
-import { LEVELS, type LevelId } from '#/data/levels';
+import { LEVELS, LEVELS_TOP_DOWN, type LevelId } from '#/data/levels';
 import { qs } from '#/util/dom';
 
 /**
@@ -53,7 +53,7 @@ export class ElevatorPanel {
 	private paintButtons(force: boolean): void {
 		if (!force && this.current === this.lastPainted) return;
 		this.lastPainted = this.current;
-		this.btns.innerHTML = LEVELS.map((l) => {
+		this.btns.innerHTML = LEVELS_TOP_DOWN.map((l) => {
 			const here = l.id === this.current;
 			return `
         <button type="button" class="elev-btn${here ? ' elev-here' : ''}" data-level="${l.id}">

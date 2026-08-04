@@ -5,6 +5,7 @@ import { ELEVATOR_OPENING_P1, PARKING_EXIT_RAMP } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half, midpoint } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** World Y of the parking deck (one storey under V0) */
@@ -43,10 +44,10 @@ export class ParkingGarage {
 		const dark = this.track(lit({ color: 0x37474f, roughness: 0.9 }));
 		// Deck floor
 		const floorShape = new THREE.Shape();
-		floorShape.moveTo(-PARKING_FOOTPRINT.halfWidth, -PARKING_FOOTPRINT.halfDepth);
-		floorShape.lineTo(PARKING_FOOTPRINT.halfWidth, -PARKING_FOOTPRINT.halfDepth);
-		floorShape.lineTo(PARKING_FOOTPRINT.halfWidth, PARKING_FOOTPRINT.halfDepth);
-		floorShape.lineTo(-PARKING_FOOTPRINT.halfWidth, PARKING_FOOTPRINT.halfDepth);
+		floorShape.moveTo(-half(PARKING_FOOTPRINT.width), -half(PARKING_FOOTPRINT.depth));
+		floorShape.lineTo(half(PARKING_FOOTPRINT.width), -half(PARKING_FOOTPRINT.depth));
+		floorShape.lineTo(half(PARKING_FOOTPRINT.width), half(PARKING_FOOTPRINT.depth));
+		floorShape.lineTo(-half(PARKING_FOOTPRINT.width), half(PARKING_FOOTPRINT.depth));
 		floorShape.closePath();
 		const shaft = new THREE.Path();
 		const halfShaftWidth = ELEVATOR_OPENING_P1.size.width / 2;
@@ -74,15 +75,15 @@ export class ParkingGarage {
 		const wallH = 4.4;
 		const walls: [number, number, number, number, number, number][] = [
 			// N
-			[0, wallH / 2, -PARKING_FOOTPRINT.halfDepth + 0.2, PARKING_FOOTPRINT.width, wallH, 0.35],
+			[0, half(wallH), -half(PARKING_FOOTPRINT.depth) + 0.2, PARKING_FOOTPRINT.width, wallH, 0.35],
 			// S
-			[0, wallH / 2, PARKING_FOOTPRINT.halfDepth - 0.2, PARKING_FOOTPRINT.width, wallH, 0.35],
+			[0, half(wallH), half(PARKING_FOOTPRINT.depth) - 0.2, PARKING_FOOTPRINT.width, wallH, 0.35],
 			// W — gap around z=0 for EXIT RAMP to outdoor city
-			[-PARKING_FOOTPRINT.halfWidth + 0.2, wallH / 2, -14, 0.35, wallH, 14],
-			[-PARKING_FOOTPRINT.halfWidth + 0.2, wallH / 2, 14, 0.35, wallH, 14],
+			[-half(PARKING_FOOTPRINT.width) + 0.2, half(wallH), -14, 0.35, wallH, 14],
+			[-half(PARKING_FOOTPRINT.width) + 0.2, half(wallH), 14, 0.35, wallH, 14],
 			// E (gap for elevator shaft around z=-8)
-			[PARKING_FOOTPRINT.halfWidth - 0.2, wallH / 2, -14, 0.35, wallH, 14],
-			[PARKING_FOOTPRINT.halfWidth - 0.2, wallH / 2, 10, 0.35, wallH, 20],
+			[half(PARKING_FOOTPRINT.width) - 0.2, half(wallH), -14, 0.35, wallH, 14],
+			[half(PARKING_FOOTPRINT.width) - 0.2, half(wallH), 10, 0.35, wallH, 20],
 		];
 		for (const [x, y, z, w, h, d] of walls) {
 			const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), dark);
@@ -104,8 +105,8 @@ export class ParkingGarage {
 		const rise = localEndY - localStartY;
 		const length = Math.hypot(run, rise);
 		const angle = -Math.atan2(rise, run);
-		const centerX = (start.x + end.x) / 2;
-		const surfaceCenterY = (localStartY + localEndY) / 2;
+		const centerX = midpoint(start.x, end.x);
+		const surfaceCenterY = midpoint(localStartY, localEndY);
 		const slabNormalOffset = PARKING_EXIT_RAMP.thickness / 2;
 		const slab = new THREE.Mesh(new THREE.BoxGeometry(length, PARKING_EXIT_RAMP.thickness, PARKING_EXIT_RAMP.width), concrete);
 		slab.position.set(centerX + Math.sin(angle) * slabNormalOffset, surfaceCenterY - Math.cos(angle) * slabNormalOffset, 0);

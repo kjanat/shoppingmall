@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { speakLine } from '#/audio/ElevenVoice';
 import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '#/data/levels';
-import { ELEVATOR_SPEC } from '#/data/world';
+import { ELEVATOR_SHAFT_WALLS, ELEVATOR_SPEC } from '#/data/world';
 import { EYE } from '#/player/constants';
 import type { LightPool } from '#/render/LightPool';
 import { type LitMaterial, lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { clamp, half, midpoint } from '#/util/math';
 import { pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -35,8 +36,8 @@ function padWithShaftHole(): THREE.ExtrudeGeometry {
 	shape.lineTo(PAD_HALF, PAD_HALF);
 	shape.lineTo(-PAD_HALF, PAD_HALF);
 	shape.closePath();
-	const hx = CABIN_W / 2 + SHAFT_GAP;
-	const hz = CABIN_D / 2 + SHAFT_GAP;
+	const hx = half(CABIN_W) + SHAFT_GAP;
+	const hz = half(CABIN_D) + SHAFT_GAP;
 	const hole = new THREE.Path();
 	hole.moveTo(-hx, -hz);
 	hole.lineTo(hx, -hz);
@@ -196,9 +197,22 @@ export class GlassElevator {
 
 	/** True if feet XZ are inside the cabin footprint */
 	contains(x: number, z: number, margin = 0.15): boolean {
-		const hx = CABIN_W * 0.5 - margin;
-		const hz = CABIN_D * 0.5 - margin;
+		const hx = half(CABIN_W) - margin;
+		const hz = half(CABIN_D) - margin;
 		return Math.abs(x - this.pos.x) <= hx && Math.abs(z - this.pos.z) <= hz;
+	}
+
+	/** Keep a rider behind the cabin glass, and behind the doors while travelling. */
+	resolvePassenger(x: number, z: number, radius: number): { x: number; z: number } {
+		const innerInset = ELEVATOR_SPEC.cabin.wallInset + ELEVATOR_SPEC.cabin.wallThickness;
+		const minX = this.pos.x - half(CABIN_W) + innerInset + radius;
+		const maxX = this.pos.x + half(CABIN_W) - innerInset - radius;
+		const minZ = this.pos.z - half(CABIN_D) + innerInset + radius;
+		const maxZ = this.pos.z + half(CABIN_D) - innerInset - radius;
+		return {
+			x: clamp(x, minX, maxX),
+			z: this.moving ? clamp(z, minZ, maxZ) : Math.max(minZ, z),
+		};
 	}
 
 	/** Result of looking at elevator controls (FPS reticle). */
@@ -290,19 +304,31 @@ export class GlassElevator {
 	}[] {
 		const cx = this.pos.x;
 		const cz = this.pos.z;
-		const half = 1.05;
+		const shaft = ELEVATOR_SPEC.shaft;
+		const plugInset = ELEVATOR_SPEC.cabin.wallInset;
+		const minY = levelY('p1') - shaft.bottomOverrun;
+		const maxY = levelY('roof') + shaft.topOverrun;
 		return [
-			// Full shaft plug P1→dak: blocks sims walking through walls/glass
+			// Sims do not operate the lift, so the open boarding face remains closed to them.
 			{
-				minX: cx - half,
-				maxX: cx + half,
-				minZ: cz - half,
-				maxZ: cz + half,
-				minY: -7.5,
-				maxY: 16.5,
-				label: 'elev_shaft',
+				minX: cx - half(CABIN_W) - plugInset,
+				maxX: cx + half(CABIN_W) + plugInset,
+				minZ: cz - half(CABIN_D) - plugInset,
+				maxZ: cz + half(CABIN_D) + plugInset,
+				minY,
+				maxY,
+				label: 'elev_shaft_sim_gate',
 				climbable: true,
 			},
+			...ELEVATOR_SHAFT_WALLS.map((wall) => ({
+				minX: wall.center.x - half(wall.size.width),
+				maxX: wall.center.x + half(wall.size.width),
+				minZ: wall.center.z - half(wall.size.depth),
+				maxZ: wall.center.z + half(wall.size.depth),
+				minY,
+				maxY,
+				label: `elev_shaft_glass_${wall.id}`,
+			})),
 		];
 	}
 
@@ -348,8 +374,8 @@ export class GlassElevator {
 		// Wait with doors open, or travel
 		if (!this.moving) {
 			// Doors open
-			this.doorL.position.x = THREE.MathUtils.lerp(this.doorL.position.x, -0.95, 0.12);
-			this.doorR.position.x = THREE.MathUtils.lerp(this.doorR.position.x, 0.95, 0.12);
+			this.doorL.position.x = THREE.MathUtils.lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorOpenOffset, 0.12);
+			this.doorR.position.x = THREE.MathUtils.lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorOpenOffset, 0.12);
 
 			if (this.holdForCall || inside) {
 				// Rider aboard — stay put until they pick a floor (or leave)
@@ -369,8 +395,8 @@ export class GlassElevator {
 			}
 		} else {
 			// Doors closed while moving
-			this.doorL.position.x = THREE.MathUtils.lerp(this.doorL.position.x, -0.42, 0.15);
-			this.doorR.position.x = THREE.MathUtils.lerp(this.doorR.position.x, 0.42, 0.15);
+			this.doorL.position.x = THREE.MathUtils.lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
+			this.doorR.position.x = THREE.MathUtils.lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
 			const dir = Math.sign(this.targetY - this.cabinY);
 			if (dir !== 0) {
 				this.cabinY += dir * SPEED * dt;
@@ -472,29 +498,28 @@ export class GlassElevator {
 		);
 
 		// Full-height corner posts (garage → roof)
-		const postBottom = FLOOR_B - 0.2;
-		const postTop = FLOOR2 + 3.0;
+		const postBottom = FLOOR_B - ELEVATOR_SPEC.shaft.bottomOverrun;
+		const postTop = FLOOR2 + ELEVATOR_SPEC.shaft.topOverrun;
 		const postH = postTop - postBottom;
-		const postMid = (postTop + postBottom) / 2;
+		const postMid = midpoint(postTop, postBottom);
 		for (const [sx, sz] of [
-			[-1.1, -1.1],
-			[1.1, -1.1],
-			[-1.1, 1.1],
-			[1.1, 1.1],
+			[-ELEVATOR_SPEC.shaft.postOffset, -ELEVATOR_SPEC.shaft.postOffset],
+			[ELEVATOR_SPEC.shaft.postOffset, -ELEVATOR_SPEC.shaft.postOffset],
+			[-ELEVATOR_SPEC.shaft.postOffset, ELEVATOR_SPEC.shaft.postOffset],
+			[ELEVATOR_SPEC.shaft.postOffset, ELEVATOR_SPEC.shaft.postOffset],
 		] as const) {
-			const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, postH, 0.12), chrome);
+			const post = new THREE.Mesh(
+				new THREE.BoxGeometry(ELEVATOR_SPEC.shaft.postThickness, postH, ELEVATOR_SPEC.shaft.postThickness),
+				chrome,
+			);
 			post.position.set(sx, postMid, sz);
 			this.group.add(post);
 		}
 
 		// Glass shaft panels (N, W, E) — open south for boarding all floors
-		for (const [x, z, w, d] of [
-			[0, -1.12, 2.15, 0.04],
-			[-1.12, 0, 0.04, 2.15],
-			[1.12, 0, 0.04, 2.15],
-		] as const) {
-			const panel = new THREE.Mesh(new THREE.BoxGeometry(w, postH - 0.4, d), glass);
-			panel.position.set(x, postMid, z);
+		for (const wall of ELEVATOR_SHAFT_WALLS) {
+			const panel = new THREE.Mesh(new THREE.BoxGeometry(wall.size.width, postH - 0.4, wall.size.depth), glass);
+			panel.position.set(wall.center.x - this.pos.x, postMid, wall.center.z - this.pos.z);
 			this.group.add(panel);
 		}
 
@@ -811,13 +836,20 @@ export class GlassElevator {
 			m.position.set(x, wallH / 2 + 0.1, z);
 			this.cabin.add(m);
 		};
-		mkWall(CABIN_W - 0.15, 0.04, 0, -CABIN_D / 2 + 0.05);
-		mkWall(0.04, CABIN_D - 0.15, -CABIN_W / 2 + 0.05, 0);
-		mkWall(0.04, CABIN_D - 0.15, CABIN_W / 2 - 0.05, 0);
+		mkWall(CABIN_W - 0.15, ELEVATOR_SPEC.cabin.wallThickness, 0, -half(CABIN_D) + ELEVATOR_SPEC.cabin.wallInset);
+		mkWall(ELEVATOR_SPEC.cabin.wallThickness, CABIN_D - 0.15, -half(CABIN_W) + ELEVATOR_SPEC.cabin.wallInset, 0);
+		mkWall(ELEVATOR_SPEC.cabin.wallThickness, CABIN_D - 0.15, half(CABIN_W) - ELEVATOR_SPEC.cabin.wallInset, 0);
 
 		// Sliding glass doors (south = boarding)
-		this.doorL = new THREE.Mesh(new THREE.BoxGeometry(0.9, wallH - 0.1, 0.05), glass);
-		this.doorL.position.set(-0.42, wallH / 2 + 0.1, CABIN_D / 2 - 0.04);
+		this.doorL = new THREE.Mesh(
+			new THREE.BoxGeometry(ELEVATOR_SPEC.cabin.doorPanelWidth, wallH - 0.1, ELEVATOR_SPEC.cabin.doorThickness),
+			glass,
+		);
+		this.doorL.position.set(
+			-ELEVATOR_SPEC.cabin.doorClosedOffset,
+			half(wallH) + 0.1,
+			half(CABIN_D) - ELEVATOR_SPEC.cabin.wallThickness,
+		);
 		this.cabin.add(this.doorL);
 		this.doorR = this.doorL.clone();
 		this.doorR.position.x = 0.42;

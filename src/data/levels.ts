@@ -26,6 +26,9 @@ export const LEVELS = [
 	{ id: 'roof', y: 13.95, code: 'DAK', name: 'Dak', hint: 'Helipad · uitzicht' },
 ] as const satisfies readonly Level[];
 
+/** Visual building order: highest deck first, basement last. */
+export const LEVELS_TOP_DOWN = LEVELS.toReversed();
+
 export type LevelId = (typeof LEVELS)[number]['id'];
 
 /** Directory levels: where shops live. The garage only exists for the lift. */

@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { MALL_SHELL } from '#/data/layout';
 import { type LevelId, levelAt } from '#/data/levels';
 import { type CollisionWorld, WALK_STEP } from '#/physics/Collision';
-import { EYE } from '#/player/constants';
+import { EYE, PLAYER_RADIUS } from '#/player/constants';
+import { half } from '#/util/math';
 
 export { EYE } from '#/player/constants';
 
@@ -14,7 +15,6 @@ const AIR_ACCEL = 9;
 const GRAVITY = 24;
 /** High enough to clear the floor-1 balustrade into the atrium void */
 const JUMP_V = 7.4;
-const RADIUS = 0.4;
 /** Waterdiepte waarbij je maximaal geremd bent: borstdiep. */
 const WADE_DEEP = 1.15;
 /** Wat er van je loopsnelheid over is als je tot je borst in het water staat. */
@@ -218,7 +218,7 @@ export class PlayerControls {
 	/** External displacement (moving walkway) — applied through collision. */
 	nudge(dx: number, dz: number): void {
 		const p = this.cam.position;
-		const solved = this.world.resolveCircle(p.x + dx, p.z + dz, this.feetY, RADIUS, 2, true, !this.grounded);
+		const solved = this.world.resolveCircle(p.x + dx, p.z + dz, this.feetY, PLAYER_RADIUS, 2, true, !this.grounded);
 		p.x = solved.x;
 		p.z = solved.z;
 	}
@@ -412,7 +412,7 @@ export class PlayerControls {
 			wantX,
 			wantZ,
 			this.feetY,
-			RADIUS,
+			PLAYER_RADIUS,
 			3,
 			true,
 			!this.grounded && this.elevFloorY === null,
@@ -660,7 +660,7 @@ export class PlayerControls {
 		// Verticaal: binnen de mall onder het plafond blijven, behalve boven het
 		// atrium-gat of buiten de muren — daar mag je omhoog de stad in.
 		this.feetY += this.vy * dt;
-		const insideMall = Math.abs(p.x) < MALL_SHELL.halfWidth && Math.abs(p.z) < MALL_SHELL.halfDepth;
+		const insideMall = Math.abs(p.x) < half(MALL_SHELL.width) && Math.abs(p.z) < half(MALL_SHELL.depth);
 		const overVoid = Math.abs(p.x) < 7.4 && Math.abs(p.z) < 5.4;
 		const ceiling = insideMall && !overVoid && this.feetY < 13.4 ? 12.6 : 55;
 		let floor = 0.45;

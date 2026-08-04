@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { LEVELS, LEVELS_TOP_DOWN } from '#/data/levels';
 import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
 import { receiverAccepts, validateSpatialWorld } from '#/data/spatial';
 import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, WORLD_ENTITIES } from '#/data/world';
@@ -144,6 +145,22 @@ describe('authoritative spatial world', () => {
 	test('multi-stop elevator ports are reciprocal', () => {
 		assert.equal(ELEVATOR_ENTITY.ports.length, 4);
 		for (const port of ELEVATOR_ENTITY.ports) assert.equal(port.connectsTo.length, 3);
+	});
+
+	test('elevator presentation order follows the physical building stack', () => {
+		assert.deepEqual(
+			LEVELS_TOP_DOWN.map((entry) => entry.id),
+			['roof', 'v1', 'v0', 'p1'],
+		);
+		for (let index = 1; index < LEVELS_TOP_DOWN.length; index++) {
+			const above = LEVELS_TOP_DOWN[index - 1];
+			const below = LEVELS_TOP_DOWN[index];
+			assert.ok(above && below && above.y > below.y);
+		}
+		assert.deepEqual(
+			LEVELS.map((entry) => entry.id),
+			['p1', 'v0', 'v1', 'roof'],
+		);
 	});
 
 	test('vector effects only select compatible receivers', () => {

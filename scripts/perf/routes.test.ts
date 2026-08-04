@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import { levelY } from '#/data/levels';
 import { PARKING_EXIT_RAMP } from '#/data/world';
 import { EYE } from '#/player/constants';
+import { midpoint } from '#/util/math';
 import { FULL_MALL_ROUTE, fullMallRoute, profilePoint } from './routes.ts';
 
 function names(seed: number | null = null): string[] {
@@ -39,7 +40,7 @@ describe('full-building performance route', () => {
 			assert.equal(profilePoint(name).pose.y, levelY(level) + EYE);
 		}
 		assert.equal(profilePoint('p1-exit-bottom').pose.y, PARKING_EXIT_RAMP.start.y + EYE);
-		assert.equal(profilePoint('p1-exit-mid').pose.y, (PARKING_EXIT_RAMP.start.y + PARKING_EXIT_RAMP.end.y) / 2 + EYE);
+		assert.equal(profilePoint('p1-exit-mid').pose.y, midpoint(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y) + EYE);
 		assert.equal(profilePoint('p1-exit-top').pose.y, PARKING_EXIT_RAMP.end.y + EYE);
 	});
 

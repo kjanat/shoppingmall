@@ -14,7 +14,7 @@ import { Pathfinder } from '#/path/Pathfinder';
 import { PathMesh } from '#/path/PathMesh';
 import { CollisionWorld } from '#/physics/Collision';
 import { PlayerControls } from '#/player/Controls';
-import { EYE } from '#/player/constants';
+import { EYE, PLAYER_RADIUS } from '#/player/constants';
 import { createComposer } from '#/post/Composer';
 import { GpuTimer } from '#/render/GpuTimer';
 import { lampCount } from '#/render/graphicsPrefs';
@@ -71,11 +71,11 @@ import { type CastRow, PeopleDashboard } from '#/ui/PeopleDashboard';
 import type { PerfOverlay } from '#/ui/PerfOverlay';
 import { SettingsPanel } from '#/ui/SettingsPanel';
 import { setLabelAnisotropy } from '#/util/label';
+import { half } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { cullByLevel } from '#/util/visibility';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
 
-const PLAYER_RADIUS = 0.4;
 const PERSIST_EVERY = 0.75; // seconds
 /** Praatafstand tot een verkoper — E praat én de E-melding luistert hiernaar. */
 const TALK_RADIUS = 7;
@@ -1283,7 +1283,7 @@ export class App {
 		}
 
 		const ground =
-			Math.abs(p.x) < MALL_SHELL.halfWidth && Math.abs(p.z) < MALL_SHELL.halfDepth
+			Math.abs(p.x) < half(MALL_SHELL.width) && Math.abs(p.z) < half(MALL_SHELL.depth)
 				? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3)
 				: 0;
 		this.drone.parkAt(new THREE.Vector3(p.x, ground, p.z));
@@ -2117,6 +2117,9 @@ export class App {
 			this.player.update(dt);
 			// Keep glued after physics (belt/sim push can nudge feet)
 			if (this.elevRiding && !this.player.driving) {
+				const passenger = this.elevator.resolvePassenger(this.camera.position.x, this.camera.position.z, PLAYER_RADIUS);
+				this.camera.position.x = passenger.x;
+				this.camera.position.z = passenger.z;
 				this.player.setElevatorRide(this.elevator.cabinFloorY);
 			}
 			// Lopend: loopband-drift + niet ín Brad staan. Vliegend/rijdend: skip.

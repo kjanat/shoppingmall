@@ -11,6 +11,7 @@ import {
 	type VerticalConnector,
 } from '#/data/world';
 import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '#/scene/RoofIsland';
+import { clamp, clamp01, half } from '#/util/math';
 
 export { ESCALATOR_SPEED } from '#/data/world';
 
@@ -65,7 +66,7 @@ function pathRampSurface(ramp: PathRamp, x: number, z: number, margin = 0): numb
 	const along = ((x - ramp.start.x) * dx + (z - ramp.start.z) * dz) / run;
 	const across = ((x - ramp.start.x) * -dz + (z - ramp.start.z) * dx) / run;
 	if (along < -margin || along > run + margin || Math.abs(across) > ramp.width / 2 + margin) return null;
-	const t = Math.max(0, Math.min(1, along / run));
+	const t = clamp01(along / run);
 	return ramp.start.y + (ramp.end.y - ramp.start.y) * t;
 }
 
@@ -232,23 +233,23 @@ export class CollisionWorld {
 	}
 
 	private buildMall(): void {
-		const hw = MALL_FOOTPRINT.halfWidth;
-		const hd = MALL_FOOTPRINT.halfDepth;
+		const mallEdgeX = half(MALL_FOOTPRINT.width);
+		const mallEdgeZ = half(MALL_FOOTPRINT.depth);
 		const wallT = 0.8;
 
 		// West wall has a basement-height opening for the authored parking ramp.
 		// A single floor-agnostic AABB here made the rendered exit impassable.
-		const exitHalfWidth = PARKING_EXIT_RAMP.width / 2 + 0.5;
-		this.add(-hw - wallT, -hw + 0.2, -hd - wallT, -exitHalfWidth, { label: 'wall_w_north' });
-		this.add(-hw - wallT, -hw + 0.2, exitHalfWidth, hd + wallT, { label: 'wall_w_south' });
-		this.add(-hw - wallT, -hw + 0.2, -exitHalfWidth, exitHalfWidth, {
+		const exitExtentZ = half(PARKING_EXIT_RAMP.width) + 0.5;
+		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, -mallEdgeZ - wallT, -exitExtentZ, { label: 'wall_w_north' });
+		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, exitExtentZ, mallEdgeZ + wallT, { label: 'wall_w_south' });
+		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, -exitExtentZ, exitExtentZ, {
 			minY: -0.5,
 			maxY: ROOF_H + 2,
 			label: 'wall_w_above_exit',
 		});
-		this.add(hw - 0.2, hw + wallT, -hd - wallT, hd + wallT, { label: 'wall_e' });
-		this.add(-hw - wallT, hw + wallT, -hd - wallT, -hd + 0.2, { label: 'wall_n' });
-		this.add(-hw - wallT, hw + wallT, hd - 0.2, hd + wallT, { label: 'wall_s' });
+		this.add(mallEdgeX - 0.2, mallEdgeX + wallT, -mallEdgeZ - wallT, mallEdgeZ + wallT, { label: 'wall_e' });
+		this.add(-mallEdgeX - wallT, mallEdgeX + wallT, -mallEdgeZ - wallT, -mallEdgeZ + 0.2, { label: 'wall_n' });
+		this.add(-mallEdgeX - wallT, mallEdgeX + wallT, mallEdgeZ - 0.2, mallEdgeZ + wallT, { label: 'wall_s' });
 
 		// Store: thin BACK wall only — open interior for stock + shopkeeper
 		for (const s of STORES) {
@@ -258,8 +259,8 @@ export class CollisionWorld {
 			const roomDepth = s.depth * 0.92;
 			const backCx = s.x - Math.sin(s.rotation) * roomDepth;
 			const backCz = s.z - Math.cos(s.rotation) * roomDepth;
-			const halfW = s.width * 0.48;
-			this.add(backCx - halfW, backCx + halfW, backCz - 0.4, backCz + 0.4, {
+			const storeCollisionExtent = s.width * 0.48;
+			this.add(backCx - storeCollisionExtent, backCx + storeCollisionExtent, backCz - 0.4, backCz + 0.4, {
 				minY: y0 - 0.5,
 				maxY: y1,
 				label: `store_back_${s.id}`,
@@ -282,7 +283,7 @@ export class CollisionWorld {
 
 		// Floor-1 VOID (architect: weide/void) — cannot walk over atrium hole
 		// Hole is roughly ±8 x ±6 on floor 1 — solid barrier so sims don't hang mid-air
-		this.add(-ATRIUM_BARRIER.halfWidth, ATRIUM_BARRIER.halfWidth, -ATRIUM_BARRIER.halfDepth, ATRIUM_BARRIER.halfDepth, {
+		this.add(-half(ATRIUM_BARRIER.width), half(ATRIUM_BARRIER.width), -half(ATRIUM_BARRIER.depth), half(ATRIUM_BARRIER.depth), {
 			minY: 4.5,
 			maxY: 12,
 			label: 'void_f1',
@@ -395,7 +396,12 @@ export class CollisionWorld {
 		// balustrade-jump drops through, and the drone can descend back in through
 		// the skylight (capped just under ROOF_H so roof walkers aren't affected).
 		// Does not punch into the basement garage.
-		if (currentY < ROOF_H - 0.5 && currentY > 0.3 && Math.abs(x) < ATRIUM_VOID.halfWidth && Math.abs(z) < ATRIUM_VOID.halfDepth) {
+		if (
+			currentY < ROOF_H - 0.5 &&
+			currentY > 0.3 &&
+			Math.abs(x) < half(ATRIUM_VOID.width) &&
+			Math.abs(z) < half(ATRIUM_VOID.depth)
+		) {
 			return 0;
 		}
 
@@ -513,8 +519,8 @@ export class CollisionWorld {
 				if (b.maxY !== undefined && y > b.maxY) continue;
 
 				// Closest point on AABB to circle center
-				const cx = Math.max(b.minX, Math.min(px, b.maxX));
-				const cz = Math.max(b.minZ, Math.min(pz, b.maxZ));
+				const cx = clamp(px, b.minX, b.maxX);
+				const cz = clamp(pz, b.minZ, b.maxZ);
 				const dx = px - cx;
 				const dz = pz - cz;
 				const d2 = dx * dx + dz * dz;
@@ -544,15 +550,15 @@ export class CollisionWorld {
 
 		if (city) {
 			// Full outdoor city world
-			px = Math.max(-95, Math.min(95, px));
-			pz = Math.max(-75, Math.min(75, pz));
+			px = clamp(px, -95, 95);
+			pz = clamp(pz, -75, 75);
 		} else {
 			// Keep inside mall footprint with margin
 			const m = 1.2;
-			const hw = MALL_FOOTPRINT.halfWidth - m;
-			const hd = MALL_FOOTPRINT.halfDepth - m;
-			px = Math.max(-hw, Math.min(hw, px));
-			pz = Math.max(-hd, Math.min(hd, pz));
+			const limitX = half(MALL_FOOTPRINT.width) - m;
+			const limitZ = half(MALL_FOOTPRINT.depth) - m;
+			px = clamp(px, -limitX, limitX);
+			pz = clamp(pz, -limitZ, limitZ);
 		}
 
 		// Floor-1 void eject — only when standing/walking (not cars at basement).

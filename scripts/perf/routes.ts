@@ -1,6 +1,7 @@
 import { type LevelId, levelY } from '#/data/levels';
 import { PARKING_EXIT_RAMP } from '#/data/world';
 import { EYE } from '#/player/constants';
+import { midpoint } from '#/util/math';
 import type { RoutePose } from './probe.ts';
 
 export type ProfilePoint = { name: string; pose: RoutePose };
@@ -94,9 +95,9 @@ const FULL_COURSE: readonly LevelCourse[] = [
 			),
 			point(
 				'p1-exit-mid',
-				(PARKING_EXIT_RAMP.start.x + PARKING_EXIT_RAMP.end.x) / 2,
-				(PARKING_EXIT_RAMP.start.y + PARKING_EXIT_RAMP.end.y) / 2 + EYE,
-				(PARKING_EXIT_RAMP.start.z + PARKING_EXIT_RAMP.end.z) / 2,
+				midpoint(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x),
+				midpoint(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y) + EYE,
+				midpoint(PARKING_EXIT_RAMP.start.z, PARKING_EXIT_RAMP.end.z),
 				PARKING_EXIT_RAMP.end.x,
 				PARKING_EXIT_RAMP.end.y + EYE,
 				PARKING_EXIT_RAMP.end.z,

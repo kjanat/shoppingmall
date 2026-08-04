@@ -13,6 +13,7 @@ import {
 	WORLD_ENTITIES,
 } from '#/data/world';
 import { qs } from '#/util/dom';
+import { half, midpoint } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** One dot on the map — a sim, mostly. */
@@ -46,7 +47,7 @@ const CORRIDORS = EDGES.flatMap((e) => {
 const VERTICALS = [
 	{
 		x: ESCALATOR.x,
-		z: (ESCALATOR.zBottom + ESCALATOR.zTop) / 2,
+		z: midpoint(ESCALATOR.zBottom, ESCALATOR.zTop),
 		minZ: Math.min(ESCALATOR.zBottom, ESCALATOR.zTop) - ESCALATOR.apron,
 		maxZ: Math.max(ESCALATOR.zBottom, ESCALATOR.zTop) + ESCALATOR.apron,
 		width: ESCALATOR.width,
@@ -55,7 +56,7 @@ const VERTICALS = [
 	},
 	{
 		x: STAIRS.x,
-		z: (STAIRS.zBottom + STAIRS.zTop) / 2,
+		z: midpoint(STAIRS.zBottom, STAIRS.zTop),
 		minZ: Math.min(STAIRS.zBottom, STAIRS.zTop) - STAIRS.apron,
 		maxZ: Math.max(STAIRS.zBottom, STAIRS.zTop) + STAIRS.apron,
 		width: STAIRS.width,
@@ -651,11 +652,11 @@ export class KioskOverlay {
 
 		// Atrium-skylight (open — hier vlieg je doorheen)
 		ctx.fillStyle = 'rgba(56,120,190,0.4)';
-		ctx.fillRect(-ATRIUM_VOID.halfWidth, -ATRIUM_VOID.halfDepth, ATRIUM_VOID.width, ATRIUM_VOID.depth);
+		ctx.fillRect(-half(ATRIUM_VOID.width), -half(ATRIUM_VOID.depth), ATRIUM_VOID.width, ATRIUM_VOID.depth);
 		ctx.setLineDash([1.2 * px * 3, 1.2 * px * 3]);
 		ctx.strokeStyle = 'rgba(125,211,252,0.8)';
 		ctx.lineWidth = 1.5 * px;
-		ctx.strokeRect(-ATRIUM_VOID.halfWidth, -ATRIUM_VOID.halfDepth, ATRIUM_VOID.width, ATRIUM_VOID.depth);
+		ctx.strokeRect(-half(ATRIUM_VOID.width), -half(ATRIUM_VOID.depth), ATRIUM_VOID.width, ATRIUM_VOID.depth);
 		ctx.setLineDash([]);
 
 		// Helipad-H
@@ -707,10 +708,10 @@ export class KioskOverlay {
 
 		// Shell
 		ctx.fillStyle = 'rgba(30,41,59,0.55)';
-		ctx.fillRect(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth, MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth);
+		ctx.fillRect(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth), MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth);
 		ctx.lineWidth = 2 * px;
 		ctx.strokeStyle = 'rgba(148,163,184,0.6)';
-		ctx.strokeRect(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth, MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth);
+		ctx.strokeRect(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth), MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth);
 
 		// DAK: eigen laag — geen V1-gangen maar helipad, eiland, trapgat en lift
 		if (lvl === 'roof') {
@@ -737,11 +738,11 @@ export class KioskOverlay {
 			ctx.fill();
 		} else {
 			ctx.fillStyle = 'rgba(8,11,20,0.9)';
-			ctx.fillRect(-ATRIUM_VOID.halfWidth, -ATRIUM_VOID.halfDepth, ATRIUM_VOID.width, ATRIUM_VOID.depth);
+			ctx.fillRect(-half(ATRIUM_VOID.width), -half(ATRIUM_VOID.depth), ATRIUM_VOID.width, ATRIUM_VOID.depth);
 			ctx.setLineDash([1.2 * px * 3, 1.2 * px * 3]);
 			ctx.strokeStyle = 'rgba(248,113,113,0.7)';
 			ctx.lineWidth = 1.5 * px;
-			ctx.strokeRect(-ATRIUM_VOID.halfWidth, -ATRIUM_VOID.halfDepth, ATRIUM_VOID.width, ATRIUM_VOID.depth);
+			ctx.strokeRect(-half(ATRIUM_VOID.width), -half(ATRIUM_VOID.depth), ATRIUM_VOID.width, ATRIUM_VOID.depth);
 			ctx.setLineDash([]);
 		}
 
@@ -782,7 +783,7 @@ export class KioskOverlay {
 					const a = path[i - 1];
 					const b = path[i];
 					if (!a || !b) continue;
-					const here = levelAt((a.y + b.y) / 2) === lvl;
+					const here = levelAt(midpoint(a.y, b.y)) === lvl;
 					if ((pass === 0) === here) continue;
 					ctx.moveTo(a.x, a.z);
 					ctx.lineTo(b.x, b.z);
@@ -861,7 +862,7 @@ export class KioskOverlay {
 
 		ctx.fillStyle = 'rgba(148,163,184,0.8)';
 		ctx.font = '600 10px ui-monospace, monospace';
-		ctx.fillText('N ↑', sx(0), sy(-MALL_FOOTPRINT.halfDepth) - 12);
+		ctx.fillText('N ↑', sx(0), sy(-half(MALL_FOOTPRINT.depth)) - 12);
 	}
 
 	private paintBigMap(): void {
