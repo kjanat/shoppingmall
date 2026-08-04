@@ -2,14 +2,7 @@ import type { VerticalConnector } from '#/data/connectors';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
 import { STORES } from '#/data/stores';
-import {
-	ESCALATOR,
-	HELIPAD_DECK_BOUNDS,
-	PARKING_EXIT_RAMP,
-	SECRET_STAIRS_OPENING_BOUNDS,
-	STAIRS,
-	VERTICAL_CONNECTORS,
-} from '#/data/world';
+import { HELIPAD_DECK_BOUNDS, PARKING_EXIT_RAMP, SECRET_STAIRS_OPENING_BOUNDS, VERTICAL_CONNECTORS } from '#/data/world';
 import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '#/scene/RoofIsland';
 import { clamp, clamp01, half } from '#/util/math';
 
@@ -267,7 +260,7 @@ export class CollisionWorld {
 			});
 		}
 
-		for (const connector of [ESCALATOR, STAIRS]) {
+		for (const connector of VERTICAL_CONNECTORS) {
 			this.add(connector.collision.minX, connector.collision.maxX, connector.collision.minZ, connector.collision.maxZ, {
 				label: connector.id,
 				climbable: true,

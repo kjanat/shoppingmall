@@ -5,8 +5,8 @@ import {
 	HELIPAD_HATCH_FRAME_RAILS,
 	HELIPAD_HATCH_FRAME_SPEC,
 	HELIPAD_PAD_SPEC,
-	SECRET_STAIRS,
 	SECRET_STAIRS_OPENING_PLAN,
+	STAIR_CONNECTORS,
 } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
@@ -47,16 +47,17 @@ export class Helipad {
 
 	/** Hidden service stairwell on the SE service edge */
 	private buildSecretStairs(): void {
+		const stairs = STAIR_CONNECTORS.secret;
 		const g = new THREE.Group();
-		g.name = 'secret_stairs';
-		const x = SECRET_STAIRS.x;
-		const z0 = SECRET_STAIRS.zBottom;
-		const z1 = SECRET_STAIRS.zTop;
-		const y0 = levelY(SECRET_STAIRS.from) + 0.05;
+		g.name = stairs.id;
+		const x = stairs.x;
+		const z0 = stairs.zBottom;
+		const z1 = stairs.zTop;
+		const y0 = levelY(stairs.from) + 0.05;
 		const y1 = ROOF_Y;
 		const rise = y1 - y0;
 		const run = z1 - z0;
-		const steps = SECRET_STAIRS.steps;
+		const steps = stairs.steps;
 		const metal = this.track(
 			lit({
 				color: 0x455a64,

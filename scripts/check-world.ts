@@ -25,12 +25,11 @@ import {
 	ATRIUM_OPENING,
 	ELEVATOR_SHAFT_WALLS,
 	ELEVATOR_SPEC,
-	ESCALATOR,
 	entitiesOnLevel,
 	levelsContaining,
 	MALL_SLAB_SPECS,
 	PARKING_EXIT_RAMP,
-	STAIRS,
+	VERTICAL_CONNECTORS,
 } from '#/data/world';
 import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
 import { PLAYER_RADIUS } from '#/player/constants';
@@ -239,8 +238,23 @@ function controleHellingen(): void {
  * afkeuren zonder iets over het uiteindelijke vloergat te bewijzen.
  */
 function controleVloergat(): void {
-	for (const opening of [ATRIUM_OPENING, ESCALATOR.opening, STAIRS.opening]) {
-		const aanwezig = MALL_SLAB_SPECS.v1.holes.some(
+	const atriumAanwezig = MALL_SLAB_SPECS.v1.holes.some(
+		(plan) =>
+			plan.kind === 'rectangle' &&
+			bijna(plan.center.x, ATRIUM_OPENING.center.x) &&
+			bijna(plan.center.z, ATRIUM_OPENING.center.z) &&
+			bijna(plan.width, ATRIUM_OPENING.size.width) &&
+			bijna(plan.depth, ATRIUM_OPENING.size.depth),
+	);
+	if (!atriumAanwezig) fout('vloergat', `${ATRIUM_OPENING.id} ontbreekt in het gedeelde V1-slabmanifest`);
+
+	for (const connector of VERTICAL_CONNECTORS) {
+		if (connector.to === 'p1') {
+			fout('vloergat', `${connector.id} eindigt op P1, waarvoor geen bovenzijde met vloergat bestaat`);
+			continue;
+		}
+		const opening = connector.opening;
+		const aanwezig = MALL_SLAB_SPECS[connector.to].holes.some(
 			(plan) =>
 				plan.kind === 'rectangle' &&
 				bijna(plan.center.x, opening.center.x) &&
@@ -248,10 +262,8 @@ function controleVloergat(): void {
 				bijna(plan.width, opening.size.width) &&
 				bijna(plan.depth, opening.size.depth),
 		);
-		if (!aanwezig) fout('vloergat', `${opening.id} ontbreekt in het gedeelde V1-slabmanifest`);
-	}
+		if (!aanwezig) fout('vloergat', `${opening.id} ontbreekt in het gedeelde ${connector.to}-slabmanifest`);
 
-	for (const connector of [ESCALATOR, STAIRS]) {
 		const ramp = wereld.ramps.find((candidate) => candidate.label === connector.id);
 		if (!ramp) {
 			fout('vloergat', `geen ramp '${connector.id}' in CollisionWorld, terwijl het wereldmanifest er een definieert`);

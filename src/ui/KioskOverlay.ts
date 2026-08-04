@@ -5,11 +5,10 @@ import { type LevelId, level, levelAt } from '#/data/levels';
 import { CATEGORY_LABELS, getKruidvat, STORES, type StoreCategory, type StoreDef } from '#/data/stores';
 import {
 	ELEVATOR_OPENING_ROOF,
-	ESCALATOR,
 	HELIPAD_DECK_BOUNDS,
 	HELIPAD_PAD_SPEC,
 	SECRET_STAIRS_OPENING_BOUNDS,
-	STAIRS,
+	VERTICAL_CONNECTORS,
 	WORLD_ENTITIES,
 } from '#/data/world';
 import { qs } from '#/util/dom';
@@ -43,27 +42,17 @@ const CORRIDORS = EDGES.flatMap((e) => {
 	return [{ level: la, ax: a.x, az: a.z, bx: b.x, bz: b.z }];
 });
 
-/** Escalator + stairs, so the map actually shows how to reach floor 1. */
-const VERTICALS = [
-	{
-		x: ESCALATOR.x,
-		z: midpoint(ESCALATOR.zBottom, ESCALATOR.zTop),
-		minZ: Math.min(ESCALATOR.zBottom, ESCALATOR.zTop) - ESCALATOR.apron,
-		maxZ: Math.max(ESCALATOR.zBottom, ESCALATOR.zTop) + ESCALATOR.apron,
-		width: ESCALATOR.width,
-		label: 'ROLTRAP',
-		short: '⇅',
-	},
-	{
-		x: STAIRS.x,
-		z: midpoint(STAIRS.zBottom, STAIRS.zTop),
-		minZ: Math.min(STAIRS.zBottom, STAIRS.zTop) - STAIRS.apron,
-		maxZ: Math.max(STAIRS.zBottom, STAIRS.zTop) + STAIRS.apron,
-		width: STAIRS.width,
-		label: 'TRAP',
-		short: '⇅',
-	},
-];
+/** Every authored vertical connector becomes a level-aware map feature. */
+const VERTICALS = VERTICAL_CONNECTORS.map((connector) => ({
+	x: connector.x,
+	z: midpoint(connector.zBottom, connector.zTop),
+	minZ: Math.min(connector.zBottom, connector.zTop) - connector.apron,
+	maxZ: Math.max(connector.zBottom, connector.zTop) + connector.apron,
+	width: connector.width,
+	levels: [connector.from, connector.to],
+	label: connector.kind === 'escalator' ? 'ROLTRAP' : 'TRAP',
+	short: '⇅',
+}));
 
 /** Things worth walking to that aren't shops. */
 const LANDMARKS: { x: number; z: number; level: LevelId; short: string; label: string }[] = [
@@ -766,6 +755,7 @@ export class KioskOverlay {
 
 		// Escalator + stairs shafts
 		for (const v of VERTICALS) {
+			if (!v.levels.includes(lvl)) continue;
 			ctx.fillStyle = 'rgba(251,191,36,0.35)';
 			ctx.fillRect(v.x - half(v.width), v.minZ, v.width, span(v.minZ, v.maxZ));
 			ctx.strokeStyle = '#fbbf24';

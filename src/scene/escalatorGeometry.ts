@@ -1,6 +1,5 @@
 import { type EscalatorAppearance, type EscalatorSpec, validateEscalatorSpec } from '#/data/connectors';
 import { levelY } from '#/data/levels';
-import { ESCALATOR } from '#/data/world';
 import { half, midpoint } from '#/util/math';
 
 export type EscalatorGeometry = Readonly<{
@@ -48,5 +47,3 @@ export function deriveEscalatorGeometry(connector: EscalatorSpec): EscalatorGeom
 		},
 	} as const;
 }
-
-export const ESCALATOR_GEOMETRY = deriveEscalatorGeometry(ESCALATOR);

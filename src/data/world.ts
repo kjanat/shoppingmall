@@ -1,5 +1,5 @@
 import { STANDING_PEDESTRIAN } from '#/data/character';
-import type { EscalatorSpec, OpeningDef, VerticalConnector } from '#/data/connectors';
+import type { EscalatorSpec, OpeningDef, StairSpec, VerticalConnector } from '#/data/connectors';
 import { ATRIUM_VOID, MALL_FOOTPRINT, PARKING_FOOTPRINT } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { LEVELS, levelY } from '#/data/levels';
@@ -14,7 +14,7 @@ import type {
 } from '#/data/spatial';
 import { planBounds, rectanglePlan } from '#/data/spatial';
 import { shopStores } from '#/data/stores';
-import { rectangularPerimeterWalls } from '#/data/structure';
+import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
 import { half, span } from '#/util/math';
 
 export type WorldCategory = 'floor' | 'ceiling' | 'wall' | 'opening' | 'shop' | 'vertical-circulation' | 'parking';
@@ -50,54 +50,18 @@ export const ELEVATOR_SPEC = {
 } as const;
 
 /** Fixed shaft panels. The south face is intentionally open at every landing. */
-export const ELEVATOR_SHAFT_WALLS = [
-	{
-		id: 'north',
-		center: { x: ELEVATOR_SPEC.center.x, z: ELEVATOR_SPEC.center.z - ELEVATOR_SPEC.shaft.wallOffset },
-		size: { width: ELEVATOR_SPEC.shaft.panelSpan, depth: ELEVATOR_SPEC.shaft.panelThickness },
-	},
-	{
-		id: 'west',
-		center: { x: ELEVATOR_SPEC.center.x - ELEVATOR_SPEC.shaft.wallOffset, z: ELEVATOR_SPEC.center.z },
-		size: { width: ELEVATOR_SPEC.shaft.panelThickness, depth: ELEVATOR_SPEC.shaft.panelSpan },
-	},
-	{
-		id: 'east',
-		center: { x: ELEVATOR_SPEC.center.x + ELEVATOR_SPEC.shaft.wallOffset, z: ELEVATOR_SPEC.center.z },
-		size: { width: ELEVATOR_SPEC.shaft.panelThickness, depth: ELEVATOR_SPEC.shaft.panelSpan },
-	},
-] as const;
+export const ELEVATOR_SHAFT_WALLS = cardinalWallPanels({
+	center: ELEVATOR_SPEC.center,
+	offset: { x: ELEVATOR_SPEC.shaft.wallOffset, z: ELEVATOR_SPEC.shaft.wallOffset },
+	span: { width: ELEVATOR_SPEC.shaft.panelSpan, depth: ELEVATOR_SPEC.shaft.panelSpan },
+	thickness: ELEVATOR_SPEC.shaft.panelThickness,
+	sides: ['north', 'west', 'east'],
+});
 
-export const ELEVATOR_SHAFT_POSTS = [
-	{
-		id: 'north-west',
-		center: {
-			x: ELEVATOR_SPEC.center.x - ELEVATOR_SPEC.shaft.postOffset,
-			z: ELEVATOR_SPEC.center.z - ELEVATOR_SPEC.shaft.postOffset,
-		},
-	},
-	{
-		id: 'north-east',
-		center: {
-			x: ELEVATOR_SPEC.center.x + ELEVATOR_SPEC.shaft.postOffset,
-			z: ELEVATOR_SPEC.center.z - ELEVATOR_SPEC.shaft.postOffset,
-		},
-	},
-	{
-		id: 'south-west',
-		center: {
-			x: ELEVATOR_SPEC.center.x - ELEVATOR_SPEC.shaft.postOffset,
-			z: ELEVATOR_SPEC.center.z + ELEVATOR_SPEC.shaft.postOffset,
-		},
-	},
-	{
-		id: 'south-east',
-		center: {
-			x: ELEVATOR_SPEC.center.x + ELEVATOR_SPEC.shaft.postOffset,
-			z: ELEVATOR_SPEC.center.z + ELEVATOR_SPEC.shaft.postOffset,
-		},
-	},
-] as const;
+export const ELEVATOR_SHAFT_POSTS = rectangleCornerPoints({
+	center: ELEVATOR_SPEC.center,
+	offset: { x: ELEVATOR_SPEC.shaft.postOffset, z: ELEVATOR_SPEC.shaft.postOffset },
+});
 export const PARKING_EXIT_RAMP = {
 	id: 'parking-exit-ramp',
 	start: { x: -30, y: levelY('p1'), z: 0 },
@@ -147,17 +111,7 @@ export const ELEVATOR_OPENING_P1: OpeningDef = {
 	connects: ['p1'],
 };
 
-export const ESCALATOR = {
-	id: 'escalator',
-	label: 'East escalator',
-	from: 'v0',
-	to: 'v1',
-	x: 22,
-	zBottom: 8,
-	zTop: -2,
-	width: 2.2,
-	steps: 20,
-	apron: 1,
+const ESCALATOR_MODEL = {
 	appearance: {
 		step: {
 			minimumSurfaceY: 0.02,
@@ -189,81 +143,103 @@ export const ESCALATOR = {
 		inclineDegrees: { min: 25, max: 35 },
 		alignmentTolerance: 0.001,
 	},
-	opening: {
-		id: 'escalator-v1',
-		category: 'escalator',
-		center: { x: 22, z: -0.5 },
-		size: { width: 2.6, depth: 4.2 },
-		connects: ['v0', 'v1'],
-	},
-	collision: {
-		minX: 20.7,
-		maxX: 23.3,
-		minZ: -3.5,
-		maxZ: 9,
-		openMinZ: -2.6,
-		openMaxZ: 1.6,
-		carrySpeed: ESCALATOR_SPEED,
-	},
-} satisfies EscalatorSpec;
+} as const;
 
-export const STAIRS = {
-	id: 'stairs',
-	label: 'West stairs',
-	from: 'v0',
-	to: 'v1',
-	x: -22,
-	zBottom: 4,
-	zTop: -14,
-	width: 2.4,
-	steps: 24,
-	apron: 1,
-	opening: {
-		id: 'stairs-v1',
-		category: 'stairs',
-		center: { x: -22, z: -11 },
-		size: { width: 4, depth: 7.2 },
-		connects: ['v0', 'v1'],
+export const ESCALATORS = [
+	{
+		id: 'east-escalator',
+		label: 'East escalator',
+		kind: 'escalator',
+		from: 'v0',
+		to: 'v1',
+		x: 22,
+		zBottom: 8,
+		zTop: -2,
+		width: 2.2,
+		steps: 20,
+		apron: 1,
+		...ESCALATOR_MODEL,
+		opening: {
+			id: 'escalator-v1',
+			category: 'escalator',
+			center: { x: 22, z: -0.5 },
+			size: { width: 2.6, depth: 4.2 },
+			connects: ['v0', 'v1'],
+		},
+		collision: {
+			minX: 20.7,
+			maxX: 23.3,
+			minZ: -3.5,
+			maxZ: 9,
+			openMinZ: -2.6,
+			openMaxZ: 1.6,
+			carrySpeed: ESCALATOR_SPEED,
+		},
 	},
-	collision: {
-		minX: -23.5,
-		maxX: -20.5,
-		minZ: -15.5,
-		maxZ: 5,
-		openMinZ: -14.6,
-		openMaxZ: -7.4,
-	},
-} satisfies VerticalConnector;
+] as const satisfies readonly EscalatorSpec[];
 
-export const SECRET_STAIRS = {
-	id: 'secret_stairs',
-	label: 'Secret stairs to roof',
-	from: 'v1',
-	to: 'roof',
-	x: 26,
-	zBottom: 14,
-	zTop: 18,
-	width: 2.6,
-	steps: 16,
-	apron: 0.5,
-	opening: {
-		id: 'stairs-roof',
-		category: 'stairs',
-		center: { x: 26, z: 16 },
-		size: { width: 3, depth: 4 },
-		connects: ['v1', 'roof'],
+export const STAIR_CONNECTORS = {
+	west: {
+		id: 'west-stairs',
+		label: 'West stairs',
+		kind: 'stairs',
+		presentation: 'mall-flight',
+		from: 'v0',
+		to: 'v1',
+		x: -22,
+		zBottom: 4,
+		zTop: -14,
+		width: 2.4,
+		steps: 24,
+		apron: 1,
+		opening: {
+			id: 'stairs-v1',
+			category: 'stairs',
+			center: { x: -22, z: -11 },
+			size: { width: 4, depth: 7.2 },
+			connects: ['v0', 'v1'],
+		},
+		collision: {
+			minX: -23.5,
+			maxX: -20.5,
+			minZ: -15.5,
+			maxZ: 5,
+			openMinZ: -14.6,
+			openMaxZ: -7.4,
+		},
 	},
-	collision: {
-		minX: 24.7,
-		maxX: 27.3,
-		minZ: 14,
-		maxZ: 18.5,
-		openMinZ: 14,
-		openMaxZ: 18,
+	secret: {
+		id: 'secret-stairs',
+		label: 'Secret stairs to roof',
+		kind: 'stairs',
+		presentation: 'helipad-flight',
+		from: 'v1',
+		to: 'roof',
+		x: 26,
+		zBottom: 14,
+		zTop: 18,
+		width: 2.6,
+		steps: 16,
+		apron: 0.5,
+		opening: {
+			id: 'stairs-roof',
+			category: 'stairs',
+			center: { x: 26, z: 16 },
+			size: { width: 3, depth: 4 },
+			connects: ['v1', 'roof'],
+		},
+		collision: {
+			minX: 24.7,
+			maxX: 27.3,
+			minZ: 14,
+			maxZ: 18.5,
+			openMinZ: 14,
+			openMaxZ: 18,
+		},
 	},
-} satisfies VerticalConnector;
+} as const satisfies Readonly<Record<string, StairSpec>>;
 
-export const VERTICAL_CONNECTORS = [ESCALATOR, STAIRS, SECRET_STAIRS] as const;
+export const VERTICAL_CONNECTORS: readonly VerticalConnector[] = [...ESCALATORS, ...Object.values(STAIR_CONNECTORS)];
 
 export type MallWorldCategory = WorldCategory | 'helipad' | 'connector-opening' | 'glass-roof' | 'decorative-surface' | 'prop';
 
@@ -373,12 +349,10 @@ function openingEntity(
 const MALL_FOOTPRINT_PLAN = rectanglePlan({ center: { x: 0, z: 0 }, size: MALL_FOOTPRINT });
 const PARKING_FOOTPRINT_PLAN = rectanglePlan({ center: { x: 0, z: 0 }, size: PARKING_FOOTPRINT });
 const V1_ATRIUM_PLAN = rectanglePlan(ATRIUM_OPENING);
-const V1_ESCALATOR_PLAN = rectanglePlan(ESCALATOR.opening);
-const V1_STAIRS_PLAN = rectanglePlan(STAIRS.opening);
 const V1_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_V1);
 const V0_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_V0);
 const P1_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_P1);
-export const SECRET_STAIRS_OPENING_PLAN = rectanglePlan(SECRET_STAIRS.opening);
+export const SECRET_STAIRS_OPENING_PLAN = rectanglePlan(STAIR_CONNECTORS.secret.opening);
 export const SECRET_STAIRS_OPENING_BOUNDS = planBounds(SECRET_STAIRS_OPENING_PLAN);
 const ROOF_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_ROOF);
 
@@ -400,8 +374,12 @@ export const HELIPAD_PAD_SPEC = {
 	height: 0.12,
 } as const;
 
-const FLOOR_V1_HOLES = [V1_ATRIUM_PLAN, V1_ESCALATOR_PLAN, V1_STAIRS_PLAN, V1_ELEVATOR_PLAN] as const;
-const ROOF_SLAB_HOLES = [V1_ATRIUM_PLAN, SECRET_STAIRS_OPENING_PLAN, ROOF_ELEVATOR_PLAN] as const;
+function connectorOpeningPlansAt(levelId: LevelId): readonly PlanShape[] {
+	return VERTICAL_CONNECTORS.filter((connector) => connector.to === levelId).map((connector) => rectanglePlan(connector.opening));
+}
+
+const FLOOR_V1_HOLES = [V1_ATRIUM_PLAN, ...connectorOpeningPlansAt('v1'), V1_ELEVATOR_PLAN];
+const ROOF_SLAB_HOLES = [V1_ATRIUM_PLAN, ...connectorOpeningPlansAt('roof'), ROOF_ELEVATOR_PLAN];
 
 type StructuralSlabSpec = Readonly<{
 	id: string;
@@ -541,40 +519,15 @@ const HATCH_FRAME_Y = levelY('roof') + half(HATCH_FRAME_HEIGHT);
 const HATCH_WIDTH = span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENING_BOUNDS.maxX);
 const HATCH_DEPTH = span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ);
 
-export const HELIPAD_HATCH_FRAME_RAILS = [
-	{
-		id: 'west-rail',
-		center: {
-			x: SECRET_STAIRS_OPENING_BOUNDS.minX - half(HATCH_FRAME_THICKNESS),
-			z: SECRET_STAIRS.opening.center.z,
-		},
-		size: { width: HATCH_FRAME_THICKNESS, depth: HATCH_DEPTH + HATCH_FRAME_THICKNESS * 2 },
+export const HELIPAD_HATCH_FRAME_RAILS = cardinalWallPanels({
+	center: STAIR_CONNECTORS.secret.opening.center,
+	offset: {
+		x: half(HATCH_WIDTH + HATCH_FRAME_THICKNESS),
+		z: half(HATCH_DEPTH + HATCH_FRAME_THICKNESS),
 	},
-	{
-		id: 'east-rail',
-		center: {
-			x: SECRET_STAIRS_OPENING_BOUNDS.maxX + half(HATCH_FRAME_THICKNESS),
-			z: SECRET_STAIRS.opening.center.z,
-		},
-		size: { width: HATCH_FRAME_THICKNESS, depth: HATCH_DEPTH + HATCH_FRAME_THICKNESS * 2 },
-	},
-	{
-		id: 'north-rail',
-		center: {
-			x: SECRET_STAIRS.opening.center.x,
-			z: SECRET_STAIRS_OPENING_BOUNDS.minZ - half(HATCH_FRAME_THICKNESS),
-		},
-		size: { width: HATCH_WIDTH, depth: HATCH_FRAME_THICKNESS },
-	},
-	{
-		id: 'south-rail',
-		center: {
-			x: SECRET_STAIRS.opening.center.x,
-			z: SECRET_STAIRS_OPENING_BOUNDS.maxZ + half(HATCH_FRAME_THICKNESS),
-		},
-		size: { width: HATCH_WIDTH, depth: HATCH_FRAME_THICKNESS },
-	},
-] as const;
+	span: { width: HATCH_WIDTH, depth: HATCH_DEPTH + HATCH_FRAME_THICKNESS * 2 },
+	thickness: HATCH_FRAME_THICKNESS,
+});
 
 export const HELIPAD_HATCH_FRAME: MallWorldEntity = {
 	id: 'helipad-hatch-frame',
@@ -582,7 +535,7 @@ export const HELIPAD_HATCH_FRAME: MallWorldEntity = {
 	category: 'helipad',
 	levels: ['roof'],
 	transform: {
-		position: { x: SECRET_STAIRS.opening.center.x, y: HATCH_FRAME_Y, z: SECRET_STAIRS.opening.center.z },
+		position: { x: STAIR_CONNECTORS.secret.opening.center.x, y: HATCH_FRAME_Y, z: STAIR_CONNECTORS.secret.opening.center.z },
 		rotation: ZERO_ROTATION,
 	},
 	volumes: HELIPAD_HATCH_FRAME_RAILS.map((rail) =>
@@ -598,7 +551,8 @@ export const HELIPAD_HATCH_FRAME: MallWorldEntity = {
 	tags: ['hatch-frame', 'structural'],
 };
 
-function connectorEntity(connector: VerticalConnector, kind: 'stairs' | 'escalator'): MallWorldEntity {
+function connectorEntity(connector: VerticalConnector): MallWorldEntity {
+	const { kind } = connector;
 	const start = { x: connector.x, y: levelY(connector.from), z: connector.zBottom };
 	const end = { x: connector.x, y: levelY(connector.to), z: connector.zTop };
 	const geometry =
@@ -615,12 +569,16 @@ function connectorEntity(connector: VerticalConnector, kind: 'stairs' | 'escalat
 			: ({ kind: 'ramp', start, end, width: connector.width, thickness: 0.2 } as const);
 	const sourceVolumeId = 'travel-surface';
 	const emitters: readonly InteractionEmitter[] =
-		kind === 'escalator'
+		kind === 'escalator' && connector.collision.carrySpeed !== undefined
 			? [
 					{
 						id: 'moving-treads',
 						channel: 'conveyor',
-						field: { kind: 'surface', vector: { x: 0, y: 0, z: -ESCALATOR_SPEED }, space: 'world' },
+						field: {
+							kind: 'surface',
+							vector: { x: 0, y: 0, z: Math.sign(connector.zTop - connector.zBottom) * connector.collision.carrySpeed },
+							space: 'world',
+						},
 						sourceVolumeId,
 						falloff: { kind: 'none' },
 						timing: { kind: 'continuous' },
@@ -711,11 +669,7 @@ function connectorEntity(connector: VerticalConnector, kind: 'stairs' | 'escalat
 	};
 }
 
-export const CONNECTOR_ENTITIES: readonly MallWorldEntity[] = [
-	connectorEntity(ESCALATOR, 'escalator'),
-	connectorEntity(STAIRS, 'stairs'),
-	connectorEntity(SECRET_STAIRS, 'stairs'),
-];
+export const CONNECTOR_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTORS.map(connectorEntity);
 
 export const PARKING_EXIT_RAMP_ENTITY: MallWorldEntity = {
 	id: PARKING_EXIT_RAMP.id,
@@ -874,6 +828,17 @@ export const ELEVATOR_ENTITY: MallWorldEntity = {
 	tags: ['circulation', 'elevator', 'moving-platform'],
 };
 
+const CONNECTOR_OPENING_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTORS.map((connector) =>
+	openingEntity(
+		`opening-${connector.opening.id}`,
+		`${connector.label} opening`,
+		[connector.from, connector.to],
+		rectanglePlan(connector.opening),
+		levelY(connector.from),
+		levelY(connector.to) + 0.5,
+	),
+);
+
 export const OPENING_ENTITIES: readonly MallWorldEntity[] = [
 	openingEntity(
 		'opening-elevator-p1',
@@ -892,8 +857,7 @@ export const OPENING_ENTITIES: readonly MallWorldEntity[] = [
 		levelY('v0') + 0.5,
 	),
 	openingEntity('opening-atrium-v1', 'Atrium void', ['v0', 'v1'], V1_ATRIUM_PLAN, levelY('v0'), levelY('v1') + 0.5),
-	openingEntity('opening-escalator-v1', 'Escalator opening', ['v0', 'v1'], V1_ESCALATOR_PLAN, levelY('v0'), levelY('v1') + 0.5),
-	openingEntity('opening-stairs-v1', 'West stairs opening', ['v0', 'v1'], V1_STAIRS_PLAN, levelY('v0'), levelY('v1') + 0.5),
+	...CONNECTOR_OPENING_ENTITIES,
 	openingEntity(
 		'opening-elevator-v1',
 		'Elevator opening at V1',
@@ -901,14 +865,6 @@ export const OPENING_ENTITIES: readonly MallWorldEntity[] = [
 		V1_ELEVATOR_PLAN,
 		levelY('v0'),
 		levelY('v1') + 0.5,
-	),
-	openingEntity(
-		'opening-secret-stairs-roof',
-		'Secret stairs roof opening',
-		['v1', 'roof'],
-		SECRET_STAIRS_OPENING_PLAN,
-		levelY('v1'),
-		levelY('roof') + 0.5,
 	),
 	openingEntity(
 		'opening-elevator-roof',

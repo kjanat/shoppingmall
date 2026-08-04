@@ -5,8 +5,8 @@ import { type EscalatorSpec, validateEscalatorSpec } from '#/data/connectors';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt } from '#/data/levels';
 import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
 import { receiverAccepts, validateSpatialWorld } from '#/data/spatial';
-import { rectangularPerimeterWalls } from '#/data/structure';
-import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATOR, WORLD_ENTITIES } from '#/data/world';
+import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
+import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATORS, WORLD_ENTITIES } from '#/data/world';
 import { segmentParameter2 } from '#/util/geometry2';
 import { lerp } from '#/util/math';
 
@@ -111,48 +111,75 @@ describe('authoritative spatial world', () => {
 			position: { x: 5, y: 1, z: 0 },
 			size: { width: 0.4, height: 4, depth: 6 },
 		});
+
+		const openShaft = cardinalWallPanels({
+			center: { x: 16, z: -8 },
+			offset: { x: 1.12, z: 1.12 },
+			span: { width: 2.15, depth: 2.15 },
+			thickness: 0.04,
+			sides: ['north', 'west', 'east'],
+		});
+		assert.deepEqual(
+			openShaft.map((panel) => panel.id),
+			['north', 'west', 'east'],
+		);
+		const westPanel = openShaft[1];
+		assert.ok(westPanel);
+		assert.equal(westPanel.id, 'west');
+		assert.ok(Math.abs(westPanel.center.x - 14.88) < 1e-12);
+		assert.equal(westPanel.center.z, -8);
+		assert.deepEqual(westPanel.size, { width: 0.04, depth: 2.15 });
+
+		assert.deepEqual(rectangleCornerPoints({ center: { x: 2, z: 3 }, offset: { x: 1, z: 2 } }), [
+			{ id: 'north-west', center: { x: 1, z: 1 } },
+			{ id: 'north-east', center: { x: 3, z: 1 } },
+			{ id: 'south-west', center: { x: 1, z: 5 } },
+			{ id: 'south-east', center: { x: 3, z: 5 } },
+		]);
 	});
 
 	test('escalator connectivity, containment, incline, and component dimensions are validated', () => {
-		assert.deepEqual(validateEscalatorSpec(ESCALATOR), []);
+		for (const escalator of ESCALATORS) assert.deepEqual(validateEscalatorSpec(escalator), []);
+		const escalator = ESCALATORS[0];
 
 		const disconnected: EscalatorSpec = {
-			...ESCALATOR,
-			opening: { ...ESCALATOR.opening, connects: ['v0'] },
+			...escalator,
+			opening: { ...escalator.opening, connects: ['v0'] },
 		};
 		assert.ok(validateEscalatorSpec(disconnected).includes('floor opening must declare both connected levels'));
 
-		const steep: EscalatorSpec = { ...ESCALATOR, zTop: 7 };
+		const steep: EscalatorSpec = { ...escalator, zTop: 7 };
 		assert.ok(validateEscalatorSpec(steep).some((problem) => problem.startsWith('incline ')));
 
 		const brokenGlass: EscalatorSpec = {
-			...ESCALATOR,
+			...escalator,
 			appearance: {
-				...ESCALATOR.appearance,
-				balustrade: { ...ESCALATOR.appearance.balustrade, glassTop: 0.2 },
+				...escalator.appearance,
+				balustrade: { ...escalator.appearance.balustrade, glassTop: 0.2 },
 			},
 		};
 		assert.ok(validateEscalatorSpec(brokenGlass).includes('balustrade glass top must sit above its non-negative bottom'));
 	});
 
 	test('an escalator rejects a slab intersecting a rider body or eye line anywhere along the flight', () => {
-		const escalator = CONNECTOR_ENTITIES.find((entity) => entity.id === ESCALATOR.id);
-		assert.ok(escalator);
-		const clearance = escalator.volumes.find((volume) => volume.id === 'route-clearance');
+		const spec = ESCALATORS[0];
+		const escalatorEntity = CONNECTOR_ENTITIES.find((entity) => entity.id === spec.id);
+		assert.ok(escalatorEntity);
+		const clearance = escalatorEntity.volumes.find((volume) => volume.id === 'route-clearance');
 		assert.ok(clearance && clearance.geometry.kind === 'flight-clearance');
 		assert.equal(clearance.geometry.height, STANDING_PEDESTRIAN.requiredHeadroom);
 		assert.ok(clearance.geometry.height > STANDING_PEDESTRIAN.bodyHeight);
 		assert.ok(clearance.geometry.height > STANDING_PEDESTRIAN.eyeHeight);
 
 		const obstructionZ = 1;
-		const progress = segmentParameter2(ESCALATOR.x, obstructionZ, ESCALATOR.x, ESCALATOR.zBottom, ESCALATOR.x, ESCALATOR.zTop);
+		const progress = segmentParameter2(spec.x, obstructionZ, spec.x, spec.zBottom, spec.x, spec.zTop);
 		const surfaceY = lerp(clearance.geometry.start.y, clearance.geometry.end.y, progress);
 		const eyeY = surfaceY + STANDING_PEDESTRIAN.eyeHeight;
 		const bodyTopY = surfaceY + STANDING_PEDESTRIAN.bodyHeight;
 		const blockingSlab = entity('uncut-v1-slab', 'structure', [
-			prism('slab', 'support', ESCALATOR.x, obstructionZ, 3, 0.4, eyeY - 0.1, bodyTopY + 0.1, false, true),
+			prism('slab', 'support', spec.x, obstructionZ, 3, 0.4, eyeY - 0.1, bodyTopY + 0.1, false, true),
 		]);
-		const problems = validateSpatialWorld([escalator, blockingSlab]);
+		const problems = validateSpatialWorld([escalatorEntity, blockingSlab]);
 		assert.ok(problems.some((problem) => problem.code === 'blocked-clearance'));
 	});
 
@@ -239,7 +266,7 @@ describe('authoritative spatial world', () => {
 	});
 
 	test('vector effects only select compatible receivers', () => {
-		const escalator = CONNECTOR_ENTITIES.find((candidate) => candidate.id === 'escalator');
+		const escalator = CONNECTOR_ENTITIES.find((candidate) => candidate.id === ESCALATORS[0].id);
 		const emitter = escalator?.emitters[0];
 		assert.ok(emitter);
 		const passenger: InteractionReceiver = {

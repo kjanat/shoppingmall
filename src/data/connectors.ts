@@ -1,4 +1,5 @@
-import { type LevelId, levelY } from '#/data/levels';
+import type { LevelId } from '#/data/levels';
+import { levelY } from '#/data/levels';
 import { half } from '#/util/math';
 
 export type OpeningDef = Readonly<{
@@ -9,9 +10,10 @@ export type OpeningDef = Readonly<{
 	connects: readonly LevelId[];
 }>;
 
-export type VerticalConnector = Readonly<{
+export type VerticalConnector<Kind extends 'stairs' | 'escalator' = 'stairs' | 'escalator'> = Readonly<{
 	id: string;
 	label: string;
+	kind: Kind;
 	from: LevelId;
 	to: LevelId;
 	x: number;
@@ -60,13 +62,18 @@ export type EscalatorAppearance = Readonly<{
 	}>;
 }>;
 
-export type EscalatorSpec = VerticalConnector &
+export type EscalatorSpec = VerticalConnector<'escalator'> &
 	Readonly<{
 		appearance: EscalatorAppearance;
 		constraints: Readonly<{
 			inclineDegrees: Readonly<{ min: number; max: number }>;
 			alignmentTolerance: number;
 		}>;
+	}>;
+
+export type StairSpec = VerticalConnector<'stairs'> &
+	Readonly<{
+		presentation: 'mall-flight' | 'helipad-flight';
 	}>;
 
 function positive(value: number): boolean {
