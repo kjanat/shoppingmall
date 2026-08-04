@@ -2,6 +2,7 @@ import gsap from 'gsap';
 import * as THREE from 'three';
 import type { GraphNode } from '#/data/graph';
 import { levelAt, levelY } from '#/data/levels';
+import { EYE } from '#/player/constants';
 import { at } from '#/util/rand';
 
 export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
@@ -11,10 +12,8 @@ export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
  * Offset in X on purpose: dead centre puts the solid kiosk base 1.5 m in front
  * of your face, so step one of walking forward was walking into it.
  */
-export const HOME_POS = new THREE.Vector3(3.4, 1.68, 13);
+export const HOME_POS = new THREE.Vector3(3.4, EYE, 13);
 export const HOME_TARGET = new THREE.Vector3(2.2, 1.5, 3);
-
-const EYE = 1.68;
 
 /**
  * Cinematic camera: intro, store focus and the guided walk.
@@ -129,7 +128,7 @@ export class Director {
 				const lastId = nodes[nodes.length - 1]?.id;
 				if (lastId === 'spaceship') {
 					settle = end.clone().add(new THREE.Vector3(0.5, 0, 1.5));
-					settle.y = 6 + EYE;
+					settle.y = levelY('v1') + EYE;
 					target = end.clone().add(new THREE.Vector3(0, 5, 0));
 				}
 

@@ -1,6 +1,18 @@
+import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
 import { STORES } from '#/data/stores';
+import {
+	ESCALATOR,
+	HELIPAD_DECK_BOUNDS,
+	PARKING_EXIT_RAMP,
+	SECRET_STAIRS_OPENING_BOUNDS,
+	STAIRS,
+	VERTICAL_CONNECTORS,
+	type VerticalConnector,
+} from '#/data/world';
 import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '#/scene/RoofIsland';
+
+export { ESCALATOR_SPEED } from '#/data/world';
 
 export type AABB = {
 	minX: number;
@@ -38,12 +50,44 @@ export type Ramp = {
 	carrySpeed?: number;
 };
 
+type PathRamp = Readonly<{
+	start: Readonly<{ x: number; y: number; z: number }>;
+	end: Readonly<{ x: number; y: number; z: number }>;
+	width: number;
+	label: string;
+}>;
+
+function pathRampSurface(ramp: PathRamp, x: number, z: number, margin = 0): number | null {
+	const dx = ramp.end.x - ramp.start.x;
+	const dz = ramp.end.z - ramp.start.z;
+	const run = Math.hypot(dx, dz);
+	if (run <= 1e-6) return null;
+	const along = ((x - ramp.start.x) * dx + (z - ramp.start.z) * dz) / run;
+	const across = ((x - ramp.start.x) * -dz + (z - ramp.start.z) * dx) / run;
+	if (along < -margin || along > run + margin || Math.abs(across) > ramp.width / 2 + margin) return null;
+	const t = Math.max(0, Math.min(1, along / run));
+	return ramp.start.y + (ramp.end.y - ramp.start.y) * t;
+}
+
+function connectorRamp(connector: VerticalConnector): Ramp {
+	return {
+		minX: connector.collision.minX,
+		maxX: connector.collision.maxX,
+		zBottom: connector.zBottom,
+		zTop: connector.zTop,
+		yBottom: levelY(connector.from),
+		yTop: levelY(connector.to),
+		label: connector.id,
+		openMinZ: connector.collision.openMinZ,
+		openMaxZ: connector.collision.openMaxZ,
+		...(connector.collision.carrySpeed === undefined ? {} : { carrySpeed: connector.collision.carrySpeed }),
+	};
+}
+
 /** One storey */
 const FLOOR_H = levelY('v1') - levelY('v0');
 const ROOF_H = levelY('roof');
 const BASEMENT_H = levelY('p1');
-const MALL_W = 72;
-const MALL_D = 48;
 /**
  * Hoogteverschil waarbinnen een lopende speler een vlak nog als zijn vloer ziet.
  * Controls geeft hem mee aan `groundHeightAt`, `rampCarryAt` rekent met dezelfde
@@ -59,53 +103,23 @@ export const WALK_STEP = 0.5;
  * tekenen. Twee losse getallen die gelijk moeten blijven glijden vroeg of laat
  * uit elkaar, en dan lopen de treden onder je voeten door.
  */
-export const ESCALATOR_SPEED = 0.5;
-
 /**
  * Lightweight horizontal collision world (XZ cylinders vs AABBs).
  * Keeps player + sims out of walls, stores, escalator/stairs volumes.
  */
 export class CollisionWorld {
 	readonly boxes: AABB[] = [];
+	readonly pathRamps: readonly PathRamp[] = [
+		{
+			start: PARKING_EXIT_RAMP.start,
+			end: PARKING_EXIT_RAMP.end,
+			width: PARKING_EXIT_RAMP.width,
+			label: PARKING_EXIT_RAMP.id,
+		},
+	];
 	/** Inclines the player can actually walk up — mirrors the built geometry. */
 	readonly ramps: Ramp[] = [
-		// East roltrap only — never shares space with west stairs
-		{
-			minX: 20.7,
-			maxX: 23.3,
-			zBottom: 8,
-			zTop: -2,
-			yBottom: 0,
-			yTop: 6,
-			label: 'escalator',
-			openMinZ: -2.6,
-			openMaxZ: 1.6,
-			carrySpeed: ESCALATOR_SPEED,
-		},
-		// West trap only — opposite wall, cannot cross the escalator
-		{
-			minX: -23.5,
-			maxX: -20.5,
-			zBottom: 4,
-			zTop: -14,
-			yBottom: 0,
-			yTop: 6,
-			label: 'stairs',
-			openMinZ: -14.6,
-			openMaxZ: -7.4,
-		},
-		// Secret service stairs floor1 → roof helipad (east)
-		{
-			minX: 24.7,
-			maxX: 27.3,
-			zBottom: 14,
-			zTop: 18,
-			yBottom: 6,
-			yTop: ROOF_H,
-			label: 'secret_stairs',
-			openMinZ: 14,
-			openMaxZ: 18.5,
-		},
+		...VERTICAL_CONNECTORS.map(connectorRamp),
 		// Glijbaan-ladder op het dakeiland: extreem steile "ramp" — loop er
 		// noordwaarts tegenaan en je klautert naar het platform (arcade-klimmen)
 		{
@@ -123,25 +137,54 @@ export class CollisionWorld {
 
 	/**
 	 * Flat walkable roof patches (deck clipped clear of the atrium skylight).
-	 * Het SE-dek is opgeknipt rond het secret-stairs-trapgat (24.5..27.5,
-	 * 13.65..18.85) — anders loop je op onzichtbare vloer over het gat en kun
-	 * je nooit naar beneden.
+	 * Het SE-dek is opgeknipt rond het gedeelde secret-stairs-trapgat. Een los
+	 * getal hier legde dat gat eerder met een onzichtbare collisionplaat dicht.
 	 */
 	readonly roofPads: { minX: number; maxX: number; minZ: number; maxZ: number; y: number }[] = [
 		// Helipad SE deck, in vier stukken om het trapgat heen
-		{ minX: 8, maxX: 24.5, minZ: 7, maxZ: 23, y: ROOF_H },
-		{ minX: 27.5, maxX: 32, minZ: 7, maxZ: 23, y: ROOF_H },
-		{ minX: 24.5, maxX: 27.5, minZ: 7, maxZ: 13.65, y: ROOF_H },
-		{ minX: 24.5, maxX: 27.5, minZ: 18.85, maxZ: 23, y: ROOF_H },
+		{
+			minX: HELIPAD_DECK_BOUNDS.minX,
+			maxX: SECRET_STAIRS_OPENING_BOUNDS.minX,
+			minZ: HELIPAD_DECK_BOUNDS.minZ,
+			maxZ: HELIPAD_DECK_BOUNDS.maxZ,
+			y: ROOF_H,
+		},
+		{
+			minX: SECRET_STAIRS_OPENING_BOUNDS.maxX,
+			maxX: HELIPAD_DECK_BOUNDS.maxX,
+			minZ: HELIPAD_DECK_BOUNDS.minZ,
+			maxZ: HELIPAD_DECK_BOUNDS.maxZ,
+			y: ROOF_H,
+		},
+		{
+			minX: SECRET_STAIRS_OPENING_BOUNDS.minX,
+			maxX: SECRET_STAIRS_OPENING_BOUNDS.maxX,
+			minZ: HELIPAD_DECK_BOUNDS.minZ,
+			maxZ: SECRET_STAIRS_OPENING_BOUNDS.minZ,
+			y: ROOF_H,
+		},
+		{
+			minX: SECRET_STAIRS_OPENING_BOUNDS.minX,
+			maxX: SECRET_STAIRS_OPENING_BOUNDS.maxX,
+			minZ: SECRET_STAIRS_OPENING_BOUNDS.maxZ,
+			maxZ: HELIPAD_DECK_BOUNDS.maxZ,
+			y: ROOF_H,
+		},
 		// Glass elevator roof hatch (16, −8) + corridor toward helipad
 		{ minX: 12, maxX: 28, minZ: -12, maxZ: 8, y: ROOF_H },
 		// De gang naar de helipad, in drie stukken om hetzelfde trapgat heen als
 		// hierboven. In één stuk (14..30, 4..18) legde hij het gat weer dicht dat
 		// de vier pads erboven juist openhouden, en liep je erover in plaats van
 		// de trap af.
-		{ minX: 14, maxX: 24.5, minZ: 4, maxZ: 18, y: ROOF_H },
-		{ minX: 27.5, maxX: 30, minZ: 4, maxZ: 18, y: ROOF_H },
-		{ minX: 24.5, maxX: 27.5, minZ: 4, maxZ: 13.65, y: ROOF_H },
+		{ minX: 14, maxX: SECRET_STAIRS_OPENING_BOUNDS.minX, minZ: 4, maxZ: 18, y: ROOF_H },
+		{ minX: SECRET_STAIRS_OPENING_BOUNDS.maxX, maxX: 30, minZ: 4, maxZ: 18, y: ROOF_H },
+		{
+			minX: SECRET_STAIRS_OPENING_BOUNDS.minX,
+			maxX: SECRET_STAIRS_OPENING_BOUNDS.maxX,
+			minZ: 4,
+			maxZ: SECRET_STAIRS_OPENING_BOUNDS.minZ,
+			y: ROOF_H,
+		},
 	];
 
 	/** Low platforms you can hop onto (deck top is the walkable surface). */
@@ -153,8 +196,6 @@ export class CollisionWorld {
 	];
 
 	/** Atrium hole in the floor-1 slab — jump the balustrade and you drop through. */
-	private static readonly VOID_X = 8;
-	private static readonly VOID_Z = 6;
 
 	constructor() {
 		this.buildMall();
@@ -191,12 +232,20 @@ export class CollisionWorld {
 	}
 
 	private buildMall(): void {
-		const hw = MALL_W / 2;
-		const hd = MALL_D / 2;
+		const hw = MALL_FOOTPRINT.halfWidth;
+		const hd = MALL_FOOTPRINT.halfDepth;
 		const wallT = 0.8;
 
-		// Outer walls (both floors — full height vertical ignore for XZ)
-		this.add(-hw - wallT, -hw + 0.2, -hd - wallT, hd + wallT, { label: 'wall_w' });
+		// West wall has a basement-height opening for the authored parking ramp.
+		// A single floor-agnostic AABB here made the rendered exit impassable.
+		const exitHalfWidth = PARKING_EXIT_RAMP.width / 2 + 0.5;
+		this.add(-hw - wallT, -hw + 0.2, -hd - wallT, -exitHalfWidth, { label: 'wall_w_north' });
+		this.add(-hw - wallT, -hw + 0.2, exitHalfWidth, hd + wallT, { label: 'wall_w_south' });
+		this.add(-hw - wallT, -hw + 0.2, -exitHalfWidth, exitHalfWidth, {
+			minY: -0.5,
+			maxY: ROOF_H + 2,
+			label: 'wall_w_above_exit',
+		});
 		this.add(hw - 0.2, hw + wallT, -hd - wallT, hd + wallT, { label: 'wall_e' });
 		this.add(-hw - wallT, hw + wallT, -hd - wallT, -hd + 0.2, { label: 'wall_n' });
 		this.add(-hw - wallT, hw + wallT, hd - 0.2, hd + wallT, { label: 'wall_s' });
@@ -217,11 +266,12 @@ export class CollisionWorld {
 			});
 		}
 
-		// Escalator volume (east only)
-		this.add(20.8, 23.2, -3.5, 9, { label: 'escalator', climbable: true });
-
-		// Stairs volume (west only) — does NOT overlap escalator
-		this.add(-23.5, -20.5, -15.5, 5, { label: 'stairs', climbable: true });
+		for (const connector of [ESCALATOR, STAIRS]) {
+			this.add(connector.collision.minX, connector.collision.maxX, connector.collision.minZ, connector.collision.maxZ, {
+				label: connector.id,
+				climbable: true,
+			});
+		}
 
 		// No barrier boxes at the shaft heads: they sat exactly where a climber is
 		// at y≈5.5 and shoved sims off the top of the flight. The openings are
@@ -232,7 +282,11 @@ export class CollisionWorld {
 
 		// Floor-1 VOID (architect: weide/void) — cannot walk over atrium hole
 		// Hole is roughly ±8 x ±6 on floor 1 — solid barrier so sims don't hang mid-air
-		this.add(-8.5, 8.5, -6.5, 6.5, { minY: 4.5, maxY: 12, label: 'void_f1' });
+		this.add(-ATRIUM_BARRIER.halfWidth, ATRIUM_BARRIER.halfWidth, -ATRIUM_BARRIER.halfDepth, ATRIUM_BARRIER.halfDepth, {
+			minY: 4.5,
+			maxY: 12,
+			label: 'void_f1',
+		});
 
 		// (No UFO pad box any more — the saucer hovers in the atrium void, so the
 		//  floor-1 balcony at z≈16 is walkable again.)
@@ -255,6 +309,10 @@ export class CollisionWorld {
 	 * hard-coded windows are what made sims pop on the west stairs.
 	 */
 	snapFloorY(x: number, z: number, y: number): number {
+		for (const ramp of this.pathRamps) {
+			const surface = pathRampSurface(ramp, x, z, 0.5);
+			if (surface !== null && Math.abs(surface - y) < 1) return surface;
+		}
 		if (y > 0.4 && y < FLOOR_H - 0.4) {
 			for (const r of this.ramps) {
 				if (r.label === 'secret_stairs') continue;
@@ -294,6 +352,10 @@ export class CollisionWorld {
 	 * doesn't snap you to the deck above.
 	 */
 	groundHeightAt(x: number, z: number, currentY: number, step = 0.7): number {
+		for (const ramp of this.pathRamps) {
+			const surface = pathRampSurface(ramp, x, z, 0.2);
+			if (surface !== null && Math.abs(surface - currentY) <= step + 0.2) return surface;
+		}
 		// Platforms and flights that sit ABOVE a roof pad go first. The pads span
 		// whole decks and answer unconditionally up here (`currentY > FLOOR_H + 2`),
 		// so anything standing on one is unreachable if the pad is asked first.
@@ -333,7 +395,7 @@ export class CollisionWorld {
 		// balustrade-jump drops through, and the drone can descend back in through
 		// the skylight (capped just under ROOF_H so roof walkers aren't affected).
 		// Does not punch into the basement garage.
-		if (currentY < ROOF_H - 0.5 && currentY > 0.3 && Math.abs(x) < CollisionWorld.VOID_X && Math.abs(z) < CollisionWorld.VOID_Z) {
+		if (currentY < ROOF_H - 0.5 && currentY > 0.3 && Math.abs(x) < ATRIUM_VOID.halfWidth && Math.abs(z) < ATRIUM_VOID.halfDepth) {
 			return 0;
 		}
 
@@ -396,6 +458,13 @@ export class CollisionWorld {
 
 	/** True while the climber is standing on an incline rather than a slab. */
 	onRamp(x: number, z: number, y: number): boolean {
+		if (
+			this.pathRamps.some(
+				(ramp) => pathRampSurface(ramp, x, z, 0.2) !== null && Math.abs((pathRampSurface(ramp, x, z) ?? y) - y) < 0.7,
+			)
+		) {
+			return true;
+		}
 		return (
 			y > 0.6 &&
 			y < FLOOR_H - 0.6 &&
@@ -427,7 +496,11 @@ export class CollisionWorld {
 	): { x: number; z: number } {
 		let px = x;
 		let pz = z;
-		const city = this.boundsMode === 'city';
+		const inGarageExit =
+			y < 0.8 &&
+			px <= Math.max(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x) + 1.5 &&
+			Math.abs(pz - PARKING_EXIT_RAMP.start.z) <= PARKING_EXIT_RAMP.width / 2 + 1;
+		const city = this.boundsMode === 'city' || inGarageExit;
 		for (let iter = 0; iter < iterations; iter++) {
 			for (const b of this.boxes) {
 				if (climb && b.climbable) continue;
@@ -476,8 +549,8 @@ export class CollisionWorld {
 		} else {
 			// Keep inside mall footprint with margin
 			const m = 1.2;
-			const hw = MALL_W / 2 - m;
-			const hd = MALL_D / 2 - m;
+			const hw = MALL_FOOTPRINT.halfWidth - m;
+			const hd = MALL_FOOTPRINT.halfDepth - m;
 			px = Math.max(-hw, Math.min(hw, px));
 			pz = Math.max(-hd, Math.min(hd, pz));
 		}

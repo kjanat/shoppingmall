@@ -138,7 +138,7 @@ const server = serve({
 
 console.log(
 	`\
-[Mall] game + /api on ${link(server.url)}
+[Mall] game + /api on ${link(server.url.href.replace('0.0.0.0', 'localhost'))}
 \tDEV=${dev}
 \tELEVENLABS=${!!env['ELEVENLABS_API_KEY']}
 \tYOUTUBE=${!!env['YOUTUBE_API_KEY']}

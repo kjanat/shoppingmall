@@ -1,0 +1,188 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
+import { receiverAccepts, validateSpatialWorld } from '#/data/spatial';
+import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, WORLD_ENTITIES } from '#/data/world';
+
+const ZERO_ROTATION = { yaw: 0, pitch: 0, roll: 0 } as const;
+const STATIC_RECEIVER = {
+	mobility: 'static',
+	mass: null,
+	tags: ['anchored'],
+	channels: [],
+	responses: { translation: 'none', rotation: 'none' },
+} as const;
+
+function entity(id: string, placementClass: WorldEntity['placement']['class'], volumes: readonly SpatialVolume[]): WorldEntity {
+	return {
+		id,
+		label: id,
+		category: 'fixture',
+		levels: ['test'],
+		transform: { position: { x: 0, y: 0, z: 0 }, rotation: ZERO_ROTATION },
+		volumes,
+		ports: [],
+		placement: {
+			class: placementClass,
+			requiresSupport: placementClass !== 'structure',
+			mayCover: placementClass === 'clutter' ? ['decorative-covering'] : [],
+			mayBeCoveredBy: placementClass === 'covering' ? ['clutter'] : [],
+		},
+		kinematics: { kind: 'static' },
+		mechanisms: [],
+		receiver: STATIC_RECEIVER,
+		emitters: [],
+		map: { visible: true, layer: 'fixture', priority: 1 },
+		tags: [placementClass],
+	};
+}
+
+function prism(
+	id: string,
+	role: SpatialVolume['role'],
+	centerX: number,
+	centerZ: number,
+	width: number,
+	depth: number,
+	minY: number,
+	maxY: number,
+	blocksMovement: boolean,
+	blocksClearance: boolean,
+	holes: readonly PlanShape[] = [],
+): SpatialVolume {
+	return {
+		id,
+		role,
+		geometry: {
+			kind: 'prism',
+			plan: { kind: 'rectangle', center: { x: centerX, z: centerZ }, width, depth, yaw: 0 },
+			minY,
+			maxY,
+			holes,
+		},
+		blocksMovement,
+		clearance: blocksClearance ? { kind: 'fixed-obstruction' } : { kind: 'clear' },
+		allowsOverlapFrom: role === 'decorative-covering' ? ['clutter'] : [],
+		tags: [role],
+	};
+}
+
+const OPEN_STAIR: SpatialVolume = {
+	id: 'flight',
+	role: 'connector-clearance',
+	geometry: {
+		kind: 'flight-clearance',
+		start: { x: 0, y: 0, z: 0 },
+		end: { x: 0, y: 4, z: 4 },
+		width: 2,
+		height: 2.2,
+	},
+	blocksMovement: false,
+	clearance: { kind: 'clear' },
+	allowsOverlapFrom: ['connector'],
+	tags: ['stairs', 'headroom'],
+};
+
+describe('authoritative spatial world', () => {
+	test('the authored world has valid geometry, openings, ports, and interactions', () => {
+		assert.deepEqual(validateSpatialWorld(WORLD_ENTITIES), []);
+	});
+
+	test('low fixtures fit below an open stair while tall fixtures intersect it', () => {
+		const stairs = entity('stairs', 'connector', [OPEN_STAIR]);
+		const floor = entity('floor', 'structure', [prism('surface', 'support', 0, 3, 4, 4, -0.2, 0, false, true)]);
+		const low = entity('low-cabinet', 'fixture', [prism('body', 'solid', 0, 3, 1, 0.8, 0, 1.5, true, true)]);
+		assert.deepEqual(validateSpatialWorld([floor, stairs, low]), []);
+
+		const tall = entity('tall-cabinet', 'fixture', [prism('body', 'solid', 0, 3, 1, 0.8, 0, 3.2, true, true)]);
+		assert.ok(validateSpatialWorld([floor, stairs, tall]).some((problem) => problem.code === 'blocked-clearance'));
+	});
+
+	test('a helipad slab over a roof opening fails unless its geometry contains the cut-out', () => {
+		const hole = { kind: 'rectangle', center: { x: 0, z: 0 }, width: 2, depth: 3, yaw: 0 } as const;
+		const opening = entity('roof-opening', 'structure', [
+			prism('clearance', 'opening-clearance', 0, 0, 2, 3, 0, 4, false, false),
+		]);
+		const closedDeck = entity('closed-deck', 'structure', [prism('deck', 'support', 0, 0, 8, 8, 3.5, 4, false, true)]);
+		assert.ok(validateSpatialWorld([opening, closedDeck]).some((problem) => problem.code === 'blocked-clearance'));
+
+		const cutDeck = entity('cut-deck', 'structure', [prism('deck', 'support', 0, 0, 8, 8, 3.5, 4, false, true, [hole])]);
+		assert.deepEqual(validateSpatialWorld([opening, cutDeck]), []);
+	});
+
+	test('an opaque visual hatch blocks the route unless it has a validated automatic opening mechanism', () => {
+		const opening = entity('hatch-opening', 'structure', [
+			prism('clearance', 'opening-clearance', 0, 0, 2, 3, 0, 4, false, false),
+		]);
+		const fixedPlateVolume: SpatialVolume = {
+			...prism('lid', 'solid', 0, 0, 2, 3, 3.8, 4, false, false),
+			clearance: { kind: 'fixed-obstruction' },
+		};
+		const fixedPlate = entity('fixed-black-hatch', 'structure', [fixedPlateVolume]);
+		assert.ok(validateSpatialWorld([opening, fixedPlate]).some((problem) => problem.code === 'blocked-clearance'));
+
+		const automaticLid: SpatialVolume = { ...fixedPlateVolume, clearance: { kind: 'automatic-gate', mechanismId: 'auto-open' } };
+		const trigger = prism('presence', 'trigger', 0, -1.8, 3, 2, 0, 4, false, false);
+		const automaticHatch: WorldEntity = {
+			...entity('automatic-hatch', 'structure', [automaticLid, trigger]),
+			mechanisms: [
+				{
+					id: 'auto-open',
+					kind: 'hinged',
+					stateId: 'hatch-angle',
+					movingVolumeIds: ['lid'],
+					triggerVolumeId: 'presence',
+					openState: { rotationRadians: Math.PI / 2 },
+					openingSeconds: 0.6,
+					failSafe: 'open',
+				},
+			],
+		};
+		assert.deepEqual(validateSpatialWorld([opening, automaticHatch]), []);
+	});
+
+	test('multi-stop elevator ports are reciprocal', () => {
+		assert.equal(ELEVATOR_ENTITY.ports.length, 4);
+		for (const port of ELEVATOR_ENTITY.ports) assert.equal(port.connectsTo.length, 3);
+	});
+
+	test('vector effects only select compatible receivers', () => {
+		const escalator = CONNECTOR_ENTITIES.find((candidate) => candidate.id === 'escalator');
+		const emitter = escalator?.emitters[0];
+		assert.ok(emitter);
+		const passenger: InteractionReceiver = {
+			mobility: 'character',
+			mass: 80,
+			tags: ['grounded'],
+			channels: ['conveyor'],
+			responses: { translation: 'integrate', rotation: 'none' },
+		};
+		const railing: InteractionReceiver = {
+			mobility: 'static',
+			mass: null,
+			tags: ['anchored'],
+			channels: [],
+			responses: { translation: 'none', rotation: 'none' },
+		};
+		assert.equal(receiverAccepts(emitter, passenger), true);
+		assert.equal(receiverAccepts(emitter, railing), false);
+	});
+
+	test('clutter may rest over a decorative covering', () => {
+		const floor = entity('floor', 'structure', [prism('surface', 'support', 0, 0, 6, 6, -0.2, 0, false, true)]);
+		const carpet = entity('carpet', 'covering', [prism('fabric', 'decorative-covering', 0, 0, 4, 4, 0, 0.02, false, false)]);
+		const wrapper = entity('burger-wrapper', 'clutter', [prism('paper', 'solid', 0.2, 0, 0.3, 0.25, 0.015, 0.035, true, true)]);
+		const coke = entity('coke-can', 'clutter', [
+			{
+				id: 'can',
+				role: 'solid',
+				geometry: { kind: 'cylinder', center: { x: -0.2, y: 0.08, z: 0 }, radius: 0.035, height: 0.16, axis: 'y' },
+				blocksMovement: true,
+				clearance: { kind: 'fixed-obstruction' },
+				allowsOverlapFrom: ['covering'],
+				tags: ['clutter'],
+			},
+		]);
+		assert.deepEqual(validateSpatialWorld([floor, carpet, wrapper, coke]), []);
+	});
+});

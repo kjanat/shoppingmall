@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { speakLine } from '#/audio/ElevenVoice';
 import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '#/data/levels';
-import { EYE } from '#/player/Controls';
+import { ELEVATOR_SPEC } from '#/data/world';
+import { EYE } from '#/player/constants';
 import type { LightPool } from '#/render/LightPool';
 import { type LitMaterial, lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
@@ -12,15 +13,15 @@ const FLOOR_B = levelY('p1');
 const FLOOR0 = levelY('v0');
 
 const FLOOR2 = levelY('roof');
-const CABIN_H = 2.55;
-const CABIN_W = 2.0;
-const CABIN_D = 2.0;
-const SPEED = 1.85; // m/s vertical
+const CABIN_H = ELEVATOR_SPEC.cabin.height;
+const CABIN_W = ELEVATOR_SPEC.cabin.width;
+const CABIN_D = ELEVATOR_SPEC.cabin.depth;
+const SPEED = ELEVATOR_SPEC.speed;
 
 /** Halve breedte van het plein op dak en garage, rond het hart van de schacht. */
-const PAD_HALF = 2.75;
+const PAD_HALF = ELEVATOR_SPEC.padHalf;
 /** Speling tussen de cabine en de rand van het schachtgat in dat plein. */
-const SHAFT_GAP = 0.12;
+const SHAFT_GAP = ELEVATOR_SPEC.shaftGap;
 
 /**
  * Het plein op dak en garage, met het schachtgat erin. Het gat volgt de
@@ -97,7 +98,7 @@ const HANS_LINES: Record<LevelId, string[]> = {
 export class GlassElevator {
 	readonly group = new THREE.Group();
 	/** Shaft center XZ */
-	readonly pos = new THREE.Vector3(16, 0, -8);
+	readonly pos = new THREE.Vector3(ELEVATOR_SPEC.center.x, 0, ELEVATOR_SPEC.center.z);
 	private materials: THREE.Material[] = [];
 	private cabin = new THREE.Group();
 	private cabinFloor!: THREE.Mesh;

@@ -27,6 +27,16 @@ export type SceneBatchStats = {
 	batchedMeshes: number;
 	drawCalls: number;
 	largestRadius: number;
+	owners: readonly BatchOwnerStats[];
+};
+
+export type BatchOwnerStats = {
+	name: string;
+	dynamic: boolean;
+	sources: number;
+	batches: number;
+	triangles: number;
+	largestRadius: number;
 };
 
 /** A cell is wide enough to avoid turning every shop into its own draw call,
@@ -63,6 +73,10 @@ function growBounds(mesh: THREE.BatchedMesh, source: SourceInstance): void {
 function instanceColor(material: ColorMaterial): THREE.Vector4 {
 	const color = material.color ?? WHITE;
 	return INSTANCE_COLOR.set(color.r, color.g, color.b, material.opacity);
+}
+
+function geometryTriangles(geometry: THREE.BufferGeometry): number {
+	return (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
 }
 
 function materialKey(material: ColorMaterial): string {
@@ -208,6 +222,7 @@ export class SceneBatcher {
 		let sourceMeshes = 0;
 		let dynamicSources = 0;
 		let largestRadius = 0;
+		const ownerStats = new Map<string, BatchOwnerStats>();
 		const groups: CompatibleGroup[] = [];
 		for (const group of compatible.values()) {
 			let minX = Number.POSITIVE_INFINITY;
@@ -319,7 +334,22 @@ export class SceneBatcher {
 			sourceMeshes += sources.length;
 			if (dynamicRoot) dynamicSources += sources.length;
 			batched.computeBoundingSphere();
-			largestRadius = Math.max(largestRadius, batched.boundingSphere?.radius ?? 0);
+			const radius = batched.boundingSphere?.radius ?? 0;
+			largestRadius = Math.max(largestRadius, radius);
+			const ownerKey = dynamicRoot?.uuid ?? 'static';
+			const owner = ownerStats.get(ownerKey) ?? {
+				name: dynamicRoot?.name || (dynamicRoot ? '(unnamed dynamic root)' : '(static)'),
+				dynamic: dynamicRoot !== null,
+				sources: 0,
+				batches: 0,
+				triangles: 0,
+				largestRadius: 0,
+			};
+			owner.sources += sources.length;
+			owner.batches++;
+			owner.triangles += meshes.reduce((sum, mesh) => sum + geometryTriangles(mesh.geometry), 0);
+			owner.largestRadius = Math.max(owner.largestRadius, radius);
+			ownerStats.set(ownerKey, owner);
 			this.batches.push({ mesh: batched, sources, dynamicRoot });
 			scene.add(batched);
 		}
@@ -331,6 +361,7 @@ export class SceneBatcher {
 			batchedMeshes: this.batches.length,
 			drawCalls: this.batches.length,
 			largestRadius,
+			owners: [...ownerStats.values()],
 		};
 	}
 

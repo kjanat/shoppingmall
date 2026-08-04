@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import { MALL_SHELL } from '#/data/layout';
 import { type LevelId, levelAt } from '#/data/levels';
 import { type CollisionWorld, WALK_STEP } from '#/physics/Collision';
+import { EYE } from '#/player/constants';
 
-export const EYE = 1.68;
+export { EYE } from '#/player/constants';
 
 const WALK = 4.4;
 const RUN = 8.4;
@@ -658,7 +660,7 @@ export class PlayerControls {
 		// Verticaal: binnen de mall onder het plafond blijven, behalve boven het
 		// atrium-gat of buiten de muren — daar mag je omhoog de stad in.
 		this.feetY += this.vy * dt;
-		const insideMall = Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5;
+		const insideMall = Math.abs(p.x) < MALL_SHELL.halfWidth && Math.abs(p.z) < MALL_SHELL.halfDepth;
 		const overVoid = Math.abs(p.x) < 7.4 && Math.abs(p.z) < 5.4;
 		const ceiling = insideMall && !overVoid && this.feetY < 13.4 ? 12.6 : 55;
 		let floor = 0.45;

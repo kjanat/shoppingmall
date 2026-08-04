@@ -15,7 +15,7 @@ Bun, not npm. There is no Vite in this project.
 | `run build:static` | same, Pages target (no `/api`)                                                     |
 | `run typecheck`    | `tsc --noEmit`                                                                     |
 | `run lint`         | `biome check` (`bun run fmt` to fix + dprint)                                      |
-| `run check`        | `check-world.ts` + `check-lights.ts`, world & light invariants, no browser needed  |
+| `run check`        | world, light, and profiler-route invariants; no browser needed                     |
 | `run diagnose`     | what a frame is made of (see Performance)                                          |
 | `run bench`        | frame-time benchmark with drift detection                                          |
 | `run profile`      | traverse the named mall route and compare every segment                            |
@@ -62,6 +62,10 @@ Aliases: `#/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensi
   follow whichever the file already uses.
 - **Never duplicate a constant across two files.** `bun run check` exists because that kept happening, and it reads
   values back out of the source rather than restating them.
+- **Investigate remarkable results before naming a cause.** When a measurement is surprising, contradictory, unstable,
+  or otherwise remarkable, follow it up with targeted checks. Keep observations, hypotheses, and confirmed causes
+  explicitly separate. If the available evidence cannot distinguish the plausible explanations, report the cause as
+  unknown and state what evidence would resolve it. Never present an untested hypothesis as fact.
 - **Use the Edit tool for file changes, never a shell heredoc.** A scripted rewrite does not show up as a live diff, so
   nobody sees the change while it happens. A silently non-matching replacement already shipped a panel that threw on
   boot because half of a two-part edit applied.
@@ -88,7 +92,7 @@ option behind a switch, ship it, say "I built all three, try them". Do not pick 
 
 ## World invariants
 
-[check-world](scripts/check-world.ts) and [check-lights](scripts/check-lights.ts) run on every build (headless, with the canvas and audio stubs from
+[check-world](scripts/check-world.ts), [check-lights](scripts/check-lights.ts), and the profiler-route tests run on every build (headless, with the canvas and audio stubs from
 [stub-dom](scripts/stub-dom.ts)). check-world boots the collision world and the two shop builders and asserts things like: ramps line
 up with the floor holes cut for them, the ladder is actually climbable step by step, swimmers are inside the waterline,
 every shop has inventory. check-lights boots every light-owning feature against one `LightPool` and asserts the scene

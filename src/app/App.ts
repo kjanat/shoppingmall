@@ -7,12 +7,14 @@ import { fetchDjStatus, playBoothFile, speakLine } from '#/audio/ElevenVoice';
 import { spatial } from '#/audio/SpatialAudio';
 import { Director } from '#/camera/Director';
 import type { GraphNode } from '#/data/graph';
+import { MALL_SHELL, WORLD_VIEW_DISTANCE } from '#/data/layout';
 import { type LevelId, level, levelAt, levelY } from '#/data/levels';
 import { getKruidvat, getStore, type StoreDef, shopStores } from '#/data/stores';
 import { Pathfinder } from '#/path/Pathfinder';
 import { PathMesh } from '#/path/PathMesh';
 import { CollisionWorld } from '#/physics/Collision';
 import { PlayerControls } from '#/player/Controls';
+import { EYE } from '#/player/constants';
 import { createComposer } from '#/post/Composer';
 import { GpuTimer } from '#/render/GpuTimer';
 import { lampCount } from '#/render/graphicsPrefs';
@@ -100,7 +102,7 @@ const DYN_RES_UP_FACTOR = 1.12;
 const FRAME_MS_SPIKE = 250;
 
 type PerfPose = { x: number; y: number; z: number; lookX: number; lookY: number; lookZ: number };
-type PerfCpuFrame = { logicMs: number; batchMs: number; submitMs: number };
+type PerfCpuFrame = { logicMs: number; batchMs: number; submitMs: number; triangles: number };
 
 export class App {
 	private renderer: THREE.WebGLRenderer;
@@ -179,7 +181,10 @@ export class App {
 	private gpuTimer: GpuTimer | null = null;
 	/** Populated only through the pre-document profiling probe. */
 	private perfPose: PerfPose | null = null;
-	private readonly perfCpuFrame: PerfCpuFrame = { logicMs: 0, batchMs: 0, submitMs: 0 };
+	/** Freeze simulation time while the external probe compares render configurations. */
+	private perfFrozen = false;
+	private perfFrozenElapsed = 0;
+	private readonly perfCpuFrame: PerfCpuFrame = { logicMs: 0, batchMs: 0, submitMs: 0, triangles: 0 };
 	/** Zaallicht-schaal en de discodim lopen allebei hierlangs. */
 	private daylight!: DaylightDimmer;
 	/** Hergebruikt: getDrawingBufferSize schrijft in een doelvector, elk frame. */
@@ -309,7 +314,7 @@ export class App {
 		canvasParent.appendChild(this.renderer.domElement);
 
 		// Wider FOV feels more first-person / walking through a mall
-		this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.15, 200);
+		this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.15, WORLD_VIEW_DISTANCE);
 
 		this.disco.bindScene(this.scene);
 		this.scene.add(this.mall.build());
@@ -590,6 +595,13 @@ export class App {
 				clearPose: (): void => {
 					this.perfPose = null;
 				},
+				setFrozen: (frozen: unknown): boolean => {
+					if (typeof frozen !== 'boolean') return false;
+					if (frozen && !this.perfFrozen) this.perfFrozenElapsed = this.timer.getElapsed();
+					this.perfFrozen = frozen;
+					return true;
+				},
+				readBatchOwners: () => this.sceneBatcher.stats.owners,
 				readCpuFrame: (): PerfCpuFrame => this.perfCpuFrame,
 			});
 		}
@@ -1271,11 +1283,13 @@ export class App {
 		}
 
 		const ground =
-			Math.abs(p.x) < 36.5 && Math.abs(p.z) < 24.5 ? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3) : 0;
+			Math.abs(p.x) < MALL_SHELL.halfWidth && Math.abs(p.z) < MALL_SHELL.halfDepth
+				? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3)
+				: 0;
 		this.drone.parkAt(new THREE.Vector3(p.x, ground, p.z));
 		// speler stapt er net naast uit
 		p.x += 1.2;
-		p.y = ground + 1.68;
+		p.y = ground + EYE;
 		this.player.syncFromCamera();
 		this.ui.setStatus('Uitgestapt — de drone wacht hier op je (E)');
 	}
@@ -1960,12 +1974,14 @@ export class App {
 		requestAnimationFrame(this.animate);
 		// THREE.Timer: update once per frame, then query delta/elapsed (stable multi-read)
 		this.timer.update(timestamp);
-		const dt = Math.min(this.timer.getDelta(), 0.05);
-		const elapsed = this.timer.getElapsed();
+		const measuredDt = Math.min(this.timer.getDelta(), 0.05);
+		const measuredElapsed = this.timer.getElapsed();
+		const dt = this.perfFrozen ? 0 : measuredDt;
+		const elapsed = this.perfFrozen ? this.perfFrozenElapsed : measuredElapsed;
 		// Ongeklemde frametijd uit de rAF-timestamps zelf: dt hierboven is op
 		// 50 ms afgekapt, en een meting die daarop leunt verzadigt precies waar
 		// er ingegrepen moet worden: een 62ms-frame leest dan als 50.
-		const frameMs = timestamp !== undefined && this.lastRafTs !== null ? timestamp - this.lastRafTs : dt * 1000;
+		const frameMs = timestamp !== undefined && this.lastRafTs !== null ? timestamp - this.lastRafTs : measuredDt * 1000;
 		if (timestamp !== undefined) this.lastRafTs = timestamp;
 		this.updateDynRes(frameMs);
 		// CPU-klok van dit frame. Zonder deze splitsing zegt een frametijd van
@@ -2380,6 +2396,7 @@ export class App {
 		this.perfCpuFrame.logicMs = afterLogic - cpuStart;
 		this.perfCpuFrame.batchMs = afterBatch - afterLogic;
 		this.perfCpuFrame.submitMs = afterRender - afterBatch;
+		this.perfCpuFrame.triangles = this.renderer.info.render.triangles;
 
 		// Ná de render: de tellers van dit frame staan er nu in. Onder NO_PERF_HUD
 		// valt dit hele blok weg, inclusief het uitlezen van renderer.info.

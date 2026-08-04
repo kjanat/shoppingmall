@@ -1,7 +1,17 @@
 import { EDGES, NODES } from '#/data/graph';
 import { getInventory } from '#/data/inventory';
+import { ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { type LevelId, level, levelAt } from '#/data/levels';
 import { CATEGORY_LABELS, getKruidvat, STORES, type StoreCategory, type StoreDef } from '#/data/stores';
+import {
+	ELEVATOR_OPENING_ROOF,
+	ESCALATOR,
+	HELIPAD_DECK_BOUNDS,
+	HELIPAD_PAD_SPEC,
+	SECRET_STAIRS_OPENING_BOUNDS,
+	STAIRS,
+	WORLD_ENTITIES,
+} from '#/data/world';
 import { qs } from '#/util/dom';
 import { at } from '#/util/rand';
 
@@ -18,8 +28,6 @@ export type MapState = {
 	target: { x: number; z: number; level: LevelId; name: string } | null;
 };
 
-const MALL_W = 72;
-const MALL_D = 48;
 const ZOOM_STEPS = [2.4, 3.4, 4.8, 6.6] as const;
 
 const NODE_BY_ID = new Map(NODES.map((n) => [n.id, n]));
@@ -36,8 +44,24 @@ const CORRIDORS = EDGES.flatMap((e) => {
 
 /** Escalator + stairs, so the map actually shows how to reach floor 1. */
 const VERTICALS = [
-	{ x: 22, z: 3, label: 'ROLTRAP', short: '⇅' },
-	{ x: -22, z: -5, label: 'TRAP', short: '⇅' },
+	{
+		x: ESCALATOR.x,
+		z: (ESCALATOR.zBottom + ESCALATOR.zTop) / 2,
+		minZ: Math.min(ESCALATOR.zBottom, ESCALATOR.zTop) - ESCALATOR.apron,
+		maxZ: Math.max(ESCALATOR.zBottom, ESCALATOR.zTop) + ESCALATOR.apron,
+		width: ESCALATOR.width,
+		label: 'ROLTRAP',
+		short: '⇅',
+	},
+	{
+		x: STAIRS.x,
+		z: (STAIRS.zBottom + STAIRS.zTop) / 2,
+		minZ: Math.min(STAIRS.zBottom, STAIRS.zTop) - STAIRS.apron,
+		maxZ: Math.max(STAIRS.zBottom, STAIRS.zTop) + STAIRS.apron,
+		width: STAIRS.width,
+		label: 'TRAP',
+		short: '⇅',
+	},
 ];
 
 /** Things worth walking to that aren't shops. */
@@ -615,37 +639,57 @@ export class KioskOverlay {
 	private paintRoofLayer(ctx: CanvasRenderingContext2D, px: number): void {
 		// Loopbare dekken
 		ctx.fillStyle = 'rgba(90,100,115,0.55)';
-		ctx.fillRect(8, 7, 24, 16); // helipad-dek ZO
+		ctx.fillRect(
+			HELIPAD_DECK_BOUNDS.minX,
+			HELIPAD_DECK_BOUNDS.minZ,
+			HELIPAD_DECK_BOUNDS.maxX - HELIPAD_DECK_BOUNDS.minX,
+			HELIPAD_DECK_BOUNDS.maxZ - HELIPAD_DECK_BOUNDS.minZ,
+		);
 		ctx.fillRect(12, -12, 16, 20); // lift-corridor
 		ctx.fillStyle = 'rgba(214,196,150,0.6)'; // zand
 		ctx.fillRect(-32, -20, 26, 40); // ROOF ISLAND
 
 		// Atrium-skylight (open — hier vlieg je doorheen)
 		ctx.fillStyle = 'rgba(56,120,190,0.4)';
-		ctx.fillRect(-8, -6, 16, 12);
+		ctx.fillRect(-ATRIUM_VOID.halfWidth, -ATRIUM_VOID.halfDepth, ATRIUM_VOID.width, ATRIUM_VOID.depth);
 		ctx.setLineDash([1.2 * px * 3, 1.2 * px * 3]);
 		ctx.strokeStyle = 'rgba(125,211,252,0.8)';
 		ctx.lineWidth = 1.5 * px;
-		ctx.strokeRect(-8, -6, 16, 12);
+		ctx.strokeRect(-ATRIUM_VOID.halfWidth, -ATRIUM_VOID.halfDepth, ATRIUM_VOID.width, ATRIUM_VOID.depth);
 		ctx.setLineDash([]);
 
 		// Helipad-H
 		ctx.strokeStyle = '#f5c518';
 		ctx.lineWidth = 2 * px;
 		ctx.beginPath();
-		ctx.arc(22, 16, 5.3, 0, Math.PI * 2);
+		ctx.arc(HELIPAD_PAD_SPEC.center.x, HELIPAD_PAD_SPEC.center.z, HELIPAD_PAD_SPEC.mapRadius, 0, Math.PI * 2);
 		ctx.stroke();
 
 		// Trapgat naar V1 (secret stairs) — open gat, rood gemarkeerd
 		ctx.fillStyle = 'rgba(8,11,20,0.9)';
-		ctx.fillRect(24.5, 13.65, 3, 5.2);
+		ctx.fillRect(
+			SECRET_STAIRS_OPENING_BOUNDS.minX,
+			SECRET_STAIRS_OPENING_BOUNDS.minZ,
+			SECRET_STAIRS_OPENING_BOUNDS.maxX - SECRET_STAIRS_OPENING_BOUNDS.minX,
+			SECRET_STAIRS_OPENING_BOUNDS.maxZ - SECRET_STAIRS_OPENING_BOUNDS.minZ,
+		);
 		ctx.strokeStyle = 'rgba(248,113,113,0.9)';
 		ctx.lineWidth = 1.4 * px;
-		ctx.strokeRect(24.5, 13.65, 3, 5.2);
+		ctx.strokeRect(
+			SECRET_STAIRS_OPENING_BOUNDS.minX,
+			SECRET_STAIRS_OPENING_BOUNDS.minZ,
+			SECRET_STAIRS_OPENING_BOUNDS.maxX - SECRET_STAIRS_OPENING_BOUNDS.minX,
+			SECRET_STAIRS_OPENING_BOUNDS.maxZ - SECRET_STAIRS_OPENING_BOUNDS.minZ,
+		);
 
 		// Glazen lift
 		ctx.fillStyle = 'rgba(125,211,252,0.7)';
-		ctx.fillRect(14.8, -9.2, 2.4, 2.4);
+		ctx.fillRect(
+			ELEVATOR_OPENING_ROOF.center.x - ELEVATOR_OPENING_ROOF.size.width / 2,
+			ELEVATOR_OPENING_ROOF.center.z - ELEVATOR_OPENING_ROOF.size.depth / 2,
+			ELEVATOR_OPENING_ROOF.size.width,
+			ELEVATOR_OPENING_ROOF.size.depth,
+		);
 
 		// Zwembad + glijbaantoren op het eiland
 		ctx.fillStyle = 'rgba(56,189,248,0.75)';
@@ -663,10 +707,10 @@ export class KioskOverlay {
 
 		// Shell
 		ctx.fillStyle = 'rgba(30,41,59,0.55)';
-		ctx.fillRect(-MALL_W / 2, -MALL_D / 2, MALL_W, MALL_D);
+		ctx.fillRect(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth, MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth);
 		ctx.lineWidth = 2 * px;
 		ctx.strokeStyle = 'rgba(148,163,184,0.6)';
-		ctx.strokeRect(-MALL_W / 2, -MALL_D / 2, MALL_W, MALL_D);
+		ctx.strokeRect(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth, MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth);
 
 		// DAK: eigen laag — geen V1-gangen maar helipad, eiland, trapgat en lift
 		if (lvl === 'roof') {
@@ -693,33 +737,39 @@ export class KioskOverlay {
 			ctx.fill();
 		} else {
 			ctx.fillStyle = 'rgba(8,11,20,0.9)';
-			ctx.fillRect(-8, -6, 16, 12);
+			ctx.fillRect(-ATRIUM_VOID.halfWidth, -ATRIUM_VOID.halfDepth, ATRIUM_VOID.width, ATRIUM_VOID.depth);
 			ctx.setLineDash([1.2 * px * 3, 1.2 * px * 3]);
 			ctx.strokeStyle = 'rgba(248,113,113,0.7)';
 			ctx.lineWidth = 1.5 * px;
-			ctx.strokeRect(-8, -6, 16, 12);
+			ctx.strokeRect(-ATRIUM_VOID.halfWidth, -ATRIUM_VOID.halfDepth, ATRIUM_VOID.width, ATRIUM_VOID.depth);
 			ctx.setLineDash([]);
 		}
 
 		// Stores
-		for (const s of STORES) {
-			if (s.id === 'info' || s.level !== lvl) continue;
-			const x0 = s.x - s.width / 2;
-			const z0 = s.z - s.depth / 2;
-			ctx.fillStyle = s.hero ? 'rgba(0,166,81,0.55)' : 'rgba(148,163,184,0.28)';
-			ctx.fillRect(x0, z0, s.width, s.depth);
+		for (const shop of WORLD_ENTITIES) {
+			if (shop.category !== 'shop' || !shop.levels.includes(lvl)) continue;
+			const room = shop.volumes.find((volume) => volume.id === 'room-shell');
+			if (room?.geometry.kind !== 'prism' || room.geometry.plan.kind !== 'rectangle') continue;
+			const store = STORES.find((candidate) => `shop-${candidate.id}` === shop.id);
+			const plan = room.geometry.plan;
+			ctx.save();
+			ctx.translate(plan.center.x, plan.center.z);
+			ctx.rotate(-plan.yaw);
+			ctx.fillStyle = store?.hero ? 'rgba(0,166,81,0.55)' : 'rgba(148,163,184,0.28)';
+			ctx.fillRect(-plan.width / 2, -plan.depth / 2, plan.width, plan.depth);
 			ctx.lineWidth = 1.4 * px;
-			ctx.strokeStyle = s.hero ? '#00e676' : 'rgba(226,232,240,0.45)';
-			ctx.strokeRect(x0, z0, s.width, s.depth);
+			ctx.strokeStyle = store?.hero ? '#00e676' : 'rgba(226,232,240,0.45)';
+			ctx.strokeRect(-plan.width / 2, -plan.depth / 2, plan.width, plan.depth);
+			ctx.restore();
 		}
 
 		// Escalator + stairs shafts
 		for (const v of VERTICALS) {
 			ctx.fillStyle = 'rgba(251,191,36,0.35)';
-			ctx.fillRect(v.x - 1.4, v.z - 5.6, 2.8, 11.2);
+			ctx.fillRect(v.x - v.width / 2, v.minZ, v.width, v.maxZ - v.minZ);
 			ctx.strokeStyle = '#fbbf24';
 			ctx.lineWidth = 1.4 * px;
-			ctx.strokeRect(v.x - 1.4, v.z - 5.6, 2.8, 11.2);
+			ctx.strokeRect(v.x - v.width / 2, v.minZ, v.width, v.maxZ - v.minZ);
 		}
 
 		// Route — bright on this floor, ghosted on the other
@@ -811,20 +861,20 @@ export class KioskOverlay {
 
 		ctx.fillStyle = 'rgba(148,163,184,0.8)';
 		ctx.font = '600 10px ui-monospace, monospace';
-		ctx.fillText('N ↑', sx(0), sy(-MALL_D / 2) - 12);
+		ctx.fillText('N ↑', sx(0), sy(-MALL_FOOTPRINT.halfDepth) - 12);
 	}
 
 	private paintBigMap(): void {
 		const host = this.elBigCanvas.parentElement;
 		const cssW = Math.max(320, (host?.clientWidth ?? 820) - 36);
-		const cssH = cssW * ((MALL_D + 12) / (MALL_W + 12));
+		const cssH = cssW * ((MALL_FOOTPRINT.depth + 12) / (MALL_FOOTPRINT.width + 12));
 		const ctx = this.prep(this.elBigCanvas, cssW, cssH);
 		if (!ctx) return;
 
 		ctx.fillStyle = '#0a1020';
 		ctx.fillRect(0, 0, cssW, cssH);
 
-		const scale = Math.min(cssW / (MALL_W + 12), cssH / (MALL_D + 12));
+		const scale = Math.min(cssW / (MALL_FOOTPRINT.width + 12), cssH / (MALL_FOOTPRINT.depth + 12));
 		ctx.save();
 		ctx.translate(cssW / 2, cssH / 2);
 		ctx.scale(scale, scale);

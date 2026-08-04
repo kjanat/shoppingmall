@@ -14,7 +14,7 @@ import { createServer } from 'node:http';
 import { join, normalize, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { isSoftwareHeadless, launchPerfBrowser, type PerfBrowser } from './playwright.ts';
-import type { Environment, PassTiming, RoutePose, Sample } from './probe.ts';
+import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample } from './probe.ts';
 import { probeSource } from './probe.ts';
 import { isRecord, readArray, readBoolean, readNumber, readString } from './values.ts';
 
@@ -97,6 +97,9 @@ export type GameSession = {
 	boot: (options?: { settleQuietMs?: number }) => Promise<{ readyMs: number; settleMs: number }>;
 	sample: (durationMs: number) => Promise<Sample>;
 	routeSegment: (from: RoutePose, to: RoutePose, durationMs: number) => Promise<Sample>;
+	setPose: (pose: RoutePose) => Promise<void>;
+	setFrozen: (frozen: boolean) => Promise<void>;
+	waitFrames: (count: number) => Promise<void>;
 	environment: () => Promise<Environment>;
 	setViewport: (width: number, height: number) => Promise<void>;
 	close: () => Promise<void>;
@@ -169,8 +172,22 @@ export async function openGame(
 					durationMs + 60_000,
 				),
 			),
+		setPose: async (pose) => {
+			await evaluate(`__mallProbe.setPose(${JSON.stringify(pose)})`);
+		},
+		setFrozen: async (frozen) => {
+			await evaluate(`__mallProbe.setFrozen(${JSON.stringify(frozen)})`);
+		},
+		waitFrames: async (count) => {
+			await evaluate(`__mallProbe.waitFrames(${Math.max(1, Math.floor(count))})`);
+		},
 		environment: async () => parseEnvironment(await evaluate('__mallProbe.environment()')),
-		setViewport: (w, h) => browser.page.setViewportSize({ width: w, height: h }),
+		setViewport: async (w, h) => {
+			await browser.page.setViewportSize({ width: w, height: h });
+			// The first frames after a resize allocate a fresh composer target chain.
+			// Keep that one-time work outside the steady-state sample.
+			await evaluate('__mallProbe.waitFrames(10)');
+		},
 		close: async () => {
 			try {
 				await browser.close();
@@ -211,10 +228,13 @@ export function parseSample(value: unknown): Sample {
 		texUploadKbPerFrame: readNumber(value, 'texUploadKbPerFrame'),
 		drawCoverage: readNumber(value, 'drawCoverage'),
 		disjointDrops: readNumber(value, 'disjointDrops'),
+		queriesIssued: readNumber(value, 'queriesIssued'),
+		queriesResolved: readNumber(value, 'queriesResolved'),
 		linksDuringSample: readNumber(value, 'linksDuringSample'),
 		cpuLogicMsMean: readNumber(value, 'cpuLogicMsMean'),
 		cpuBatchMsMean: readNumber(value, 'cpuBatchMsMean'),
 		cpuSubmitMsMean: readNumber(value, 'cpuSubmitMsMean'),
+		trianglesPerFrame: readNumber(value, 'trianglesPerFrame'),
 	};
 	// Chrome can claim the document is visible and focused while Windows has put
 	// its occluded window on an exact 1 Hz compositor cadence. A genuinely 1 FPS
@@ -238,6 +258,19 @@ export function parseSample(value: unknown): Sample {
 
 export function parseEnvironment(value: unknown): Environment {
 	if (!isRecord(value)) throw new Error('probe returned no environment — is the probe installed?');
+	const batchOwners: BatchOwnerTiming[] = readArray(value, 'batchOwners').flatMap((entry) => {
+		if (!isRecord(entry)) return [];
+		return [
+			{
+				name: readString(entry, 'name', '?'),
+				dynamic: readBoolean(entry, 'dynamic'),
+				sources: readNumber(entry, 'sources'),
+				batches: readNumber(entry, 'batches'),
+				triangles: readNumber(entry, 'triangles'),
+				largestRadius: readNumber(entry, 'largestRadius'),
+			},
+		];
+	});
 	const environment: Environment = {
 		renderer: readString(value, 'renderer', 'unknown'),
 		vendor: readString(value, 'vendor', 'unknown'),
@@ -251,6 +284,7 @@ export function parseEnvironment(value: unknown): Environment {
 		batchDynamicSources: readNumber(value, 'batchDynamicSources'),
 		batchDrawCalls: readNumber(value, 'batchDrawCalls'),
 		batchLargestRadius: readNumber(value, 'batchLargestRadius'),
+		batchOwners,
 		warmupPrograms: readNumber(value, 'warmupPrograms'),
 		programsLinked: readNumber(value, 'programsLinked'),
 		shaderCount: readNumber(value, 'shaderCount'),
@@ -286,6 +320,9 @@ export function sampleWarnings(sample: Sample): string[] {
 		warnings.push(`only ${(sample.drawCoverage * 100).toFixed(1)}% of draws were timed — GPU figures are incomplete`);
 	}
 	if (sample.disjointDrops > 0) warnings.push(`${sample.disjointDrops} GPU timer queries dropped as disjoint`);
+	if (sample.queriesIssued !== sample.queriesResolved) {
+		warnings.push(`${sample.queriesResolved}/${sample.queriesIssued} GPU timer queries resolved`);
+	}
 	// A slow trickle is normal and unavoidable: materials keep appearing as sims
 	// speak and signs are built, so a handful of links is the steady state rather
 	// than a sign the sample started too early.

@@ -23,6 +23,7 @@ import { bar, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
 import { isSoftwareHeadless } from './playwright.ts';
 import type { Sample } from './probe.ts';
+import { profilePoint } from './routes.ts';
 import { isRecord, readArray, readNumber, readString } from './values.ts';
 
 const softwareHeadless = isSoftwareHeadless();
@@ -43,6 +44,11 @@ const targetUrl = urlIndex < 0 ? undefined : process.argv[urlIndex + 1];
 const batchIndex = process.argv.indexOf('--batch-mode');
 const batchOverride = batchIndex < 0 ? undefined : process.argv[batchIndex + 1];
 const notes: string[] = [];
+
+function flagValue(name: string): string | undefined {
+	const index = process.argv.indexOf(name);
+	return index < 0 ? undefined : process.argv[index + 1];
+}
 
 function note(message: string): void {
 	notes.push(message);
@@ -78,9 +84,30 @@ function passTable(sample: Sample): string {
 	return rows.join('\n');
 }
 
+function sweepSample(label: string, sample: Sample): string {
+	const busiest = [...sample.passes].sort((a, b) => b.drawsPerFrame - a.drawsPerFrame)[0];
+	const pass = busiest ? `${busiest.pass} ${busiest.msPerFrame.toFixed(2)} ms main` : 'no timed pass';
+	return bar(
+		label,
+		`${sample.gpuMsPerFrame.toFixed(2)} ms GPU, ${sample.wallMsMedian.toFixed(1)} wall, ${sample.drawsPerFrame.toFixed(0)} draws, ${Math.round(sample.trianglesPerFrame / 1000)}k tris, ${pass}, ${sample.cpuLogicMsMean.toFixed(1)}/${sample.cpuBatchMsMean.toFixed(1)}/${sample.cpuSubmitMsMean.toFixed(1)} ms CPU, ${sample.queriesResolved}/${sample.queriesIssued} queries`,
+	);
+}
+
 const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), targetUrl, batchOverride);
 try {
 	const { readyMs, settleMs } = await session.boot();
+	const pointName = flagValue('--point') ?? (sweep ? 'v1-elevator-arrive' : undefined);
+	if (pointName) {
+		const selected = profilePoint(pointName);
+		await session.setFrozen(true);
+		await session.setPose(selected.pose);
+		await session.waitFrames(20);
+	}
+	if (sweep) {
+		// Allocate and render both target chains before the balanced measurement.
+		await session.setViewport(SMALL_WIDTH, SMALL_HEIGHT);
+		await session.setViewport(WIDTH, HEIGHT);
+	}
 	const env = await session.environment();
 	const main = await session.sample(SAMPLE_MS);
 
@@ -102,6 +129,7 @@ try {
 	console.log(bar('GPU timer queries', env.timerQuery ? 'yes' : 'NO — no per-pass timing'));
 	console.log(bar('time to playable', `${(readyMs / 1000).toFixed(1)} s (+${(settleMs / 1000).toFixed(1)} s to settle)`));
 	console.log(bar('batch mode', env.batchMode));
+	if (pointName) console.log(bar('fixed point', `${pointName}, simulation frozen`));
 
 	if (/(Intel|AMD).*(Graphics|Vega|Radeon\(TM\) Graphics)/i.test(env.renderer) && !/RTX|GTX|Arc/i.test(env.renderer)) {
 		note(`Chrome is on what looks like an integrated GPU (${env.renderer}).`);
@@ -119,6 +147,15 @@ try {
 	console.log(bar('source meshes', `${env.batchSourceMeshes} (${env.batchDynamicSources} dynamic)`));
 	console.log(bar('batch draw calls', String(env.batchDrawCalls)));
 	console.log(bar('largest batch radius', `${env.batchLargestRadius} m`));
+	console.log('\n  Largest batch owners by submitted source triangles:');
+	for (const owner of [...env.batchOwners].sort((a, b) => b.triangles - a.triangles).slice(0, 10)) {
+		console.log(
+			bar(
+				owner.name,
+				`${Math.round(owner.triangles / 1000)}k triangles, ${owner.sources} sources, ${owner.batches} batches, ${owner.largestRadius.toFixed(1)} m radius${owner.dynamic ? ', dynamic' : ''}`,
+			),
+		);
+	}
 
 	if (env.programInfoLogCalls > 0 || env.shaderInfoLogCalls > 0) {
 		note(
@@ -145,6 +182,7 @@ try {
 		),
 	);
 	console.log(bar('draw calls', String(main.drawsPerFrame)));
+	console.log(bar('triangles', String(main.trianglesPerFrame)));
 	console.log(bar('texture uploads', `${main.texUploadsPerFrame}/frame, ${main.texUploadKbPerFrame} KB`));
 	console.log(
 		bar('CPU phases', `${main.cpuLogicMsMean} ms logic, ${main.cpuBatchMsMean} ms batch, ${main.cpuSubmitMsMean} ms submit`),
@@ -158,31 +196,51 @@ try {
 		console.log(`\n${trimToColumns('── fill vs fixed ───────────────────────────────────────────')}`);
 		// A-B-A: the second full-size sample is a control. If the machine drifted
 		// between them, the two-point solve below is meaningless and says so.
+		// L-S-S-L balances the two configurations across the beginning and end of
+		// the block. Both sizes were already warmed above, and simulation is frozen.
 		await session.setViewport(SMALL_WIDTH, SMALL_HEIGHT);
-		const small = await session.sample(SAMPLE_MS);
+		const smallEnv = await session.environment();
+		const smallFirst = await session.sample(SAMPLE_MS);
+		await session.waitFrames(10);
+		const smallSecond = await session.sample(SAMPLE_MS);
 		await session.setViewport(WIDTH, HEIGHT);
+		const controlEnv = await session.environment();
 		const control = await session.sample(SAMPLE_MS);
 
-		const drift = Math.abs(control.gpuMsPerFrame - main.gpuMsPerFrame) / Math.max(main.gpuMsPerFrame, 0.001);
-		console.log(bar('large', `${env.megapixels} Mpix → ${main.gpuMsPerFrame} ms GPU`));
-		console.log(bar('small', `${(SMALL_WIDTH * SMALL_HEIGHT) / 1e6} Mpix → ${small.gpuMsPerFrame} ms GPU`));
-		console.log(bar('large again (control)', `${control.gpuMsPerFrame} ms GPU — ${(drift * 100).toFixed(1)}% drift`));
-
-		if (drift > DRIFT_TOLERANCE) {
-			note(`The control differed from the first sample by ${(drift * 100).toFixed(1)}%.`);
-			note('  This machine is drifting (thermal, memory pressure, background load). The split below is not reliable.');
+		const largeDrift = Math.abs(control.gpuMsPerFrame - main.gpuMsPerFrame) / Math.max(main.gpuMsPerFrame, 0.001);
+		const smallDrift = Math.abs(smallSecond.gpuMsPerFrame - smallFirst.gpuMsPerFrame) / Math.max(smallFirst.gpuMsPerFrame, 0.001);
+		const sweepWarnings = [smallFirst, smallSecond, control].flatMap(sampleWarnings);
+		if (smallEnv.megapixels >= env.megapixels || controlEnv.canvas !== env.canvas) {
+			sweepWarnings.push(`drawing-buffer control failed (${env.canvas} → ${smallEnv.canvas} → ${controlEnv.canvas})`);
 		}
-		const smallMpix = (SMALL_WIDTH * SMALL_HEIGHT) / 1e6;
+		console.log(bar('order', 'large 1 → small 1 → small 2 → large 2'));
+		console.log(bar('drawing buffers', `${env.canvas} → ${smallEnv.canvas} → ${controlEnv.canvas}`));
+		console.log(sweepSample('large 1', main));
+		console.log(sweepSample('small 1', smallFirst));
+		console.log(sweepSample('small 2', smallSecond));
+		console.log(sweepSample('large 2', control));
+		console.log(bar('repeatability', `large ${(largeDrift * 100).toFixed(1)}%, small ${(smallDrift * 100).toFixed(1)}%`));
+
+		if (largeDrift > DRIFT_TOLERANCE || smallDrift > DRIFT_TOLERANCE) {
+			note(
+				`Repeated samples differed by ${(largeDrift * 100).toFixed(1)}% at large and ${(smallDrift * 100).toFixed(1)}% at small.`,
+			);
+			note('  The cause is unknown. The fill/fixed split is not reported because the balanced control failed.');
+		}
+		for (const warning of sweepWarnings) note(`Sweep sample: ${warning}`);
+		const largeGpu = (main.gpuMsPerFrame + control.gpuMsPerFrame) / 2;
+		const smallGpu = (smallFirst.gpuMsPerFrame + smallSecond.gpuMsPerFrame) / 2;
+		const smallMpix = smallEnv.megapixels;
 		const span = env.megapixels - smallMpix;
-		if (span > 0.01) {
-			const perMegapixel = (main.gpuMsPerFrame - small.gpuMsPerFrame) / span;
-			const fixed = small.gpuMsPerFrame - smallMpix * perMegapixel;
+		if (span > 0.01 && largeDrift <= DRIFT_TOLERANCE && smallDrift <= DRIFT_TOLERANCE && sweepWarnings.length === 0) {
+			const perMegapixel = (largeGpu - smallGpu) / span;
+			const fixed = smallGpu - smallMpix * perMegapixel;
 			console.log('');
 			console.log(bar('→ model', `${fixed.toFixed(1)} ms fixed + ${perMegapixel.toFixed(1)} ms/Mpix`));
 			console.log(
 				bar('  at this resolution', `${fixed.toFixed(1)} ms fixed, ${(perMegapixel * env.megapixels).toFixed(1)} ms fill`),
 			);
-			note('Fixed cost is per-draw and geometry work: resolution and light count will not touch it.');
+			note('The fixed term only means resolution-independent in this two-size model; it does not identify the cause.');
 		}
 	}
 

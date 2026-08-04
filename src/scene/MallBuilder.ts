@@ -1,16 +1,15 @@
 import * as THREE from 'three';
+import { ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { level, levelY } from '#/data/levels';
 import { getOwner } from '#/data/shopOwners';
 import { type StoreDef, shopStores } from '#/data/stores';
-import { ESCALATOR_SPEED } from '#/physics/Collision';
+import { ELEVATOR_OPENING_ROOF, ELEVATOR_OPENING_V0, ELEVATOR_OPENING_V1, ESCALATOR, SECRET_STAIRS, STAIRS } from '#/data/world';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { at } from '#/util/rand';
 
 /** One storey, straight from the deck heights. */
 const FLOOR_H = levelY('v1') - levelY('v0');
-const MALL_W = 72;
-const MALL_D = 48;
 
 /**
  * De oostelijke roltrap. Dit is de enige plek waar deze maten staan: ze moeten
@@ -18,28 +17,28 @@ const MALL_D = 48;
  * y 0 → FLOOR_H); het gat in de vloerplaat wordt hieruit afgeleid.
  */
 const ESC = {
-	x: 22,
-	zBottom: 8,
-	zTop: -2,
-	steps: 20,
+	x: ESCALATOR.x,
+	zBottom: ESCALATOR.zBottom,
+	zTop: ESCALATOR.zTop,
+	steps: ESCALATOR.steps,
 	/** Zo breed als de climbable band, anders loop je naast je eigen roltrap. */
-	width: 2.2,
+	width: ESCALATOR.width,
 	/** Midden en halve diepte van het gat in de vloerplaat, uit de ramp. */
-	holeCz: -0.5,
-	holeHalfD: 2.1,
+	holeCz: ESCALATOR.opening.center.z,
+	holeHalfD: ESCALATOR.opening.size.depth / 2,
 	/**
 	 * Halve breedte van dat gat: precies de x-band van de ramp. Ruimer en er
 	 * blijft een zwarte spleet naast de roltrap open waar je in kunt kijken,
 	 * krapper en het vakwerk steekt door de plaat.
 	 */
-	holeHalfW: 1.3,
+	holeHalfW: ESCALATOR.opening.size.width / 2,
 	/**
 	 * Hoe ver aanloop en uitloop voorbij de helling doorlopen, omkeer inbegrepen.
 	 * De blokkeerdoos in Collision loopt van z -3.5 tot 9, dus 1.0 is het maximum.
 	 */
-	apron: 1.0,
+	apron: ESCALATOR.apron,
 	/** Tredesnelheid langs de helling. Uit de fysica, die vervoert je ermee. */
-	speed: ESCALATOR_SPEED,
+	speed: ESCALATOR.collision.carrySpeed,
 } as const;
 
 /**
@@ -47,13 +46,13 @@ const ESC = {
  * is de enige plek waar deze maten staan, het gat in de vloerplaat volgt eruit.
  */
 const STAIR = {
-	x: -22,
-	zBottom: 4,
-	zTop: -14,
-	width: 2.4,
-	holeCz: -11,
-	holeHalfW: 2.0,
-	holeHalfD: 3.6,
+	x: STAIRS.x,
+	zBottom: STAIRS.zBottom,
+	zTop: STAIRS.zTop,
+	width: STAIRS.width,
+	holeCz: STAIRS.opening.center.z,
+	holeHalfW: STAIRS.opening.size.width / 2,
+	holeHalfD: STAIRS.opening.size.depth / 2,
 } as const;
 
 /** Laagste stand van een trede: net boven de vloer, anders z-fightt hij ermee. */
@@ -311,22 +310,8 @@ export class MallBuilder {
 
 		const tileTex = labelTexture(tileCanvas);
 		tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
-		tileTex.repeat.set(MALL_W / 4, MALL_D / 4);
+		tileTex.repeat.set(MALL_FOOTPRINT.width / 4, MALL_FOOTPRINT.depth / 4);
 		floorMat.map = tileTex;
-
-		const floor0 = new THREE.Mesh(new THREE.BoxGeometry(MALL_W, 0.3, MALL_D), floorMat);
-		floor0.position.y = -0.15;
-		floor0.receiveShadow = true;
-		this.group.add(floor0);
-
-		// Floor 1 ring: atrium void + REAL openings where stairs/escalator meet floor 1
-		const floor1Mat = this.track(floorMat.clone());
-		const f1Shape = new THREE.Shape();
-		f1Shape.moveTo(-MALL_W / 2, -MALL_D / 2);
-		f1Shape.lineTo(MALL_W / 2, -MALL_D / 2);
-		f1Shape.lineTo(MALL_W / 2, MALL_D / 2);
-		f1Shape.lineTo(-MALL_W / 2, MALL_D / 2);
-		f1Shape.lineTo(-MALL_W / 2, -MALL_D / 2);
 
 		const rectHole = (shape: THREE.Shape, cx: number, cz: number, hw: number, hd: number) => {
 			// rotateX(-π/2) maps shape-y → world −z, so cut at NEGATED z. Without
@@ -342,12 +327,42 @@ export class MallBuilder {
 			h.lineTo(cx - hw, sy - hd);
 			shape.holes.push(h);
 		};
+
+		// The lift travels to P1, so V0 needs a real shaft opening too. The old
+		// BoxGeometry made the cabin pass through a solid ground-floor slab.
+		const floor0Shape = new THREE.Shape();
+		floor0Shape.moveTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+		floor0Shape.lineTo(MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+		floor0Shape.lineTo(MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
+		floor0Shape.lineTo(-MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
+		floor0Shape.closePath();
+		rectHole(
+			floor0Shape,
+			ELEVATOR_OPENING_V0.center.x,
+			ELEVATOR_OPENING_V0.center.z,
+			ELEVATOR_OPENING_V0.size.width / 2,
+			ELEVATOR_OPENING_V0.size.depth / 2,
+		);
+		const floor0Geo = new THREE.ExtrudeGeometry(floor0Shape, { depth: 0.3, bevelEnabled: false });
+		floor0Geo.rotateX(-Math.PI / 2);
+		const floor0 = new THREE.Mesh(floor0Geo, floorMat);
+		floor0.position.y = -0.3;
+		floor0.receiveShadow = true;
+		this.group.add(floor0);
+
+		// Floor 1 ring: atrium void + REAL openings where stairs/escalator meet floor 1
+		const floor1Mat = this.track(floorMat.clone());
+		const f1Shape = new THREE.Shape();
+		f1Shape.moveTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+		f1Shape.lineTo(MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+		f1Shape.lineTo(MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
+		f1Shape.lineTo(-MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
+		f1Shape.lineTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+
 		const addRectHole = (cx: number, cz: number, hw: number, hd: number) => rectHole(f1Shape, cx, cz, hw, hd);
 
 		// Center atrium
-		const aw = 16;
-		const ad = 12;
-		addRectHole(0, 0, aw / 2, ad / 2);
+		addRectHole(0, 0, ATRIUM_VOID.halfWidth, ATRIUM_VOID.halfDepth);
 
 		// The openings must sit OVER the flights, not next to their top landings —
 		// each hole spans from just past the top down to where the incline is ~2 m
@@ -358,7 +373,12 @@ export class MallBuilder {
 		addRectHole(ESC.x, ESC.holeCz, ESC.holeHalfW, ESC.holeHalfD);
 		// Glazen lift (16, -8): schacht V0 → dak — zonder dit gat prikte de
 		// glascabine dwars door de verdieping-1-plaat heen
-		addRectHole(16, -8, 1.2, 1.2);
+		addRectHole(
+			ELEVATOR_OPENING_V1.center.x,
+			ELEVATOR_OPENING_V1.center.z,
+			ELEVATOR_OPENING_V1.size.width / 2,
+			ELEVATOR_OPENING_V1.size.depth / 2,
+		);
 
 		// USA-dikke plaat (0.45), en de TOP ligt op FLOOR_H: extrude gaat +Y, dus
 		// de mesh zakt een plaatdikte. Voorheen stak de plaat 6.0→6.3 omhoog en
@@ -386,10 +406,10 @@ export class MallBuilder {
 
 		const walls: [number, number, number, number, number, number][] = [
 			// w, h, d, x, y, z
-			[MALL_W + 1, wallH, 0.4, 0, wallH / 2 - 0.3, -MALL_D / 2],
-			[MALL_W + 1, wallH, 0.4, 0, wallH / 2 - 0.3, MALL_D / 2],
-			[0.4, wallH, MALL_D, -MALL_W / 2, wallH / 2 - 0.3, 0],
-			[0.4, wallH, MALL_D, MALL_W / 2, wallH / 2 - 0.3, 0],
+			[MALL_FOOTPRINT.width + 1, wallH, 0.4, 0, wallH / 2 - 0.3, -MALL_FOOTPRINT.halfDepth],
+			[MALL_FOOTPRINT.width + 1, wallH, 0.4, 0, wallH / 2 - 0.3, MALL_FOOTPRINT.halfDepth],
+			[0.4, wallH, MALL_FOOTPRINT.depth, -MALL_FOOTPRINT.halfWidth, wallH / 2 - 0.3, 0],
+			[0.4, wallH, MALL_FOOTPRINT.depth, MALL_FOOTPRINT.halfWidth, wallH / 2 - 0.3, 0],
 		];
 		for (const [w, h, d, x, y, z] of walls) {
 			const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
@@ -411,18 +431,30 @@ export class MallBuilder {
 		// stairwell holes (gaping holes above nothing) and lacked the one opening
 		// it actually needs, where the secret service stairs exit to the roof.
 		const ceilShape = new THREE.Shape();
-		ceilShape.moveTo(-MALL_W / 2, -MALL_D / 2);
-		ceilShape.lineTo(MALL_W / 2, -MALL_D / 2);
-		ceilShape.lineTo(MALL_W / 2, MALL_D / 2);
-		ceilShape.lineTo(-MALL_W / 2, MALL_D / 2);
-		ceilShape.lineTo(-MALL_W / 2, -MALL_D / 2);
-		rectHole(ceilShape, 0, 0, aw / 2, ad / 2);
+		ceilShape.moveTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+		ceilShape.lineTo(MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+		ceilShape.lineTo(MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
+		ceilShape.lineTo(-MALL_FOOTPRINT.halfWidth, MALL_FOOTPRINT.halfDepth);
+		ceilShape.lineTo(-MALL_FOOTPRINT.halfWidth, -MALL_FOOTPRINT.halfDepth);
+		rectHole(ceilShape, 0, 0, ATRIUM_VOID.halfWidth, ATRIUM_VOID.halfDepth);
 		// Secret stairs run (26, y6, z14) → (26, roof, z18); hole matches the ramp
-		rectHole(ceilShape, 26, 16.25, 1.5, 2.6);
+		rectHole(
+			ceilShape,
+			SECRET_STAIRS.opening.center.x,
+			SECRET_STAIRS.opening.center.z,
+			SECRET_STAIRS.opening.size.width / 2,
+			SECRET_STAIRS.opening.size.depth / 2,
+		);
 		// Glazen lift (16, -8): schachtgat naar het dak. Eén gat, niet twee: hier
 		// stonden er twee op dezelfde plek met verschillende maat, dus een gat in
 		// een gat. De ruimste wint, die geeft de cabine en zijn deuren de ruimte.
-		rectHole(ceilShape, 16, -8, 1.45, 1.45);
+		rectHole(
+			ceilShape,
+			ELEVATOR_OPENING_ROOF.center.x,
+			ELEVATOR_OPENING_ROOF.center.z,
+			ELEVATOR_OPENING_ROOF.size.width / 2,
+			ELEVATOR_OPENING_ROOF.size.depth / 2,
+		);
 		const ceilGeo = new THREE.ExtrudeGeometry(ceilShape, {
 			depth: 0.4, // USA dikte — het dakdek (13.95) rust hier bovenop
 			bevelEnabled: false,
@@ -443,7 +475,7 @@ export class MallBuilder {
 				side: THREE.DoubleSide,
 			}),
 		);
-		const skylight = new THREE.Mesh(new THREE.PlaneGeometry(aw + 1, ad + 1), glassMat);
+		const skylight = new THREE.Mesh(new THREE.PlaneGeometry(ATRIUM_VOID.width + 1, ATRIUM_VOID.depth + 1), glassMat);
 		skylight.rotation.x = -Math.PI / 2;
 		skylight.position.y = FLOOR_H * 2 + 1.4;
 		this.group.add(skylight);

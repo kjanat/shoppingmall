@@ -18,8 +18,10 @@
 import { readFileSync } from 'node:fs';
 import { NODES } from '#/data/graph';
 import { getInventory } from '#/data/inventory';
+import { ATRIUM_VOID } from '#/data/layout';
 import { LEVELS, levelY, SHOP_LEVELS } from '#/data/levels';
 import { STORES, shopStores } from '#/data/stores';
+import { ESCALATOR, PARKING_EXIT_RAMP, STAIRS } from '#/data/world';
 import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
 import { stubDocument } from './stub-dom.ts';
@@ -74,20 +76,6 @@ function bron(pad: string): string {
 function getal(tekst: string, patroon: RegExp, wat: string): number {
 	const waarde = Number(patroon.exec(tekst)?.[1]);
 	if (Number.isNaN(waarde)) throw new Error(`kon ${wat} niet uit de bron lezen — hernoemd of herschreven?`);
-	return waarde;
-}
-
-/** Eén veld uit een `const NAAM = { … } as const;` blok, als het er staat. */
-function losVeld(tekst: string, obj: string, naam: string): number | undefined {
-	const blok = new RegExp(`const ${obj} = \\{([\\s\\S]*?)\\n\\} as const;`).exec(tekst)?.[1];
-	const ruw = blok === undefined ? undefined : new RegExp(`\\b${naam}:\\s*(-?[\\d.]+)`).exec(blok)?.[1];
-	return ruw === undefined ? undefined : Number(ruw);
-}
-
-/** Zelfde, maar dit veld hoort er te zijn. */
-function veld(tekst: string, obj: string, naam: string): number {
-	const waarde = losVeld(tekst, obj, naam);
-	if (waarde === undefined) throw new Error(`kon ${obj}.${naam} niet uit de bron lezen — hernoemd of herschreven?`);
 	return waarde;
 }
 
@@ -189,62 +177,61 @@ function controleVloergat(): void {
 	eist(mb, 'addRectHole(ESC.x, ESC.holeCz, ESC.holeHalfW, ESC.holeHalfD);', 'het roltrapgat');
 	eist(mb, 'addRectHole(STAIR.x, STAIR.holeCz, STAIR.holeHalfW, STAIR.holeHalfD);', 'het trapgat');
 
-	for (const [obj, label] of [
-		['ESC', 'escalator'],
-		['STAIR', 'stairs'],
-	] as const) {
-		const ramp = wereld.ramps.find((r) => r.label === label);
+	for (const connector of [ESCALATOR, STAIRS]) {
+		const ramp = wereld.ramps.find((candidate) => candidate.label === connector.id);
 		if (!ramp) {
-			fout('vloergat', `geen ramp '${label}' in CollisionWorld, terwijl MallBuilder er een gat voor snijdt`);
+			fout('vloergat', `geen ramp '${connector.id}' in CollisionWorld, terwijl het wereldmanifest er een definieert`);
 			continue;
 		}
-		const x = veld(mb, obj, 'x');
 		const midX = (ramp.minX + ramp.maxX) / 2;
 		const halfX = (ramp.maxX - ramp.minX) / 2;
-		if (!bijna(x, midX, 1e-3)) fout('vloergat', `${obj}.x ${nr(x)} ligt niet op het midden van ramp '${label}' (${nr(midX)})`);
+		if (!bijna(connector.x, midX, 1e-3)) {
+			fout('vloergat', `${connector.id}.x ${nr(connector.x)} ligt niet op het midden van zijn ramp (${nr(midX)})`);
+		}
 		for (const [naam, waarde] of [
 			['zBottom', ramp.zBottom],
 			['zTop', ramp.zTop],
 		] as const) {
-			const bouw = veld(mb, obj, naam);
-			if (!bijna(bouw, waarde, 1e-3)) fout('vloergat', `${obj}.${naam} ${nr(bouw)} wijkt af van ramp '${label}' (${nr(waarde)})`);
+			const manifest = connector[naam];
+			if (!bijna(manifest, waarde, 1e-3)) {
+				fout('vloergat', `${connector.id}.${naam} ${nr(manifest)} wijkt af van de ramp (${nr(waarde)})`);
+			}
 		}
-		const cz = veld(mb, obj, 'holeCz');
-		const halfD = veld(mb, obj, 'holeHalfD');
-		const halfW = veld(mb, obj, 'holeHalfW');
+		const cz = connector.opening.center.z;
+		const halfD = connector.opening.size.depth / 2;
+		const halfW = connector.opening.size.width / 2;
 		if (!bijna(cz - halfD, ramp.openMinZ, 1e-3) || !bijna(cz + halfD, ramp.openMaxZ, 1e-3)) {
 			fout(
 				'vloergat',
-				`${obj} snijdt z ${nr(cz - halfD)}..${nr(cz + halfD)} maar ramp '${label}' rekent met ${nr(ramp.openMinZ)}..${nr(ramp.openMaxZ)}`,
+				`${connector.id} snijdt z ${nr(cz - halfD)}..${nr(cz + halfD)} maar de ramp rekent met ${nr(ramp.openMinZ)}..${nr(ramp.openMaxZ)}`,
 			);
 		}
 		if (halfW + 1e-3 < halfX) {
 			fout(
 				'vloergat',
-				`${obj}.holeHalfW ${nr(halfW)} is smaller dan de loopband van '${label}' (${nr(halfX)}): het vakwerk prikt door de plaat`,
+				`${connector.id} halfWidth ${nr(halfW)} is smaller dan de loopband (${nr(halfX)}): het vakwerk prikt door de plaat`,
 			);
 		}
-		// Een trap heeft geen snelheid; heeft de bouwer er wel een, dan moet de
-		// helling met dezelfde rekenen, anders glijden de treden onder je voeten door.
-		const snelheid = losVeld(mb, obj, 'speed');
+		const snelheid = 'carrySpeed' in connector.collision ? connector.collision.carrySpeed : undefined;
 		if (snelheid !== undefined) {
 			if (ramp.carrySpeed === undefined) {
-				fout('vloergat', `${obj}.speed is ${nr(snelheid)} maar ramp '${label}' heeft geen carrySpeed: de treden lopen, jij niet`);
+				fout(
+					'vloergat',
+					`${connector.id}.speed is ${nr(snelheid)} maar de ramp heeft geen carrySpeed: de treden lopen, jij niet`,
+				);
 			} else if (!bijna(snelheid, ramp.carrySpeed)) {
-				fout('vloergat', `${obj}.speed ${nr(snelheid)} wijkt af van carrySpeed van '${label}' (${nr(ramp.carrySpeed)})`);
+				fout('vloergat', `${connector.id}.speed ${nr(snelheid)} wijkt af van carrySpeed van de ramp (${nr(ramp.carrySpeed)})`);
 			}
 		}
 	}
 
 	// Het atriumgat: MallBuilder snijdt het, Collision laat je er doorheen vallen.
-	const aw = getal(mb, /const aw = (-?[\d.]+);/, 'de breedte van het atriumgat');
-	const ad = getal(mb, /const ad = (-?[\d.]+);/, 'de diepte van het atriumgat');
-	eist(mb, 'addRectHole(0, 0, aw / 2, ad / 2);', 'het atriumgat');
+	eist(mb, 'addRectHole(0, 0, ATRIUM_VOID.halfWidth, ATRIUM_VOID.halfDepth);', 'het atriumgat');
 	const binnen: [number, number][] = [
-		[aw / 2 - 0.1, 0],
-		[-(aw / 2 - 0.1), 0],
-		[0, ad / 2 - 0.1],
-		[0, -(ad / 2 - 0.1)],
+		[ATRIUM_VOID.halfWidth - 0.1, 0],
+		[-(ATRIUM_VOID.halfWidth - 0.1), 0],
+		[0, ATRIUM_VOID.halfDepth - 0.1],
+		[0, -(ATRIUM_VOID.halfDepth - 0.1)],
 	];
 	for (const [x, z] of binnen) {
 		const grond = wereld.groundHeightAt(x, z, V1, WALK_STEP);
@@ -252,10 +239,10 @@ function controleVloergat(): void {
 			fout('vloergat', `atriumgat (${nr(x)}, ${nr(z)}): op V1 ligt er vloer op ${nr(grond)} terwijl daar een gat gesneden is`);
 	}
 	const buiten: [number, number][] = [
-		[aw / 2 + 0.5, 0],
-		[-(aw / 2 + 0.5), 0],
-		[0, ad / 2 + 0.5],
-		[0, -(ad / 2 + 0.5)],
+		[ATRIUM_VOID.halfWidth + 0.5, 0],
+		[-(ATRIUM_VOID.halfWidth + 0.5), 0],
+		[0, ATRIUM_VOID.halfDepth + 0.5],
+		[0, -(ATRIUM_VOID.halfDepth + 0.5)],
 	];
 	for (const [x, z] of buiten) {
 		const grond = wereld.groundHeightAt(x, z, V1, WALK_STEP);
@@ -319,7 +306,45 @@ function controleHellinglijn(): void {
 	}
 }
 
-// ── 5. glijbaanladder ──────────────────────────────────────────────────────
+// ── 5. parkeeruitrit ───────────────────────────────────────────────────────
+
+/**
+ * De uitrit ligt diagonaal in X/Y en viel daarom buiten de oude Z-only
+ * hellingcontrole. Loop hem in kleine spelerstappen op en terug af, en vraag
+ * collision op de westmuur expliciet of die de doorgang weer dichtduwt.
+ */
+function controleParkeeruitrit(): void {
+	const ramp = PARKING_EXIT_RAMP;
+	const stappen = 320;
+	for (const richting of [1, -1]) {
+		let currentY = richting === 1 ? ramp.start.y : ramp.end.y;
+		for (let i = 0; i <= stappen; i++) {
+			const t = richting === 1 ? i / stappen : 1 - i / stappen;
+			const x = ramp.start.x + (ramp.end.x - ramp.start.x) * t;
+			const z = ramp.start.z + (ramp.end.z - ramp.start.z) * t;
+			const expected = ramp.start.y + (ramp.end.y - ramp.start.y) * t;
+			const ground = wereld.groundHeightAt(x, z, currentY, WALK_STEP);
+			if (!bijna(ground, expected, 1e-4)) {
+				fout(
+					'parkeeruitrit',
+					`${richting === 1 ? 'omhoog' : 'omlaag'} op (${nr(x)}, ${nr(z)}): collision geeft ${nr(ground)} in plaats van ${nr(expected)}`,
+				);
+				break;
+			}
+			const resolved = wereld.resolveCircle(x, z, ground, 0.32, 3, true, false);
+			if (Math.hypot(resolved.x - x, resolved.z - z) > 1e-4) {
+				fout(
+					'parkeeruitrit',
+					`doorgang blokkeert op (${nr(x)}, ${nr(z)}): collision duwt naar (${nr(resolved.x)}, ${nr(resolved.z)})`,
+				);
+				break;
+			}
+			currentY = ground;
+		}
+	}
+}
+
+// ── 6. glijbaanladder ──────────────────────────────────────────────────────
 
 /**
  * De ladder naar het glijbaanplatform, stap voor stap beklommen zoals de speler
@@ -356,9 +381,8 @@ function controleLadder(): void {
  * had geen bovengrens en duwde je van het dak af.
  */
 function controleGlazenDak(): void {
-	const mb = bron('scene/MallBuilder.ts');
-	const halfW = getal(mb, /const aw = (-?[\d.]+);/, 'de breedte van het atriumgat') / 2;
-	const halfD = getal(mb, /const ad = (-?[\d.]+);/, 'de diepte van het atriumgat') / 2;
+	const halfW = ATRIUM_VOID.halfWidth;
+	const halfD = ATRIUM_VOID.halfDepth;
 	const straal = spelerR();
 	const stap = 0.4;
 	let gaten = 0;
@@ -588,6 +612,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'hellingen', draai: controleHellingen },
 	{ naam: 'vloergat', draai: controleVloergat },
 	{ naam: 'hellinglijn', draai: controleHellinglijn },
+	{ naam: 'parkeeruitrit', draai: controleParkeeruitrit },
 	{ naam: 'ladder', draai: controleLadder },
 	{ naam: 'glazendak', draai: controleGlazenDak },
 	{ naam: 'zwembad', draai: controleZwembad },

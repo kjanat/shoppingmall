@@ -36,6 +36,15 @@ export type PassTiming = {
 	drawsPerFrame: number;
 };
 
+export type BatchOwnerTiming = {
+	name: string;
+	dynamic: boolean;
+	sources: number;
+	batches: number;
+	triangles: number;
+	largestRadius: number;
+};
+
 export type Sample = {
 	frames: number;
 	/** Median wall time between frames. The number a player feels. */
@@ -57,11 +66,15 @@ export type Sample = {
 	drawCoverage: number;
 	/** Queries thrown away because the GPU reported a disjoint event. */
 	disjointDrops: number;
+	/** Timer-query segments issued and resolved inside this sample. */
+	queriesIssued: number;
+	queriesResolved: number;
 	/** Programs linked during the sample. Non-zero means it was not settled. */
 	linksDuringSample: number;
 	cpuLogicMsMean: number;
 	cpuBatchMsMean: number;
 	cpuSubmitMsMean: number;
+	trianglesPerFrame: number;
 };
 
 export type RoutePose = {
@@ -86,6 +99,7 @@ export type Environment = {
 	batchDynamicSources: number;
 	batchDrawCalls: number;
 	batchLargestRadius: number;
+	batchOwners: BatchOwnerTiming[];
 	warmupPrograms: number;
 	/** Programs linked, and how big their source was, since page load. */
 	programsLinked: number;
@@ -113,6 +127,9 @@ type ProbeApi = {
 	settle: (quietMs: number, maxWaitMs: number) => Promise<number>;
 	sample: (durationMs: number) => Promise<Sample>;
 	routeSegment: (from: RoutePose, to: RoutePose, durationMs: number) => Promise<Sample>;
+	setPose: (pose: RoutePose) => void;
+	setFrozen: (frozen: boolean) => void;
+	waitFrames: (count: number) => Promise<void>;
 	environment: () => Environment;
 };
 
@@ -162,6 +179,8 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 		draws: 0,
 		drawsTimed: 0,
 		disjointDrops: 0,
+		queriesIssued: 0,
+		queriesResolved: 0,
 		frames: 0,
 	};
 	const lights = { point: 0, directional: 0, spot: 0 };
@@ -169,6 +188,7 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 	const cpuLogic: number[] = [];
 	const cpuBatch: number[] = [];
 	const cpuSubmit: number[] = [];
+	const triangles: number[] = [];
 	const totals = new Map<string, Totals>();
 
 	const proto = WebGL2RenderingContext.prototype;
@@ -218,6 +238,7 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 		const query = ctx.createQuery();
 		if (!query) return;
 		ctx.beginQuery(timer.TIME_ELAPSED_EXT, query);
+		counters.queriesIssued++;
 		active = { query, pass: `${target} ${viewportW}x${viewportH}`, draws: 0 };
 	};
 
@@ -237,6 +258,7 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 				totalsForPass.draws += seg.draws;
 				totals.set(seg.pass, totalsForPass);
 			}
+			counters.queriesResolved++;
 			ctx.deleteQuery(seg.query);
 			pending.splice(i, 1);
 		}
@@ -256,6 +278,7 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 			['logicMs', cpuLogic],
 			['batchMs', cpuBatch],
 			['submitMs', cpuSubmit],
+			['triangles', triangles],
 		] as const) {
 			const value = Reflect.get(frame, key);
 			if (typeof value === 'number' && Number.isFinite(value)) target.push(value);
@@ -434,6 +457,16 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 	// ── the API the driver script talks to ────────────────────────────────
 
 	const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+	const waitFrames = (count: number): Promise<void> =>
+		new Promise((resolve) => {
+			let remaining = Math.max(1, Math.floor(count));
+			const frame = (): void => {
+				remaining--;
+				if (remaining > 0) requestAnimationFrame(frame);
+				else resolve();
+			};
+			requestAnimationFrame(frame);
+		});
 	const median = (values: number[]): number => {
 		if (values.length === 0) return 0;
 		const sorted = [...values].sort((a, b) => a - b);
@@ -449,6 +482,10 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 	const setPose = (pose: RoutePose): void => {
 		const accepted = invokeControl('setPose', [pose.x, pose.y, pose.z, pose.lookX, pose.lookY, pose.lookZ]);
 		if (accepted !== true) throw new Error('App rejected route-profiler pose');
+	};
+	const setFrozen = (frozen: boolean): void => {
+		const accepted = invokeControl('setFrozen', [frozen]);
+		if (accepted !== true) throw new Error('App rejected route-profiler freeze state');
 	};
 	const move = (from: RoutePose, to: RoutePose, durationMs: number): Promise<void> => {
 		setPose(from);
@@ -506,6 +543,10 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 			return Math.round(performance.now() - start);
 		},
 
+		setPose,
+		setFrozen,
+		waitFrames,
+
 		sample: async (durationMs: number): Promise<Sample> => {
 			if (sampling) throw new Error('probe sample already in progress');
 			closeSegment();
@@ -520,12 +561,15 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 			cpuLogic.length = 0;
 			cpuBatch.length = 0;
 			cpuSubmit.length = 0;
+			triangles.length = 0;
 			counters.frames = 0;
 			counters.draws = 0;
 			counters.drawsTimed = 0;
 			counters.texUploads = 0;
 			counters.texBytes = 0;
 			counters.disjointDrops = 0;
+			counters.queriesIssued = 0;
+			counters.queriesResolved = 0;
 			const linksBefore = counters.links;
 			previous = performance.now();
 			sampling = true;
@@ -537,6 +581,17 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 			while (pending.length > 0 && performance.now() < drainDeadline) {
 				collect();
 				if (pending.length > 0) await sleep(16);
+			}
+			if (pending.length > 0) {
+				const unresolved = pending.length;
+				const ctx = context();
+				if (ctx) {
+					for (const segment of pending) ctx.deleteQuery(segment.query);
+				}
+				pending.length = 0;
+				throw new Error(
+					`GPU timer query drain timed out with ${unresolved} unresolved of ${counters.queriesIssued} issued segments`,
+				);
 			}
 
 			const frames = counters.frames;
@@ -563,17 +618,20 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 				texUploadKbPerFrame: round(counters.texBytes / frames / 1024, 1),
 				drawCoverage: counters.draws === 0 ? 1 : round(resolvedDraws / counters.draws, 4),
 				disjointDrops: counters.disjointDrops,
+				queriesIssued: counters.queriesIssued,
+				queriesResolved: counters.queriesResolved,
 				linksDuringSample: counters.links - linksBefore,
 				cpuLogicMsMean: round(mean(cpuLogic)),
 				cpuBatchMsMean: round(mean(cpuBatch)),
 				cpuSubmitMsMean: round(mean(cpuSubmit)),
+				trianglesPerFrame: round(mean(triangles), 0),
 			};
 		},
 
 		routeSegment: async (from: RoutePose, to: RoutePose, durationMs: number): Promise<Sample> => {
 			if (!Number.isFinite(durationMs) || durationMs < 250) throw new Error('route segment must last at least 250 ms');
 			setPose(from);
-			await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+			await waitFrames(2);
 			const api = globalThis.__mallProbe;
 			if (!api) throw new Error('probe API disappeared before route segment');
 			const [result] = await Promise.all([api.sample(durationMs), move(from, to, durationMs)]);
@@ -587,6 +645,30 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 			const height = canvas?.height ?? 0;
 			let renderer = 'unknown';
 			let vendor = 'unknown';
+			const batchOwners: BatchOwnerTiming[] = [];
+			const owners = invokeControl('readBatchOwners');
+			if (Array.isArray(owners)) {
+				for (const owner of owners) {
+					if (typeof owner !== 'object' || owner === null) continue;
+					const name = Reflect.get(owner, 'name');
+					const dynamic = Reflect.get(owner, 'dynamic');
+					const sources = Reflect.get(owner, 'sources');
+					const batches = Reflect.get(owner, 'batches');
+					const triangles = Reflect.get(owner, 'triangles');
+					const largestRadius = Reflect.get(owner, 'largestRadius');
+					if (
+						typeof name !== 'string' ||
+						typeof dynamic !== 'boolean' ||
+						typeof sources !== 'number' ||
+						typeof batches !== 'number' ||
+						typeof triangles !== 'number' ||
+						typeof largestRadius !== 'number'
+					) {
+						continue;
+					}
+					batchOwners.push({ name, dynamic, sources, batches, triangles, largestRadius });
+				}
+			}
 			if (ctx) {
 				const debugInfo = ctx.getExtension('WEBGL_debug_renderer_info');
 				if (debugInfo && 'UNMASKED_RENDERER_WEBGL' in debugInfo && 'UNMASKED_VENDOR_WEBGL' in debugInfo) {
@@ -609,6 +691,7 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 				batchDynamicSources: Number(document.documentElement.dataset['batchDynamicSources'] ?? 0),
 				batchDrawCalls: Number(document.documentElement.dataset['batchDrawCalls'] ?? 0),
 				batchLargestRadius: Number(document.documentElement.dataset['batchLargestRadius'] ?? 0),
+				batchOwners,
 				warmupPrograms: Number(document.documentElement.dataset['warmupPrograms'] ?? 0),
 				programsLinked: counters.links,
 				shaderCount: counters.shaders,

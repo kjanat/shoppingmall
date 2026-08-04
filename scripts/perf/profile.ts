@@ -5,13 +5,14 @@
  * separated instead of being collapsed into one whole-run average.
  */
 import { spawnSync } from 'node:child_process';
+import { randomInt } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
 import { isSoftwareHeadless } from './playwright.ts';
 import type { RoutePose, Sample } from './probe.ts';
-import { MALL_ROUTE } from './routes.ts';
+import { FULL_MALL_ROUTE, profileRoute } from './routes.ts';
 import { isRecord, readArray, readNumber, readString } from './values.ts';
 
 const softwareHeadless = isSoftwareHeadless();
@@ -29,6 +30,14 @@ function positiveNumber(name: string, fallback: number): number {
 	const value = Number(flagValue(name) ?? fallback);
 	if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number`);
 	return value;
+}
+
+function uint32(name: string, value: string): number {
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed < 0 || parsed > 0xffff_ffff) {
+		throw new Error(`${name} must be an integer from 0 through 4294967295`);
+	}
+	return parsed;
 }
 
 function distance(a: RoutePose, b: RoutePose): number {
@@ -54,6 +63,8 @@ type RouteArtifact = {
 	batchMode: string;
 	speedMetersPerSecond: number;
 	laps: number;
+	seed: number | null;
+	simulationFrozen: boolean;
 	segments: SegmentResult[];
 };
 type RouteBaseline = {
@@ -133,12 +144,23 @@ const laps = Math.max(1, Math.floor(positiveNumber('--laps', 2)));
 const speed = positiveNumber('--speed', softwareHeadless ? 30 : 4.5);
 const saveName = flagValue('--save');
 const compareName = flagValue('--compare');
+const randomRoute = process.argv.includes('--random');
+const seedValue = flagValue('--seed');
+if (randomRoute && seedValue !== undefined) throw new Error('use either --random or --seed, not both');
+const seed = randomRoute ? randomInt(0, 0x1_0000_0000) : seedValue === undefined ? null : uint32('--seed', seedValue);
+const route = profileRoute(flagValue('--route') ?? FULL_MALL_ROUTE.id, seed);
+const startPoint = route.points[0];
+if (!startPoint) throw new Error(`route '${route.id}' has no points`);
+const freezeSimulation = !process.argv.includes('--live-sim');
 const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), targetUrl, batchOverride);
 const results: SegmentResult[] = [];
 let artifact: RouteArtifact;
 
 try {
 	const { readyMs, settleMs } = await session.boot({ settleQuietMs: 3000 });
+	await session.setFrozen(freezeSimulation);
+	await session.setPose(startPoint.pose);
+	await session.waitFrames(10);
 	const env = await session.environment();
 	const build = await buildIdentity(targetUrl);
 
@@ -147,15 +169,21 @@ try {
 	console.log(bar('build', build));
 	console.log(bar('GPU', env.renderer));
 	console.log(bar('canvas', env.canvas));
-	console.log(bar('route', `${MALL_ROUTE.id}: ${MALL_ROUTE.description}`));
-	console.log(bar('configuration', `${laps} laps, ${speed} m/s, ${env.batchMode} batches`));
+	console.log(bar('route', `${route.id}: ${route.description}`));
+	console.log(bar('route seed', route.seed === null ? 'deterministic authored order' : String(route.seed)));
+	console.log(
+		bar(
+			'configuration',
+			`${laps} laps, ${speed} m/s, ${env.batchMode} batches, simulation ${freezeSimulation ? 'frozen' : 'live'}`,
+		),
+	);
 	console.log(bar('startup', `${(readyMs / 1000).toFixed(1)} s + ${(settleMs / 1000).toFixed(1)} s settle`));
 
 	for (let lap = 1; lap <= laps; lap++) {
 		console.log(`\n  lap ${lap}/${laps}`);
-		for (let i = 0; i + 1 < MALL_ROUTE.points.length; i++) {
-			const from = MALL_ROUTE.points[i];
-			const to = MALL_ROUTE.points[i + 1];
+		for (let i = 0; i + 1 < route.points.length; i++) {
+			const from = route.points[i];
+			const to = route.points[i + 1];
 			if (!from || !to) continue;
 			const id = `${from.name}->${to.name}`;
 			const durationMs = Math.max(750, Math.round((distance(from.pose, to.pose) / speed) * 1000));
@@ -163,7 +191,11 @@ try {
 			const result = { id, from: from.name, to: to.name, lap, durationMs, sample };
 			results.push(result);
 			console.log(
-				`    ${id.padEnd(38)} ${sample.wallMsMedian.toFixed(1).padStart(7)} ms wall  ${sample.wallMsP90.toFixed(1).padStart(7)} p90  ${sample.gpuMsPerFrame.toFixed(1).padStart(7)} GPU  ${sample.drawsPerFrame.toFixed(0).padStart(4)} draws`,
+				`    ${id.padEnd(38)} ${sample.wallMsMedian.toFixed(1).padStart(7)} ms wall  ${sample.wallMsP90.toFixed(1).padStart(7)} p90  ${sample.gpuMsPerFrame.toFixed(1).padStart(7)} GPU  ${sample.drawsPerFrame.toFixed(0).padStart(4)} draws  ${Math.round(
+					sample.trianglesPerFrame / 1000,
+				)
+					.toString()
+					.padStart(4)}k tris`,
 			);
 			for (const warning of sampleWarnings(sample)) console.log(`      warning: ${warning}`);
 		}
@@ -174,13 +206,15 @@ try {
 		createdAt: new Date().toISOString(),
 		build,
 		target: targetUrl ?? 'local dist/static',
-		route: MALL_ROUTE.id,
-		description: MALL_ROUTE.description,
+		route: route.id,
+		description: route.description,
 		gpu: env.renderer,
 		canvas: env.canvas,
 		batchMode: env.batchMode,
 		speedMetersPerSecond: speed,
 		laps,
+		seed: route.seed,
+		simulationFrozen: freezeSimulation,
 		segments: results,
 	};
 } finally {

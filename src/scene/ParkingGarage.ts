@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { PARKING_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
+import { ELEVATOR_OPENING_P1, PARKING_EXIT_RAMP } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -40,13 +42,31 @@ export class ParkingGarage {
 		const concrete = this.track(lit({ color: 0x5a5a5a, roughness: 0.95 }));
 		const dark = this.track(lit({ color: 0x37474f, roughness: 0.9 }));
 		// Deck floor
-		const floor = new THREE.Mesh(new THREE.BoxGeometry(64, 0.25, 42), concrete);
-		floor.position.y = 0;
+		const floorShape = new THREE.Shape();
+		floorShape.moveTo(-PARKING_FOOTPRINT.halfWidth, -PARKING_FOOTPRINT.halfDepth);
+		floorShape.lineTo(PARKING_FOOTPRINT.halfWidth, -PARKING_FOOTPRINT.halfDepth);
+		floorShape.lineTo(PARKING_FOOTPRINT.halfWidth, PARKING_FOOTPRINT.halfDepth);
+		floorShape.lineTo(-PARKING_FOOTPRINT.halfWidth, PARKING_FOOTPRINT.halfDepth);
+		floorShape.closePath();
+		const shaft = new THREE.Path();
+		const halfShaftWidth = ELEVATOR_OPENING_P1.size.width / 2;
+		const halfShaftDepth = ELEVATOR_OPENING_P1.size.depth / 2;
+		const shaftShapeZ = -ELEVATOR_OPENING_P1.center.z;
+		shaft.moveTo(ELEVATOR_OPENING_P1.center.x - halfShaftWidth, shaftShapeZ - halfShaftDepth);
+		shaft.lineTo(ELEVATOR_OPENING_P1.center.x + halfShaftWidth, shaftShapeZ - halfShaftDepth);
+		shaft.lineTo(ELEVATOR_OPENING_P1.center.x + halfShaftWidth, shaftShapeZ + halfShaftDepth);
+		shaft.lineTo(ELEVATOR_OPENING_P1.center.x - halfShaftWidth, shaftShapeZ + halfShaftDepth);
+		shaft.closePath();
+		floorShape.holes.push(shaft);
+		const floorGeometry = new THREE.ExtrudeGeometry(floorShape, { depth: 0.25, bevelEnabled: false });
+		floorGeometry.rotateX(-Math.PI / 2);
+		const floor = new THREE.Mesh(floorGeometry, concrete);
+		floor.position.y = -0.25;
 		floor.receiveShadow = true;
 		this.group.add(floor);
 
 		// Ceiling slab (underside of mall)
-		const ceil = new THREE.Mesh(new THREE.BoxGeometry(64, 0.3, 42), dark);
+		const ceil = new THREE.Mesh(new THREE.BoxGeometry(PARKING_FOOTPRINT.width, 0.3, PARKING_FOOTPRINT.depth), dark);
 		ceil.position.y = 4.6;
 		this.group.add(ceil);
 
@@ -54,15 +74,15 @@ export class ParkingGarage {
 		const wallH = 4.4;
 		const walls: [number, number, number, number, number, number][] = [
 			// N
-			[0, wallH / 2, -20.8, 64, wallH, 0.35],
+			[0, wallH / 2, -PARKING_FOOTPRINT.halfDepth + 0.2, PARKING_FOOTPRINT.width, wallH, 0.35],
 			// S
-			[0, wallH / 2, 20.8, 64, wallH, 0.35],
+			[0, wallH / 2, PARKING_FOOTPRINT.halfDepth - 0.2, PARKING_FOOTPRINT.width, wallH, 0.35],
 			// W — gap around z=0 for EXIT RAMP to outdoor city
-			[-31.8, wallH / 2, -14, 0.35, wallH, 14],
-			[-31.8, wallH / 2, 14, 0.35, wallH, 14],
+			[-PARKING_FOOTPRINT.halfWidth + 0.2, wallH / 2, -14, 0.35, wallH, 14],
+			[-PARKING_FOOTPRINT.halfWidth + 0.2, wallH / 2, 14, 0.35, wallH, 14],
 			// E (gap for elevator shaft around z=-8)
-			[31.8, wallH / 2, -14, 0.35, wallH, 14],
-			[31.8, wallH / 2, 10, 0.35, wallH, 20],
+			[PARKING_FOOTPRINT.halfWidth - 0.2, wallH / 2, -14, 0.35, wallH, 14],
+			[PARKING_FOOTPRINT.halfWidth - 0.2, wallH / 2, 10, 0.35, wallH, 20],
 		];
 		for (const [x, y, z, w, h, d] of walls) {
 			const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), dark);
@@ -76,38 +96,36 @@ export class ParkingGarage {
 
 	/** Ramp from P1 deck up to street level, heading west out of the mall */
 	private buildExitRamp(concrete: THREE.Material, dark: THREE.Material): void {
-		// Long rising slab: local x -30 → -46, y 0 → 6 (world -6 → 0)
-		const segs = 10;
-		for (let i = 0; i < segs; i++) {
-			const t0 = i / segs;
-			const t1 = (i + 1) / segs;
-			const x0 = -30 - t0 * 16;
-			const x1 = -30 - t1 * 16;
-			const y0 = t0 * 6.05;
-			const y1 = t1 * 6.05;
-			const midX = (x0 + x1) / 2;
-			const midY = (y0 + y1) / 2;
-			const len = Math.hypot(x1 - x0, y1 - y0);
-			const ang = Math.atan2(y1 - y0, x0 - x1); // pitch
-			const slab = new THREE.Mesh(new THREE.BoxGeometry(len, 0.28, 5.5), concrete);
-			slab.position.set(midX, midY + 0.05, 0);
-			slab.rotation.z = ang;
-			slab.receiveShadow = true;
-			this.group.add(slab);
-			// Side rails
-			for (const sz of [-2.9, 2.9]) {
-				const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.55, 0.12), dark);
-				rail.position.set(midX, midY + 0.4, sz);
-				rail.rotation.z = ang;
-				this.group.add(rail);
-			}
+		const start = PARKING_EXIT_RAMP.start;
+		const end = PARKING_EXIT_RAMP.end;
+		const localStartY = start.y - GARAGE_Y;
+		const localEndY = end.y - GARAGE_Y;
+		const run = Math.abs(end.x - start.x);
+		const rise = localEndY - localStartY;
+		const length = Math.hypot(run, rise);
+		const angle = -Math.atan2(rise, run);
+		const centerX = (start.x + end.x) / 2;
+		const surfaceCenterY = (localStartY + localEndY) / 2;
+		const slabNormalOffset = PARKING_EXIT_RAMP.thickness / 2;
+		const slab = new THREE.Mesh(new THREE.BoxGeometry(length, PARKING_EXIT_RAMP.thickness, PARKING_EXIT_RAMP.width), concrete);
+		slab.position.set(centerX + Math.sin(angle) * slabNormalOffset, surfaceCenterY - Math.cos(angle) * slabNormalOffset, 0);
+		slab.rotation.z = angle;
+		slab.receiveShadow = true;
+		this.group.add(slab);
+
+		const railOffset = PARKING_EXIT_RAMP.guardHeight / 2;
+		for (const sideZ of [-PARKING_EXIT_RAMP.width / 2 - 0.15, PARKING_EXIT_RAMP.width / 2 + 0.15]) {
+			const rail = new THREE.Mesh(new THREE.BoxGeometry(length, PARKING_EXIT_RAMP.guardHeight, 0.12), dark);
+			rail.position.set(centerX - Math.sin(angle) * railOffset, surfaceCenterY + Math.cos(angle) * railOffset, sideZ);
+			rail.rotation.z = angle;
+			this.group.add(rail);
 		}
 		// Yellow EXIT arrows on first segments
 		const yellow = this.track(new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }));
 		for (let i = 0; i < 4; i++) {
 			const t = (i + 0.5) / 8;
-			const x = -30 - t * 16;
-			const y = t * 6.05 + 0.2;
+			const x = start.x + (end.x - start.x) * t;
+			const y = localStartY + rise * t + 0.2;
 			const arrow = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.45), yellow);
 			arrow.rotation.x = -Math.PI / 2;
 			arrow.rotation.z = Math.PI / 2; // point west
@@ -116,11 +134,11 @@ export class ParkingGarage {
 		}
 		// Sign at ramp mouth (inside garage)
 		const exitSign = this.makeTextPlane('← EXIT · STAD', 3.2, 0.7, '#b71c1c', '#fff');
-		exitSign.position.set(-28, 2.8, 0);
+		exitSign.position.set(start.x + 2, localStartY + 2.8, 0);
 		exitSign.rotation.y = Math.PI / 2;
 		this.group.add(exitSign);
 		const citySign = this.makeTextPlane('CITY RING →', 2.8, 0.55, '#0d47a1', '#fff');
-		citySign.position.set(-44, 7.2, 0); // near street level (local y≈6)
+		citySign.position.set(end.x + 2, localEndY + 1.15, 0);
 		citySign.rotation.y = Math.PI / 2;
 		this.group.add(citySign);
 	}
