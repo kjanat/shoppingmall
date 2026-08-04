@@ -20,19 +20,16 @@ export type Level = {
 };
 
 export const LEVELS = [
-	{ id: 'p1', y: -6, code: 'P1', name: 'Parkeergarage', hint: "Ondergronds · auto's" },
-	{ id: 'v0', y: 0, code: 'V0', name: 'Begane grond', hint: 'Winkels · kiosk' },
-	{ id: 'v1', y: 6, code: 'V1', name: 'Verdieping 1', hint: 'Kruidvat · food court' },
 	{ id: 'roof', y: 13.95, code: 'DAK', name: 'Dak', hint: 'Helipad · uitzicht' },
+	{ id: 'v1', y: 6, code: 'V1', name: 'Verdieping 1', hint: 'Kruidvat · food court' },
+	{ id: 'v0', y: 0, code: 'V0', name: 'Begane grond', hint: 'Winkels · kiosk' },
+	{ id: 'p1', y: -6, code: 'P1', name: 'Parkeergarage', hint: "Ondergronds · auto's" },
 ] as const satisfies readonly Level[];
 
-/** Visual building order: highest deck first, basement last. */
-export const LEVELS_TOP_DOWN = LEVELS.toReversed();
+/** Algorithmic elevation order for movement that advances upward by index. */
+export const LEVELS_BOTTOM_UP = LEVELS.toReversed();
 
 export type LevelId = (typeof LEVELS)[number]['id'];
-
-/** Directory levels: where shops live. The garage only exists for the lift. */
-export const SHOP_LEVELS = ['v0', 'v1', 'roof'] as const satisfies readonly LevelId[];
 
 const BY_ID = new Map<LevelId, Level>(LEVELS.map((l) => [l.id, l]));
 
@@ -46,13 +43,13 @@ export function levelY(id: LevelId): number {
 	return level(id).y;
 }
 
-/** Position in the stack, for the lift and for "is that one above me". */
-export function levelIndex(id: LevelId): number {
-	return LEVELS.findIndex((l) => l.id === id);
+/** Position by elevation, with a larger index meaning a physically higher deck. */
+export function levelElevationIndex(id: LevelId): number {
+	return LEVELS_BOTTOM_UP.findIndex((entry) => entry.id === id);
 }
 
-export function levelAtIndex(i: number): LevelId | undefined {
-	return LEVELS[i]?.id;
+export function levelAtElevationIndex(index: number): LevelId | undefined {
+	return LEVELS_BOTTOM_UP[index]?.id;
 }
 
 /**
@@ -68,8 +65,8 @@ const DECK_SLACK = 0.5;
  * (`y > 3`, `y < 4.5`, `y >= 10`, …) that all disagreed slightly.
  */
 export function levelAt(y: number): LevelId {
-	let best: (typeof LEVELS)[number] = LEVELS[0];
-	for (const l of LEVELS) {
+	let best: (typeof LEVELS)[number] = LEVELS[3];
+	for (const l of LEVELS_BOTTOM_UP) {
 		if (y >= l.y - DECK_SLACK) best = l;
 	}
 	return best.id;
@@ -77,5 +74,5 @@ export function levelAt(y: number): LevelId {
 
 /** True when `y` is at or above the given deck. */
 export function isAtOrAbove(y: number, id: LevelId): boolean {
-	return levelIndex(levelAt(y)) >= levelIndex(id);
+	return y >= levelY(id) - DECK_SLACK;
 }

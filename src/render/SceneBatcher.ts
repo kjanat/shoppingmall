@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelAt } from '#/data/levels';
 import { type BatchMode, batchMode } from '#/render/graphicsPrefs';
+import { span } from '#/util/math';
 
 type ColorMaterial = THREE.Material & { color?: THREE.Color };
 type SourceInstance = {
@@ -237,7 +238,7 @@ export class SceneBatcher {
 				minZ = Math.min(minZ, z);
 				maxZ = Math.max(maxZ, z);
 			}
-			const geographicallyLocal = maxX - minX <= CELL_SIZE && maxZ - minZ <= CELL_SIZE;
+			const geographicallyLocal = span(minX, maxX) <= CELL_SIZE && span(minZ, maxZ) <= CELL_SIZE;
 			if (
 				mode === 'global' ||
 				// Plain spatial mode keeps moving features together. The dynamic

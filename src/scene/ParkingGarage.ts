@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { PARKING_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
-import { ELEVATOR_OPENING_P1, PARKING_EXIT_RAMP } from '#/data/world';
+import { PARKING_EXIT_RAMP, PARKING_SLAB_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { addBoxMesh } from '#/render/meshFactory';
-import { addXZRectangleHole, xzRectangleShape } from '#/render/xzShape';
+import { addExtrudedXZMesh } from '#/render/xzShape';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half, midpoint } from '#/util/math';
 import { at } from '#/util/rand';
@@ -44,15 +44,11 @@ export class ParkingGarage {
 	private buildShell(): void {
 		const concrete = this.track(lit({ color: 0x5a5a5a, roughness: 0.95 }));
 		const dark = this.track(lit({ color: 0x37474f, roughness: 0.9 }));
-		// Deck floor
-		const floorShape = xzRectangleShape({ center: { x: 0, z: 0 }, size: PARKING_FOOTPRINT });
-		addXZRectangleHole(floorShape, ELEVATOR_OPENING_P1);
-		const floorGeometry = new THREE.ExtrudeGeometry(floorShape, { depth: 0.25, bevelEnabled: false });
-		floorGeometry.rotateX(-Math.PI / 2);
-		const floor = new THREE.Mesh(floorGeometry, concrete);
-		floor.position.y = -0.25;
-		floor.receiveShadow = true;
-		this.group.add(floor);
+		addExtrudedXZMesh(this.group, concrete, {
+			...PARKING_SLAB_SPEC,
+			topY: PARKING_SLAB_SPEC.topY - GARAGE_Y,
+			receiveShadow: true,
+		});
 
 		// Ceiling slab (underside of mall)
 		const ceil = new THREE.Mesh(new THREE.BoxGeometry(PARKING_FOOTPRINT.width, 0.3, PARKING_FOOTPRINT.depth), dark);
@@ -208,19 +204,19 @@ export class ParkingGarage {
 		// Decorative parked cars only — player rentals live in DriveableCars
 		// (avoid overlapping the E-rent spots at ±15.6/-14, 5.2/-14, etc.)
 		const colors = [0x212121, 0xf5f5f5, 0xff8f00, 0x455a64, 0x5d4037];
-		const spots: [number, number, number][] = [
-			[-5.2, -14, 0.3],
-			[0, -14, 0],
-			[10.4, -14, 0.15],
-			[20.8, -14, 0],
-			[10.4, 14, Math.PI],
-			[0, 14, Math.PI],
-			[-20.8, 14, Math.PI - 0.05],
+		const spots = [
+			{ x: -5.2, z: -14, yaw: 0.3 },
+			{ x: 0, z: -14, yaw: 0 },
+			{ x: 10.4, z: -14, yaw: 0.15 },
+			{ x: 20.8, z: -14, yaw: 0 },
+			{ x: 10.4, z: 14, yaw: Math.PI },
+			{ x: 0, z: 14, yaw: Math.PI },
+			{ x: -20.8, z: 14, yaw: Math.PI - 0.05 },
 		];
-		spots.forEach(([x, z, rot], i) => {
+		spots.forEach(({ x, z, yaw }, i) => {
 			const car = this.makeCar(at(colors, i));
 			car.position.set(x, 0.12, z);
-			car.rotation.y = rot;
+			car.rotation.y = yaw;
 			this.group.add(car);
 		});
 	}
@@ -244,15 +240,15 @@ export class ParkingGarage {
 		cabin.position.set(0, 0.85, -0.15);
 		g.add(cabin);
 		// wheels
-		for (const [wx, wz] of [
-			[-0.85, 1.2],
-			[0.85, 1.2],
-			[-0.85, -1.2],
-			[0.85, -1.2],
-		] as const) {
+		for (const wheel of [
+			{ x: -0.85, z: 1.2 },
+			{ x: 0.85, z: 1.2 },
+			{ x: -0.85, z: -1.2 },
+			{ x: 0.85, z: -1.2 },
+		]) {
 			const w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.22, 10), dark);
 			w.rotation.z = Math.PI / 2;
-			w.position.set(wx, 0.28, wz);
+			w.position.set(wheel.x, 0.28, wheel.z);
 			g.add(w);
 		}
 		return g;

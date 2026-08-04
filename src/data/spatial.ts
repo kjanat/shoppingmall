@@ -4,6 +4,11 @@ import { half, midpoint } from '#/util/math';
 export type Vec2 = Readonly<{ x: number; z: number }>;
 export type Vec3 = Readonly<{ x: number; y: number; z: number }>;
 
+export type RectangleSource2 = Readonly<{
+	center: Vec2;
+	size: Readonly<{ width: number; depth: number }>;
+}>;
+
 export type Transform3 = Readonly<{
 	position: Vec3;
 	rotation: Readonly<{ yaw: number; pitch: number; roll: number }>;
@@ -253,7 +258,8 @@ export type SpatialProblem = Readonly<{
 	entities: readonly string[];
 }>;
 
-type Bounds3 = Readonly<{ minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number }>;
+export type Bounds2 = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
+export type Bounds3 = Bounds2 & Readonly<{ minY: number; maxY: number }>;
 
 const EPSILON = 1e-6;
 
@@ -265,7 +271,12 @@ function positive(value: number): boolean {
 	return Number.isFinite(value) && value > 0;
 }
 
-function planBounds(shape: PlanShape): Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }> {
+/** Converts the center-and-size records used by layout data into a spatial plan. */
+export function rectanglePlan(source: RectangleSource2, yaw = 0): Rectangle2 {
+	return { kind: 'rectangle', center: source.center, width: source.size.width, depth: source.size.depth, yaw };
+}
+
+export function planBounds(shape: PlanShape): Bounds2 {
 	if (shape.kind === 'circle') {
 		return {
 			minX: shape.center.x - shape.radius,

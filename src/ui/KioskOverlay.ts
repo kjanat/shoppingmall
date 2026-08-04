@@ -13,7 +13,7 @@ import {
 	WORLD_ENTITIES,
 } from '#/data/world';
 import { qs } from '#/util/dom';
-import { half, midpoint } from '#/util/math';
+import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** One dot on the map — a sim, mostly. */
@@ -643,8 +643,8 @@ export class KioskOverlay {
 		ctx.fillRect(
 			HELIPAD_DECK_BOUNDS.minX,
 			HELIPAD_DECK_BOUNDS.minZ,
-			HELIPAD_DECK_BOUNDS.maxX - HELIPAD_DECK_BOUNDS.minX,
-			HELIPAD_DECK_BOUNDS.maxZ - HELIPAD_DECK_BOUNDS.minZ,
+			span(HELIPAD_DECK_BOUNDS.minX, HELIPAD_DECK_BOUNDS.maxX),
+			span(HELIPAD_DECK_BOUNDS.minZ, HELIPAD_DECK_BOUNDS.maxZ),
 		);
 		ctx.fillRect(12, -12, 16, 20); // lift-corridor
 		ctx.fillStyle = 'rgba(214,196,150,0.6)'; // zand
@@ -671,16 +671,16 @@ export class KioskOverlay {
 		ctx.fillRect(
 			SECRET_STAIRS_OPENING_BOUNDS.minX,
 			SECRET_STAIRS_OPENING_BOUNDS.minZ,
-			SECRET_STAIRS_OPENING_BOUNDS.maxX - SECRET_STAIRS_OPENING_BOUNDS.minX,
-			SECRET_STAIRS_OPENING_BOUNDS.maxZ - SECRET_STAIRS_OPENING_BOUNDS.minZ,
+			span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENING_BOUNDS.maxX),
+			span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ),
 		);
 		ctx.strokeStyle = 'rgba(248,113,113,0.9)';
 		ctx.lineWidth = 1.4 * px;
 		ctx.strokeRect(
 			SECRET_STAIRS_OPENING_BOUNDS.minX,
 			SECRET_STAIRS_OPENING_BOUNDS.minZ,
-			SECRET_STAIRS_OPENING_BOUNDS.maxX - SECRET_STAIRS_OPENING_BOUNDS.minX,
-			SECRET_STAIRS_OPENING_BOUNDS.maxZ - SECRET_STAIRS_OPENING_BOUNDS.minZ,
+			span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENING_BOUNDS.maxX),
+			span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ),
 		);
 
 		// Glazen lift
@@ -767,10 +767,10 @@ export class KioskOverlay {
 		// Escalator + stairs shafts
 		for (const v of VERTICALS) {
 			ctx.fillStyle = 'rgba(251,191,36,0.35)';
-			ctx.fillRect(v.x - v.width / 2, v.minZ, v.width, v.maxZ - v.minZ);
+			ctx.fillRect(v.x - half(v.width), v.minZ, v.width, span(v.minZ, v.maxZ));
 			ctx.strokeStyle = '#fbbf24';
 			ctx.lineWidth = 1.4 * px;
-			ctx.strokeRect(v.x - v.width / 2, v.minZ, v.width, v.maxZ - v.minZ);
+			ctx.strokeRect(v.x - half(v.width), v.minZ, v.width, span(v.minZ, v.maxZ));
 		}
 
 		// Route — bright on this floor, ghosted on the other

@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { speakLine } from '#/audio/ElevenVoice';
-import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '#/data/levels';
-import { ELEVATOR_SHAFT_WALLS, ELEVATOR_SPEC } from '#/data/world';
+import type { LevelId } from '#/data/levels';
+import { LEVELS, level, levelAt, levelAtElevationIndex, levelElevationIndex, levelY } from '#/data/levels';
+import { planBounds, rectanglePlan } from '#/data/spatial';
+import { ELEVATOR_SHAFT_POSTS, ELEVATOR_SHAFT_WALLS, ELEVATOR_SPEC } from '#/data/world';
 import { EYE } from '#/player/constants';
 import type { LightPool } from '#/render/LightPool';
 import { type LitMaterial, lit } from '#/render/material';
-import { addXZRectangleHole, xzRectangleShape } from '#/render/xzShape';
+import { extrudedXZGeometry } from '#/render/xzShape';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { clamp, half, midpoint } from '#/util/math';
 import { pick } from '#/util/rand';
@@ -29,14 +31,13 @@ const SHAFT_GAP = ELEVATOR_SPEC.shaftGap;
  * plaats van dat de cabine er weer doorheen begint te snijden.
  */
 function padWithShaftHole(): THREE.ExtrudeGeometry {
-	const shape = xzRectangleShape({ center: { x: 0, z: 0 }, size: ELEVATOR_SPEC.landingPad });
-	addXZRectangleHole(shape, {
-		center: { x: 0, z: 0 },
+	const center = { x: 0, z: 0 };
+	const padPlan = rectanglePlan({ center, size: ELEVATOR_SPEC.landingPad });
+	const shaftPlan = rectanglePlan({
+		center,
 		size: { width: CABIN_W + SHAFT_GAP * 2, depth: CABIN_D + SHAFT_GAP * 2 },
 	});
-	const geo = new THREE.ExtrudeGeometry(shape, { depth: ELEVATOR_SPEC.landingPad.thickness, bevelEnabled: false });
-	// Extrusie gaat +Z; leg hem plat en zet de bovenkant op y 0.
-	geo.rotateX(-Math.PI / 2);
+	const geo = extrudedXZGeometry(padPlan, [shaftPlan], ELEVATOR_SPEC.landingPad.thickness);
 	// Zelfde dikte en zelfde loopvlak als de Box die hij vervangt.
 	geo.translate(0, -half(ELEVATOR_SPEC.landingPad.thickness), 0);
 	return geo;
@@ -74,10 +75,10 @@ const HANS_GREET = [
 	'Stap in. Garage, winkels of dak — Hans regelt het.',
 ];
 const HANS_LINES: Record<LevelId, string[]> = {
-	p1: ["Parkeergarage. Let op auto's.", 'P1 garage. Ticket bij de kiosk.', 'Ondergronds. Lift terug is hier.'],
-	v0: ['Begane grond. Let op de stap.', 'Begane grond. Deuren open.', 'Begane grond. Prettige dag verder.'],
-	v1: ['Verdieping één. Kruidvat is links.', 'Eerste verdieping. Deuren open.', 'Verdieping één. Food court op het balkon.'],
 	roof: ['Dak. Helipad en frisse lucht.', 'Dak. Niet van de rand vallen.', 'Dakterras. Helikopter is die kant op.'],
+	v1: ['Verdieping één. Kruidvat is links.', 'Eerste verdieping. Deuren open.', 'Verdieping één. Food court op het balkon.'],
+	v0: ['Begane grond. Let op de stap.', 'Begane grond. Deuren open.', 'Begane grond. Prettige dag verder.'],
+	p1: ["Parkeergarage. Let op auto's.", 'P1 garage. Ticket bij de kiosk.', 'Ondergronds. Lift terug is hier.'],
 };
 
 /**
@@ -291,29 +292,27 @@ export class GlassElevator {
 		minY?: number;
 		maxY?: number;
 	}[] {
-		const cx = this.pos.x;
-		const cz = this.pos.z;
 		const shaft = ELEVATOR_SPEC.shaft;
 		const plugInset = ELEVATOR_SPEC.cabin.wallInset;
 		const minY = levelY('p1') - shaft.bottomOverrun;
 		const maxY = levelY('roof') + shaft.topOverrun;
+		const simGate = planBounds(
+			rectanglePlan({
+				center: ELEVATOR_SPEC.center,
+				size: { width: CABIN_W + plugInset * 2, depth: CABIN_D + plugInset * 2 },
+			}),
+		);
 		return [
 			// Sims do not operate the lift, so the open boarding face remains closed to them.
 			{
-				minX: cx - half(CABIN_W) - plugInset,
-				maxX: cx + half(CABIN_W) + plugInset,
-				minZ: cz - half(CABIN_D) - plugInset,
-				maxZ: cz + half(CABIN_D) + plugInset,
+				...simGate,
 				minY,
 				maxY,
 				label: 'elev_shaft_sim_gate',
 				climbable: true,
 			},
 			...ELEVATOR_SHAFT_WALLS.map((wall) => ({
-				minX: wall.center.x - half(wall.size.width),
-				maxX: wall.center.x + half(wall.size.width),
-				minZ: wall.center.z - half(wall.size.depth),
-				maxZ: wall.center.z + half(wall.size.depth),
+				...planBounds(rectanglePlan(wall)),
 				minY,
 				maxY,
 				label: `elev_shaft_glass_${wall.id}`,
@@ -373,11 +372,11 @@ export class GlassElevator {
 				this.waitT -= dt;
 				if (this.waitT <= 0) {
 					// Empty auto-cycle only when nobody is riding
-					const next = levelIndex(this.stop) + this.travelDir;
+					const next = levelElevationIndex(this.stop) + this.travelDir;
 					if (next >= LEVELS.length - 1) this.travelDir = -1;
 					if (next <= 0) this.travelDir = 1;
-					const i = THREE.MathUtils.clamp(levelIndex(this.stop) + this.travelDir, 0, LEVELS.length - 1);
-					this.stop = levelAtIndex(i) ?? this.stop;
+					const i = THREE.MathUtils.clamp(levelElevationIndex(this.stop) + this.travelDir, 0, LEVELS.length - 1);
+					this.stop = levelAtElevationIndex(i) ?? this.stop;
 					this.targetY = levelY(this.stop);
 					this.moving = true;
 				}
@@ -491,17 +490,13 @@ export class GlassElevator {
 		const postTop = FLOOR2 + ELEVATOR_SPEC.shaft.topOverrun;
 		const postH = postTop - postBottom;
 		const postMid = midpoint(postTop, postBottom);
-		for (const [sx, sz] of [
-			[-ELEVATOR_SPEC.shaft.postOffset, -ELEVATOR_SPEC.shaft.postOffset],
-			[ELEVATOR_SPEC.shaft.postOffset, -ELEVATOR_SPEC.shaft.postOffset],
-			[-ELEVATOR_SPEC.shaft.postOffset, ELEVATOR_SPEC.shaft.postOffset],
-			[ELEVATOR_SPEC.shaft.postOffset, ELEVATOR_SPEC.shaft.postOffset],
-		] as const) {
+		for (const postSpec of ELEVATOR_SHAFT_POSTS) {
 			const post = new THREE.Mesh(
 				new THREE.BoxGeometry(ELEVATOR_SPEC.shaft.postThickness, postH, ELEVATOR_SPEC.shaft.postThickness),
 				chrome,
 			);
-			post.position.set(sx, postMid, sz);
+			post.name = `elevator-shaft-post-${postSpec.id}`;
+			post.position.set(postSpec.center.x - this.pos.x, postMid, postSpec.center.z - this.pos.z);
 			this.group.add(post);
 		}
 

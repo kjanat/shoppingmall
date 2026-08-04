@@ -3,6 +3,7 @@ import { levelY } from '#/data/levels';
 import { type LitMaterial, lit } from '#/render/material';
 import { distanceToSegment2 } from '#/util/geometry2';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 const DECK_Y = levelY('roof');
@@ -784,11 +785,11 @@ export class RoofIsland {
 			m.position.set(x, railY, z);
 			this.group.add(m);
 		};
-		bar(0.07, maxZ - minZ, minX, 0);
-		bar(maxX - minX, 0.07, (minX + maxX) / 2, minZ);
-		bar(maxX - minX, 0.07, (minX + maxX) / 2, maxZ);
-		bar(0.07, -2.5 - minZ, maxX, (minZ - 2.5) / 2);
-		bar(0.07, maxZ - 2.5, maxX, (maxZ + 2.5) / 2);
+		bar(0.07, span(minZ, maxZ), minX, 0);
+		bar(span(minX, maxX), 0.07, midpoint(minX, maxX), minZ);
+		bar(span(minX, maxX), 0.07, midpoint(minX, maxX), maxZ);
+		bar(0.07, span(minZ, -2.5), maxX, midpoint(minZ, -2.5));
+		bar(0.07, span(2.5, maxZ), maxX, midpoint(2.5, maxZ));
 	}
 
 	private buildSign(): void {

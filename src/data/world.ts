@@ -9,8 +9,10 @@ import type {
 	SpatialVolume,
 	WorldEntity,
 } from '#/data/spatial';
+import { planBounds, rectanglePlan } from '#/data/spatial';
 import { shopStores } from '#/data/stores';
-import { half, midpoint } from '#/util/math';
+import { rectangularPerimeterWalls } from '#/data/structure';
+import { half, span } from '#/util/math';
 
 export type WorldCategory = 'floor' | 'ceiling' | 'wall' | 'opening' | 'shop' | 'vertical-circulation' | 'parking';
 
@@ -91,6 +93,37 @@ export const ELEVATOR_SHAFT_WALLS = [
 		id: 'east',
 		center: { x: ELEVATOR_SPEC.center.x + ELEVATOR_SPEC.shaft.wallOffset, z: ELEVATOR_SPEC.center.z },
 		size: { width: ELEVATOR_SPEC.shaft.panelThickness, depth: ELEVATOR_SPEC.shaft.panelSpan },
+	},
+] as const;
+
+export const ELEVATOR_SHAFT_POSTS = [
+	{
+		id: 'north-west',
+		center: {
+			x: ELEVATOR_SPEC.center.x - ELEVATOR_SPEC.shaft.postOffset,
+			z: ELEVATOR_SPEC.center.z - ELEVATOR_SPEC.shaft.postOffset,
+		},
+	},
+	{
+		id: 'north-east',
+		center: {
+			x: ELEVATOR_SPEC.center.x + ELEVATOR_SPEC.shaft.postOffset,
+			z: ELEVATOR_SPEC.center.z - ELEVATOR_SPEC.shaft.postOffset,
+		},
+	},
+	{
+		id: 'south-west',
+		center: {
+			x: ELEVATOR_SPEC.center.x - ELEVATOR_SPEC.shaft.postOffset,
+			z: ELEVATOR_SPEC.center.z + ELEVATOR_SPEC.shaft.postOffset,
+		},
+	},
+	{
+		id: 'south-east',
+		center: {
+			x: ELEVATOR_SPEC.center.x + ELEVATOR_SPEC.shaft.postOffset,
+			z: ELEVATOR_SPEC.center.z + ELEVATOR_SPEC.shaft.postOffset,
+		},
 	},
 ] as const;
 export const PARKING_EXIT_RAMP = {
@@ -334,55 +367,17 @@ function openingEntity(
 	};
 }
 
-const V1_ATRIUM_PLAN = rectangle(0, 0, ATRIUM_VOID.width, ATRIUM_VOID.depth);
-const V1_ESCALATOR_PLAN = rectangle(
-	ESCALATOR.opening.center.x,
-	ESCALATOR.opening.center.z,
-	ESCALATOR.opening.size.width,
-	ESCALATOR.opening.size.depth,
-);
-const V1_STAIRS_PLAN = rectangle(
-	STAIRS.opening.center.x,
-	STAIRS.opening.center.z,
-	STAIRS.opening.size.width,
-	STAIRS.opening.size.depth,
-);
-const V1_ELEVATOR_PLAN = rectangle(
-	ELEVATOR_OPENING_V1.center.x,
-	ELEVATOR_OPENING_V1.center.z,
-	ELEVATOR_OPENING_V1.size.width,
-	ELEVATOR_OPENING_V1.size.depth,
-);
-const V0_ELEVATOR_PLAN = rectangle(
-	ELEVATOR_OPENING_V0.center.x,
-	ELEVATOR_OPENING_V0.center.z,
-	ELEVATOR_OPENING_V0.size.width,
-	ELEVATOR_OPENING_V0.size.depth,
-);
-const P1_ELEVATOR_PLAN = rectangle(
-	ELEVATOR_OPENING_P1.center.x,
-	ELEVATOR_OPENING_P1.center.z,
-	ELEVATOR_OPENING_P1.size.width,
-	ELEVATOR_OPENING_P1.size.depth,
-);
-export const SECRET_STAIRS_OPENING_PLAN = rectangle(
-	SECRET_STAIRS.opening.center.x,
-	SECRET_STAIRS.opening.center.z,
-	SECRET_STAIRS.opening.size.width,
-	SECRET_STAIRS.opening.size.depth,
-);
-export const SECRET_STAIRS_OPENING_BOUNDS = {
-	minX: SECRET_STAIRS.opening.center.x - SECRET_STAIRS.opening.size.width / 2,
-	maxX: SECRET_STAIRS.opening.center.x + SECRET_STAIRS.opening.size.width / 2,
-	minZ: SECRET_STAIRS.opening.center.z - SECRET_STAIRS.opening.size.depth / 2,
-	maxZ: SECRET_STAIRS.opening.center.z + SECRET_STAIRS.opening.size.depth / 2,
-} as const;
-const ROOF_ELEVATOR_PLAN = rectangle(
-	ELEVATOR_OPENING_ROOF.center.x,
-	ELEVATOR_OPENING_ROOF.center.z,
-	ELEVATOR_OPENING_ROOF.size.width,
-	ELEVATOR_OPENING_ROOF.size.depth,
-);
+const MALL_FOOTPRINT_PLAN = rectanglePlan({ center: { x: 0, z: 0 }, size: MALL_FOOTPRINT });
+const PARKING_FOOTPRINT_PLAN = rectanglePlan({ center: { x: 0, z: 0 }, size: PARKING_FOOTPRINT });
+const V1_ATRIUM_PLAN = rectanglePlan(ATRIUM_OPENING);
+const V1_ESCALATOR_PLAN = rectanglePlan(ESCALATOR.opening);
+const V1_STAIRS_PLAN = rectanglePlan(STAIRS.opening);
+const V1_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_V1);
+const V0_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_V0);
+const P1_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_P1);
+export const SECRET_STAIRS_OPENING_PLAN = rectanglePlan(SECRET_STAIRS.opening);
+export const SECRET_STAIRS_OPENING_BOUNDS = planBounds(SECRET_STAIRS_OPENING_PLAN);
+const ROOF_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_ROOF);
 
 export const HELIPAD_DECK_PLAN = {
 	kind: 'polygon',
@@ -393,7 +388,7 @@ export const HELIPAD_DECK_PLAN = {
 		{ x: 8, z: 23 },
 	],
 } satisfies PlanShape;
-export const HELIPAD_DECK_BOUNDS = { minX: 8, maxX: 32, minZ: 7, maxZ: 23 } as const;
+export const HELIPAD_DECK_BOUNDS = planBounds(HELIPAD_DECK_PLAN);
 export const HELIPAD_PAD_SPEC = {
 	center: { x: 22, z: 16 },
 	topRadius: 5.5,
@@ -405,130 +400,100 @@ export const HELIPAD_PAD_SPEC = {
 const FLOOR_V1_HOLES = [V1_ATRIUM_PLAN, V1_ESCALATOR_PLAN, V1_STAIRS_PLAN, V1_ELEVATOR_PLAN] as const;
 const ROOF_SLAB_HOLES = [V1_ATRIUM_PLAN, SECRET_STAIRS_OPENING_PLAN, ROOF_ELEVATOR_PLAN] as const;
 
-const floorV0: MallWorldEntity = {
-	id: 'mall-floor-v0',
-	label: 'Ground-floor slab',
-	category: 'floor',
-	levels: ['v0'],
-	transform: { position: { x: 0, y: 0, z: 0 }, rotation: ZERO_ROTATION },
-	volumes: [
-		solidPrism('slab', rectangle(0, 0, MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth), -0.3, 0, [V0_ELEVATOR_PLAN], 'support'),
-	],
-	ports: NO_PORTS,
-	placement: structurePlacement(),
-	kinematics: { kind: 'static' },
-	mechanisms: NO_MECHANISMS,
-	receiver: STATIC_RECEIVER,
-	emitters: NO_EMITTERS,
-	map: map('structure', 'V0'),
-	tags: ['slab', 'walkable', 'structural'],
-};
+type StructuralSlabSpec = Readonly<{
+	id: string;
+	label: string;
+	category: 'floor' | 'ceiling' | 'parking';
+	level: LevelId;
+	topY: number;
+	thickness: number;
+	plan: PlanShape;
+	holes: readonly PlanShape[];
+	mapLabel: string;
+}>;
 
-const floorV1: MallWorldEntity = {
-	id: 'mall-floor-v1',
-	label: 'First-floor slab',
-	category: 'floor',
-	levels: ['v1'],
-	transform: { position: { x: 0, y: levelY('v1'), z: 0 }, rotation: ZERO_ROTATION },
-	volumes: [
-		solidPrism(
-			'slab',
-			rectangle(0, 0, MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth),
-			levelY('v1') - 0.45,
-			levelY('v1'),
-			FLOOR_V1_HOLES,
-			'support',
-		),
-	],
-	ports: NO_PORTS,
-	placement: structurePlacement(),
-	kinematics: { kind: 'static' },
-	mechanisms: NO_MECHANISMS,
-	receiver: STATIC_RECEIVER,
-	emitters: NO_EMITTERS,
-	map: map('structure', 'V1'),
-	tags: ['slab', 'walkable', 'structural'],
-};
+export const MALL_SLAB_SPECS = {
+	v0: {
+		id: 'mall-floor-v0',
+		label: 'Ground-floor slab',
+		category: 'floor',
+		level: 'v0',
+		topY: levelY('v0'),
+		thickness: 0.3,
+		plan: MALL_FOOTPRINT_PLAN,
+		holes: [V0_ELEVATOR_PLAN],
+		mapLabel: 'V0',
+	},
+	v1: {
+		id: 'mall-floor-v1',
+		label: 'First-floor slab',
+		category: 'floor',
+		level: 'v1',
+		topY: levelY('v1'),
+		thickness: 0.45,
+		plan: MALL_FOOTPRINT_PLAN,
+		holes: FLOOR_V1_HOLES,
+		mapLabel: 'V1',
+	},
+	roof: {
+		id: 'mall-roof-slab',
+		label: 'Mall roof base',
+		category: 'ceiling',
+		level: 'roof',
+		topY: levelY('roof'),
+		thickness: 0.45,
+		plan: MALL_FOOTPRINT_PLAN,
+		holes: ROOF_SLAB_HOLES,
+		mapLabel: 'Dak',
+	},
+} as const satisfies Readonly<Record<'v0' | 'v1' | 'roof', StructuralSlabSpec>>;
 
-const roofSlab: MallWorldEntity = {
-	id: 'mall-roof-slab',
-	label: 'Mall roof base',
-	category: 'ceiling',
-	levels: ['roof'],
-	transform: { position: { x: 0, y: levelY('roof'), z: 0 }, rotation: ZERO_ROTATION },
-	volumes: [
-		solidPrism(
-			'slab',
-			rectangle(0, 0, MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth),
-			levelY('roof') - 0.45,
-			levelY('roof'),
-			ROOF_SLAB_HOLES,
-			'support',
-		),
-	],
-	ports: NO_PORTS,
-	placement: structurePlacement(),
-	kinematics: { kind: 'static' },
-	mechanisms: NO_MECHANISMS,
-	receiver: STATIC_RECEIVER,
-	emitters: NO_EMITTERS,
-	map: map('structure', 'Dak'),
-	tags: ['slab', 'walkable', 'structural'],
-};
-
-const parkingFloor: MallWorldEntity = {
+export const PARKING_SLAB_SPEC = {
 	id: 'parking-floor',
 	label: 'Parking deck',
 	category: 'parking',
-	levels: ['p1'],
-	transform: { position: { x: 0, y: levelY('p1'), z: 0 }, rotation: ZERO_ROTATION },
-	volumes: [
-		solidPrism(
-			'slab',
-			rectangle(0, 0, PARKING_FOOTPRINT.width, PARKING_FOOTPRINT.depth),
-			levelY('p1') - 0.25,
-			levelY('p1'),
-			[P1_ELEVATOR_PLAN],
-			'support',
-		),
-	],
-	ports: NO_PORTS,
-	placement: structurePlacement(),
-	kinematics: { kind: 'static' },
-	mechanisms: NO_MECHANISMS,
-	receiver: STATIC_RECEIVER,
-	emitters: NO_EMITTERS,
-	map: map('parking', 'P1', 40),
-	tags: ['slab', 'walkable', 'parking', 'structural'],
-};
+	level: 'p1',
+	topY: levelY('p1'),
+	thickness: 0.25,
+	plan: PARKING_FOOTPRINT_PLAN,
+	holes: [P1_ELEVATOR_PLAN],
+	mapLabel: 'P1',
+} as const satisfies StructuralSlabSpec;
 
-const MALL_WALL_HEIGHT = (levelY('v1') - levelY('v0')) * 2 + 2;
+function slabEntity(spec: StructuralSlabSpec): MallWorldEntity {
+	return {
+		id: spec.id,
+		label: spec.label,
+		category: spec.category,
+		levels: [spec.level],
+		transform: { position: { x: 0, y: spec.topY, z: 0 }, rotation: ZERO_ROTATION },
+		volumes: [solidPrism('slab', spec.plan, spec.topY - spec.thickness, spec.topY, spec.holes, 'support')],
+		ports: NO_PORTS,
+		placement: structurePlacement(),
+		kinematics: { kind: 'static' },
+		mechanisms: NO_MECHANISMS,
+		receiver: STATIC_RECEIVER,
+		emitters: NO_EMITTERS,
+		map: map(spec.category === 'parking' ? 'parking' : 'structure', spec.mapLabel, spec.category === 'parking' ? 40 : 50),
+		tags: ['slab', 'walkable', 'structural', ...(spec.category === 'parking' ? ['parking'] : [])],
+	};
+}
+
+const floorV0 = slabEntity(MALL_SLAB_SPECS.v0);
+const floorV1 = slabEntity(MALL_SLAB_SPECS.v1);
+const roofSlab = slabEntity(MALL_SLAB_SPECS.roof);
+const parkingFloor = slabEntity(PARKING_SLAB_SPEC);
+
 const MALL_WALL_MIN_Y = -0.3;
-const MALL_WALL_MAX_Y = MALL_WALL_MIN_Y + MALL_WALL_HEIGHT;
+const MALL_WALL_MAX_Y = MALL_WALL_MIN_Y + (levelY('v1') - levelY('v0')) * 2 + 2;
 const MALL_WALL_THICKNESS = 0.4;
 
-export const MALL_WALL_SPECS = [
-	{
-		id: 'north',
-		position: { x: 0, y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: -half(MALL_FOOTPRINT.depth) },
-		size: { width: MALL_FOOTPRINT.width + 1, height: MALL_WALL_HEIGHT, depth: MALL_WALL_THICKNESS },
-	},
-	{
-		id: 'south',
-		position: { x: 0, y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: half(MALL_FOOTPRINT.depth) },
-		size: { width: MALL_FOOTPRINT.width + 1, height: MALL_WALL_HEIGHT, depth: MALL_WALL_THICKNESS },
-	},
-	{
-		id: 'west',
-		position: { x: -half(MALL_FOOTPRINT.width), y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: 0 },
-		size: { width: MALL_WALL_THICKNESS, height: MALL_WALL_HEIGHT, depth: MALL_FOOTPRINT.depth },
-	},
-	{
-		id: 'east',
-		position: { x: half(MALL_FOOTPRINT.width), y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: 0 },
-		size: { width: MALL_WALL_THICKNESS, height: MALL_WALL_HEIGHT, depth: MALL_FOOTPRINT.depth },
-	},
-] as const;
+export const MALL_WALL_SPECS = rectangularPerimeterWalls({
+	footprint: MALL_FOOTPRINT,
+	vertical: { min: MALL_WALL_MIN_Y, max: MALL_WALL_MAX_Y },
+	thickness: MALL_WALL_THICKNESS,
+	capOverlap: 0.5,
+});
 
 const MALL_WALLS: readonly MallWorldEntity[] = MALL_WALL_SPECS.map(({ id, position, size }) => ({
 	id: `mall-wall-${id}`,
@@ -569,9 +534,44 @@ export const HELIPAD_DECK: MallWorldEntity = {
 export const HELIPAD_HATCH_FRAME_SPEC = { thickness: 0.12, height: 0.15 } as const;
 const HATCH_FRAME_THICKNESS = HELIPAD_HATCH_FRAME_SPEC.thickness;
 const HATCH_FRAME_HEIGHT = HELIPAD_HATCH_FRAME_SPEC.height;
-const HATCH_FRAME_Y = levelY('roof') + HELIPAD_HATCH_FRAME_SPEC.height / 2;
-const HATCH_WIDTH = SECRET_STAIRS_OPENING_BOUNDS.maxX - SECRET_STAIRS_OPENING_BOUNDS.minX;
-const HATCH_DEPTH = SECRET_STAIRS_OPENING_BOUNDS.maxZ - SECRET_STAIRS_OPENING_BOUNDS.minZ;
+const HATCH_FRAME_Y = levelY('roof') + half(HATCH_FRAME_HEIGHT);
+const HATCH_WIDTH = span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENING_BOUNDS.maxX);
+const HATCH_DEPTH = span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ);
+
+export const HELIPAD_HATCH_FRAME_RAILS = [
+	{
+		id: 'west-rail',
+		center: {
+			x: SECRET_STAIRS_OPENING_BOUNDS.minX - half(HATCH_FRAME_THICKNESS),
+			z: SECRET_STAIRS.opening.center.z,
+		},
+		size: { width: HATCH_FRAME_THICKNESS, depth: HATCH_DEPTH + HATCH_FRAME_THICKNESS * 2 },
+	},
+	{
+		id: 'east-rail',
+		center: {
+			x: SECRET_STAIRS_OPENING_BOUNDS.maxX + half(HATCH_FRAME_THICKNESS),
+			z: SECRET_STAIRS.opening.center.z,
+		},
+		size: { width: HATCH_FRAME_THICKNESS, depth: HATCH_DEPTH + HATCH_FRAME_THICKNESS * 2 },
+	},
+	{
+		id: 'north-rail',
+		center: {
+			x: SECRET_STAIRS.opening.center.x,
+			z: SECRET_STAIRS_OPENING_BOUNDS.minZ - half(HATCH_FRAME_THICKNESS),
+		},
+		size: { width: HATCH_WIDTH, depth: HATCH_FRAME_THICKNESS },
+	},
+	{
+		id: 'south-rail',
+		center: {
+			x: SECRET_STAIRS.opening.center.x,
+			z: SECRET_STAIRS_OPENING_BOUNDS.maxZ + half(HATCH_FRAME_THICKNESS),
+		},
+		size: { width: HATCH_WIDTH, depth: HATCH_FRAME_THICKNESS },
+	},
+] as const;
 
 export const HELIPAD_HATCH_FRAME: MallWorldEntity = {
 	id: 'helipad-hatch-frame',
@@ -582,52 +582,9 @@ export const HELIPAD_HATCH_FRAME: MallWorldEntity = {
 		position: { x: SECRET_STAIRS.opening.center.x, y: HATCH_FRAME_Y, z: SECRET_STAIRS.opening.center.z },
 		rotation: ZERO_ROTATION,
 	},
-	volumes: [
-		solidPrism(
-			'west-rail',
-			rectangle(
-				SECRET_STAIRS_OPENING_BOUNDS.minX - HATCH_FRAME_THICKNESS / 2,
-				SECRET_STAIRS.opening.center.z,
-				HATCH_FRAME_THICKNESS,
-				HATCH_DEPTH + HATCH_FRAME_THICKNESS * 2,
-			),
-			levelY('roof'),
-			levelY('roof') + HATCH_FRAME_HEIGHT,
-		),
-		solidPrism(
-			'east-rail',
-			rectangle(
-				SECRET_STAIRS_OPENING_BOUNDS.maxX + HATCH_FRAME_THICKNESS / 2,
-				SECRET_STAIRS.opening.center.z,
-				HATCH_FRAME_THICKNESS,
-				HATCH_DEPTH + HATCH_FRAME_THICKNESS * 2,
-			),
-			levelY('roof'),
-			levelY('roof') + HATCH_FRAME_HEIGHT,
-		),
-		solidPrism(
-			'north-rail',
-			rectangle(
-				SECRET_STAIRS.opening.center.x,
-				SECRET_STAIRS_OPENING_BOUNDS.minZ - HATCH_FRAME_THICKNESS / 2,
-				HATCH_WIDTH,
-				HATCH_FRAME_THICKNESS,
-			),
-			levelY('roof'),
-			levelY('roof') + HATCH_FRAME_HEIGHT,
-		),
-		solidPrism(
-			'south-rail',
-			rectangle(
-				SECRET_STAIRS.opening.center.x,
-				SECRET_STAIRS_OPENING_BOUNDS.maxZ + HATCH_FRAME_THICKNESS / 2,
-				HATCH_WIDTH,
-				HATCH_FRAME_THICKNESS,
-			),
-			levelY('roof'),
-			levelY('roof') + HATCH_FRAME_HEIGHT,
-		),
-	],
+	volumes: HELIPAD_HATCH_FRAME_RAILS.map((rail) =>
+		solidPrism(rail.id, rectanglePlan(rail), levelY('roof'), levelY('roof') + HATCH_FRAME_HEIGHT),
+	),
 	ports: NO_PORTS,
 	placement: { class: 'fixture', requiresSupport: true, mayCover: [], mayBeCoveredBy: [] },
 	kinematics: { kind: 'static' },
@@ -1001,3 +958,14 @@ export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 	ELEVATOR_ENTITY,
 	...SPATIAL_SHOPS,
 ];
+
+/** Relational view of the authored world. Callers do not maintain parallel per-level feature lists. */
+export function entitiesOnLevel(levelId: LevelId): readonly MallWorldEntity[] {
+	return WORLD_ENTITIES.filter((entity) => entity.levels.includes(levelId));
+}
+
+export function levelsContaining(category: MallWorldCategory): readonly LevelId[] {
+	return LEVELS.filter((entry) => entitiesOnLevel(entry.id).some((entity) => entity.category === category)).map(
+		(entry) => entry.id,
+	);
+}

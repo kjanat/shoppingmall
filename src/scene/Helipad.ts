@@ -2,14 +2,18 @@ import * as THREE from 'three';
 import { levelY } from '#/data/levels';
 import {
 	HELIPAD_DECK_PLAN,
+	HELIPAD_HATCH_FRAME_RAILS,
 	HELIPAD_HATCH_FRAME_SPEC,
 	HELIPAD_PAD_SPEC,
 	SECRET_STAIRS,
-	SECRET_STAIRS_OPENING_BOUNDS,
+	SECRET_STAIRS_OPENING_PLAN,
 } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
+import { addBoxMesh } from '#/render/meshFactory';
+import { addXZPlanHole, xzPlanShape } from '#/render/xzShape';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
 // Ceiling slab tops out at 13.75 (y 13.5 + 0.25 extrude) — the deck used to sit
@@ -112,29 +116,16 @@ export class Helipad {
 
 		// The old "frame" was one solid box across the opening. Four rails keep
 		// the route clear and make the geometry match the declared hatch volume.
-		const frameThickness = HELIPAD_HATCH_FRAME_SPEC.thickness;
 		const frameHeight = HELIPAD_HATCH_FRAME_SPEC.height;
-		const openingWidth = SECRET_STAIRS_OPENING_BOUNDS.maxX - SECRET_STAIRS_OPENING_BOUNDS.minX;
-		const openingDepth = SECRET_STAIRS_OPENING_BOUNDS.maxZ - SECRET_STAIRS_OPENING_BOUNDS.minZ;
-		const frame = (width: number, depth: number, frameX: number, frameZ: number): void => {
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(width, frameHeight, depth), metal);
-			rail.position.set(frameX, y1 + frameHeight / 2, frameZ);
-			g.add(rail);
-		};
-		frame(
-			frameThickness,
-			openingDepth + frameThickness * 2,
-			SECRET_STAIRS_OPENING_BOUNDS.minX - frameThickness / 2,
-			SECRET_STAIRS.opening.center.z,
-		);
-		frame(
-			frameThickness,
-			openingDepth + frameThickness * 2,
-			SECRET_STAIRS_OPENING_BOUNDS.maxX + frameThickness / 2,
-			SECRET_STAIRS.opening.center.z,
-		);
-		frame(openingWidth, frameThickness, SECRET_STAIRS.opening.center.x, SECRET_STAIRS_OPENING_BOUNDS.minZ - frameThickness / 2);
-		frame(openingWidth, frameThickness, SECRET_STAIRS.opening.center.x, SECRET_STAIRS_OPENING_BOUNDS.maxZ + frameThickness / 2);
+		for (const rail of HELIPAD_HATCH_FRAME_RAILS) {
+			addBoxMesh(g, metal, {
+				name: `hatch-frame-${rail.id}`,
+				width: rail.size.width,
+				height: frameHeight,
+				depth: rail.size.depth,
+				position: { x: rail.center.x, y: y1 + half(frameHeight), z: rail.center.z },
+			});
+		}
 
 		this.group.add(g);
 	}
@@ -146,19 +137,8 @@ export class Helipad {
 		// Dek als shape MET een gat boven de secret stairs (26, 16.25) — de oude
 		// dichte doos lag over de trapopening heen, dus boven was er geen trapgat.
 		// NB: rotateX(-π/2) spiegelt shape-y → wereld −z, dus snijden op −z.
-		const deckShape = new THREE.Shape();
-		const firstDeckPoint = HELIPAD_DECK_PLAN.points[0];
-		if (!firstDeckPoint) throw new Error('helipad deck requires at least one point');
-		deckShape.moveTo(firstDeckPoint.x, -firstDeckPoint.z);
-		for (const point of HELIPAD_DECK_PLAN.points.slice(1)) deckShape.lineTo(point.x, -point.z);
-		deckShape.lineTo(firstDeckPoint.x, -firstDeckPoint.z);
-		const stairHole = new THREE.Path();
-		stairHole.moveTo(SECRET_STAIRS_OPENING_BOUNDS.minX, -SECRET_STAIRS_OPENING_BOUNDS.maxZ);
-		stairHole.lineTo(SECRET_STAIRS_OPENING_BOUNDS.maxX, -SECRET_STAIRS_OPENING_BOUNDS.maxZ);
-		stairHole.lineTo(SECRET_STAIRS_OPENING_BOUNDS.maxX, -SECRET_STAIRS_OPENING_BOUNDS.minZ);
-		stairHole.lineTo(SECRET_STAIRS_OPENING_BOUNDS.minX, -SECRET_STAIRS_OPENING_BOUNDS.minZ);
-		stairHole.lineTo(SECRET_STAIRS_OPENING_BOUNDS.minX, -SECRET_STAIRS_OPENING_BOUNDS.maxZ);
-		deckShape.holes.push(stairHole);
+		const deckShape = xzPlanShape(HELIPAD_DECK_PLAN);
+		addXZPlanHole(deckShape, SECRET_STAIRS_OPENING_PLAN);
 		const deckGeo = new THREE.ExtrudeGeometry(deckShape, {
 			depth: 0.35,
 			bevelEnabled: false,

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { LEVELS, LEVELS_TOP_DOWN } from '#/data/levels';
+import { LEVELS, LEVELS_BOTTOM_UP, levelAt } from '#/data/levels';
 import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
 import { receiverAccepts, validateSpatialWorld } from '#/data/spatial';
+import { rectangularPerimeterWalls } from '#/data/structure';
 import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, WORLD_ENTITIES } from '#/data/world';
 
 const ZERO_ROTATION = { yaw: 0, pitch: 0, roll: 0 } as const;
@@ -85,6 +86,29 @@ const OPEN_STAIR: SpatialVolume = {
 };
 
 describe('authoritative spatial world', () => {
+	test('a rectangular shell expands from one footprint without repeated wall coordinates', () => {
+		const walls = rectangularPerimeterWalls({
+			footprint: { width: 10, depth: 6 },
+			vertical: { min: -1, max: 3 },
+			thickness: 0.4,
+			capOverlap: 0.2,
+		});
+		assert.deepEqual(
+			walls.map((wall) => wall.id),
+			['north', 'south', 'west', 'east'],
+		);
+		assert.deepEqual(walls[0], {
+			id: 'north',
+			position: { x: 0, y: 1, z: -3 },
+			size: { width: 10.4, height: 4, depth: 0.4 },
+		});
+		assert.deepEqual(walls[3], {
+			id: 'east',
+			position: { x: 5, y: 1, z: 0 },
+			size: { width: 0.4, height: 4, depth: 6 },
+		});
+	});
+
 	test('the authored world has valid geometry, openings, ports, and interactions', () => {
 		assert.deepEqual(validateSpatialWorld(WORLD_ENTITIES), []);
 	});
@@ -149,18 +173,22 @@ describe('authoritative spatial world', () => {
 
 	test('elevator presentation order follows the physical building stack', () => {
 		assert.deepEqual(
-			LEVELS_TOP_DOWN.map((entry) => entry.id),
+			LEVELS.map((entry) => entry.id),
 			['roof', 'v1', 'v0', 'p1'],
 		);
-		for (let index = 1; index < LEVELS_TOP_DOWN.length; index++) {
-			const above = LEVELS_TOP_DOWN[index - 1];
-			const below = LEVELS_TOP_DOWN[index];
+		for (let index = 1; index < LEVELS.length; index++) {
+			const above = LEVELS[index - 1];
+			const below = LEVELS[index];
 			assert.ok(above && below && above.y > below.y);
 		}
 		assert.deepEqual(
-			LEVELS.map((entry) => entry.id),
+			LEVELS_BOTTOM_UP.map((entry) => entry.id),
 			['p1', 'v0', 'v1', 'roof'],
 		);
+		assert.equal(levelAt(-6), 'p1');
+		assert.equal(levelAt(0), 'v0');
+		assert.equal(levelAt(6), 'v1');
+		assert.equal(levelAt(13.95), 'roof');
 	});
 
 	test('vector effects only select compatible receivers', () => {

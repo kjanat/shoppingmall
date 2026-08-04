@@ -5,20 +5,10 @@ import { getOwner } from '#/data/shopOwners';
 import type { StoreDef } from '#/data/stores';
 import { shopStores } from '#/data/stores';
 import type { OpeningDef } from '#/data/world';
-import {
-	ELEVATOR_OPENING_ROOF,
-	ELEVATOR_OPENING_V0,
-	ELEVATOR_OPENING_V1,
-	ESCALATOR,
-	MALL_WALL_SPECS,
-	SECRET_STAIRS,
-	SHOP_HEIGHT,
-	SHOP_ROOM_DEPTH_FACTOR,
-	STAIRS,
-} from '#/data/world';
+import { ESCALATOR, MALL_SLAB_SPECS, MALL_WALL_SPECS, SHOP_HEIGHT, SHOP_ROOM_DEPTH_FACTOR, STAIRS } from '#/data/world';
 import { lit } from '#/render/material';
 import { addBoxMesh, addPlaneMesh } from '#/render/meshFactory';
-import { addXZRectangleHole, xzRectangleShape } from '#/render/xzShape';
+import { addExtrudedXZMesh } from '#/render/xzShape';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { half, inverseLerpClamped, midpoint } from '#/util/math';
 import { at } from '#/util/rand';
@@ -292,48 +282,12 @@ export class MallBuilder {
 		tileTex.repeat.set(MALL_FOOTPRINT.width / 4, MALL_FOOTPRINT.depth / 4);
 		floorMat.map = tileTex;
 
-		// The lift travels to P1, so V0 needs a real shaft opening too. The old
-		// BoxGeometry made the cabin pass through a solid ground-floor slab.
-		const floor0Shape = xzRectangleShape({ center: { x: 0, z: 0 }, size: MALL_FOOTPRINT });
-		addXZRectangleHole(floor0Shape, ELEVATOR_OPENING_V0);
-		const floor0Geo = new THREE.ExtrudeGeometry(floor0Shape, { depth: 0.3, bevelEnabled: false });
-		floor0Geo.rotateX(-Math.PI / 2);
-		const floor0 = new THREE.Mesh(floor0Geo, floorMat);
-		floor0.position.y = -0.3;
-		floor0.receiveShadow = true;
-		this.group.add(floor0);
+		// Slab dimensions and openings come from the same records used by collision,
+		// validation, and map generation. Rendering must not reconstruct them.
+		addExtrudedXZMesh(this.group, floorMat, { ...MALL_SLAB_SPECS.v0, receiveShadow: true });
 
-		// Floor 1 ring: atrium void + REAL openings where stairs/escalator meet floor 1
 		const floor1Mat = this.track(floorMat.clone());
-		const f1Shape = xzRectangleShape({ center: { x: 0, z: 0 }, size: MALL_FOOTPRINT });
-
-		// Center atrium
-		addXZRectangleHole(f1Shape, { center: { x: 0, z: 0 }, size: ATRIUM_VOID });
-
-		// The openings must sit OVER the flights, not next to their top landings —
-		// each hole spans from just past the top down to where the incline is ~2 m
-		// under the slab, which is the stretch where your head would hit concrete.
-		// West stairs: incline z=+4 (bottom) → z=-14 (top), so open z -14.6 … -7.4
-		addXZRectangleHole(f1Shape, STAIRS.opening);
-		// East escalator: incline z=+8 → z=-2, so open z -2.6 … +1.6
-		addXZRectangleHole(f1Shape, ESCALATOR.opening);
-		// Glazen lift (16, -8): schacht V0 → dak — zonder dit gat prikte de
-		// glascabine dwars door de verdieping-1-plaat heen
-		addXZRectangleHole(f1Shape, ELEVATOR_OPENING_V1);
-
-		// USA-dikke plaat (0.45), en de TOP ligt op FLOOR_H: extrude gaat +Y, dus
-		// de mesh zakt een plaatdikte. Voorheen stak de plaat 6.0→6.3 omhoog en
-		// liep iedereen op verdieping 1 tot de enkels in het beton.
-		const SLAB_T = 0.45;
-		const f1Geo = new THREE.ExtrudeGeometry(f1Shape, {
-			depth: SLAB_T,
-			bevelEnabled: false,
-		});
-		f1Geo.rotateX(-Math.PI / 2);
-		const floor1 = new THREE.Mesh(f1Geo, floor1Mat);
-		floor1.position.y = FLOOR_H - SLAB_T;
-		floor1.receiveShadow = true;
-		this.group.add(floor1);
+		addExtrudedXZMesh(this.group, floor1Mat, { ...MALL_SLAB_SPECS.v1, receiveShadow: true });
 
 		// Cream mall walls
 		const wallMat = this.track(
@@ -361,25 +315,7 @@ export class MallBuilder {
 				side: THREE.DoubleSide,
 			}),
 		);
-		// Own shape — NOT f1Shape.clone(): the ceiling used to inherit the two
-		// stairwell holes (gaping holes above nothing) and lacked the one opening
-		// it actually needs, where the secret service stairs exit to the roof.
-		const ceilShape = xzRectangleShape({ center: { x: 0, z: 0 }, size: MALL_FOOTPRINT });
-		addXZRectangleHole(ceilShape, { center: { x: 0, z: 0 }, size: ATRIUM_VOID });
-		// Secret stairs run (26, y6, z14) → (26, roof, z18); hole matches the ramp
-		addXZRectangleHole(ceilShape, SECRET_STAIRS.opening);
-		// Glazen lift (16, -8): schachtgat naar het dak. Eén gat, niet twee: hier
-		// stonden er twee op dezelfde plek met verschillende maat, dus een gat in
-		// een gat. De ruimste wint, die geeft de cabine en zijn deuren de ruimte.
-		addXZRectangleHole(ceilShape, ELEVATOR_OPENING_ROOF);
-		const ceilGeo = new THREE.ExtrudeGeometry(ceilShape, {
-			depth: 0.4, // USA dikte — het dakdek (13.95) rust hier bovenop
-			bevelEnabled: false,
-		});
-		ceilGeo.rotateX(-Math.PI / 2);
-		const ceil = new THREE.Mesh(ceilGeo, ceilMat);
-		ceil.position.y = FLOOR_H * 2 + 1.5;
-		this.group.add(ceil);
+		addExtrudedXZMesh(this.group, ceilMat, MALL_SLAB_SPECS.roof);
 
 		// Skylight — simple transparent (no transmission black-hole)
 		const glassMat = this.track(
@@ -394,7 +330,7 @@ export class MallBuilder {
 		);
 		const skylight = new THREE.Mesh(new THREE.PlaneGeometry(ATRIUM_VOID.width + 1, ATRIUM_VOID.depth + 1), glassMat);
 		skylight.rotation.x = -Math.PI / 2;
-		skylight.position.y = FLOOR_H * 2 + 1.4;
+		skylight.position.y = MALL_SLAB_SPECS.roof.topY - MALL_SLAB_SPECS.roof.thickness - 0.1;
 		this.group.add(skylight);
 
 		// Parking lot-ish ground outside
@@ -821,8 +757,7 @@ export class MallBuilder {
 			bar.scale.x = 1.4;
 			g.add(bar);
 			// De buis is open aan beide koppen; twee dopjes sluiten hem af.
-			for (const end of [railPoints[0], railPoints[railPoints.length - 1]]) {
-				if (!end) continue;
+			for (const end of [at(railPoints, 0), at(railPoints, -1)]) {
 				const cap = new THREE.Mesh(capGeo, railMat);
 				cap.position.set(bar.position.x, end.y, end.z);
 				cap.scale.x = 1.4;
@@ -1281,7 +1216,7 @@ export class MallBuilder {
 		const staffNames = ['Jan', 'Kevin', 'Mo', 'Daan', 'Luca', 'Sam', 'Omar', 'Nick', 'Bram', 'Timo', 'Jay', 'Rico'];
 		const staffTitles = ['Verkoper', 'Kassa', 'Vulploeg', 'Floor', 'Stagiair'];
 
-		const skinCol = isBoss ? (owner?.skin ?? 0xe8c4a8) : skins[seed % skins.length];
+		const skinCol = isBoss ? (owner?.skin ?? 0xe8c4a8) : at(skins, seed);
 		const shirtCol = isBoss
 			? (owner?.shirt ?? new THREE.Color(store.color).getHex())
 			: // staff: store color, slightly varied brightness

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { type LitMaterial, lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { midpoint, span } from '#/util/math';
 import { at, pickWith } from '#/util/rand';
 
 /**
@@ -36,10 +37,10 @@ const X0 = 58;
 const X1 = 83;
 const Z0 = 46;
 const Z1 = 64;
-const CX = (X0 + X1) / 2; // 70.5
-const CZ = (Z0 + Z1) / 2; // 55
-const W = X1 - X0; // 25
-const D = Z1 - Z0; // 18
+const CX = midpoint(X0, X1); // 70.5
+const CZ = midpoint(Z0, Z1); // 55
+const W = span(X0, X1); // 25
+const D = span(Z0, Z1); // 18
 
 const FLOOR_H = 3.2;
 const SLAB_T = 0.35;

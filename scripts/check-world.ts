@@ -19,9 +19,19 @@ import { readFileSync } from 'node:fs';
 import { NODES } from '#/data/graph';
 import { getInventory } from '#/data/inventory';
 import { ATRIUM_VOID } from '#/data/layout';
-import { LEVELS, levelY, SHOP_LEVELS } from '#/data/levels';
+import { LEVELS, levelY } from '#/data/levels';
 import { STORES, shopStores } from '#/data/stores';
-import { ELEVATOR_SHAFT_WALLS, ELEVATOR_SPEC, ESCALATOR, PARKING_EXIT_RAMP, STAIRS } from '#/data/world';
+import {
+	ATRIUM_OPENING,
+	ELEVATOR_SHAFT_WALLS,
+	ELEVATOR_SPEC,
+	ESCALATOR,
+	entitiesOnLevel,
+	levelsContaining,
+	MALL_SLAB_SPECS,
+	PARKING_EXIT_RAMP,
+	STAIRS,
+} from '#/data/world';
 import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
 import { PLAYER_RADIUS } from '#/player/constants';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
@@ -224,14 +234,22 @@ function controleHellingen(): void {
 // ── 3. vloergat ────────────────────────────────────────────────────────────
 
 /**
- * De vloerplaat en de helling lezen nu hetzelfde connectorobject. Deze
- * broncontrole bewaakt dat MallBuilder die objecten rechtstreeks blijft
- * doorgeven en geen afgeleide kopie van de maten introduceert.
+ * De vloerplaat, renderer en helling lezen hetzelfde slabmanifest. Controleer
+ * de data zelf; een controle op letterlijke broncode zou een geldige refactor
+ * afkeuren zonder iets over het uiteindelijke vloergat te bewijzen.
  */
 function controleVloergat(): void {
-	const mb = bron('scene/MallBuilder.ts');
-	eist(mb, 'addXZRectangleHole(f1Shape, ESCALATOR.opening);', 'het roltrapgat');
-	eist(mb, 'addXZRectangleHole(f1Shape, STAIRS.opening);', 'het trapgat');
+	for (const opening of [ATRIUM_OPENING, ESCALATOR.opening, STAIRS.opening]) {
+		const aanwezig = MALL_SLAB_SPECS.v1.holes.some(
+			(plan) =>
+				plan.kind === 'rectangle' &&
+				bijna(plan.center.x, opening.center.x) &&
+				bijna(plan.center.z, opening.center.z) &&
+				bijna(plan.width, opening.size.width) &&
+				bijna(plan.depth, opening.size.depth),
+		);
+		if (!aanwezig) fout('vloergat', `${opening.id} ontbreekt in het gedeelde V1-slabmanifest`);
+	}
 
 	for (const connector of [ESCALATOR, STAIRS]) {
 		const ramp = wereld.ramps.find((candidate) => candidate.label === connector.id);
@@ -281,8 +299,7 @@ function controleVloergat(): void {
 		}
 	}
 
-	// Het atriumgat: MallBuilder snijdt het, Collision laat je er doorheen vallen.
-	eist(mb, 'addXZRectangleHole(f1Shape, { center: { x: 0, z: 0 }, size: ATRIUM_VOID });', 'het atriumgat');
+	// Het atriumgat: het slabmanifest snijdt het, Collision laat je er doorheen vallen.
 	const binnen: [number, number][] = [
 		[half(ATRIUM_VOID.width) - 0.1, 0],
 		[-(half(ATRIUM_VOID.width) - 0.1), 0],
@@ -656,11 +673,21 @@ function controleWinkeldata(): void {
 		if (gezien.has(s.id)) fout('winkeldata', `${s.id} staat twee keer in STORES`);
 		gezien.add(s.id);
 		if (!nodes.has(s.nodeId)) fout('winkeldata', `${s.id} wijst naar node ${s.nodeId}, die niet in de graaf staat`);
-		if (!SHOP_LEVELS.some((l) => l === s.level)) fout('winkeldata', `${s.id} staat op dek ${s.level}, geen winkeldek`);
 	}
 	for (const s of shopStores()) {
 		if (!getInventory(s.id)) fout('winkeldata', `winkel ${s.id} heeft geen inventaris, dus lege schappen`);
+		const levelEntities = entitiesOnLevel(s.level);
+		if (!levelEntities.some((entity) => entity.id === `shop-${s.id}` && entity.category === 'shop')) {
+			fout('winkeldata', `winkel ${s.id} staat in de directory maar niet als fixture op dek ${s.level}`);
+		}
+		if (
+			!levelEntities.some((entity) => entity.tags.includes('slab') && entity.volumes.some((volume) => volume.role === 'support'))
+		) {
+			fout('winkeldata', `winkel ${s.id} staat op dek ${s.level}, maar dat dek heeft geen dragende vloer`);
+		}
 	}
+	const afgeleid = levelsContaining('shop');
+	if (afgeleid.length === 0) fout('winkeldata', 'het wereldmodel bevat geen enkel dek met shop-fixtures');
 }
 
 // ── uitvoeren ──────────────────────────────────────────────────────────────
