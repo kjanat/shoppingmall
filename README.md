@@ -7,8 +7,8 @@ Night-neon **Three.js** kiosk experience: cinematic route from the directory to 
 1. **Feature-gate every looks-vs-speed choice.** Build all the options behind a switch and let the maintainer try them.
    Runtime knobs go in ⚙ Besturing, stored in [graphicsPrefs](src/render/graphicsPrefs.ts). Shader-baked ones
    reload the page on change. Code that should not ship at all gets a build-time flag from
-   [bun-features.d.ts](src/bun-features.d.ts): `bun build.ts --no-perf-hud --force-lambert` drops the performance
-   panel and the PBR shading path out of the bundle entirely.
+   [bun-features.d.ts](src/bun-features.d.ts): `bun build.ts --feature NO_PERF_HUD,FORCE_LAMBERT` drops the
+   performance panel and the PBR shading path out of the bundle entirely.
 2. **Edit files with an editor, never a shell heredoc.** No live diff otherwise.
 
 Full rules in [AGENTS.md](AGENTS.md).

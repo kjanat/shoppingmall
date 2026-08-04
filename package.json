@@ -37,6 +37,7 @@
 		"@types/three": "^0.185",
 		"biome": "npm:@biomejs/biome@^2.5.6",
 		"dprint": "^0.55",
+		"dreamcli": "https://pkg.pr.new/@kjanat/dreamcli@117",
 		"runner-run": "^0.24.0",
 		"typescript": "^7"
 	},

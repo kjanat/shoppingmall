@@ -78,7 +78,8 @@ option behind a switch, ship it, say "I built all three, try them". Do not pick 
   when the options need comparing live. Shader-baked options (light count, material model) reload the page on change,
   since that is when they are chosen.
 - **Bun build-time flag** when the code should not ship. Declared in [bun-features.d.ts](src/bun-features.d.ts), passed
-  by [build.ts](build.ts): `bun build.ts --no-perf-hud --force-lambert`. Three things bite. `feature()` may only be the
+  by [build.ts](build.ts): `bun build.ts --feature NO_PERF_HUD,FORCE_LAMBERT` (or `MALL_FEATURES=…`). Three things
+  bite. `feature()` may only be the
   condition of an `if` or a ternary, never assigned or passed. An unset flag is `false` and the dev server passes none,
   so name flags for what they remove. And a static import keeps its module alive even when every reference sits in dead
   code: the perf HUD only actually left the bundle (23 KB) once its import became `import('@/ui/PerfOverlay')` inside

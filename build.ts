@@ -9,11 +9,31 @@ import { cp } from 'node:fs/promises';
  * The Pages build has no /api, so DJ Bartek and the voices are dead there.
  * `bun run build` runs tsc first — the bundler does not typecheck.
  */
-import { $, argv, build, env } from 'bun';
+import { $, build } from 'bun';
+import { flag, readFlags } from 'dreamcli';
 
 await $`rm -rf dist`.cwd(import.meta.dir);
 
-const pages = !!env['GITHUB_ACTIONS'] || argv.includes('--static');
+/**
+ * De vlaggen van deze build, getypeerd en met hun herkomst op één plek.
+ *
+ * Alles kwam hiervoor uit losse `argv.includes`-regels en directe env-reads,
+ * en dat faalt stil: `--no-perf-hudd` leverde gewoon de volledige bundle op.
+ * Nu is een onbekende vlag een parse-fout met een suggestie erbij, en levert
+ * `--feature` meteen de lijst die Bun.build wil, in dezelfde spelling als
+ * `bun build --feature`.
+ */
+const flags = await readFlags({
+	static: flag.boolean().env('GITHUB_ACTIONS').default(false).describe('Pages-doel: de game alleen, zonder /api'),
+	feature: flag
+		.array(flag.enum(['NO_PERF_HUD', 'FORCE_LAMBERT']))
+		.split({ cli: ',' })
+		.env('MALL_FEATURES')
+		.describe('Build-time vlaggen: --feature NO_PERF_HUD,FORCE_LAMBERT'),
+	gitDescribe: flag.string().env('GIT_DESCRIBE').describe('Versie voor /api/healthz; in de image is er geen git'),
+});
+
+const pages = flags.static;
 
 /**
  * Versie voor /api/healthz. Uit GIT_DESCRIBE als die er is: in de image
@@ -21,7 +41,7 @@ const pages = !!env['GITHUB_ACTIONS'] || argv.includes('--static');
  * faalt `describe`, dan de volle SHA.
  */
 const version =
-	env['GIT_DESCRIBE']?.trim() ||
+	flags.gitDescribe?.trim() ||
 	(await $`git describe --tags --dirty`.nothrow().quiet().text()).trim() ||
 	(await $`git rev-parse HEAD`.nothrow().quiet().text()).trim() ||
 	'unknown';
@@ -31,18 +51,14 @@ const version =
  * volledige build op: dat is ook wat de dev-server geeft, die geen vlaggen kan
  * meegeven. Zie src/bun-features.d.ts voor wat elke vlag precies weghaalt.
  */
-const features = [
-	...(argv.includes('--no-perf-hud') ? ['NO_PERF_HUD'] : []),
-	...(argv.includes('--force-lambert') ? ['FORCE_LAMBERT'] : []),
-];
-if (features.length > 0) console.log(`features: ${features.join(', ')}`);
+if (flags.feature.length > 0) console.log(`features: ${flags.feature.join(', ')}`);
 
 const shared = {
 	minify: true,
 	root: '.',
 	publicPath: '/',
 	splitting: true,
-	features,
+	features: flags.feature,
 	define: { __GIT_DESCRIBE__: JSON.stringify(version) },
 } as const;
 
