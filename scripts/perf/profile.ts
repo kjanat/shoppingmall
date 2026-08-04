@@ -8,19 +8,19 @@ import { spawnSync } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { median } from '#/util/math';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
+import { ROOT_DIR, ROUTES_DIR } from './paths.ts';
 import { isSoftwareHeadless } from './playwright.ts';
 import type { RoutePose, Sample } from './probe.ts';
 import { FULL_MALL_ROUTE, profileRoute } from './routes.ts';
-import { median } from './stats.ts';
 import { isRecord, readArray, readNumber, readString } from './values.ts';
 
 const softwareHeadless = isSoftwareHeadless();
 const WIDTH = softwareHeadless ? 800 : 1600;
 const HEIGHT = softwareHeadless ? 450 : 900;
 const DRIFT_TOLERANCE = 0.15;
-const OUTPUT_DIR = resolve(import.meta.dirname, '../../.perf/routes');
 
 function flagValue(name: string): string | undefined {
 	const index = process.argv.indexOf(name);
@@ -71,7 +71,7 @@ type RouteBaseline = {
 };
 
 function localBuild(): string {
-	const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(import.meta.dirname, '../..'), encoding: 'utf8' });
+	const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT_DIR, encoding: 'utf8' });
 	return result.status === 0 ? result.stdout.trim() : 'unknown';
 }
 
@@ -107,7 +107,7 @@ function aggregateSegments(segments: readonly SegmentResult[]): Map<string, numb
 async function readBaseline(name: string): Promise<RouteBaseline | null> {
 	let source: string;
 	try {
-		source = await readFile(resolve(OUTPUT_DIR, `${safeName(name)}.json`), 'utf8');
+		source = await readFile(resolve(ROUTES_DIR, `${safeName(name)}.json`), 'utf8');
 	} catch (error) {
 		if (isRecord(error) && readString(error, 'code') === 'ENOENT') return null;
 		throw error;
@@ -269,13 +269,13 @@ if (compareName) {
 	}
 }
 
-await mkdir(OUTPUT_DIR, { recursive: true });
+await mkdir(ROUTES_DIR, { recursive: true });
 const timestamp = artifact.createdAt.replaceAll(/[:.]/g, '-');
-const automaticPath = resolve(OUTPUT_DIR, `${timestamp}-${artifact.build.slice(0, 12)}.json`);
+const automaticPath = resolve(ROUTES_DIR, `${timestamp}-${artifact.build.slice(0, 12)}.json`);
 await writeFile(automaticPath, `${JSON.stringify(artifact, null, '\t')}\n`);
 console.log(`\n  artifact: ${automaticPath}`);
 if (saveName) {
-	const namedPath = resolve(OUTPUT_DIR, `${safeName(saveName)}.json`);
+	const namedPath = resolve(ROUTES_DIR, `${safeName(saveName)}.json`);
 	await writeFile(namedPath, `${JSON.stringify(artifact, null, '\t')}\n`);
 	console.log(`  saved as: ${namedPath}`);
 }

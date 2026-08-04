@@ -19,7 +19,9 @@
  * Usage:  bun run diagnose            (needs `bun run build` first)
  *         bun run diagnose --sweep
  */
-import { bar, openGame, sampleWarnings } from './harness.ts';
+import { argv } from 'node:process';
+import type { FrameAccount } from './harness.ts';
+import { bar, frameAccount, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
 import { isSoftwareHeadless } from './playwright.ts';
 import type { Sample } from './probe.ts';
@@ -38,16 +40,23 @@ const SMALL_HEIGHT = 288;
 /** Two samples of the same config further apart than this are not comparable. */
 const DRIFT_TOLERANCE = 0.15;
 
-const sweep = process.argv.includes('--sweep');
-const urlIndex = process.argv.indexOf('--url');
-const targetUrl = urlIndex < 0 ? undefined : process.argv[urlIndex + 1];
-const batchIndex = process.argv.indexOf('--batch-mode');
-const batchOverride = batchIndex < 0 ? undefined : process.argv[batchIndex + 1];
+const ACCOUNT_VERDICT: Record<FrameAccount['accounted'], string> = {
+	gpu: 'GPU-bound — the card is busy for the whole frame',
+	'app-cpu': 'CPU-bound — logic and batching alone fill the frame',
+	submit: 'submission-bound — the frame is spent inside composer.render, where the driver blocks when it is behind',
+	nothing: 'UNACCOUNTED — neither side fills the frame, so something else is setting its pace',
+};
+
+const sweep = argv.includes('--sweep');
+const urlIndex = argv.indexOf('--url');
+const targetUrl = urlIndex < 0 ? undefined : argv[urlIndex + 1];
+const batchIndex = argv.indexOf('--batch-mode');
+const batchOverride = batchIndex < 0 ? undefined : argv[batchIndex + 1];
 const notes: string[] = [];
 
 function flagValue(name: string): string | undefined {
-	const index = process.argv.indexOf(name);
-	return index < 0 ? undefined : process.argv[index + 1];
+	const index = argv.indexOf(name);
+	return index < 0 ? undefined : argv[index + 1];
 }
 
 function note(message: string): void {
@@ -93,7 +102,7 @@ function sweepSample(label: string, sample: Sample): string {
 	);
 }
 
-const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), targetUrl, batchOverride);
+const session = await openGame(WIDTH, HEIGHT, argv.includes('--fresh-profile'), targetUrl, batchOverride);
 try {
 	const { readyMs, settleMs } = await session.boot();
 	const pointName = flagValue('--point') ?? (sweep ? 'v1-elevator-arrive' : undefined);
@@ -189,6 +198,22 @@ try {
 	);
 	console.log('\n  GPU time by render target:');
 	console.log(passTable(main));
+
+	const account = frameAccount(main);
+	const share = (value: number): string =>
+		`${value.toFixed(2)} ms (${((value / Math.max(account.frameMs, 0.001)) * 100).toFixed(0)}%)`;
+	console.log(`\n${trimToColumns('── who accounts for the frame ──────────────────────────────')}`);
+	console.log(bar('frame', `${account.frameMs.toFixed(2)} ms mean`));
+	console.log(bar('GPU busy', share(account.gpuBusyMs)));
+	console.log(bar('GPU wait', share(account.gpuWaitMs)));
+	console.log(bar('app CPU busy', `${share(account.appCpuMs)} logic + batch`));
+	console.log(bar('submit', `${share(account.submitMs)} includes driver back-pressure`));
+	console.log(bar('CPU wait', share(account.cpuWaitMs)));
+	console.log(bar('verdict', ACCOUNT_VERDICT[account.accounted]));
+	if (account.accounted === 'nothing') {
+		note('Neither side accounts for the frame, so something outside the game sets its pace.');
+		note('  Compare several viewpoints: if cheap and expensive views land on the same time, that time is a schedule.');
+	}
 
 	for (const warning of sampleWarnings(main)) note(warning);
 

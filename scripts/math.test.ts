@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { distanceToSegment2, pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
-import { clamp, clamp01, half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
-import { median } from './perf/stats.ts';
+import { clamp, clamp01, half, inverseLerpClamped, lerp, median, midpoint, span } from '#/util/math';
 
 describe('shared calculations', () => {
 	test('scalar and interval helpers preserve their boundary semantics', () => {

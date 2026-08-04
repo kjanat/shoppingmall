@@ -5,18 +5,20 @@
  * executable and GPU flags, enforces exclusive measurement, and manages the
  * persistent shader-cache profile shared by repeated runs.
  */
+
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, open, readFile, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { env } from 'node:process';
+import { blue } from 'ansispeck';
+import { dim, red } from 'ansispeck/safe';
 import { type BrowserContext, chromium, type Page } from 'playwright';
+import { BROWSER_LOCK_PATH as LOCK_PATH, PERF_DIR, PROFILE_DIR as PERF_PROFILE_FRAGMENT } from './paths.ts';
 import { isRecord, readString } from './values.ts';
 
-const PERF_DIR = resolve(import.meta.dirname, '../../.perf');
-const LOCK_PATH = join(PERF_DIR, 'browser.lock');
 const MCP_PROFILE_FRAGMENT = String.raw`\.cache\chrome-devtools-mcp\chrome-profile`;
-const PERF_PROFILE_FRAGMENT = join(PERF_DIR, 'chrome-profile');
 
 export type PerfBrowser = {
 	context: BrowserContext;
@@ -25,17 +27,53 @@ export type PerfBrowser = {
 };
 
 export function isSoftwareHeadless(): boolean {
-	return process.env['MALL_PERF_SOFTWARE'] === '1';
+	return env['MALL_PERF_SOFTWARE'] === '1';
+}
+
+/** ANGLE backends this project has measured on. */
+type AngleBackend = 'vulkan' | 'gl' | 'd3d11';
+
+const SOFTWARE_ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox', '--disable-dev-shm-usage'];
+
+function requestedBackend(): AngleBackend | null {
+	const raw = env['MALL_PERF_ANGLE'];
+	if (raw === undefined || raw === '') return null;
+	if (raw === 'vulkan' || raw === 'gl' || raw === 'd3d11') return raw;
+	throw new Error(`MALL_PERF_ANGLE must be vulkan, gl or d3d11; got ${blue(raw)}`);
+}
+
+function defaultBackend(headless: boolean): AngleBackend | null {
+	// Headless Chromium on Linux answers with SwiftShader when no backend is named, which parseEnvironment refuses. Headful reaches the driver unaided.
+	if (process.platform === 'win32') return 'd3d11';
+	return headless ? 'vulkan' : null;
+}
+
+/**
+ * The backend is part of what a measurement is about. On one RTX 4080 SUPER the
+ * same scene reported 36.89 ms in the scene pass under GL, and 21.66 ms plus a
+ * 13.42 ms single-draw present under Vulkan, at the same 37 ms wall time.
+ */
+function hardwareArgs(headless: boolean): string[] {
+	const backend = requestedBackend() ?? defaultBackend(headless);
+	const args: string[] = [];
+	if (backend) args.push(`--use-angle=${backend}`);
+	if (backend === 'vulkan') args.push('--enable-features=Vulkan');
+	if (process.platform === 'win32') args.push('--enable-gpu-rasterization');
+	// Ozone chooses the window system. A headful run handed the headless backend
+	// gets no window while Playwright still omits --headless.
+	if (headless && process.platform !== 'win32') args.push('--use-gl=angle', '--ozone-platform=headless');
+	return args;
 }
 
 function browserExecutable(): string {
-	const override = process.env['CHROME_PATH'];
+	const override = env['CHROME_PATH'];
 	if (override) {
-		if (!existsSync(override)) throw new Error(`CHROME_PATH points at nothing: ${override}`);
+		if (!existsSync(override)) throw new Error(`CHROME_PATH points at nothing: ${blue(override)}`);
 		return override;
 	}
 	const managed = chromium.executablePath();
-	if (!existsSync(managed)) throw new Error('Playwright Chromium is missing; run `bunx playwright install chromium`');
+	if (!existsSync(managed))
+		throw new Error(`Playwright Chromium is missing; run ${red`npx ${dim`-y`} playwright install chromium`}`);
 	return managed;
 }
 
@@ -66,7 +104,7 @@ async function acquirePerfLock(): Promise<() => Promise<void>> {
 			const owner = Number((await readFile(LOCK_PATH, 'utf8').catch(() => '')).trim());
 			if (Number.isInteger(owner) && owner > 0 && processExists(owner)) {
 				throw new Error(
-					`performance browser already active in process ${owner}; diagnose, bench and profile must run one at a time`,
+					`performance browser already active in process ${blue(owner)}; diagnose, bench and profile must run one at a time`,
 				);
 			}
 			await unlink(LOCK_PATH).catch(() => {});
@@ -119,13 +157,8 @@ export async function launchPerfBrowser(width: number, height: number, persisten
 			disposableProfile = true;
 		}
 		const softwareHeadless = isSoftwareHeadless();
-		const headless = process.env['CHROME_HEADFUL'] !== '1';
-		const windowsHardwareHeadless = process.platform === 'win32' && !softwareHeadless && headless;
-		const gpuArgs = softwareHeadless
-			? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox', '--disable-dev-shm-usage']
-			: windowsHardwareHeadless
-				? ['--use-angle=d3d11', '--enable-gpu-rasterization']
-				: [];
+		const headless = env['CHROME_HEADFUL'] !== '1';
+		const gpuArgs = softwareHeadless ? SOFTWARE_ARGS : hardwareArgs(headless);
 		context = await chromium.launchPersistentContext(profileDir, {
 			executablePath: browserExecutable(),
 			headless,

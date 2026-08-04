@@ -20,27 +20,35 @@
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { argv } from 'node:process';
+import { median } from '#/util/math';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
+import { BASELINE_DIR } from './paths.ts';
 import type { Sample } from './probe.ts';
-import { median } from './stats.ts';
 
-const BASELINE_DIR = resolve(import.meta.dirname, '../../.perf');
 const WIDTH = 1600;
 const HEIGHT = 900;
 const SAMPLE_MS = 5000;
 /** Drift beyond this and the run is reported as untrustworthy, not as a result. */
 const DRIFT_TOLERANCE = 0.1;
+/**
+ * Opening samples are not steady state. Five samples of identical configuration
+ * on an idle RTX 4080 SUPER ran 48.9, 49.3, 38.7, 29.3, 23.5 ms, and the trend
+ * fit then called a run that was settling down a machine that would not hold
+ * still. These are printed and excluded from the median and the fit.
+ */
+const WARMUP_SAMPLES = 2;
 
 function flagValue(name: string): string | undefined {
-	const index = process.argv.indexOf(name);
+	const index = argv.indexOf(name);
 	if (index < 0) return undefined;
-	return process.argv[index + 1];
+	return argv[index + 1];
 }
 
 const saveAs = flagValue('--save');
 const compareTo = flagValue('--compare');
-const sampleCount = Math.max(3, Number(flagValue('--samples') ?? 5));
+const sampleCount = Math.max(WARMUP_SAMPLES + 3, Number(flagValue('--samples') ?? 5));
 
 type Run = {
 	gpu: string;
@@ -50,9 +58,11 @@ type Run = {
 	wallMsMedian: number;
 	gpuMsPerFrame: number;
 	drawsPerFrame: number;
-	/** Slope of wall time across the samples, as a fraction of the median. */
+	/** Slope of wall time across the measured samples, as a fraction of the median. */
 	driftFraction: number;
+	/** Every sample taken, warm-up first. */
 	samples: number[];
+	warmupSamples: number;
 };
 
 /**
@@ -105,10 +115,11 @@ async function readBaseline(name: string): Promise<Run | null> {
 		drawsPerFrame: read('drawsPerFrame', 0),
 		driftFraction: read('driftFraction', 0),
 		samples: Array.isArray(rawSamples) ? rawSamples.filter((v): v is number => typeof v === 'number') : [],
+		warmupSamples: read('warmupSamples', 0),
 	};
 }
 
-const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), undefined, flagValue('--batch-mode'));
+const session = await openGame(WIDTH, HEIGHT, argv.includes('--fresh-profile'), undefined, flagValue('--batch-mode'));
 let run: Run;
 const warnings: string[] = [];
 
@@ -124,23 +135,27 @@ try {
 	for (let i = 0; i < sampleCount; i++) {
 		const sample = await session.sample(SAMPLE_MS);
 		taken.push(sample);
+		const warmup = i < WARMUP_SAMPLES;
 		console.log(
-			`  sample ${i + 1}/${sampleCount}  ${sample.wallMsMedian.toFixed(1).padStart(7)} ms wall  ${sample.gpuMsPerFrame.toFixed(1).padStart(7)} ms GPU  ${sample.frames} frames`,
+			`  sample ${i + 1}/${sampleCount}  ${sample.wallMsMedian.toFixed(1).padStart(7)} ms wall  ${sample.gpuMsPerFrame.toFixed(1).padStart(7)} ms GPU  ${sample.frames} frames${warmup ? '   warm-up, not counted' : ''}`,
 		);
+		if (warmup) continue;
 		for (const warning of sampleWarnings(sample)) warnings.push(`sample ${i + 1}: ${warning}`);
 	}
 
-	const walls = taken.map((s) => s.wallMsMedian);
+	const measured = taken.slice(WARMUP_SAMPLES);
+	const walls = measured.map((s) => s.wallMsMedian);
 	run = {
 		gpu: env.renderer,
 		canvas: env.canvas,
 		megapixels: env.megapixels,
 		pointLights: env.numPointLights,
 		wallMsMedian: median(walls),
-		gpuMsPerFrame: median(taken.map((s) => s.gpuMsPerFrame)),
-		drawsPerFrame: median(taken.map((s) => s.drawsPerFrame)),
+		gpuMsPerFrame: median(measured.map((s) => s.gpuMsPerFrame)),
+		drawsPerFrame: median(measured.map((s) => s.drawsPerFrame)),
 		driftFraction: driftFraction(walls),
-		samples: walls,
+		samples: taken.map((s) => s.wallMsMedian),
+		warmupSamples: WARMUP_SAMPLES,
 	};
 } finally {
 	await session.close();
@@ -159,11 +174,17 @@ console.log(
 	bar('drift per sample', `${driftPercent >= 0 ? '+' : ''}${driftPercent.toFixed(1)}%  ${stable ? '✓ stable' : '✗ DRIFTING'}`),
 );
 
-if (!stable) {
+if (!stable && run.driftFraction > 0) {
 	console.log('');
-	console.log('  ✗ This machine did not hold still. Frame time moved consistently across');
+	console.log('  ✗ This machine did not hold still. Frame time rose consistently across');
 	console.log('    identical samples, so any comparison against another run is noise.');
-	console.log('    Let it cool, close other work, and measure again — or measure elsewhere.');
+	console.log('    Let it cool, close other work, and measure again, or measure elsewhere.');
+}
+if (!stable && run.driftFraction < 0) {
+	console.log('');
+	console.log(`  ✗ Frame time was still falling after ${WARMUP_SAMPLES} warm-up samples, so this run never`);
+	console.log('    reached steady state and its median is an average of a moving target.');
+	console.log(`    Measure again with more samples: bun run bench --samples ${sampleCount + 3}`);
 }
 for (const warning of warnings) console.log(`  ⚠ ${warning}`);
 

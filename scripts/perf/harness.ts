@@ -11,14 +11,15 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { join, normalize, resolve, sep } from 'node:path';
+import { join, normalize, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { isSoftwareHeadless, launchPerfBrowser, type PerfBrowser } from './playwright.ts';
+import { blue, space } from 'ansispeck/safe';
+import { PROFILE_DIR, STATIC_DIR } from './paths.ts';
+import type { PerfBrowser } from './playwright.ts';
+import { isSoftwareHeadless, launchPerfBrowser } from './playwright.ts';
 import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample } from './probe.ts';
 import { probeSource } from './probe.ts';
 import { isRecord, readArray, readBoolean, readNumber, readString } from './values.ts';
-
-const STATIC_DIR = resolve(import.meta.dirname, '../../dist/static');
 
 export type StaticServer = { url: string; stop: () => Promise<void> };
 
@@ -49,7 +50,7 @@ async function readStaticFile(path: string): Promise<Buffer | null> {
 
 export async function serveGame(): Promise<StaticServer> {
 	if (!existsSync(join(STATIC_DIR, 'index.html'))) {
-		throw new Error(`no build in ${STATIC_DIR} — run \`bun run build\` first`);
+		throw new Error(`no build in ${STATIC_DIR} — run ${blue`bun run build`} first`);
 	}
 	const server = createServer(async (request, response) => {
 		try {
@@ -104,9 +105,6 @@ export type GameSession = {
 	setViewport: (width: number, height: number) => Promise<void>;
 	close: () => Promise<void>;
 };
-
-/** Reused between runs so Chrome's compiled-shader cache survives. */
-const PROFILE_DIR = resolve(import.meta.dirname, '../../.perf/chrome-profile');
 
 /**
  * `url` points the run at a deployed site instead of the local build, which is
@@ -306,7 +304,53 @@ export function parseEnvironment(value: unknown): Environment {
 // ── shared reporting ───────────────────────────────────────────────────────
 
 export function bar(label: string, value: string): string {
-	return `  ${label.padEnd(26)} ${value}`;
+	return `${space(2)}${label.padEnd(26)} ${value}`;
+}
+
+/**
+ * Which side of the frame is accounted for, in the shape GamersNexus uses for
+ * GPU Busy / GPU Wait: compare each side's busy time against the frame instead
+ * of reading one total and guessing. A frame nobody accounts for is being paced
+ * by something outside the game.
+ */
+export type FrameAccount = {
+	frameMs: number;
+	/** Logic and batching. The driver cannot block inside either. */
+	appCpuMs: number;
+	/** Submission. App.ts documents that the driver blocks in here when behind. */
+	submitMs: number;
+	gpuBusyMs: number;
+	gpuWaitMs: number;
+	cpuWaitMs: number;
+	accounted: 'gpu' | 'app-cpu' | 'submit' | 'nothing';
+};
+
+/** Share of the frame a side must reach before it explains the frame. */
+const PARITY = 0.9;
+
+export function frameAccount(sample: Sample): FrameAccount {
+	const frameMs = sample.wallMsMean;
+	const appCpuMs = sample.cpuLogicMsMean + sample.cpuBatchMsMean;
+	const submitMs = sample.cpuSubmitMsMean;
+	const gpuBusyMs = sample.gpuMsPerFrame;
+	const share = (value: number): number => (frameMs > 0 ? value / frameMs : 0);
+	const accounted =
+		share(gpuBusyMs) >= PARITY
+			? 'gpu'
+			: share(appCpuMs) >= PARITY
+				? 'app-cpu'
+				: share(appCpuMs + submitMs) >= PARITY
+					? 'submit'
+					: 'nothing';
+	return {
+		frameMs,
+		appCpuMs,
+		submitMs,
+		gpuBusyMs,
+		gpuWaitMs: Math.max(0, frameMs - gpuBusyMs),
+		cpuWaitMs: Math.max(0, frameMs - appCpuMs - submitMs),
+		accounted,
+	};
 }
 
 /**
@@ -316,6 +360,19 @@ export function bar(label: string, value: string): string {
  */
 export function sampleWarnings(sample: Sample): string[] {
 	const warnings: string[] = [];
+	// Presenting the frame is one fullscreen blit. Headless Chromium on ANGLE's
+	// Vulkan backend billed 13.42 ms of a 37.1 ms frame to that single draw while
+	// headful GL billed 0.09 ms for the same blit: TIME_ELAPSED_EXT reports
+	// elapsed time including idle, so waiting for the next frame slot lands here.
+	const present = sample.passes.find((pass) => pass.pass.startsWith('default '));
+	if (present && present.drawsPerFrame <= 2 && present.msPerFrame >= 3 && sample.gpuMsPerFrame > 0) {
+		const share = present.msPerFrame / sample.gpuMsPerFrame;
+		if (share >= 0.2) {
+			warnings.push(
+				`${present.msPerFrame.toFixed(2)} ms of GPU time sits on ${present.drawsPerFrame.toFixed(0)} present draw (${(share * 100).toFixed(0)}% of the frame's GPU time) — the frame is waiting to be shown, and every millisecond here is pacing rather than work`,
+			);
+		}
+	}
 	if (sample.drawCoverage < 0.99) {
 		warnings.push(`only ${(sample.drawCoverage * 100).toFixed(1)}% of draws were timed — GPU figures are incomplete`);
 	}

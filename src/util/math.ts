@@ -3,6 +3,12 @@ export function half(value: number): number {
 	return value / 2;
 }
 
+export function median(values: readonly number[]): number {
+	if (values.length === 0) return 0;
+	const sorted = [...values].sort((a, b) => a - b);
+	return sorted[Math.floor(half(sorted.length))] ?? 0;
+}
+
 export function midpoint(a: number, b: number): number {
 	return (a + b) / 2;
 }

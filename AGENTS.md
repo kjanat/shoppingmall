@@ -203,7 +203,17 @@ run profile --save before            # two identical laps, segment hotspots + dr
 run profile --compare before         # same route against a named saved artifact
 run profile --batch-mode spatial     # force one batching mode before page scripts
 run diagnose:headless                # no-GPU containers (remote agent envs, CI), see below
+
+CHROME_HEADFUL=1 run bench           # real window; the only Linux path measured without a pacing floor
+MALL_PERF_ANGLE=vulkan run diagnose  # pick the ANGLE backend: vulkan, gl or d3d11
 ```
+
+**Backend and window mode are part of the measurement.** [playwright](scripts/perf/playwright.ts) picks Chrome's GPU
+flags from three inputs. `MALL_PERF_SOFTWARE=1` takes the SwiftShader path; otherwise `MALL_PERF_ANGLE` names the
+backend, defaulting to `d3d11` on Windows, `vulkan` on headless Linux and the driver's own choice headful. Headless
+Linux additionally gets `--use-gl=angle --ozone-platform=headless`, which headful must never receive: ozone selects the
+window system, so a headful run handed the headless backend gets no window while Playwright still omits `--headless`.
+Plain headless Linux with no backend named answers with SwiftShader, and `parseEnvironment` refuses the run.
 
 **No-GPU containers** (remote agent environments, CI): `run diagnose:headless`, `run bench:headless` and
 `run profile:headless` launch Playwright-managed Chromium with headless SwiftShader and no sandbox.
@@ -216,10 +226,23 @@ against a GPU snapshot, and never worth recording in this file.
 - A benchmark on a thermally-constrained laptop is worthless. Four samples of *identical* configuration once walked
   38.8 → 65.5 → 87.6 → 106.4 ms, and a conclusion drawn from it was wrong. `bench` fits the trend across samples and
   prints `✗ DRIFTING` instead of a result; believe it.
+- **Drift runs both ways and they need different fixes.** Five samples of identical configuration on an idle RTX 4080
+  SUPER ran 48.9, 49.3, 38.7, 29.3, 23.5 ms, a run settling rather than a machine heating up. `bench` now drops the
+  first two samples from the median and the fit, prints them marked, and asks for more samples when frame time is
+  still falling at the end. Rising drift still means let it cool.
 - Always A-B-A. A change is only real if returning to the baseline reproduces the baseline.
 - `drawCoverage` below 1.0 means the probe did not time the whole frame — discard the sample.
 - A whole-frame `TIME_ELAPSED_EXT` query measures elapsed GPU time *including idle*, so it reports ~100% busy no matter
-  what. Only per-pass queries summed together are real GPU work.
+  what. Per-pass queries summed together are closer, and are still not proof: a pass that waits also bills the wait.
+- **Read the present pass before believing the GPU total.** Showing the frame is one fullscreen blit. Headless
+  Chromium on ANGLE's Vulkan backend billed 13.42 ms of a 37.1 ms frame to that single draw, where headful GL on the
+  same card and build billed 0.09 ms. `sampleWarnings` flags it (validated at 0/52 route segments headful GL, 52/52
+  headless Vulkan). When it fires, the GPU total is a frame schedule and the run cannot be compared against one taken
+  without it.
+- **`diagnose` prints who accounts for the frame** in the GamersNexus GPU-Busy / GPU-Wait shape: GPU busy, app CPU
+  busy (logic + batch), submit, and both waits, each against the frame. `submit` is separate because
+  [App.ts](src/app/App.ts) blocks inside `composer.render` when the driver is behind, so GPU pressure arrives dressed
+  as CPU time. `UNACCOUNTED` means neither side fills the frame and something outside the game sets its pace.
 - Chrome may sit on the integrated GPU on a laptop even with `powerPreference: 'high-performance'`. `diagnose` warns.
   Windows: Settings → Display → Graphics → Chrome → High performance.
 - **The probe forces dynamic resolution off** by writing its localStorage key before the page loads, so any run through

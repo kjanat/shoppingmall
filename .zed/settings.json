@@ -1,5 +1,5 @@
 {
-	"formatter": [{ "external": { "command": "run", "arguments": ["-qq", "dprint", "fmt", "--stdin", "{buffer_path}"] } }],
+	"formatter": [{ "external": { "command": "run", "arguments": ["-q", "dprint", "fmt", "--stdin", "{buffer_path}"] } }],
 	"prettier": { "allowed": false },
 	"format_on_save": "on",
 	"editor.codeActionsOnSave": {
@@ -16,7 +16,7 @@
 	"lsp": {
 		"biome": {
 			"settings": {
-				"config_path": "<path>/biome.jsonc",
+				"config_path": "biome.jsonc",
 				"require_config_file": true
 			}
 		}
