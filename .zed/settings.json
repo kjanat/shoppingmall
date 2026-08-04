@@ -1,5 +1,7 @@
 {
-	"formatter": [{ "external": { "command": "run", "arguments": ["-qq", "dprint", "fmt", "--stdin", "{buffer_path}"] } }],
+	"formatter": [
+		{ "external": { "command": "run", "arguments": ["-qq", "dprint", "fmt", "--stdin", "{buffer_path}"] } }
+	],
 	"prettier": { "allowed": false },
 	"format_on_save": "on",
 	"editor.codeActionsOnSave": {
