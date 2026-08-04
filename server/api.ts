@@ -7,7 +7,8 @@
  * - GET  /api/dj/playlist  → list public/dj-music/*
  * - POST /api/dj/request   → YouTube API search + yt-dlp download
  * - GET  /api/dj/status    → DJ state + key presence
- * - GET  /api/healthz      → liveness; version alleen voor eigen afzenders
+ * - GET  /api/healthz      → minimale liveness voor Docker
+ * - GET  /api/statusz      → runtime- en buildinformatie; details alleen voor eigen afzenders
  */
 
 import { mkdir } from 'node:fs/promises';
@@ -19,6 +20,10 @@ import { env } from 'bun';
 import { clientIp, isOurs } from './net.ts';
 
 const BOOT = Date.now();
+
+function uptimeSeconds(): number {
+	return Math.round((Date.now() - BOOT) / 1000);
+}
 
 /** Music library. public/ is read from the working directory, like public/ in main.ts. */
 const MUSIC_DIR = resolve('public/dj-music');
@@ -592,8 +597,15 @@ export async function handleApi(req: Request, peer: string): Promise<Response> {
 	const ip = clientIp(req, peer);
 
 	if (url === '/api/healthz' && req.method === 'GET') {
-		const body: Record<string, unknown> = { ok: true, uptime: Math.round((Date.now() - BOOT) / 1000) };
-		if (await isOurs(ip)) body['version'] = typeof __GIT_DESCRIBE__ === 'undefined' ? 'dev' : __GIT_DESCRIBE__;
+		return json(200, { ok: true, uptime: uptimeSeconds() });
+	}
+
+	if (url === '/api/statusz' && req.method === 'GET') {
+		const body: Record<string, unknown> = { ok: true, uptime: uptimeSeconds() };
+		if (await isOurs(ip)) {
+			body['version'] = typeof __GIT_DESCRIBE__ === 'undefined' ? 'dev' : __GIT_DESCRIBE__;
+			body['features'] = typeof __MALL_FEATURES__ === 'undefined' ? [] : __MALL_FEATURES__;
+		}
 		return json(200, body);
 	}
 

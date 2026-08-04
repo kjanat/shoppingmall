@@ -595,9 +595,10 @@ export class App {
 		}
 		if (!feature('NO_PERF_HUD') && !externalPerfProbe) {
 			const gl = this.renderer.getContext();
-			if (gl instanceof WebGL2RenderingContext) this.gpuTimer = new GpuTimer(gl);
+			const webgl2 = gl instanceof WebGL2RenderingContext ? gl : null;
+			if (webgl2) this.gpuTimer = new GpuTimer(webgl2);
 			void import('@/ui/PerfOverlay').then(({ PerfOverlay }) => {
-				this.perfHud = new PerfOverlay(uiRoot);
+				this.perfHud = new PerfOverlay(uiRoot, webgl2);
 			});
 		}
 

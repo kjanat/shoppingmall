@@ -13,6 +13,7 @@ import {
 	writeLamps,
 	writeShine,
 } from '@/render/graphicsPrefs';
+import { booleanUrlPref, clearUrlPref, urlPref } from '@/render/urlPrefs';
 import { qs } from '@/util/dom';
 
 const STORE_KEY = 'mallsim.controls.v1';
@@ -22,10 +23,18 @@ const DYNRES_KEY = 'mallsim.dynres.v1';
 
 export type QualityLevel = 'laag' | 'middel' | 'hoog';
 
+function qualityLevel(value: string | null): QualityLevel | null {
+	if (value === 'laag' || value === 'low') return 'laag';
+	if (value === 'middel' || value === 'medium') return 'middel';
+	if (value === 'hoog' || value === 'high') return 'hoog';
+	return null;
+}
+
 function loadQuality(): QualityLevel {
+	const override = qualityLevel(urlPref('quality')?.toLowerCase() ?? null);
+	if (override) return override;
 	try {
-		const q = localStorage.getItem(QUALITY_KEY);
-		return q === 'laag' || q === 'hoog' ? q : 'middel';
+		return qualityLevel(localStorage.getItem(QUALITY_KEY)) ?? 'middel';
 	} catch {
 		return 'middel';
 	}
@@ -43,6 +52,8 @@ function loadBinaural(): boolean {
 }
 
 function loadDynRes(): boolean {
+	const override = booleanUrlPref('dynres');
+	if (override !== undefined) return override;
 	try {
 		const v = localStorage.getItem(DYNRES_KEY);
 		// Standaard UIT. Aan-als-default ruilde stilzwijgend scherpte in voor
@@ -153,11 +164,12 @@ export class SettingsPanel {
         <label class="settings-row">
           <span>
             <b>Scene-batches</b>
-            <small>Globaal = minst CPU. Ruimtelijk = lokale batches. Sorteren test extra zichtculling, maar kan veel GPU-data uploaden. Herlaadt.</small>
+            <small>Globaal = minst CPU. Ruimtelijk maakt statische batches lokaal. + bewegend deelt ook animatiegroepen op. Sorteren test extra zichtculling, maar kan veel GPU-data uploaden. Herlaadt.</small>
           </span>
           <select id="set-batches">
             <option value="global">Globaal</option>
             <option value="spatial">Ruimtelijk</option>
+            <option value="spatial-dynamic">Ruimtelijk + bewegend</option>
             <option value="spatial-sort">Ruimtelijk + sorteren</option>
           </select>
         </label>
@@ -276,7 +288,10 @@ export class SettingsPanel {
 		const qualitySel = q<HTMLSelectElement>('#set-quality');
 		qualitySel.value = this.quality;
 		qualitySel.addEventListener('change', () => {
-			this.quality = (qualitySel.value as QualityLevel) ?? 'middel';
+			const quality = qualityLevel(qualitySel.value);
+			if (!quality) return;
+			this.quality = quality;
+			clearUrlPref('quality');
 			try {
 				localStorage.setItem(QUALITY_KEY, this.quality);
 			} catch {
@@ -291,6 +306,7 @@ export class SettingsPanel {
 			const shineCb = q<HTMLInputElement>('#set-shine');
 			shineCb.checked = shineOn();
 			shineCb.addEventListener('change', () => {
+				clearUrlPref('shine');
 				writeShine(shineCb.checked);
 				location.reload();
 			});
@@ -299,6 +315,7 @@ export class SettingsPanel {
 		const lampsSel = q<HTMLSelectElement>('#set-lamps');
 		lampsSel.value = String(lampCount());
 		lampsSel.addEventListener('change', () => {
+			clearUrlPref('lamps');
 			writeLamps(Number(lampsSel.value));
 			location.reload();
 		});
@@ -308,6 +325,7 @@ export class SettingsPanel {
 		batchSel.addEventListener('change', () => {
 			const mode = batchSel.value;
 			if (!isBatchMode(mode)) return;
+			clearUrlPref('batch');
 			writeBatchMode(mode);
 			location.reload();
 		});
@@ -317,6 +335,7 @@ export class SettingsPanel {
 		fillSel.addEventListener('change', () => {
 			const scale = Number(fillSel.value);
 			if (!FILL_CHOICES.includes(scale)) return;
+			clearUrlPref('fill');
 			writeFill(scale);
 			this.onFill?.(scale);
 		});
@@ -325,6 +344,7 @@ export class SettingsPanel {
 		dynResCb.checked = this.dynRes;
 		dynResCb.addEventListener('change', () => {
 			this.dynRes = dynResCb.checked;
+			clearUrlPref('dynres');
 			try {
 				localStorage.setItem(DYNRES_KEY, this.dynRes ? '1' : '0');
 			} catch {

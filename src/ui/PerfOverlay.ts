@@ -1,3 +1,4 @@
+import { booleanUrlPref, clearUrlPref } from '@/render/urlPrefs';
 import { ctx2d, qs } from '@/util/dom';
 
 const OPEN_KEY = 'mallsim.perfhud.v1';
@@ -29,6 +30,8 @@ const ROWS: [id: string, label: string][] = [
 	['batches', 'batches'],
 	['lights', 'lichten'],
 	['res', 'resolutie'],
+	['gpuName', 'videokaart'],
+	['gpuApi', 'graphics API'],
 	['programs', "programma's"],
 	['mem', 'geheugen'],
 ];
@@ -60,6 +63,46 @@ export type PerfFrame = {
 	lightsTotal: number;
 	batches: number;
 };
+
+type DebugRendererInfo = { UNMASKED_RENDERER_WEBGL: number };
+
+function debugRendererInfo(value: unknown): DebugRendererInfo | null {
+	if (typeof value !== 'object' || value === null || !('UNMASKED_RENDERER_WEBGL' in value)) return null;
+	const { UNMASKED_RENDERER_WEBGL } = value;
+	return typeof UNMASKED_RENDERER_WEBGL === 'number' ? { UNMASKED_RENDERER_WEBGL } : null;
+}
+
+function rendererLabels(gl: WebGL2RenderingContext | null): { gpu: string; api: string } {
+	if (!gl) return { gpu: 'onbekend', api: 'WebGL' };
+	const info = debugRendererInfo(gl.getExtension('WEBGL_debug_renderer_info'));
+	const value: unknown = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : null;
+	if (typeof value !== 'string') return { gpu: 'verborgen door browser', api: 'WebGL 2' };
+
+	const api = /Direct3D12|D3D12/i.test(value)
+		? 'D3D12'
+		: /Direct3D11|D3D11/i.test(value)
+			? 'D3D11'
+			: /Vulkan/i.test(value)
+				? 'Vulkan'
+				: /Metal/i.test(value)
+					? 'Metal'
+					: /OpenGL/i.test(value)
+						? 'OpenGL'
+						: 'WebGL 2';
+	const angle = value.replace(/^ANGLE \(/, '').replace(/\)$/, '');
+	const fields = angle.split(',');
+	const device = (fields.length > 1 ? fields[1] : fields[0]) ?? angle;
+	const gpu = device
+		.trim()
+		.replace(/^ANGLE Metal Renderer:\s*/i, '')
+		.replace(/\s*\(0x[\da-f]+\)/i, '')
+		.replace(/\s+(?:Direct3D\d+|D3D\d+|vs_\S+|ps_\S+).*$/i, '')
+		.replace(/^NVIDIA GeForce\s+/i, '')
+		.replace(/\s+with Max-Q Design$/i, ' Max-Q')
+		.replace(/^AMD Radeon\s+/i, 'Radeon ')
+		.trim();
+	return { gpu: gpu || value, api };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
@@ -112,7 +155,7 @@ export class PerfOverlay {
 	/** Main-thread blocks of 50 ms or more (GC pauses and the like) in the last second. */
 	private longTasks: number[] = [];
 
-	constructor(root: HTMLElement) {
+	constructor(root: HTMLElement, gl: WebGL2RenderingContext | null) {
 		this.open = PerfOverlay.loadOpen();
 		this.host = document.createElement('div');
 		this.host.className = 'perf-hud';
@@ -134,6 +177,9 @@ export class PerfOverlay {
 		this.panel = qs(this.host, '#perf-panel');
 		this.graph = qs<HTMLCanvasElement>(this.host, '#perf-graph');
 		for (const [id] of ROWS) this.values.set(id, qs(this.host, `#perf-${id}`));
+		const renderer = rendererLabels(gl);
+		this.values.get('gpuName')?.replaceChildren(renderer.gpu);
+		this.values.get('gpuApi')?.replaceChildren(renderer.api);
 
 		this.chip.addEventListener('click', () => this.toggle());
 		window.addEventListener('keydown', (e) => {
@@ -146,6 +192,8 @@ export class PerfOverlay {
 	}
 
 	private static loadOpen(): boolean {
+		const override = booleanUrlPref('perfhud');
+		if (override !== undefined) return override;
 		try {
 			return localStorage.getItem(OPEN_KEY) === '1';
 		} catch {
@@ -172,6 +220,7 @@ export class PerfOverlay {
 
 	toggle(force?: boolean): void {
 		this.open = force === undefined ? !this.open : force;
+		clearUrlPref('perfhud');
 		try {
 			localStorage.setItem(OPEN_KEY, this.open ? '1' : '0');
 		} catch {

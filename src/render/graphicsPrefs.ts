@@ -8,13 +8,15 @@
  * reloads the page; that is honest and instant enough for a setting nobody
  * touches twice a session.
  */
+import { booleanUrlPref, urlPref } from '@/render/urlPrefs';
+
 const SHINE_KEY = 'mallsim.shine.v1';
 const LAMPS_KEY = 'mallsim.lamps.v1';
 const FILL_KEY = 'mallsim.fill.v1';
 export const BATCH_KEY = 'mallsim.batch.v1';
 
-export type BatchMode = 'global' | 'spatial' | 'spatial-sort';
-export const BATCH_CHOICES: readonly BatchMode[] = ['global', 'spatial', 'spatial-sort'];
+export type BatchMode = 'global' | 'spatial' | 'spatial-dynamic' | 'spatial-sort';
+export const BATCH_CHOICES: readonly BatchMode[] = ['global', 'spatial', 'spatial-dynamic', 'spatial-sort'];
 
 export function isBatchMode(value: unknown): value is BatchMode {
 	return typeof value === 'string' && BATCH_CHOICES.some((choice) => choice === value);
@@ -22,11 +24,13 @@ export function isBatchMode(value: unknown): value is BatchMode {
 
 /** Pool sizes offered. Each one is a different NUM_POINT_LIGHTS, so each is a
  * different set of shader programs, hence the reload. */
-export const LAMP_CHOICES: readonly number[] = [8, 16, 24, 32];
+export const LAMP_CHOICES: readonly number[] = [2, 4, 8, 16, 24, 32];
 /** Multiplier on the ambient + hemisphere "everywhere" light. */
 export const FILL_CHOICES: readonly number[] = [0.4, 0.7, 1, 1.4];
 
-function readNumberPref(key: string, allowed: readonly number[], fallback: number): number {
+function readNumberPref(key: string, query: string, allowed: readonly number[], fallback: number): number {
+	const override = Number(urlPref(query));
+	if (allowed.includes(override)) return override;
 	try {
 		const raw = Number(localStorage.getItem(key));
 		return allowed.includes(raw) ? raw : fallback;
@@ -37,6 +41,8 @@ function readNumberPref(key: string, allowed: readonly number[], fallback: numbe
 
 /** Specular highlights and metalness, i.e. MeshStandardMaterial. Default on. */
 export function shineOn(): boolean {
+	const override = booleanUrlPref('shine');
+	if (override !== undefined) return override;
 	try {
 		return localStorage.getItem(SHINE_KEY) !== '0';
 	} catch {
@@ -45,11 +51,11 @@ export function shineOn(): boolean {
 }
 
 export function lampCount(): number {
-	return readNumberPref(LAMPS_KEY, LAMP_CHOICES, 16);
+	return readNumberPref(LAMPS_KEY, 'lamps', LAMP_CHOICES, 16);
 }
 
 export function fillScale(): number {
-	return readNumberPref(FILL_KEY, FILL_CHOICES, 1);
+	return readNumberPref(FILL_KEY, 'fill', FILL_CHOICES, 1);
 }
 
 /**
@@ -58,6 +64,8 @@ export function fillScale(): number {
  * a machine-dependent tradeoff that must be measured on the target GPU.
  */
 export function batchMode(): BatchMode {
+	const override = urlPref('batch');
+	if (isBatchMode(override)) return override;
 	try {
 		const value = localStorage.getItem(BATCH_KEY);
 		return isBatchMode(value) ? value : 'spatial';

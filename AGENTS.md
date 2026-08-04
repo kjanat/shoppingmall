@@ -112,7 +112,7 @@ predates the light pool / Lambert / culling / dynamic-resolution branch below, s
 | hardware | GTX 1650 Max-Q, 1600×900 / 1.44 Mpix, DPR 1                                                    |
 | command  | `run diagnose --url https://kruidvat.kajkowalski.nl/`                                          |
 
-The deployed build identifies itself at `/api/healthz` (`{ok, uptime, version}`), and `run diagnose --url` now reads it
+The deployed build identifies itself at `/api/statusz` (`{ok, uptime, version, features}`), and `run diagnose --url` now reads it
 and prints the commit automatically. **Never record a perf number without the build it came from** — an unattributed
 snapshot cannot be compared against anything later, which is the only thing a snapshot is for.
 

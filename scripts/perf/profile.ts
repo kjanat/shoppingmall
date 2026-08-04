@@ -69,7 +69,7 @@ function localBuild(): string {
 async function buildIdentity(url?: string): Promise<string> {
 	if (!url) return localBuild();
 	try {
-		const response = await fetch(`${new URL(url).origin}/api/healthz`);
+		const response = await fetch(`${new URL(url).origin}/api/statusz`);
 		const body: unknown = await response.json();
 		return isRecord(body) ? readString(body, 'version', 'unknown') : 'unknown';
 	} catch {

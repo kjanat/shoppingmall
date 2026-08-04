@@ -19,7 +19,7 @@
  * Usage:  bun run diagnose            (needs `bun run build` first)
  *         bun run diagnose --sweep
  */
-import { isRecord, readNumber, readString } from './cdp.ts';
+import { isRecord, readArray, readNumber, readString } from './cdp.ts';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import type { Sample } from './probe.ts';
 
@@ -51,17 +51,18 @@ function note(message: string): void {
  *
  * A perf snapshot with no commit attached cannot be compared against anything
  * later, which makes it decoration rather than data. The server answers this on
- * /api/healthz, so a `--url` run identifies its own target instead of trusting
+ * /api/statusz, so a `--url` run identifies its own target instead of trusting
  * whoever writes the result down.
  */
-async function deployedBuild(url: string): Promise<{ version: string; uptimeSeconds: number } | null> {
+async function deployedBuild(url: string): Promise<{ version: string; uptimeSeconds: number; features: string[] } | null> {
 	try {
-		const response = await fetch(`${new URL(url).origin}/api/healthz`);
+		const response = await fetch(`${new URL(url).origin}/api/statusz`);
 		if (!response.ok) return null;
 		const body: unknown = await response.json();
 		if (!isRecord(body)) return null;
 		const version = readString(body, 'version');
-		return version ? { version, uptimeSeconds: readNumber(body, 'uptime') } : null;
+		const features = readArray(body, 'features').flatMap((value) => (typeof value === 'string' ? [value] : []));
+		return version ? { version, uptimeSeconds: readNumber(body, 'uptime'), features } : null;
 	} catch {
 		return null;
 	}
@@ -87,8 +88,9 @@ try {
 		const build = await deployedBuild(targetUrl);
 		if (build) {
 			console.log(bar('deployed build', `${build.version.slice(0, 12)} (up ${Math.round(build.uptimeSeconds / 60)} min)`));
+			console.log(bar('build features', build.features.length > 0 ? build.features.join(', ') : '(none)'));
 		} else {
-			note('could not read /api/healthz — the measured build is unidentified.');
+			note('could not read /api/statusz — the measured build is unidentified.');
 			note('  Record which commit this was, or the numbers cannot be compared against anything later.');
 		}
 	}

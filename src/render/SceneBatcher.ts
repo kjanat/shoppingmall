@@ -225,6 +225,9 @@ export class SceneBatcher {
 			const geographicallyLocal = maxX - minX <= CELL_SIZE && maxZ - minZ <= CELL_SIZE;
 			if (
 				mode === 'global' ||
+				// Plain spatial mode keeps moving features together. The dynamic
+				// variant partitions their initial positions too; growBounds() keeps
+				// those local batches sound when an instance later crosses a cell.
 				(mode === 'spatial' && group.dynamicRoot !== null) ||
 				(group.meshes.length < MIN_SPATIAL_GROUP && geographicallyLocal)
 			) {

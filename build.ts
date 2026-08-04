@@ -30,13 +30,13 @@ const flags = await readFlags({
 		.split({ cli: ',' })
 		.env('MALL_FEATURES')
 		.describe('Build-time vlaggen: --feature NO_PERF_HUD,FORCE_LAMBERT'),
-	gitDescribe: flag.string().env('GIT_DESCRIBE').describe('Versie voor /api/healthz; in de image is er geen git'),
+	gitDescribe: flag.string().env('GIT_DESCRIBE').describe('Versie voor /api/statusz; in de image is er geen git'),
 });
 
 const pages = flags.static;
 
 /**
- * Versie voor /api/healthz. Uit GIT_DESCRIBE als die er is: in de image
+ * Versie voor /api/statusz. Uit GIT_DESCRIBE als die er is: in de image
  * bestaat geen git-repo, dus daar komt hij als build-arg binnen. Zonder tags
  * faalt `describe`, dan de volle SHA.
  */
@@ -59,7 +59,10 @@ const shared = {
 	publicPath: '/',
 	splitting: true,
 	features: flags.feature,
-	define: { __GIT_DESCRIBE__: JSON.stringify(version) },
+	define: {
+		__GIT_DESCRIBE__: JSON.stringify(version),
+		__MALL_FEATURES__: JSON.stringify(flags.feature),
+	},
 } as const;
 
 const [out1, out2] = await Promise.all([
