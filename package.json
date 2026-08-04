@@ -26,7 +26,7 @@
 		"prepare": "run scripts/install-hooks.ts || true",
 		"profile": "node scripts/perf/profile.ts",
 		"profile:headless": "MALL_PERF_SOFTWARE=1 node scripts/perf/profile.ts",
-		"redeploy": "git pull --ff-only && run live || echo 'failed to deploy' >&2",
+		"redeploy": "git pull --ff-only || echo 'failed to deploy' >&2",
 		"prestart": "run build",
 		"start": "NODE_ENV=production dist/mall",
 		"static": "run build.ts --static",
