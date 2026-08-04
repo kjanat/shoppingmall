@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { distanceToSegment2, pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
-import { clamp, clamp01, half, inverseLerpClamped, midpoint, span } from '#/util/math';
+import { clamp, clamp01, half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 import { median } from './perf/stats.ts';
 
 describe('shared calculations', () => {
@@ -9,6 +9,7 @@ describe('shared calculations', () => {
 		assert.equal(half(8), 4);
 		assert.equal(midpoint(-6, 14), 4);
 		assert.equal(span(-6, 14), 20);
+		assert.equal(lerp(-6, 14, 0.25), -1);
 		assert.equal(clamp(8, -2, 5), 5);
 		assert.equal(clamp01(-0.1), 0);
 		assert.equal(inverseLerpClamped(10, 20, 15), 0.5);

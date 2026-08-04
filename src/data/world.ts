@@ -1,5 +1,8 @@
+import { STANDING_PEDESTRIAN } from '#/data/character';
+import type { EscalatorSpec, OpeningDef, VerticalConnector } from '#/data/connectors';
 import { ATRIUM_VOID, MALL_FOOTPRINT, PARKING_FOOTPRINT } from '#/data/layout';
-import { LEVELS, type LevelId, levelY } from '#/data/levels';
+import type { LevelId } from '#/data/levels';
+import { LEVELS, levelY } from '#/data/levels';
 import type {
 	InteractionEmitter,
 	InteractionReceiver,
@@ -15,37 +18,6 @@ import { rectangularPerimeterWalls } from '#/data/structure';
 import { half, span } from '#/util/math';
 
 export type WorldCategory = 'floor' | 'ceiling' | 'wall' | 'opening' | 'shop' | 'vertical-circulation' | 'parking';
-
-export type OpeningDef = Readonly<{
-	id: string;
-	category: 'atrium' | 'escalator' | 'stairs' | 'elevator';
-	center: Readonly<{ x: number; z: number }>;
-	size: Readonly<{ width: number; depth: number }>;
-	connects: readonly LevelId[];
-}>;
-
-export type VerticalConnector = Readonly<{
-	id: string;
-	label: string;
-	from: LevelId;
-	to: LevelId;
-	x: number;
-	zBottom: number;
-	zTop: number;
-	width: number;
-	steps: number;
-	apron: number;
-	opening: OpeningDef;
-	collision: Readonly<{
-		minX: number;
-		maxX: number;
-		minZ: number;
-		maxZ: number;
-		openMinZ: number;
-		openMaxZ: number;
-		carrySpeed?: number;
-	}>;
-}>;
 
 export const ESCALATOR_SPEED = 0.5;
 export const SHOP_HEIGHT = 4.2;
@@ -186,6 +158,37 @@ export const ESCALATOR = {
 	width: 2.2,
 	steps: 20,
 	apron: 1,
+	appearance: {
+		step: {
+			minimumSurfaceY: 0.02,
+			treadThickness: 0.07,
+			riserThickness: 0.05,
+		},
+		nose: {
+			height: 0.006,
+			edgeInset: 0.01,
+			surfaceLift: 0.0015,
+			depth: 0.05,
+		},
+		skirt: {
+			panelThickness: 0.05,
+			treadGap: 0.03,
+		},
+		balustrade: {
+			glassBottom: 0.33,
+			glassTop: 0.99,
+			glassThickness: 0.03,
+		},
+		handrail: {
+			radius: 0.05,
+			glassGap: 0.02,
+			textureRepeatLength: 0.32,
+		},
+	},
+	constraints: {
+		inclineDegrees: { min: 25, max: 35 },
+		alignmentTolerance: 0.001,
+	},
 	opening: {
 		id: 'escalator-v1',
 		category: 'escalator',
@@ -202,7 +205,7 @@ export const ESCALATOR = {
 		openMaxZ: 1.6,
 		carrySpeed: ESCALATOR_SPEED,
 	},
-} satisfies VerticalConnector;
+} satisfies EscalatorSpec;
 
 export const STAIRS = {
 	id: 'stairs',
@@ -659,7 +662,13 @@ function connectorEntity(connector: VerticalConnector, kind: 'stairs' | 'escalat
 			{
 				id: 'route-clearance',
 				role: 'connector-clearance',
-				geometry: { kind: 'flight-clearance', start, end, width: connector.width, height: 2.2 },
+				geometry: {
+					kind: 'flight-clearance',
+					start,
+					end,
+					width: connector.width,
+					height: STANDING_PEDESTRIAN.requiredHeadroom,
+				},
 				blocksMovement: false,
 				clearance: { kind: 'clear' },
 				allowsOverlapFrom: ['connector'],
@@ -673,7 +682,7 @@ function connectorEntity(connector: VerticalConnector, kind: 'stairs' | 'escalat
 				position: start,
 				direction: { x: 0, y: 0, z: Math.sign(connector.zTop - connector.zBottom) },
 				width: connector.width,
-				height: 2.2,
+				height: STANDING_PEDESTRIAN.requiredHeadroom,
 				connectsTo: [`${connector.id}-${connector.to}`],
 				oneWay: false,
 				allows: ['walking'],
@@ -685,7 +694,7 @@ function connectorEntity(connector: VerticalConnector, kind: 'stairs' | 'escalat
 				position: end,
 				direction: { x: 0, y: 0, z: Math.sign(connector.zBottom - connector.zTop) },
 				width: connector.width,
-				height: 2.2,
+				height: STANDING_PEDESTRIAN.requiredHeadroom,
 				connectsTo: [`${connector.id}-${connector.from}`],
 				oneWay: false,
 				allows: ['walking'],

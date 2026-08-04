@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { STANDING_PEDESTRIAN } from '#/data/character';
+import { type EscalatorSpec, validateEscalatorSpec } from '#/data/connectors';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt } from '#/data/levels';
 import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
 import { receiverAccepts, validateSpatialWorld } from '#/data/spatial';
 import { rectangularPerimeterWalls } from '#/data/structure';
-import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, WORLD_ENTITIES } from '#/data/world';
+import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATOR, WORLD_ENTITIES } from '#/data/world';
+import { segmentParameter2 } from '#/util/geometry2';
+import { lerp } from '#/util/math';
 
 const ZERO_ROTATION = { yaw: 0, pitch: 0, roll: 0 } as const;
 const STATIC_RECEIVER = {
@@ -77,7 +81,7 @@ const OPEN_STAIR: SpatialVolume = {
 		start: { x: 0, y: 0, z: 0 },
 		end: { x: 0, y: 4, z: 4 },
 		width: 2,
-		height: 2.2,
+		height: STANDING_PEDESTRIAN.requiredHeadroom,
 	},
 	blocksMovement: false,
 	clearance: { kind: 'clear' },
@@ -107,6 +111,49 @@ describe('authoritative spatial world', () => {
 			position: { x: 5, y: 1, z: 0 },
 			size: { width: 0.4, height: 4, depth: 6 },
 		});
+	});
+
+	test('escalator connectivity, containment, incline, and component dimensions are validated', () => {
+		assert.deepEqual(validateEscalatorSpec(ESCALATOR), []);
+
+		const disconnected: EscalatorSpec = {
+			...ESCALATOR,
+			opening: { ...ESCALATOR.opening, connects: ['v0'] },
+		};
+		assert.ok(validateEscalatorSpec(disconnected).includes('floor opening must declare both connected levels'));
+
+		const steep: EscalatorSpec = { ...ESCALATOR, zTop: 7 };
+		assert.ok(validateEscalatorSpec(steep).some((problem) => problem.startsWith('incline ')));
+
+		const brokenGlass: EscalatorSpec = {
+			...ESCALATOR,
+			appearance: {
+				...ESCALATOR.appearance,
+				balustrade: { ...ESCALATOR.appearance.balustrade, glassTop: 0.2 },
+			},
+		};
+		assert.ok(validateEscalatorSpec(brokenGlass).includes('balustrade glass top must sit above its non-negative bottom'));
+	});
+
+	test('an escalator rejects a slab intersecting a rider body or eye line anywhere along the flight', () => {
+		const escalator = CONNECTOR_ENTITIES.find((entity) => entity.id === ESCALATOR.id);
+		assert.ok(escalator);
+		const clearance = escalator.volumes.find((volume) => volume.id === 'route-clearance');
+		assert.ok(clearance && clearance.geometry.kind === 'flight-clearance');
+		assert.equal(clearance.geometry.height, STANDING_PEDESTRIAN.requiredHeadroom);
+		assert.ok(clearance.geometry.height > STANDING_PEDESTRIAN.bodyHeight);
+		assert.ok(clearance.geometry.height > STANDING_PEDESTRIAN.eyeHeight);
+
+		const obstructionZ = 1;
+		const progress = segmentParameter2(ESCALATOR.x, obstructionZ, ESCALATOR.x, ESCALATOR.zBottom, ESCALATOR.x, ESCALATOR.zTop);
+		const surfaceY = lerp(clearance.geometry.start.y, clearance.geometry.end.y, progress);
+		const eyeY = surfaceY + STANDING_PEDESTRIAN.eyeHeight;
+		const bodyTopY = surfaceY + STANDING_PEDESTRIAN.bodyHeight;
+		const blockingSlab = entity('uncut-v1-slab', 'structure', [
+			prism('slab', 'support', ESCALATOR.x, obstructionZ, 3, 0.4, eyeY - 0.1, bodyTopY + 0.1, false, true),
+		]);
+		const problems = validateSpatialWorld([escalator, blockingSlab]);
+		assert.ok(problems.some((problem) => problem.code === 'blocked-clearance'));
 	});
 
 	test('the authored world has valid geometry, openings, ports, and interactions', () => {

@@ -1,3 +1,4 @@
+import type { VerticalConnector } from '#/data/connectors';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
 import { STORES } from '#/data/stores';
@@ -8,7 +9,6 @@ import {
 	SECRET_STAIRS_OPENING_BOUNDS,
 	STAIRS,
 	VERTICAL_CONNECTORS,
-	type VerticalConnector,
 } from '#/data/world';
 import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '#/scene/RoofIsland';
 import { clamp, clamp01, half } from '#/util/math';
