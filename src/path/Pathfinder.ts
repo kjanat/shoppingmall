@@ -1,4 +1,4 @@
-import { EDGES, type GraphNode, NODES, type NodeId } from '@/data/graph';
+import { EDGES, type GraphNode, NODES, type NodeId } from '#/data/graph';
 
 interface Link {
 	to: string;

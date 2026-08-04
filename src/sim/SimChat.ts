@@ -6,7 +6,7 @@
  *   - user       — stable per-browser end-user id (localStorage, ≤128)
  *   - session_id — per-tab session for sticky routing + session grouping (≤256)
  */
-import { pick } from '@/util/rand';
+import { pick } from '#/util/rand';
 
 export type SimPersona = {
 	name: string;

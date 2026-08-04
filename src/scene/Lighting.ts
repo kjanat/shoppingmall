@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { LightPool } from '@/render/LightPool';
+import type { LightPool } from '#/render/LightPool';
 
 /** Turns the daylight down for the disco and puts it back exactly as it was. */
 export type DaylightDimmer = {

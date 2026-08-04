@@ -16,12 +16,12 @@
  * een tweede kopie van een getal is nou juist het probleem.
  */
 import { readFileSync } from 'node:fs';
-import { NODES } from '@/data/graph';
-import { getInventory } from '@/data/inventory';
-import { LEVELS, levelY, SHOP_LEVELS } from '@/data/levels';
-import { STORES, shopStores } from '@/data/stores';
-import { CollisionWorld, WALK_STEP } from '@/physics/Collision';
-import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '@/scene/RoofIsland';
+import { NODES } from '#/data/graph';
+import { getInventory } from '#/data/inventory';
+import { LEVELS, levelY, SHOP_LEVELS } from '#/data/levels';
+import { STORES, shopStores } from '#/data/stores';
+import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
+import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
 import { stubDocument } from './stub-dom.ts';
 
 /** Speling voor waarden die exact gelijk horen te zijn. */
@@ -126,9 +126,9 @@ async function controleVoorraad(): Promise<void> {
 	stubDocument();
 	const [THREE, { MallBuilder }, { StockDisplay }, { LightPool }] = await Promise.all([
 		import('three'),
-		import('@/scene/MallBuilder'),
-		import('@/scene/StockDisplay'),
-		import('@/render/LightPool'),
+		import('#/scene/MallBuilder'),
+		import('#/scene/StockDisplay'),
+		import('#/render/LightPool'),
 	]);
 	const verwacht = new Set(shopStores().map((s) => s.id));
 	const mall = new MallBuilder();
@@ -519,7 +519,7 @@ async function controleBadgasten(): Promise<void> {
 
 	const rimClear = getal(pp, /const RIM_CLEAR = (-?[\d.]+);/, 'RIM_CLEAR');
 	stubDocument();
-	const { PoolPeople } = await import('@/scene/PoolPeople');
+	const { PoolPeople } = await import('#/scene/PoolPeople');
 	// In het water hangen is dieper dan alleen onder dekhoogte: de zonaanbidsters
 	// liggen ook onder dekhoogte, in hun stoel. Meet dus vanaf de waterlijn.
 	const badgasten = new PoolPeople().group.children.filter((o) => o.position.y < POOL_WATER_Y - 0.75);

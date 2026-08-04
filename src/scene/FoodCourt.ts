@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import type { LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import type { LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 
 /**
  * Open food court — floor 1, south balcony over the atrium.

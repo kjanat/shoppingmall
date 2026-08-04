@@ -18,7 +18,7 @@
  * via `isOnViewerLevel` in plaats van het een tweede keer uit te rekenen.
  */
 import * as THREE from 'three';
-import { type LevelId, levelAt } from '@/data/levels';
+import { type LevelId, levelAt } from '#/data/levels';
 
 const culled: THREE.Object3D[] = [];
 

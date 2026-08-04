@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import type { LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { tagLevelCulled } from '@/util/visibility';
+import type { LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { tagLevelCulled } from '#/util/visibility';
 
 /**
  * Shady travel desk next to Beard-man's Cave (juwelen lair).

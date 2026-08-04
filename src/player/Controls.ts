@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { type LevelId, levelAt } from '@/data/levels';
-import { type CollisionWorld, WALK_STEP } from '@/physics/Collision';
+import { type LevelId, levelAt } from '#/data/levels';
+import { type CollisionWorld, WALK_STEP } from '#/physics/Collision';
 
 export const EYE = 1.68;
 

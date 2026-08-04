@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 
 /**
  * PRAIRIE THEATRE — monumentaal cultuurpaleis op het NO-blok (x 56..88, z -68..-44).

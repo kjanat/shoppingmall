@@ -1,6 +1,6 @@
-import { level } from '@/data/levels';
-import type { PersonRow } from '@/scene/Americans';
-import { qs } from '@/util/dom';
+import { level } from '#/data/levels';
+import type { PersonRow } from '#/scene/Americans';
+import { qs } from '#/util/dom';
 
 /** Non-shopper rows: dief, aap, DJ, catwalk-dame — the mall's fixed cast. */
 export type CastRow = {

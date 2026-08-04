@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle';
-import { type ControlSettings, DEFAULT_SETTINGS } from '@/player/Controls';
+import { type ControlSettings, DEFAULT_SETTINGS } from '#/player/Controls';
 import {
 	batchMode,
 	FILL_CHOICES,
@@ -12,9 +12,9 @@ import {
 	writeFill,
 	writeLamps,
 	writeShine,
-} from '@/render/graphicsPrefs';
-import { booleanUrlPref, clearUrlPref, urlPref } from '@/render/urlPrefs';
-import { qs } from '@/util/dom';
+} from '#/render/graphicsPrefs';
+import { booleanUrlPref, clearUrlPref, urlPref } from '#/render/urlPrefs';
+import { qs } from '#/util/dom';
 
 const STORE_KEY = 'mallsim.controls.v1';
 const QUALITY_KEY = 'mallsim.quality.v1';

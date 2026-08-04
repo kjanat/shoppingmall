@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { speakLine } from '@/audio/ElevenVoice';
-import { levelAt } from '@/data/levels';
-import { getOwner, type ShopOwner } from '@/data/shopOwners';
-import { STORES } from '@/data/stores';
+import { speakLine } from '#/audio/ElevenVoice';
+import { levelAt } from '#/data/levels';
+import { getOwner, type ShopOwner } from '#/data/shopOwners';
+import { STORES } from '#/data/stores';
 
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { tagLevelCulled } from '@/util/visibility';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { tagLevelCulled } from '#/util/visibility';
 
 type KeeperSpeech = {
 	storeId: string;

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { levelY } from '@/data/levels';
-import type { LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import { levelY } from '#/data/levels';
+import type { LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
 // Ceiling slab tops out at 13.75 (y 13.5 + 0.25 extrude) — the deck used to sit

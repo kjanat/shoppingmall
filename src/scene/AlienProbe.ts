@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { LightHandle, LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
+import type { LightHandle, LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
 import type { Americans } from './Americans';
 
 /**

@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { spatial } from '@/audio/SpatialAudio';
-import { levelAt } from '@/data/levels';
-import type { CollisionWorld } from '@/physics/Collision';
-import { lit } from '@/render/material';
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { at, pick } from '@/util/rand';
-import { tagLevelCulled } from '@/util/visibility';
+import { spatial } from '#/audio/SpatialAudio';
+import { levelAt } from '#/data/levels';
+import type { CollisionWorld } from '#/physics/Collision';
+import { lit } from '#/render/material';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { at, pick } from '#/util/rand';
+import { tagLevelCulled } from '#/util/visibility';
 
 /**
  * Pre-generated ElevenLabs Chinese scolds. Straight from the manifest the

@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle';
 import * as THREE from 'three';
-import { shineOn } from '@/render/graphicsPrefs';
+import { shineOn } from '#/render/graphicsPrefs';
 
 /**
  * Every lit surface in the mall is built here.

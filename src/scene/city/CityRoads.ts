@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { at } from '@/util/rand';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { at } from '#/util/rand';
 
 /**
  * Rechthoekige ringweg om de mall. Vier stroken asfalt, vier zebrapaden,

@@ -1,5 +1,5 @@
-import { LEVELS, type LevelId } from '@/data/levels';
-import { qs } from '@/util/dom';
+import { LEVELS, type LevelId } from '#/data/levels';
+import { qs } from '#/util/dom';
 
 /**
  * Popup when you're in the glass elevator — pick a floor for Hans.

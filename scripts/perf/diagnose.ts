@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * What is a frame of this game actually made of?
  *
@@ -19,11 +19,13 @@
  * Usage:  bun run diagnose            (needs `bun run build` first)
  *         bun run diagnose --sweep
  */
-import { isRecord, readArray, readNumber, readString } from './cdp.ts';
 import { bar, openGame, sampleWarnings } from './harness.ts';
+import { trimToColumns } from './out.ts';
+import { isSoftwareHeadless } from './playwright.ts';
 import type { Sample } from './probe.ts';
+import { isRecord, readArray, readNumber, readString } from './values.ts';
 
-const softwareHeadless = process.env['CHROME_PATH']?.endsWith('chrome-headless.sh') === true;
+const softwareHeadless = isSoftwareHeadless();
 // Structural checks do not need 1.44 million software-rasterized pixels. Keep
 // the same aspect ratio so frustum coverage stays representative.
 const SAMPLE_MS = softwareHeadless ? 3000 : 6000;
@@ -82,7 +84,7 @@ try {
 	const env = await session.environment();
 	const main = await session.sample(SAMPLE_MS);
 
-	console.log('\n── environment ─────────────────────────────────────────────');
+	console.log(`\n${trimToColumns('── environment ─────────────────────────────────────────────')}`);
 	console.log(bar('target', targetUrl ?? 'local dist/static'));
 	if (targetUrl) {
 		const build = await deployedBuild(targetUrl);
@@ -107,13 +109,13 @@ try {
 		note('  Windows: Settings → Display → Graphics → Chrome → High performance.');
 	}
 
-	console.log('\n── shaders ─────────────────────────────────────────────────');
+	console.log(`\n${trimToColumns('── shaders ─────────────────────────────────────────────────')}`);
 	console.log(bar('programs linked', String(env.programsLinked)));
 	console.log(bar('shader source', `${env.shaderKbTotal} KB total, largest ${env.largestShaderKb} KB`));
 	console.log(bar('lights in shader', `${env.numPointLights} point, ${env.numDirLights} directional, ${env.numSpotLights} spot`));
 	console.log(bar('programs warmed', String(env.warmupPrograms)));
 
-	console.log('\n── batching ────────────────────────────────────────────────');
+	console.log(`\n${trimToColumns('── batching ────────────────────────────────────────────────')}`);
 	console.log(bar('source meshes', `${env.batchSourceMeshes} (${env.batchDynamicSources} dynamic)`));
 	console.log(bar('batch draw calls', String(env.batchDrawCalls)));
 	console.log(bar('largest batch radius', `${env.batchLargestRadius} m`));
@@ -129,7 +131,7 @@ try {
 		note(`  That is why the largest shader is ${env.largestShaderKb} KB. Fill cost scales with this number.`);
 	}
 
-	console.log('\n── frame ───────────────────────────────────────────────────');
+	console.log(`\n${trimToColumns('── frame ───────────────────────────────────────────────────')}`);
 	console.log(
 		bar(
 			'wall time',
@@ -153,7 +155,7 @@ try {
 	for (const warning of sampleWarnings(main)) note(warning);
 
 	if (sweep) {
-		console.log('\n── fill vs fixed ───────────────────────────────────────────');
+		console.log(`\n${trimToColumns('── fill vs fixed ───────────────────────────────────────────')}`);
 		// A-B-A: the second full-size sample is a control. If the machine drifted
 		// between them, the two-point solve below is meaningless and says so.
 		await session.setViewport(SMALL_WIDTH, SMALL_HEIGHT);
@@ -185,7 +187,7 @@ try {
 	}
 
 	if (notes.length > 0) {
-		console.log('\n── notes ───────────────────────────────────────────────────');
+		console.log(`\n${trimToColumns('── notes ───────────────────────────────────────────────────')}`);
 		for (const message of notes) console.log(`  ${message.startsWith(' ') ? message : `⚠ ${message}`}`);
 	}
 	console.log('');

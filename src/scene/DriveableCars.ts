@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { level, levelAt } from '@/data/levels';
-import type { CollisionWorld } from '@/physics/Collision';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import { level, levelAt } from '#/data/levels';
+import type { CollisionWorld } from '#/physics/Collision';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 import { GARAGE_Y } from './ParkingGarage';
 import type { DriveInput } from './ScrubberBuggy';
 

@@ -48,15 +48,15 @@ scripts/perf/          benchmarking and diagnostics (see below)
 scripts/stub-dom.ts    canvas/audio stubs shared by the headless checks
 ```
 
-Aliases: `@/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensions.
+Aliases: `#/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensions.
 
 ## Conventions
 
 - Tabs. dprint + Biome, `lineWidth` 130. Run `bun run fmt`.
 - `strict`, plus `noUncheckedIndexedAccess`, `noUnusedLocals`, `noPropertyAccessFromIndexSignature`. Index signatures
   need bracket access (`process.env['PORT']`).
-- **No `any`, no `!`, no `as Type`.** Parse untyped input at the boundary into typed structures instead — see
-  `scripts/perf/cdp.ts` for the pattern (`isRecord`, `readNumber`, `in`-narrowing).
+- **No `any`, no `!`, no `as Type`.** Parse untyped input at the boundary into typed structures instead. See
+  [values](scripts/perf/values.ts) for the pattern (`isRecord`, `readNumber`, `in`-narrowing).
 - **Never suppress a lint or type error.** No `@ts-ignore`, no `biome-ignore`. Fix the cause.
 - Comments explain *why*, and often name the bug that motivated the code. Match that. Dutch and English both appear;
   follow whichever the file already uses.
@@ -83,7 +83,7 @@ option behind a switch, ship it, say "I built all three, try them". Do not pick 
   bite. `feature()` may only be the
   condition of an `if` or a ternary, never assigned or passed. An unset flag is `false` and the dev server passes none,
   so name flags for what they remove. And a static import keeps its module alive even when every reference sits in dead
-  code: the perf HUD only actually left the bundle (23 KB) once its import became `import('@/ui/PerfOverlay')` inside
+  code: the perf HUD only actually left the bundle (23 KB) once its import became `import('#/ui/PerfOverlay')` inside
   the guard.
 
 ## World invariants
@@ -202,9 +202,7 @@ run diagnose:headless                # no-GPU containers (remote agent envs, CI)
 ```
 
 **No-GPU containers** (remote agent environments, CI): `run diagnose:headless`, `run bench:headless` and
-`run profile:headless` route Chrome
-through [chrome-headless.sh](scripts/perf/chrome-headless.sh): headless SwiftShader, no sandbox, finds the
-Playwright-managed Chromium.
+`run profile:headless` launch Playwright-managed Chromium with headless SwiftShader and no sandbox.
 The *structural* numbers are exact there (lights in shader, programs linked, shader source KB, draw calls); every
 millisecond is the CPU rasterizer and is only comparable against the same rasterizer in the same container. Never
 against a GPU snapshot, and never worth recording in this file.

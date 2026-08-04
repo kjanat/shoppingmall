@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { at } from '@/util/rand';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { at } from '#/util/rand';
 
 /**
  * Prairie Lakes Fashion Week: a runway in front of Douglas on the ground floor.

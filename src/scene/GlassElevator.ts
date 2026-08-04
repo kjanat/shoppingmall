@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { speakLine } from '@/audio/ElevenVoice';
-import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '@/data/levels';
-import { EYE } from '@/player/Controls';
-import type { LightPool } from '@/render/LightPool';
-import { type LitMaterial, lit } from '@/render/material';
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { pick } from '@/util/rand';
-import { tagLevelCulled } from '@/util/visibility';
+import { speakLine } from '#/audio/ElevenVoice';
+import { LEVELS, type LevelId, level, levelAt, levelAtIndex, levelIndex, levelY } from '#/data/levels';
+import { EYE } from '#/player/Controls';
+import type { LightPool } from '#/render/LightPool';
+import { type LitMaterial, lit } from '#/render/material';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { pick } from '#/util/rand';
+import { tagLevelCulled } from '#/util/visibility';
 
 const FLOOR_B = levelY('p1');
 const FLOOR0 = levelY('v0');

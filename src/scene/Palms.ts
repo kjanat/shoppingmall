@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { lit } from '@/render/material';
+import { lit } from '#/render/material';
 
 /** Florida / California mall energy: palms everywhere. */
 export class PalmForest {

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import type { CollisionWorld } from '@/physics/Collision';
-import type { LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import type { CollisionWorld } from '#/physics/Collision';
+import type { LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 
 /** Arcade drive input from the player */
 export type DriveInput = {

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { spatial } from '@/audio/SpatialAudio';
-import type { LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { at, pick } from '@/util/rand';
-import { tagLevelCulled } from '@/util/visibility';
+import { spatial } from '#/audio/SpatialAudio';
+import type { LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { at, pick } from '#/util/rand';
+import { tagLevelCulled } from '#/util/visibility';
 
 /** Chant lines shown above everyone in the room */
 const CHANTS = ['Allahu Akbar!', 'Allahu Akbar!!', 'الله أكبر', 'Allahu Trapbar!', 'ALLAHU AKBAR'];

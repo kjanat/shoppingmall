@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { ShittyDiscoMusic } from '@/audio/ShittyDisco';
-import type { LightHandle, LightPool } from '@/render/LightPool';
-import { type LitMaterial, lit } from '@/render/material';
-import type { DaylightDimmer } from '@/scene/Lighting';
-import { at } from '@/util/rand';
+import { ShittyDiscoMusic } from '#/audio/ShittyDisco';
+import type { LightHandle, LightPool } from '#/render/LightPool';
+import { type LitMaterial, lit } from '#/render/material';
+import type { DaylightDimmer } from '#/scene/Lighting';
+import { at } from '#/util/rand';
 
 /**
  * Dance party: arcade neon comeback + disco balls + shitty funny music.

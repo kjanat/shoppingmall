@@ -1,6 +1,6 @@
-import { levelY } from '@/data/levels';
-import { STORES } from '@/data/stores';
-import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '@/scene/RoofIsland';
+import { levelY } from '#/data/levels';
+import { STORES } from '#/data/stores';
+import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '#/scene/RoofIsland';
 
 export type AABB = {
 	minX: number;

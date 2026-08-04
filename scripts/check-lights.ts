@@ -19,8 +19,8 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { CollisionWorld } from '@/physics/Collision';
-import { LIGHT_POOL_SLOTS, LightPool } from '@/render/LightPool';
+import { CollisionWorld } from '#/physics/Collision';
+import { LIGHT_POOL_SLOTS, LightPool } from '#/render/LightPool';
 import { stubAudio, stubDocument } from './stub-dom.ts';
 
 const fouten: string[] = [];
@@ -77,22 +77,22 @@ async function bouwWereld(): Promise<{
 		{ ScrubberBuggy },
 		{ Restrooms },
 	] = await Promise.all([
-		import('@/scene/Lighting'),
-		import('@/scene/Disco'),
-		import('@/scene/AlienProbe'),
-		import('@/scene/StockDisplay'),
-		import('@/scene/SecurityGuards'),
-		import('@/scene/GlassElevator'),
-		import('@/scene/ParkingGarage'),
-		import('@/scene/FoodCourt'),
-		import('@/scene/BeardCave'),
-		import('@/scene/DJBartek'),
-		import('@/scene/PrayerRoom'),
-		import('@/scene/Helipad'),
-		import('@/scene/Spaceship'),
-		import('@/scene/TravelAgency'),
-		import('@/scene/ScrubberBuggy'),
-		import('@/scene/Restrooms'),
+		import('#/scene/Lighting'),
+		import('#/scene/Disco'),
+		import('#/scene/AlienProbe'),
+		import('#/scene/StockDisplay'),
+		import('#/scene/SecurityGuards'),
+		import('#/scene/GlassElevator'),
+		import('#/scene/ParkingGarage'),
+		import('#/scene/FoodCourt'),
+		import('#/scene/BeardCave'),
+		import('#/scene/DJBartek'),
+		import('#/scene/PrayerRoom'),
+		import('#/scene/Helipad'),
+		import('#/scene/Spaceship'),
+		import('#/scene/TravelAgency'),
+		import('#/scene/ScrubberBuggy'),
+		import('#/scene/Restrooms'),
 	]);
 
 	const daylight = setupLighting(scene, pool);

@@ -1,5 +1,5 @@
-import type { DJPlayer } from '@/audio/DJPlayer';
-import { qs } from '@/util/dom';
+import type { DJPlayer } from '#/audio/DJPlayer';
+import { qs } from '#/util/dom';
 
 /**
  * Permanente mini-player, altijd in beeld: play/pauze, volgende, volume en een

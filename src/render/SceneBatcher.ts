@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { levelAt } from '@/data/levels';
-import { type BatchMode, batchMode } from '@/render/graphicsPrefs';
+import { levelAt } from '#/data/levels';
+import { type BatchMode, batchMode } from '#/render/graphicsPrefs';
 
 type ColorMaterial = THREE.Material & { color?: THREE.Color };
 type SourceInstance = {

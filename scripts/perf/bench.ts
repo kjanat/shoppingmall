@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * "Did my change help?" — with the machine itself under suspicion.
  *
@@ -18,12 +18,13 @@
  *         bun run bench --compare before       measure and diff against it
  *         bun run bench --samples 8
  */
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { bar, openGame, sampleWarnings } from './harness.ts';
+import { trimToColumns } from './out.ts';
 import type { Sample } from './probe.ts';
 
-const BASELINE_DIR = resolve(import.meta.dir, '../../.perf');
+const BASELINE_DIR = resolve(import.meta.dirname, '../../.perf');
 const WIDTH = 1600;
 const HEIGHT = 900;
 const SAMPLE_MS = 5000;
@@ -81,9 +82,14 @@ function driftFraction(values: number[]): number {
 }
 
 async function readBaseline(name: string): Promise<Run | null> {
-	const file = Bun.file(resolve(BASELINE_DIR, `${name}.json`));
-	if (!(await file.exists())) return null;
-	const parsed: unknown = await file.json();
+	let source: string;
+	try {
+		source = await readFile(resolve(BASELINE_DIR, `${name}.json`), 'utf8');
+	} catch (error) {
+		if (typeof error === 'object' && error !== null && Reflect.get(error, 'code') === 'ENOENT') return null;
+		throw error;
+	}
+	const parsed: unknown = JSON.parse(source);
 	if (typeof parsed !== 'object' || parsed === null) return null;
 	const read = (key: string, fallback: number): number => {
 		const value = Reflect.get(parsed, key);
@@ -148,7 +154,7 @@ try {
 const driftPercent = run.driftFraction * 100;
 const stable = Math.abs(run.driftFraction) <= DRIFT_TOLERANCE;
 
-console.log('\n── result ──────────────────────────────────────────────────');
+console.log(`\n${trimToColumns('── result ──────────────────────────────────────────────────')}`);
 console.log(
 	bar('wall time', `${run.wallMsMedian.toFixed(1)} ms  (${(1000 / Math.max(run.wallMsMedian, 0.001)).toFixed(1)} fps)`),
 );
@@ -168,7 +174,7 @@ for (const warning of warnings) console.log(`  ⚠ ${warning}`);
 
 if (compareTo) {
 	const baseline = await readBaseline(compareTo);
-	console.log('\n── comparison ──────────────────────────────────────────────');
+	console.log(`\n${trimToColumns('── comparison ──────────────────────────────────────────────')}`);
 	if (!baseline) {
 		console.log(`  ✗ no stored baseline called '${compareTo}' — run \`bun run bench --save ${compareTo}\` first`);
 		process.exitCode = 1;
@@ -197,7 +203,7 @@ if (compareTo) {
 
 if (saveAs) {
 	await mkdir(BASELINE_DIR, { recursive: true });
-	await Bun.write(resolve(BASELINE_DIR, `${saveAs}.json`), `${JSON.stringify(run, null, '\t')}\n`);
+	await writeFile(resolve(BASELINE_DIR, `${saveAs}.json`), `${JSON.stringify(run, null, '\t')}\n`);
 	console.log(`\n  saved as '${saveAs}'${stable ? '' : ' (drifting — treat with suspicion)'}`);
 }
 console.log('');

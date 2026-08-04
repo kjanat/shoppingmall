@@ -1,5 +1,5 @@
-import type { Track } from '@/audio/DJPlayer';
-import { qs } from '@/util/dom';
+import type { Track } from '#/audio/DJPlayer';
+import { qs } from '#/util/dom';
 
 /**
  * Request desk UI for DJ Bartek.

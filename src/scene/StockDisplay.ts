@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { getInventory, type StockItem, type StockKind } from '@/data/inventory';
-import { levelY } from '@/data/levels';
-import { type StoreDef, shopStores } from '@/data/stores';
-import type { LightHandle, LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { at } from '@/util/rand';
+import { getInventory, type StockItem, type StockKind } from '#/data/inventory';
+import { levelY } from '#/data/levels';
+import { type StoreDef, shopStores } from '#/data/stores';
+import type { LightHandle, LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { at } from '#/util/rand';
 
 /**
  * Stock lives in the OPEN room (between door z≈0 and back wall z≈-depth).

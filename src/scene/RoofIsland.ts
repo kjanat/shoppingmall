@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { levelY } from '@/data/levels';
-import { type LitMaterial, lit } from '@/render/material';
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { at } from '@/util/rand';
+import { levelY } from '#/data/levels';
+import { type LitMaterial, lit } from '#/render/material';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { at } from '#/util/rand';
 
 const DECK_Y = levelY('roof');
 

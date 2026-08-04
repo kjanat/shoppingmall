@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { levelAt } from '@/data/levels';
-import type { LightHandle, LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { tagLevelCulled } from '@/util/visibility';
+import { levelAt } from '#/data/levels';
+import type { LightHandle, LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { tagLevelCulled } from '#/util/visibility';
 
 /**
  * DJ Bartek — booth at the west stair gap (st0).

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { levelAt } from '@/data/levels';
-import type { CollisionWorld } from '@/physics/Collision';
-import { type LitMaterial, lit } from '@/render/material';
-import { ctx2d } from '@/util/dom';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { at, pick } from '@/util/rand';
+import { levelAt } from '#/data/levels';
+import type { CollisionWorld } from '#/physics/Collision';
+import { type LitMaterial, lit } from '#/render/material';
+import { ctx2d } from '#/util/dom';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { at, pick } from '#/util/rand';
 
 const GRAVITY = 18;
 /** seconds of flight the monkey aims for — a proper lob, not a bullet */

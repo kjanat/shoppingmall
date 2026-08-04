@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { at } from '@/util/rand';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { at } from '#/util/rand';
 
 /**
  * Stadspark op het NW-blok buiten de ringweg (x −90..−56, z −70..−40).

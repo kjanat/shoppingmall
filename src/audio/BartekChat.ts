@@ -2,7 +2,7 @@
  * Live mic conversation with DJ Bartek:
  * browser SpeechRecognition → intent reply → ElevenLabs voice.
  */
-import { pick } from '@/util/rand';
+import { pick } from '#/util/rand';
 import { speakLine } from './ElevenVoice';
 
 /** The slice of the Web Speech API we drive — it isn't in every lib.dom. */

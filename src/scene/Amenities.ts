@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 
 /**
  * Fountain (particles), monkey in tree, Aperol Spritz bar.

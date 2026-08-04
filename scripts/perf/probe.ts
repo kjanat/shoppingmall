@@ -21,13 +21,13 @@
  *   in-flight queries and silently skipped segments, reporting a third of the
  *   frame's draws as if it were all of them. `drawCoverage` now proves it.
  *
- * Installed via CDP before any page script runs, so the prototype patches catch
- * the load-time program links too. The context itself is resolved lazily: the
+ * Installed by Playwright before any page script runs, so the prototype patches
+ * catch the load-time program links too. The context itself is resolved lazily: the
  * patches live on `WebGL2RenderingContext.prototype`, so they apply no matter
  * when the canvas was created.
  */
 
-import { BATCH_KEY, isBatchMode } from '@/render/graphicsPrefs';
+import { BATCH_KEY, isBatchMode } from '#/render/graphicsPrefs';
 
 /** One render target + viewport size, e.g. the main pass or the shadow map. */
 export type PassTiming = {

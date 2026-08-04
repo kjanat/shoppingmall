@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { level, levelY } from '@/data/levels';
-import type { StoreDef } from '@/data/stores';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { tagLevelCulled } from '@/util/visibility';
+import { level, levelY } from '#/data/levels';
+import type { StoreDef } from '#/data/stores';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { tagLevelCulled } from '#/util/visibility';
 
 /** Clean mall directory labels — white pills, no neon pulse. */
 export class StoreLabels {

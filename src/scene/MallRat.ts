@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import type { CollisionWorld } from '@/physics/Collision';
-import { lit } from '@/render/material';
-import { at, pick } from '@/util/rand';
+import type { CollisionWorld } from '#/physics/Collision';
+import { lit } from '#/render/material';
+import { at, pick } from '#/util/rand';
 
 /**
  * Mall rat — scurries like the baard-dief, but smaller & more often.

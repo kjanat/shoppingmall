@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import type { CollisionWorld } from '@/physics/Collision';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { at } from '@/util/rand';
+import type { CollisionWorld } from '#/physics/Collision';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { at } from '#/util/rand';
 import type { BeardCave } from './BeardCave';
 
 /**

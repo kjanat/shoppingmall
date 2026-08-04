@@ -9,44 +9,89 @@
  * the voices do not draw pixels.
  */
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { join, normalize, resolve, sep } from 'node:path';
-import { Browser, isRecord, readArray, readBoolean, readNumber, readString } from './cdp.ts';
+import { setTimeout as delay } from 'node:timers/promises';
+import { isSoftwareHeadless, launchPerfBrowser, type PerfBrowser } from './playwright.ts';
 import type { Environment, PassTiming, RoutePose, Sample } from './probe.ts';
 import { probeSource } from './probe.ts';
+import { isRecord, readArray, readBoolean, readNumber, readString } from './values.ts';
 
-const STATIC_DIR = resolve(import.meta.dir, '../../dist/static');
+const STATIC_DIR = resolve(import.meta.dirname, '../../dist/static');
 
 export type StaticServer = { url: string; stop: () => Promise<void> };
 
-export function serveGame(): StaticServer {
+function contentType(path: string): string {
+	if (path.endsWith('.html')) return 'text/html; charset=utf-8';
+	if (path.endsWith('.js')) return 'text/javascript; charset=utf-8';
+	if (path.endsWith('.css')) return 'text/css; charset=utf-8';
+	if (path.endsWith('.json')) return 'application/json; charset=utf-8';
+	if (path.endsWith('.svg')) return 'image/svg+xml';
+	if (path.endsWith('.png')) return 'image/png';
+	if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+	if (path.endsWith('.webp')) return 'image/webp';
+	if (path.endsWith('.mp3')) return 'audio/mpeg';
+	if (path.endsWith('.ogg')) return 'audio/ogg';
+	if (path.endsWith('.wav')) return 'audio/wav';
+	if (path.endsWith('.woff2')) return 'font/woff2';
+	return 'application/octet-stream';
+}
+
+async function readStaticFile(path: string): Promise<Buffer | null> {
+	try {
+		return await readFile(path);
+	} catch (error) {
+		if (isRecord(error) && readString(error, 'code') === 'ENOENT') return null;
+		throw error;
+	}
+}
+
+export async function serveGame(): Promise<StaticServer> {
 	if (!existsSync(join(STATIC_DIR, 'index.html'))) {
 		throw new Error(`no build in ${STATIC_DIR} — run \`bun run build\` first`);
 	}
-	const server = Bun.serve({
-		port: 0,
-		async fetch(request) {
-			const path = new URL(request.url).pathname;
+	const server = createServer(async (request, response) => {
+		try {
+			const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
 			// Keep the resolved path inside the build directory: this server is a
 			// dev tool, but a dev tool that will happily read ../../.env is a bad one.
 			const wanted = normalize(join(STATIC_DIR, path === '/' ? 'index.html' : path));
 			if (wanted !== STATIC_DIR && !wanted.startsWith(STATIC_DIR + sep)) {
-				return new Response('no', { status: 403 });
+				response.writeHead(403).end('no');
+				return;
 			}
-			const file = Bun.file(wanted);
-			if (await file.exists()) return new Response(file);
-			return new Response(Bun.file(join(STATIC_DIR, 'index.html')));
-		},
+			const file = await readStaticFile(wanted);
+			const body = file ?? (await readFile(join(STATIC_DIR, 'index.html')));
+			response.writeHead(200, { 'content-type': contentType(file ? wanted : 'index.html') }).end(body);
+		} catch (error) {
+			response.writeHead(500).end(error instanceof Error ? error.message : 'static server error');
+		}
 	});
+	await new Promise<void>((resolveListen, rejectListen) => {
+		const onError = (error: Error): void => rejectListen(error);
+		server.once('error', onError);
+		server.listen(0, '127.0.0.1', () => {
+			server.off('error', onError);
+			resolveListen();
+		});
+	});
+	const address = server.address();
+	if (!address || typeof address === 'string') {
+		server.close();
+		throw new Error('static server did not expose a TCP port');
+	}
 	return {
-		url: `http://127.0.0.1:${server.port}/`,
+		url: `http://127.0.0.1:${address.port}/`,
 		stop: async () => {
-			await server.stop(true);
+			await new Promise<void>((resolveClose, rejectClose) => {
+				server.close((error) => (error ? rejectClose(error) : resolveClose()));
+			});
 		},
 	};
 }
 
 export type GameSession = {
-	browser: Browser;
 	server: StaticServer;
 	/** Load the game and wait until it is genuinely running and settled. */
 	boot: (options?: { settleQuietMs?: number }) => Promise<{ readyMs: number; settleMs: number }>;
@@ -57,8 +102,8 @@ export type GameSession = {
 	close: () => Promise<void>;
 };
 
-/** Reused between runs so Chrome's compiled-shader cache survives; see Browser.launch. */
-const PROFILE_DIR = resolve(import.meta.dir, '../../.perf/chrome-profile');
+/** Reused between runs so Chrome's compiled-shader cache survives. */
+const PROFILE_DIR = resolve(import.meta.dirname, '../../.perf/chrome-profile');
 
 /**
  * `url` points the run at a deployed site instead of the local build, which is
@@ -73,39 +118,65 @@ export async function openGame(
 	url?: string,
 	batchOverride?: string,
 ): Promise<GameSession> {
-	const server: StaticServer = url ? { url, stop: async () => {} } : serveGame();
+	const server: StaticServer = url ? { url, stop: async () => {} } : await serveGame();
 	// A little taller than the viewport: Chrome's own chrome eats some of it, and
 	// a viewport override is applied afterwards anyway.
-	const browser = await Browser.launch(width, height + 120, freshProfile ? undefined : PROFILE_DIR);
-	await browser.attachToPage();
-	await browser.onNewDocument(probeSource(batchOverride));
-	await browser.setViewport(width, height);
+	let browser: PerfBrowser;
+	try {
+		browser = await launchPerfBrowser(width, height, freshProfile ? undefined : PROFILE_DIR);
+	} catch (error) {
+		await server.stop();
+		throw error;
+	}
+	try {
+		await browser.page.addInitScript({ content: probeSource(batchOverride) });
+	} catch (error) {
+		try {
+			await browser.close();
+		} finally {
+			await server.stop();
+		}
+		throw error;
+	}
+
+	async function evaluate(expression: string, timeoutMs = 180_000): Promise<unknown> {
+		const timeoutController = new AbortController();
+		try {
+			return await Promise.race([
+				browser.page.evaluate(expression),
+				delay(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
+					throw new Error(`page evaluation timed out after ${timeoutMs} ms: ${expression.slice(0, 60)}`);
+				}),
+			]);
+		} finally {
+			timeoutController.abort();
+		}
+	}
 
 	const session: GameSession = {
-		browser,
 		server,
 		boot: async (options) => {
-			await browser.navigate(server.url);
-			const readyMs = readNumber({ v: await browser.evaluate('__mallProbe.ready(120000)') }, 'v');
-			const settleMs = readNumber(
-				{ v: await browser.evaluate(`__mallProbe.settle(${options?.settleQuietMs ?? 5000}, 120000)`) },
-				'v',
-			);
+			await browser.page.goto(server.url, { waitUntil: 'commit' });
+			const readyMs = readNumber({ v: await evaluate('__mallProbe.ready(120000)') }, 'v');
+			const settleMs = readNumber({ v: await evaluate(`__mallProbe.settle(${options?.settleQuietMs ?? 5000}, 120000)`) }, 'v');
 			return { readyMs, settleMs };
 		},
-		sample: async (durationMs) => parseSample(await browser.evaluate(`__mallProbe.sample(${durationMs})`, durationMs + 60_000)),
+		sample: async (durationMs) => parseSample(await evaluate(`__mallProbe.sample(${durationMs})`, durationMs + 60_000)),
 		routeSegment: async (from, to, durationMs) =>
 			parseSample(
-				await browser.evaluate(
+				await evaluate(
 					`__mallProbe.routeSegment(${JSON.stringify(from)}, ${JSON.stringify(to)}, ${durationMs})`,
 					durationMs + 60_000,
 				),
 			),
-		environment: async () => parseEnvironment(await browser.evaluate('__mallProbe.environment()')),
-		setViewport: (w, h) => browser.setViewport(w, h),
+		environment: async () => parseEnvironment(await evaluate('__mallProbe.environment()')),
+		setViewport: (w, h) => browser.page.setViewportSize({ width: w, height: h }),
 		close: async () => {
-			await browser.close();
-			await server.stop();
+			try {
+				await browser.close();
+			} finally {
+				await server.stop();
+			}
 		},
 	};
 	return session;
@@ -128,7 +199,7 @@ function parsePasses(value: unknown): PassTiming[] {
 
 export function parseSample(value: unknown): Sample {
 	if (!isRecord(value)) throw new Error('probe returned no sample — is the probe installed?');
-	return {
+	const sample: Sample = {
 		frames: readNumber(value, 'frames'),
 		wallMsMedian: readNumber(value, 'wallMsMedian'),
 		wallMsP90: readNumber(value, 'wallMsP90'),
@@ -145,11 +216,29 @@ export function parseSample(value: unknown): Sample {
 		cpuBatchMsMean: readNumber(value, 'cpuBatchMsMean'),
 		cpuSubmitMsMean: readNumber(value, 'cpuSubmitMsMean'),
 	};
+	// Chrome can claim the document is visible and focused while Windows has put
+	// its occluded window on an exact 1 Hz compositor cadence. A genuinely 1 FPS
+	// render would also have comparable GPU or CPU work; a cheap render followed
+	// by ~900 ms of nothing is the throttling signature and must never be printed
+	// as game performance.
+	const cpuMs = sample.cpuLogicMsMean + sample.cpuBatchMsMean + sample.cpuSubmitMsMean;
+	if (
+		sample.frames >= 3 &&
+		sample.wallMsMedian >= 850 &&
+		sample.wallMsMedian <= 1150 &&
+		sample.gpuMsPerFrame < 500 &&
+		cpuMs < 500
+	) {
+		throw new Error(
+			'Chrome rAF is throttled to about 1 Hz while render work is below 500 ms; discard this run and use hardware headless Chrome',
+		);
+	}
+	return sample;
 }
 
 export function parseEnvironment(value: unknown): Environment {
 	if (!isRecord(value)) throw new Error('probe returned no environment — is the probe installed?');
-	return {
+	const environment: Environment = {
 		renderer: readString(value, 'renderer', 'unknown'),
 		vendor: readString(value, 'vendor', 'unknown'),
 		parallelShaderCompile: readBoolean(value, 'parallelShaderCompile'),
@@ -173,6 +262,11 @@ export function parseEnvironment(value: unknown): Environment {
 		programInfoLogCalls: readNumber(value, 'programInfoLogCalls'),
 		shaderInfoLogCalls: readNumber(value, 'shaderInfoLogCalls'),
 	};
+	const structuralSoftwareRun = isSoftwareHeadless();
+	if (!structuralSoftwareRun && /SwiftShader|llvmpipe|software raster/i.test(environment.renderer)) {
+		throw new Error(`normal performance run started a software renderer: ${environment.renderer}`);
+	}
+	return environment;
 }
 
 // ── shared reporting ───────────────────────────────────────────────────────

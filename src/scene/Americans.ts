@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { type LevelId, levelAt, levelY } from '@/data/levels';
-import { getOwner } from '@/data/shopOwners';
-import { STORES, type StoreDef } from '@/data/stores';
-import { Pathfinder } from '@/path/Pathfinder';
-import type { CollisionWorld } from '@/physics/Collision';
-import { type LitMaterial, lit } from '@/render/material';
-import { fetchSimChat, type SimPersona } from '@/sim/SimChat';
+import { type LevelId, levelAt, levelY } from '#/data/levels';
+import { getOwner } from '#/data/shopOwners';
+import { STORES, type StoreDef } from '#/data/stores';
+import { Pathfinder } from '#/path/Pathfinder';
+import type { CollisionWorld } from '#/physics/Collision';
+import { type LitMaterial, lit } from '#/render/material';
+import { fetchSimChat, type SimPersona } from '#/sim/SimChat';
 
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { at, pick, pickWith } from '@/util/rand';
-import { isOnViewerLevel, tagLevelCulled } from '@/util/visibility';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { at, pick, pickWith } from '#/util/rand';
+import { isOnViewerLevel, tagLevelCulled } from '#/util/visibility';
 
 export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { type LitMaterial, lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import { type LitMaterial, lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 
 /**
  * Passagiersdrone — stap in (E) en vlieg. De camera zit in het bolletje;

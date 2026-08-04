@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { level, levelY } from '@/data/levels';
-import { getOwner } from '@/data/shopOwners';
-import { type StoreDef, shopStores } from '@/data/stores';
-import { ESCALATOR_SPEED } from '@/physics/Collision';
-import { lit } from '@/render/material';
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { at } from '@/util/rand';
+import { level, levelY } from '#/data/levels';
+import { getOwner } from '#/data/shopOwners';
+import { type StoreDef, shopStores } from '#/data/stores';
+import { ESCALATOR_SPEED } from '#/physics/Collision';
+import { lit } from '#/render/material';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { at } from '#/util/rand';
 
 /** One storey, straight from the deck heights. */
 const FLOOR_H = levelY('v1') - levelY('v0');

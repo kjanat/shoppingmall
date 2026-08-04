@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { type LitMaterial, lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import { type LitMaterial, lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 import { ROOF_Y } from './Helipad';
 
 type HeliState = 'parked' | 'spinup' | 'takeoff' | 'cruise' | 'approach' | 'land' | 'spindown';

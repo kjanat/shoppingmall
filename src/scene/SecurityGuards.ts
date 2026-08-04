@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { spatial } from '@/audio/SpatialAudio';
-import { level, levelAt } from '@/data/levels';
-import type { CollisionWorld } from '@/physics/Collision';
-import type { LightHandle, LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { at, pick } from '@/util/rand';
-import { tagLevelCulled } from '@/util/visibility';
+import { spatial } from '#/audio/SpatialAudio';
+import { level, levelAt } from '#/data/levels';
+import type { CollisionWorld } from '#/physics/Collision';
+import type { LightHandle, LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { at, pick } from '#/util/rand';
+import { tagLevelCulled } from '#/util/visibility';
 
 type GuardState = 'patrol' | 'alert' | 'firing';
 

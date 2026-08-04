@@ -1,21 +1,24 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Traverse the same camera route repeatedly and report where frame cost changes.
  * Each lap repeats identical segments, so a hot spot and machine drift can be
  * separated instead of being collapsed into one whole-run average.
  */
-import { mkdir } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { isRecord, readArray, readNumber, readString } from './cdp.ts';
 import { bar, openGame, sampleWarnings } from './harness.ts';
+import { trimToColumns } from './out.ts';
+import { isSoftwareHeadless } from './playwright.ts';
 import type { RoutePose, Sample } from './probe.ts';
 import { MALL_ROUTE } from './routes.ts';
+import { isRecord, readArray, readNumber, readString } from './values.ts';
 
-const softwareHeadless = process.env['CHROME_PATH']?.endsWith('chrome-headless.sh') === true;
+const softwareHeadless = isSoftwareHeadless();
 const WIDTH = softwareHeadless ? 800 : 1600;
 const HEIGHT = softwareHeadless ? 450 : 900;
 const DRIFT_TOLERANCE = 0.15;
-const OUTPUT_DIR = resolve(import.meta.dir, '../../.perf/routes');
+const OUTPUT_DIR = resolve(import.meta.dirname, '../../.perf/routes');
 
 function flagValue(name: string): string | undefined {
 	const index = process.argv.indexOf(name);
@@ -62,8 +65,8 @@ type RouteBaseline = {
 };
 
 function localBuild(): string {
-	const result = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: resolve(import.meta.dir, '../..') });
-	return result.success ? result.stdout.toString().trim() : 'unknown';
+	const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(import.meta.dirname, '../..'), encoding: 'utf8' });
+	return result.status === 0 ? result.stdout.trim() : 'unknown';
 }
 
 async function buildIdentity(url?: string): Promise<string> {
@@ -96,9 +99,14 @@ function aggregateSegments(segments: readonly SegmentResult[]): Map<string, numb
 }
 
 async function readBaseline(name: string): Promise<RouteBaseline | null> {
-	const file = Bun.file(resolve(OUTPUT_DIR, `${safeName(name)}.json`));
-	if (!(await file.exists())) return null;
-	const parsed: unknown = await file.json();
+	let source: string;
+	try {
+		source = await readFile(resolve(OUTPUT_DIR, `${safeName(name)}.json`), 'utf8');
+	} catch (error) {
+		if (isRecord(error) && readString(error, 'code') === 'ENOENT') return null;
+		throw error;
+	}
+	const parsed: unknown = JSON.parse(source);
 	if (!isRecord(parsed)) return null;
 	const values = new Map<string, number[]>();
 	for (const entry of readArray(parsed, 'segments')) {
@@ -134,7 +142,7 @@ try {
 	const env = await session.environment();
 	const build = await buildIdentity(targetUrl);
 
-	console.log('\n── route profile ───────────────────────────────────────────');
+	console.log(`\n${trimToColumns('── route profile ───────────────────────────────────────────')}`);
 	console.log(bar('target', targetUrl ?? 'local dist/static'));
 	console.log(bar('build', build));
 	console.log(bar('GPU', env.renderer));
@@ -179,7 +187,7 @@ try {
 	await session.close();
 }
 
-console.log('\n── route hotspots ──────────────────────────────────────────');
+console.log(`\n${trimToColumns('── route hotspots ──────────────────────────────────────────')}`);
 for (const result of [...results].sort((a, b) => b.sample.wallMsP90 - a.sample.wallMsP90).slice(0, 5)) {
 	console.log(
 		bar(
@@ -190,7 +198,7 @@ for (const result of [...results].sort((a, b) => b.sample.wallMsP90 - a.sample.w
 }
 
 if (laps > 1) {
-	console.log('\n── repeated-checkpoint drift ───────────────────────────────');
+	console.log(`\n${trimToColumns('── repeated-checkpoint drift ───────────────────────────────')}`);
 	const firstLap = results.filter((result) => result.lap === 1);
 	const lastLap = results.filter((result) => result.lap === laps);
 	const changes: number[] = [];
@@ -207,7 +215,7 @@ if (laps > 1) {
 }
 
 if (compareName) {
-	console.log('\n── saved-run comparison ────────────────────────────────────');
+	console.log(`\n${trimToColumns('── saved-run comparison ────────────────────────────────────')}`);
 	const baseline = await readBaseline(compareName);
 	if (!baseline) {
 		console.log(`  missing baseline '${compareName}'; create it with --save ${compareName}`);
@@ -235,11 +243,11 @@ if (compareName) {
 await mkdir(OUTPUT_DIR, { recursive: true });
 const timestamp = artifact.createdAt.replaceAll(/[:.]/g, '-');
 const automaticPath = resolve(OUTPUT_DIR, `${timestamp}-${artifact.build.slice(0, 12)}.json`);
-await Bun.write(automaticPath, `${JSON.stringify(artifact, null, '\t')}\n`);
+await writeFile(automaticPath, `${JSON.stringify(artifact, null, '\t')}\n`);
 console.log(`\n  artifact: ${automaticPath}`);
 if (saveName) {
 	const namedPath = resolve(OUTPUT_DIR, `${safeName(saveName)}.json`);
-	await Bun.write(namedPath, `${JSON.stringify(artifact, null, '\t')}\n`);
+	await writeFile(namedPath, `${JSON.stringify(artifact, null, '\t')}\n`);
 	console.log(`  saved as: ${namedPath}`);
 }
 console.log('');

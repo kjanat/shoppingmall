@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { levelY } from '@/data/levels';
-import type { LightPool } from '@/render/LightPool';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { at } from '@/util/rand';
+import { levelY } from '#/data/levels';
+import type { LightPool } from '#/render/LightPool';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { at } from '#/util/rand';
 
 /** World Y of the parking deck (one storey under V0) */
 export const GARAGE_Y = levelY('p1');

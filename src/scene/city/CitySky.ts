@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { type LitMaterial, lit } from '@/render/material';
-import { at } from '@/util/rand';
+import { type LitMaterial, lit } from '#/render/material';
+import { at } from '#/util/rand';
 
 /**
  * Lucht boven de 404-stad: twaalf wolkenclusters die gedwee met de wind mee

@@ -273,7 +273,7 @@ function sanitizeUserId(raw: unknown): string | undefined {
 	if (typeof raw !== 'string') return undefined;
 	const cleaned = raw
 		.trim()
-		.replace(/[^\w.:\-@/]/g, '')
+		.replace(/[^\w.:\-#/]/g, '')
 		.slice(0, 128);
 	return cleaned.length >= 4 ? cleaned : undefined;
 }
@@ -282,7 +282,7 @@ function sanitizeSessionId(raw: unknown): string | undefined {
 	if (typeof raw !== 'string') return undefined;
 	const cleaned = raw
 		.trim()
-		.replace(/[^\w.:\-@/]/g, '')
+		.replace(/[^\w.:\-#/]/g, '')
 		.slice(0, 256);
 	return cleaned.length >= 4 ? cleaned : undefined;
 }

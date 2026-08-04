@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import type { CollisionWorld } from '@/physics/Collision';
-import { lit } from '@/render/material';
-import { fitText, labelCanvas, labelTexture } from '@/util/label';
-import { pick } from '@/util/rand';
-import { tagLevelCulled } from '@/util/visibility';
+import type { CollisionWorld } from '#/physics/Collision';
+import { lit } from '#/render/material';
+import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { pick } from '#/util/rand';
+import { tagLevelCulled } from '#/util/visibility';
 
 type Penguin = {
 	root: THREE.Group;

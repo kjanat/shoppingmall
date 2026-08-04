@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { CollisionWorld } from '@/physics/Collision';
-import { labelCanvas, labelTexture } from '@/util/label';
+import type { CollisionWorld } from '#/physics/Collision';
+import { labelCanvas, labelTexture } from '#/util/label';
 import { Americans } from './Americans';
 
 /**

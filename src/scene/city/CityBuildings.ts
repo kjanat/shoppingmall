@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { pickWith } from '@/util/rand';
+import { lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { pickWith } from '#/util/rand';
 
 /**
  * Skyline rond de mall — een ring laagpoly torens buiten de ringweg.

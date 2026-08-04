@@ -3,7 +3,7 @@
  * sessionStorage = survives tab reload / HMR, dies when the tab closes.
  */
 
-import type { GraphNode } from '@/data/graph';
+import type { GraphNode } from '#/data/graph';
 
 const KEY = 'mallsim.game.v2';
 

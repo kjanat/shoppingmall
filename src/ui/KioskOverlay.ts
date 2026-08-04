@@ -1,9 +1,9 @@
-import { EDGES, NODES } from '@/data/graph';
-import { getInventory } from '@/data/inventory';
-import { type LevelId, level, levelAt } from '@/data/levels';
-import { CATEGORY_LABELS, getKruidvat, STORES, type StoreCategory, type StoreDef } from '@/data/stores';
-import { qs } from '@/util/dom';
-import { at } from '@/util/rand';
+import { EDGES, NODES } from '#/data/graph';
+import { getInventory } from '#/data/inventory';
+import { type LevelId, level, levelAt } from '#/data/levels';
+import { CATEGORY_LABELS, getKruidvat, STORES, type StoreCategory, type StoreDef } from '#/data/stores';
+import { qs } from '#/util/dom';
+import { at } from '#/util/rand';
 
 /** One dot on the map — a sim, mostly. */
 export type MapBlip = { x: number; z: number; level: LevelId };

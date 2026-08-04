@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { type LitMaterial, lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
-import { at, pickWith } from '@/util/rand';
+import { type LitMaterial, lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
+import { at, pickWith } from '#/util/rand';
 
 /**
  * Parkeergarage op het ZO-blok (x 56..86, z 44..68). Vier open parkeerdekken

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import type { LightPool } from '@/render/LightPool';
-import { type LitMaterial, lit } from '@/render/material';
-import { labelCanvas, labelTexture } from '@/util/label';
+import type { LightPool } from '#/render/LightPool';
+import { type LitMaterial, lit } from '#/render/material';
+import { labelCanvas, labelTexture } from '#/util/label';
 
 /**
  * Baard-dief hideout — rocky west-wall cave stuffed with juwelen & goud.

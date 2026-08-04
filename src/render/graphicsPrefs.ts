@@ -8,7 +8,7 @@
  * reloads the page; that is honest and instant enough for a setting nobody
  * touches twice a session.
  */
-import { booleanUrlPref, urlPref } from '@/render/urlPrefs';
+import { booleanUrlPref, urlPref } from '#/render/urlPrefs';
 
 const SHINE_KEY = 'mallsim.shine.v1';
 const LAMPS_KEY = 'mallsim.lamps.v1';

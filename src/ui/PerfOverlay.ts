@@ -1,5 +1,5 @@
-import { booleanUrlPref, clearUrlPref } from '@/render/urlPrefs';
-import { ctx2d, qs } from '@/util/dom';
+import { booleanUrlPref, clearUrlPref } from '#/render/urlPrefs';
+import { ctx2d, qs } from '#/util/dom';
 
 const OPEN_KEY = 'mallsim.perfhud.v1';
 /** Frames kept for the percentiles. ~5 s at 60 fps, much longer when it hurts. */
