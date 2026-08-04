@@ -6,14 +6,14 @@ import {
 	HELIPAD_HATCH_FRAME_SPEC,
 	HELIPAD_PAD_SPEC,
 	SECRET_STAIRS_OPENING_PLAN,
-	STAIR_CONNECTORS,
+	stairConnector,
 } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { addBoxMesh } from '#/render/meshFactory';
 import { addXZPlanHole, xzPlanShape } from '#/render/xzShape';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { half } from '#/util/math';
+import { half, midpoint } from '#/util/math';
 
 /** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
 // Ceiling slab tops out at 13.75 (y 13.5 + 0.25 extrude) — the deck used to sit
@@ -47,16 +47,20 @@ export class Helipad {
 
 	/** Hidden service stairwell on the SE service edge */
 	private buildSecretStairs(): void {
-		const stairs = STAIR_CONNECTORS.secret;
+		const stairs = stairConnector('secret-stairs');
+		const { appearance } = stairs;
+		const { serviceEntrance } = appearance;
+		if (!serviceEntrance) throw new Error(`${stairs.id}: helipad-flight presentation is incomplete`);
 		const g = new THREE.Group();
 		g.name = stairs.id;
 		const x = stairs.x;
 		const z0 = stairs.zBottom;
 		const z1 = stairs.zTop;
-		const y0 = levelY(stairs.from) + 0.05;
-		const y1 = ROOF_Y;
+		const y0 = levelY(stairs.from) + appearance.surfaceOffset;
+		const y1 = levelY(stairs.to);
 		const rise = y1 - y0;
-		const run = z1 - z0;
+		const run = Math.abs(z1 - z0);
+		const direction = z1 < z0 ? -1 : 1;
 		const steps = stairs.steps;
 		const metal = this.track(
 			lit({
@@ -68,8 +72,12 @@ export class Helipad {
 		const tread = this.track(lit({ color: 0x78909c, roughness: 0.55, metalness: 0.3 }));
 
 		// Service door facade on floor 1
-		const door = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.2, 0.12), this.track(lit({ color: 0x37474f, roughness: 0.7 })));
-		door.position.set(x - 1.2, y0 + 1.1, z0 - 0.8);
+		const doorSpec = serviceEntrance.door;
+		const door = new THREE.Mesh(
+			new THREE.BoxGeometry(doorSpec.width, doorSpec.height, doorSpec.thickness),
+			this.track(lit({ color: 0x37474f, roughness: 0.7 })),
+		);
+		door.position.set(x + doorSpec.lateralOffset, y0 + doorSpec.verticalOffset, z0 + doorSpec.depthOffset);
 		g.add(door);
 
 		const { canvas: c, ctx } = labelCanvas(256, 96);
@@ -83,35 +91,76 @@ export class Helipad {
 		ctx.fillText('→ DAK / HELIPAD', 128, 68);
 		const tex = labelTexture(c);
 		const plate = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.5, 0.55),
+			new THREE.PlaneGeometry(serviceEntrance.sign.width, serviceEntrance.sign.height),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		plate.position.set(x - 1.2, y0 + 2.0, z0 - 0.72);
+		plate.position.set(
+			x + serviceEntrance.sign.lateralOffset,
+			y0 + serviceEntrance.sign.verticalOffset,
+			z0 + serviceEntrance.sign.depthOffset,
+		);
 		g.add(plate);
 
 		// Steps climb in +Z while rising
 		const stepD = run / steps;
 		const stepH = rise / steps;
 		for (let i = 0; i < steps; i++) {
-			const z = z0 + (i + 0.5) * stepD;
+			const z = z0 + direction * (i + 0.5) * stepD;
 			const y = y0 + (i + 1) * stepH;
-			const step = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.12, stepD * 0.9), tread);
-			step.position.set(x, y - 0.06, z);
+			const step = new THREE.Mesh(
+				new THREE.BoxGeometry(
+					stairs.width - appearance.step.widthInset,
+					appearance.step.treadThickness,
+					stepD * appearance.step.treadDepthRatio,
+				),
+				tread,
+			);
+			step.position.set(x, y - half(appearance.step.treadThickness), z);
 			g.add(step);
-			const riser = new THREE.Mesh(new THREE.BoxGeometry(2.2, stepH * 0.95, 0.06), metal);
-			riser.position.set(x, y - stepH * 0.5, z - stepD * 0.42);
+			const riser = new THREE.Mesh(
+				new THREE.BoxGeometry(
+					stairs.width - appearance.step.widthInset,
+					stepH * appearance.step.riserHeightRatio,
+					appearance.step.riserThickness,
+				),
+				metal,
+			);
+			riser.position.set(x, y - half(stepH), z - direction * stepD * appearance.step.riserDepthRatio);
 			g.add(riser);
 		}
 
 		// Side rails
-		const rail = this.track(lit({ color: 0xffc107, metalness: 0.6, roughness: 0.35 }));
-		for (const sx of [x - 1.2, x + 1.2]) {
-			for (let i = 0; i < steps; i += 2) {
-				const z = z0 + (i + 0.5) * stepD;
-				const y = y0 + (i + 1) * stepH + 0.7;
-				const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 6), rail);
-				post.position.set(sx, y - 0.35, z);
+		const railAppearance = appearance.rail;
+		const railMaterial = this.track(lit({ color: 0xffc107, metalness: 0.6, roughness: 0.35 }));
+		for (const sx of [
+			x - half(stairs.width) - railAppearance.sideOffsetFromEdge,
+			x + half(stairs.width) + railAppearance.sideOffsetFromEdge,
+		]) {
+			for (let i = 0; i < steps; i += railAppearance.postEverySteps) {
+				const z = z0 + direction * (i + 0.5) * stepD;
+				const y = y0 + (i + 1) * stepH + railAppearance.height;
+				const post = new THREE.Mesh(
+					new THREE.CylinderGeometry(railAppearance.postRadius, railAppearance.postRadius, railAppearance.height, 6),
+					railMaterial,
+				);
+				post.position.set(sx, y - railAppearance.postCenterDrop, z);
 				g.add(post);
+
+				const nextIndex = Math.min(i + railAppearance.postEverySteps, steps - 1);
+				if (nextIndex === i) continue;
+				const nextZ = z0 + direction * (nextIndex + 0.5) * stepD;
+				const nextY = y0 + (nextIndex + 1) * stepH + railAppearance.height;
+				const segment = new THREE.Mesh(
+					new THREE.BoxGeometry(
+						railAppearance.segmentThickness,
+						railAppearance.segmentThickness,
+						Math.hypot(nextZ - z, nextY - y),
+					),
+					railMaterial,
+				);
+				segment.position.set(sx, midpoint(y, nextY), midpoint(z, nextZ));
+				segment.rotation.x = -Math.atan2(nextY - y, nextZ - z);
+				g.add(segment);
 			}
 		}
 

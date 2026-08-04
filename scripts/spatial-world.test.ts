@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { STANDING_PEDESTRIAN } from '#/data/character';
-import { type EscalatorSpec, validateEscalatorSpec } from '#/data/connectors';
+import { CONNECTOR_LIMITS, type EscalatorSpec, VerticalConnectorRegistrySchema, validateEscalatorSpec } from '#/data/connectors';
+import { LEVEL_LIMITS, LevelRegistrySchema } from '#/data/levelSchema';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt } from '#/data/levels';
 import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
 import { receiverAccepts, validateSpatialWorld } from '#/data/spatial';
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
-import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATORS, WORLD_ENTITIES } from '#/data/world';
+import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATORS, VERTICAL_CONNECTORS, WORLD_ENTITIES } from '#/data/world';
 import { segmentParameter2 } from '#/util/geometry2';
 import { lerp } from '#/util/math';
 
@@ -90,6 +91,32 @@ const OPEN_STAIR: SpatialVolume = {
 };
 
 describe('authoritative spatial world', () => {
+	test('the level registry enforces identity, top-down order, and plausible deck spacing', () => {
+		assert.equal(LevelRegistrySchema.safeParse(LEVELS).success, true);
+
+		const duplicate = LevelRegistrySchema.safeParse([...LEVELS, LEVELS[0]]);
+		assert.equal(duplicate.success, false);
+		if (!duplicate.success) {
+			assert.ok(duplicate.error.issues.some((issue) => issue.message.includes('duplicate level id')));
+			assert.ok(duplicate.error.issues.some((issue) => issue.message.includes('duplicate level code')));
+			assert.ok(duplicate.error.issues.some((issue) => issue.message.includes('duplicate deck elevation')));
+		}
+
+		const inverted = LevelRegistrySchema.safeParse([LEVELS[1], LEVELS[0], ...LEVELS.slice(2)]);
+		assert.equal(inverted.success, false);
+		if (!inverted.success) {
+			assert.ok(inverted.error.issues.some((issue) => issue.message.includes('physically highest deck')));
+		}
+
+		const cramped = LevelRegistrySchema.safeParse([
+			LEVELS[0],
+			{ ...LEVELS[1], y: LEVELS[0].y - LEVEL_LIMITS.deckGap.min / 2 },
+			...LEVELS.slice(2),
+		]);
+		assert.equal(cramped.success, false);
+		if (!cramped.success) assert.ok(cramped.error.issues.some((issue) => issue.message.startsWith('deck gap ')));
+	});
+
 	test('a rectangular shell expands from one footprint without repeated wall coordinates', () => {
 		const walls = rectangularPerimeterWalls({
 			footprint: { width: 10, depth: 6 },
@@ -141,6 +168,7 @@ describe('authoritative spatial world', () => {
 	test('escalator connectivity, containment, incline, and component dimensions are validated', () => {
 		for (const escalator of ESCALATORS) assert.deepEqual(validateEscalatorSpec(escalator), []);
 		const escalator = ESCALATORS[0];
+		assert.ok(escalator);
 
 		const disconnected: EscalatorSpec = {
 			...escalator,
@@ -161,8 +189,69 @@ describe('authoritative spatial world', () => {
 		assert.ok(validateEscalatorSpec(brokenGlass).includes('balustrade glass top must sit above its non-negative bottom'));
 	});
 
+	test('the connector registry schema enforces ranges and globally unique identities', () => {
+		const connector = VERTICAL_CONNECTORS[0];
+		assert.ok(connector);
+		const invalidWidth = VerticalConnectorRegistrySchema.safeParse([{ ...connector, width: CONNECTOR_LIMITS.width.min - 0.1 }]);
+		assert.equal(invalidWidth.success, false);
+		if (!invalidWidth.success) assert.ok(invalidWidth.error.issues.some((issue) => issue.path.join('.') === '0.width'));
+		const excessiveWidth = VerticalConnectorRegistrySchema.safeParse([{ ...connector, width: CONNECTOR_LIMITS.width.max + 0.1 }]);
+		assert.equal(excessiveWidth.success, false);
+		if (!excessiveWidth.success) assert.ok(excessiveWidth.error.issues.some((issue) => issue.path.join('.') === '0.width'));
+
+		const duplicate = VerticalConnectorRegistrySchema.safeParse([...VERTICAL_CONNECTORS, connector]);
+		assert.equal(duplicate.success, false);
+		if (!duplicate.success) {
+			assert.ok(duplicate.error.issues.some((issue) => issue.message.includes('duplicate connector id')));
+			assert.ok(duplicate.error.issues.some((issue) => issue.message.includes('duplicate connector opening id')));
+		}
+	});
+
+	test('connector schemas reject impossible relationships between authored dimensions', () => {
+		const stairs = VERTICAL_CONNECTORS.find(
+			(connector) => connector.kind === 'stairs' && connector.presentation === 'mall-flight',
+		);
+		assert.ok(stairs);
+		const landing = stairs.appearance.landing;
+		assert.ok(landing);
+		const sparseRail = VerticalConnectorRegistrySchema.safeParse([
+			{
+				...stairs,
+				appearance: {
+					...stairs.appearance,
+					rail: { ...stairs.appearance.rail, postEverySteps: stairs.steps + 1 },
+				},
+			},
+		]);
+		assert.equal(sparseRail.success, false);
+		if (!sparseRail.success) {
+			assert.ok(
+				sparseRail.error.issues.some((issue) => issue.message === 'rail post interval cannot exceed the number of steps'),
+			);
+		}
+
+		const detachedLanding = VerticalConnectorRegistrySchema.safeParse([
+			{
+				...stairs,
+				appearance: {
+					...stairs.appearance,
+					landing: { ...landing, bottomOffset: landing.bottomDepth },
+				},
+			},
+		]);
+		assert.equal(detachedLanding.success, false);
+		if (!detachedLanding.success) {
+			assert.ok(
+				detachedLanding.error.issues.some(
+					(issue) => issue.message === 'landing offset must keep its landing over the flight endpoint',
+				),
+			);
+		}
+	});
+
 	test('an escalator rejects a slab intersecting a rider body or eye line anywhere along the flight', () => {
 		const spec = ESCALATORS[0];
+		assert.ok(spec);
 		const escalatorEntity = CONNECTOR_ENTITIES.find((entity) => entity.id === spec.id);
 		assert.ok(escalatorEntity);
 		const clearance = escalatorEntity.volumes.find((volume) => volume.id === 'route-clearance');
@@ -266,7 +355,9 @@ describe('authoritative spatial world', () => {
 	});
 
 	test('vector effects only select compatible receivers', () => {
-		const escalator = CONNECTOR_ENTITIES.find((candidate) => candidate.id === ESCALATORS[0].id);
+		const spec = ESCALATORS[0];
+		assert.ok(spec);
+		const escalator = CONNECTOR_ENTITIES.find((candidate) => candidate.id === spec.id);
 		const emitter = escalator?.emitters[0];
 		assert.ok(emitter);
 		const passenger: InteractionReceiver = {

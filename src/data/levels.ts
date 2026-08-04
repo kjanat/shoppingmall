@@ -9,27 +9,19 @@
  * `y` is the walkable deck. Anything that used to hardcode 0, 6, 13.95 or -6,
  * and anything that used to guess a floor from a height, resolves here.
  */
-export type Level = {
-	id: string;
-	/** Walkable deck height */
-	y: number;
-	/** Short code for HUD chips and the map */
-	code: string;
-	name: string;
-	hint: string;
-};
-
 export const LEVELS = [
 	{ id: 'roof', y: 13.95, code: 'DAK', name: 'Dak', hint: 'Helipad · uitzicht' },
 	{ id: 'v1', y: 6, code: 'V1', name: 'Verdieping 1', hint: 'Kruidvat · food court' },
 	{ id: 'v0', y: 0, code: 'V0', name: 'Begane grond', hint: 'Winkels · kiosk' },
 	{ id: 'p1', y: -6, code: 'P1', name: 'Parkeergarage', hint: "Ondergronds · auto's" },
-] as const satisfies readonly Level[];
+] as const satisfies readonly LevelRecord[];
+
+export type Level = (typeof LEVELS)[number];
 
 /** Algorithmic elevation order for movement that advances upward by index. */
 export const LEVELS_BOTTOM_UP = LEVELS.toReversed();
 
-export type LevelId = (typeof LEVELS)[number]['id'];
+export type LevelId = Level['id'];
 
 const BY_ID = new Map<LevelId, Level>(LEVELS.map((l) => [l.id, l]));
 
@@ -76,3 +68,5 @@ export function levelAt(y: number): LevelId {
 export function isAtOrAbove(y: number, id: LevelId): boolean {
 	return y >= levelY(id) - DECK_SLACK;
 }
+
+import type { LevelRecord } from '#/data/levelSchema';

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { EscalatorSpec, OpeningDef, StairSpec } from '#/data/connectors';
+import type { EscalatorSpec, OpeningDef, OpeningGuard, StairSpec } from '#/data/connectors';
 import { ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { level, levelY } from '#/data/levels';
 import { getOwner } from '#/data/shopOwners';
@@ -511,7 +511,7 @@ export class MallBuilder {
 			this.escalators.push(runtime);
 			this.buildEscalatorFlight(runtime);
 		}
-		for (const stairs of Object.values(STAIR_CONNECTORS)) {
+		for (const stairs of STAIR_CONNECTORS) {
 			if (stairs.presentation === 'mall-flight') this.buildStairFlight(stairs);
 		}
 	}
@@ -632,9 +632,9 @@ export class MallBuilder {
 				x,
 				zLo,
 				zHi,
-				below: -(stepRise + geometry.step.treadThickness + 0.4),
-				above: -(geometry.step.treadThickness + 0.02),
-				thick: outerX * 2 + 0.02,
+				below: -(stepRise + geometry.step.treadThickness + geometry.structure.trussDrop),
+				above: -(geometry.step.treadThickness + geometry.structure.surfaceGap),
+				thick: outerX * 2 + geometry.structure.surfaceGap,
 				mat: trussMat,
 			}),
 		);
@@ -643,7 +643,7 @@ export class MallBuilder {
 			g.add(
 				this.escPanel({
 					...shared,
-					below: -0.02,
+					below: -geometry.structure.surfaceGap,
 					above: geometry.balustrade.glassBottom,
 					thick: geometry.skirt.panelThickness,
 					mat: steelMat,
@@ -666,7 +666,7 @@ export class MallBuilder {
 					round: false,
 					below: geometry.balustrade.glassTop,
 					above: geometry.handrail.centerY - geometry.handrail.radius,
-					thick: geometry.skirt.panelThickness + 0.005,
+					thick: geometry.skirt.panelThickness + geometry.structure.lightStripExtraThickness,
 					mat: glowMat,
 				}),
 			);
@@ -675,42 +675,50 @@ export class MallBuilder {
 		// ── landingen en kamplaten ──
 		// De onderste kamplaat begint precies op z0, waar de helling nog nul is:
 		// daardoor komt een trede er vlak onder vandaan en klimt hij pas daarna.
-		const landW = outerX * 2 + 0.2;
-		const land0 = new THREE.Mesh(new THREE.BoxGeometry(landW, 0.02, apron + 0.3), steelMat);
-		land0.position.set(x, geometry.step.minimumSurfaceY - 0.01, z0 - half(dir * (apron + 0.3)));
+		const landW = outerX * 2 + geometry.landing.lateralOverhang;
+		const bottomLandingDepth = apron + geometry.landing.bottomDepthExtension;
+		const land0 = new THREE.Mesh(new THREE.BoxGeometry(landW, geometry.landing.bottomThickness, bottomLandingDepth), steelMat);
+		land0.position.set(
+			x,
+			geometry.step.minimumSurfaceY - half(geometry.landing.bottomThickness),
+			z0 - half(dir * bottomLandingDepth),
+		);
 		g.add(land0);
 		// Voorbij de top van de ramp loopt het gat nog door tot de verre openingsrand;
 		// deze plaat vult precies dat stuk, zodat je bij de uitstap niet in de
 		// schacht stapt.
 		const gapD = Math.abs(geometry.opening.farEdgeZ - z1);
-		const land1 = new THREE.Mesh(new THREE.BoxGeometry(opening.size.width, 0.14, gapD), steelMat);
-		land1.position.set(x, geometry.rise - 0.07, z1 + half(dir * gapD));
+		const land1 = new THREE.Mesh(new THREE.BoxGeometry(opening.size.width, geometry.landing.topThickness, gapD), steelMat);
+		land1.position.set(x, geometry.rise - half(geometry.landing.topThickness), z1 + half(dir * gapD));
 		g.add(land1);
 		// De kamplaat begint op de knik en loopt naar buiten, dus de trede die
 		// eronder ligt is precies de trede die nog vlak is.
-		const combD = stepDepth + 0.05;
+		const combD = stepDepth + geometry.landing.combDepthExtension;
 		for (const combPosition of [
 			{ z: z0 - half(dir * combD), y: geometry.step.minimumSurfaceY },
 			{ z: z1 + half(dir * combD), y: geometry.rise },
 		] as const) {
-			const comb = new THREE.Mesh(new THREE.BoxGeometry(geometry.skirt.centerX * 2, 0.05, combD), combMat);
-			comb.position.set(x, combPosition.y + 0.02, combPosition.z);
+			const comb = new THREE.Mesh(
+				new THREE.BoxGeometry(geometry.skirt.centerX * 2, geometry.landing.combThickness, combD),
+				combMat,
+			);
+			comb.position.set(x, combPosition.y + geometry.landing.combSurfaceLift, combPosition.z);
 			g.add(comb);
 		}
 
 		// ── newel-sokkels: het donkere blok waar de onderste helft van de
 		// leuningomkeer in verdwijnt. Zonder dit hangt die lus als een losse ring
 		// naast de roltrap, want de schortplaat is er met 0.05 veel te dun voor ──
-		const baseH = geometry.balustrade.glassCenterY + 0.02;
-		const baseT = 0.16;
-		const baseD = 0.85;
+		const baseH = geometry.balustrade.glassCenterY + geometry.newel.heightAboveGlassCenter;
+		const baseT = geometry.newel.thickness;
+		const baseD = geometry.newel.depth;
 		const noseGeo = new THREE.CylinderGeometry(half(baseT), half(baseT), baseH, 10);
 		const baseGeo = new THREE.BoxGeometry(baseT, baseH, baseD);
 		for (const end of [
 			{ z: zLo, outward: -dir },
 			{ z: zHi, outward: dir },
 		] as const) {
-			const yMid = escLine(spec, geometry, end.z) - 0.02 + half(baseH);
+			const yMid = escLine(spec, geometry, end.z) - geometry.newel.heightAboveGlassCenter + half(baseH);
 			const front = end.z + end.outward * geometry.balustrade.glassRadius;
 			for (const side of [-1, 1] as const) {
 				const sx = x + side * geometry.skirt.centerX;
@@ -726,7 +734,7 @@ export class MallBuilder {
 		// ── treden: één extra onderaan, zodat er altijd één onder de kamplaat
 		// vandaan komt op het moment dat de bovenste eronder verdwijnt ──
 		const treadGeo = new THREE.BoxGeometry(w, geometry.step.treadThickness, stepDepth);
-		const riserGeo = new THREE.BoxGeometry(w, stepRise + 0.02, geometry.step.riserThickness);
+		const riserGeo = new THREE.BoxGeometry(w, stepRise + geometry.step.riserHeightExtra, geometry.step.riserThickness);
 		// Gele neuslijn op de afloopkant van elk tredeblad, zoals op elke roltrap.
 		// Hij ligt er los bovenop en is aan alle kanten ingelaten: deelt hij ook maar
 		// één vlak met het tredeblad, dan vechten ze om de dieptebuffer en flikkert
@@ -747,7 +755,11 @@ export class MallBuilder {
 			);
 			node.add(noseLine);
 			const riser = new THREE.Mesh(riserGeo, riserMat);
-			riser.position.set(0, -geometry.step.treadThickness - half(stepRise + 0.02), -dir * half(stepDepth));
+			riser.position.set(
+				0,
+				-geometry.step.treadThickness - half(stepRise + geometry.step.riserHeightExtra),
+				-dir * half(stepDepth),
+			);
 			node.add(riser);
 			g.add(node);
 			runtime.steps.push({ node, index: i });
@@ -766,13 +778,13 @@ export class MallBuilder {
 			bar.position.x = x + side * geometry.skirt.centerX;
 			// Breder dan hoog, zoals een rubber leuningband. Mag alleen in x, want
 			// het hele pad ligt in het ZY-vlak.
-			bar.scale.x = 1.4;
+			bar.scale.x = geometry.handrail.widthScale;
 			g.add(bar);
 			// De buis is open aan beide koppen; twee dopjes sluiten hem af.
 			for (const end of [at(railPoints, 0), at(railPoints, -1)]) {
 				const cap = new THREE.Mesh(capGeo, railMat);
 				cap.position.set(bar.position.x, end.y, end.z);
-				cap.scale.x = 1.4;
+				cap.scale.x = geometry.handrail.widthScale;
 				g.add(cap);
 			}
 		}
@@ -792,22 +804,25 @@ export class MallBuilder {
 		this.textures.push(signTex);
 		// Portaal boven de instap: de staanders net buiten de balustrade, het bord
 		// er bovenin, zodat je er onderdoor loopt en niet tegenaan.
-		const gantryH = 2.6;
-		const signW = geometry.skirt.centerX * 2 + 0.4;
+		const gantryH = geometry.sign.gantryHeight;
+		const signW = geometry.skirt.centerX * 2 + geometry.sign.widthMargin;
 		const sign = new THREE.Mesh(
 			new THREE.PlaneGeometry(signW, (signW * sh) / sw),
 			this.track(new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false })),
 		);
 		const signZ = z0 - dir * apron;
-		sign.position.set(x, gantryH - half((signW * sh) / sw) - 0.06, signZ);
+		sign.position.set(x, gantryH - half((signW * sh) / sw) - geometry.sign.verticalGap, signZ);
 		g.add(sign);
 		for (const side of [-1, 1] as const) {
-			const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, gantryH, 8), steelMat);
-			post.position.set(x + side * (half(signW) + 0.05), half(gantryH), signZ);
+			const post = new THREE.Mesh(
+				new THREE.CylinderGeometry(geometry.sign.postRadius, geometry.sign.postRadius, gantryH, 8),
+				steelMat,
+			);
+			post.position.set(x + side * (half(signW) + geometry.sign.postRadius), half(gantryH), signZ);
 			g.add(post);
 		}
 
-		this.addHoleRails(g, opening, dir, geometry.rise, glassMat, steelMat);
+		this.addHoleRails(g, opening, dir, geometry.rise, geometry.guard, glassMat, steelMat);
 
 		this.group.add(g);
 	}
@@ -823,27 +838,29 @@ export class MallBuilder {
 		opening: OpeningDef,
 		direction: number,
 		rise: number,
+		guard: OpeningGuard,
 		glassMat: THREE.Material,
 		railMat: THREE.Material,
 	): void {
-		const GLASS_H = 0.95;
-		const T = 0.03;
 		const { center, size } = opening;
 		// Net buiten de gatrand, anders staat het hek op lucht.
-		const sideX = half(size.width) + 0.12;
-		const nearZ = center.z - direction * (half(size.depth) + 0.12);
+		const sideX = half(size.width) + guard.slabOffset;
+		const nearZ = center.z - direction * (half(size.depth) + guard.slabOffset);
 		const panel = (px: number, pz: number, pw: number, pd: number) => {
-			const glass = new THREE.Mesh(new THREE.BoxGeometry(pw, GLASS_H, pd), glassMat);
-			glass.position.set(px, rise + half(GLASS_H), pz);
+			const glass = new THREE.Mesh(new THREE.BoxGeometry(pw, guard.height, pd), glassMat);
+			glass.position.set(px, rise + half(guard.height), pz);
 			g.add(glass);
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(pw + 0.04, 0.07, pd + 0.04), railMat);
-			rail.position.set(px, rise + GLASS_H, pz);
+			const rail = new THREE.Mesh(
+				new THREE.BoxGeometry(pw + guard.railOverhang, guard.railHeight, pd + guard.railOverhang),
+				railMat,
+			);
+			rail.position.set(px, rise + guard.height, pz);
 			g.add(rail);
 		};
 		for (const side of [-1, 1] as const) {
-			panel(center.x + side * sideX, center.z, T, size.depth + 0.24);
+			panel(center.x + side * sideX, center.z, guard.glassThickness, size.depth + guard.slabOffset * 2);
 		}
-		panel(center.x, nearZ, sideX * 2, T);
+		panel(center.x, nearZ, sideX * 2, guard.glassThickness);
 	}
 
 	/** Zet elke trede op de huidige fase. u = 0 is de gebouwde stand. */
@@ -899,11 +916,16 @@ export class MallBuilder {
 
 	/** Vaste trap: elke trede in zijn eigen band, geen diagonale balkensoep. */
 	private buildStairFlight(stairs: StairSpec): void {
+		const { appearance } = stairs;
+		const { landing, rail, sign: signSpec, step: stepAppearance, stringer } = appearance;
+		if (!landing || !stringer || !signSpec) {
+			throw new Error(`${stairs.id}: mall-flight presentation is incomplete`);
+		}
 		const g = new THREE.Group();
 		g.name = stairs.id;
-		g.position.y = levelY(stairs.from);
+		g.position.y = levelY(stairs.from) + appearance.surfaceOffset;
 		const { x, zBottom: z0, zTop: z1, width, opening, steps } = stairs;
-		const rise = levelY(stairs.to) - levelY(stairs.from);
+		const rise = levelY(stairs.to) - g.position.y;
 		const run = Math.abs(z1 - z0);
 		const dir = z1 < z0 ? -1 : 1;
 		const metal = this.track(
@@ -922,13 +944,19 @@ export class MallBuilder {
 		const railMat = this.track(lit({ color: 0xb0bec5, metalness: 0.7, roughness: 0.3 }));
 
 		// Bottom landing
-		const land0 = new THREE.Mesh(new THREE.BoxGeometry(width + 0.6, 0.12, 1.4), metal);
-		land0.position.set(x, 0.06, z0 - dir * 0.5);
+		const land0 = new THREE.Mesh(
+			new THREE.BoxGeometry(width + landing.widthExtra, stepAppearance.treadThickness, landing.bottomDepth),
+			metal,
+		);
+		land0.position.set(x, half(stepAppearance.treadThickness), z0 - dir * landing.bottomOffset);
 		g.add(land0);
 
 		// Top landing (sits in floor-1 hole)
-		const land1 = new THREE.Mesh(new THREE.BoxGeometry(width + 0.6, 0.12, 1.5), metal);
-		land1.position.set(x, rise + 0.06, z1 + dir * 0.35);
+		const land1 = new THREE.Mesh(
+			new THREE.BoxGeometry(width + landing.widthExtra, stepAppearance.treadThickness, landing.topDepth),
+			metal,
+		);
+		land1.position.set(x, rise + half(stepAppearance.treadThickness), z1 + dir * landing.topOffset);
 		g.add(land1);
 
 		// Discrete steps — each tread only occupies its own band (no cross)
@@ -937,44 +965,66 @@ export class MallBuilder {
 		for (let i = 0; i < steps; i++) {
 			const z = z0 + dir * (i + 0.5) * stepDepth;
 			const y = (i + 1) * stepRise;
-			const step = new THREE.Mesh(new THREE.BoxGeometry(width, 0.12, stepDepth * 0.92), tread);
-			step.position.set(x, y - 0.06, z);
+			const step = new THREE.Mesh(
+				new THREE.BoxGeometry(
+					width - stepAppearance.widthInset,
+					stepAppearance.treadThickness,
+					stepDepth * stepAppearance.treadDepthRatio,
+				),
+				tread,
+			);
+			step.position.set(x, y - half(stepAppearance.treadThickness), z);
 			g.add(step);
 			// riser
-			const riser = new THREE.Mesh(new THREE.BoxGeometry(width, stepRise * 0.95, 0.06), metal);
-			riser.position.set(x, y - half(stepRise), z - dir * stepDepth * 0.45);
+			const riser = new THREE.Mesh(
+				new THREE.BoxGeometry(
+					width - stepAppearance.widthInset,
+					stepRise * stepAppearance.riserHeightRatio,
+					stepAppearance.riserThickness,
+				),
+				metal,
+			);
+			riser.position.set(x, y - half(stepRise), z - dir * stepDepth * stepAppearance.riserDepthRatio);
 			g.add(riser);
 		}
 
 		// Side stringers (thin vertical boards, NOT a diagonal beam that looks like a cross)
-		for (const sx of [x - half(width) - 0.06, x + half(width) + 0.06]) {
+		for (const sx of [x - half(width) - rail.sideOffsetFromEdge, x + half(width) + rail.sideOffsetFromEdge]) {
 			for (let i = 0; i < steps; i++) {
 				const z = z0 + dir * (i + 0.5) * stepDepth;
 				const y = (i + 0.5) * stepRise;
-				const board = new THREE.Mesh(new THREE.BoxGeometry(0.1, stepRise + 0.08, stepDepth * 0.95), metal);
+				const board = new THREE.Mesh(
+					new THREE.BoxGeometry(stringer.width, stepRise + stringer.heightExtra, stepDepth * stringer.depthRatio),
+					metal,
+				);
 				board.position.set(sx, y, z);
 				g.add(board);
 			}
 			// handrail as polyline of short segments (no single X-beam)
 			for (let i = 0; i < steps; i++) {
 				const z = z0 + dir * (i + 0.5) * stepDepth;
-				const y = (i + 1) * stepRise + 0.75;
-				const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.75, 6), railMat);
-				post.position.set(sx, y - 0.35, z);
-				g.add(post);
+				const y = (i + 1) * stepRise + rail.height;
+				if (i % rail.postEverySteps === 0) {
+					const post = new THREE.Mesh(new THREE.CylinderGeometry(rail.postRadius, rail.postRadius, rail.height, 6), railMat);
+					post.position.set(sx, y - rail.postCenterDrop, z);
+					g.add(post);
+				}
 				if (i < steps - 1) {
 					const z2 = z0 + dir * (i + 1.5) * stepDepth;
-					const y2 = (i + 2) * stepRise + 0.75;
+					const y2 = (i + 2) * stepRise + rail.height;
 					const midZ = midpoint(z, z2);
 					const midY = midpoint(y, y2);
 					const segLen = Math.hypot(z2 - z, y2 - y);
-					const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, segLen), railMat);
-					rail.position.set(sx, midY, midZ);
+					const railSegment = new THREE.Mesh(
+						new THREE.BoxGeometry(rail.segmentThickness, rail.segmentThickness, segLen),
+						railMat,
+					);
+					railSegment.position.set(sx, midY, midZ);
 					// Een draai om X stuurt lokaal +Z naar (0, -sin, cos): zonder het
 					// minteken helt elk segment de verkeerde kant op en zakt de leuning
 					// terwijl de trap klimt.
-					rail.rotation.x = -Math.atan2(y2 - y, z2 - z);
-					g.add(rail);
+					railSegment.rotation.x = -Math.atan2(y2 - y, z2 - z);
+					g.add(railSegment);
 				}
 			}
 		}
@@ -983,14 +1033,19 @@ export class MallBuilder {
 		ctx.fillStyle = '#5d4037';
 		ctx.fillRect(0, 0, cw, ch);
 		ctx.fillStyle = '#fff';
-		fitText(ctx, `TRAP ↑ ${level('v1').name.toUpperCase()}`, { x: 10, y: 8, w: cw - 20, h: ch - 16 }, { size: 36, maxLines: 1 });
+		fitText(
+			ctx,
+			`TRAP ↑ ${level(stairs.to).name.toUpperCase()}`,
+			{ x: 10, y: 8, w: cw - 20, h: ch - 16 },
+			{ size: 36, maxLines: 1 },
+		);
 		const tex = labelTexture(c);
 		this.textures.push(tex);
 		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.9, 0.48),
+			new THREE.PlaneGeometry(signSpec.width, signSpec.height),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		sign.position.set(x, 1.6, z0 - dir * 0.2);
+		sign.position.set(x, signSpec.centerY, z0 - dir * signSpec.approachOffset);
 		g.add(sign);
 
 		// Hekje langs het gat in de vloerplaat, buiten de halve gatbreedte.
@@ -1004,7 +1059,7 @@ export class MallBuilder {
 				side: THREE.DoubleSide,
 			}),
 		);
-		this.addHoleRails(g, opening, dir, rise, glassMat, railMat);
+		this.addHoleRails(g, opening, dir, rise, appearance.guard, glassMat, railMat);
 
 		this.group.add(g);
 	}

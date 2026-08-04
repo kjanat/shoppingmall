@@ -16,9 +16,11 @@
  * een tweede kopie van een getal is nou juist het probleem.
  */
 import { readFileSync } from 'node:fs';
+import { assertValidVerticalConnectorRegistry } from '#/data/connectors';
 import { NODES } from '#/data/graph';
 import { getInventory } from '#/data/inventory';
 import { ATRIUM_VOID } from '#/data/layout';
+import { assertCanonicalLevelRegistry } from '#/data/levelSchema';
 import { LEVELS, levelY } from '#/data/levels';
 import { STORES, shopStores } from '#/data/stores';
 import {
@@ -36,6 +38,9 @@ import { PLAYER_RADIUS } from '#/player/constants';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
 import { half, midpoint } from '#/util/math';
 import { stubDocument } from './stub-dom.ts';
+
+assertCanonicalLevelRegistry();
+assertValidVerticalConnectorRegistry(VERTICAL_CONNECTORS);
 
 /** Speling voor waarden die exact gelijk horen te zijn. */
 const EPS = 1e-6;
@@ -249,10 +254,6 @@ function controleVloergat(): void {
 	if (!atriumAanwezig) fout('vloergat', `${ATRIUM_OPENING.id} ontbreekt in het gedeelde V1-slabmanifest`);
 
 	for (const connector of VERTICAL_CONNECTORS) {
-		if (connector.to === 'p1') {
-			fout('vloergat', `${connector.id} eindigt op P1, waarvoor geen bovenzijde met vloergat bestaat`);
-			continue;
-		}
 		const opening = connector.opening;
 		const aanwezig = MALL_SLAB_SPECS[connector.to].holes.some(
 			(plan) =>

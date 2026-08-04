@@ -32,6 +32,10 @@ const ZOOM_STEPS = [2.4, 3.4, 4.8, 6.6] as const;
 
 const NODE_BY_ID = new Map(NODES.map((n) => [n.id, n]));
 
+function connectorLevels(connector: (typeof VERTICAL_CONNECTORS)[number]): readonly LevelId[] {
+	return [connector.from, connector.to];
+}
+
 /** Same-floor graph edges = the corridors worth drawing on the map. */
 const CORRIDORS = EDGES.flatMap((e) => {
 	const a = NODE_BY_ID.get(e.from);
@@ -49,7 +53,7 @@ const VERTICALS = VERTICAL_CONNECTORS.map((connector) => ({
 	minZ: Math.min(connector.zBottom, connector.zTop) - connector.apron,
 	maxZ: Math.max(connector.zBottom, connector.zTop) + connector.apron,
 	width: connector.width,
-	levels: [connector.from, connector.to],
+	levels: connectorLevels(connector),
 	label: connector.kind === 'escalator' ? 'ROLTRAP' : 'TRAP',
 	short: '⇅',
 }));

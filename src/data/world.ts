@@ -15,6 +15,7 @@ import type {
 import { planBounds, rectanglePlan } from '#/data/spatial';
 import { shopStores } from '#/data/stores';
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
+import { unreachable } from '#/util/invariant';
 import { half, span } from '#/util/math';
 
 export type WorldCategory = 'floor' | 'ceiling' | 'wall' | 'opening' | 'shop' | 'vertical-circulation' | 'parking';
@@ -117,6 +118,7 @@ const ESCALATOR_MODEL = {
 			minimumSurfaceY: 0.02,
 			treadThickness: 0.07,
 			riserThickness: 0.05,
+			riserHeightExtra: 0.02,
 		},
 		nose: {
 			height: 0.006,
@@ -137,6 +139,39 @@ const ESCALATOR_MODEL = {
 			radius: 0.05,
 			glassGap: 0.02,
 			textureRepeatLength: 0.32,
+			widthScale: 1.4,
+		},
+		structure: {
+			trussDrop: 0.4,
+			surfaceGap: 0.02,
+			lightStripExtraThickness: 0.005,
+		},
+		landing: {
+			lateralOverhang: 0.2,
+			bottomThickness: 0.02,
+			bottomDepthExtension: 0.3,
+			topThickness: 0.14,
+			combDepthExtension: 0.05,
+			combThickness: 0.05,
+			combSurfaceLift: 0.02,
+		},
+		newel: {
+			heightAboveGlassCenter: 0.02,
+			thickness: 0.16,
+			depth: 0.85,
+		},
+		guard: {
+			height: 0.95,
+			glassThickness: 0.03,
+			slabOffset: 0.12,
+			railOverhang: 0.04,
+			railHeight: 0.07,
+		},
+		sign: {
+			gantryHeight: 2.6,
+			widthMargin: 0.4,
+			postRadius: 0.05,
+			verticalGap: 0.06,
 		},
 	},
 	constraints: {
@@ -145,7 +180,7 @@ const ESCALATOR_MODEL = {
 	},
 } as const;
 
-export const ESCALATORS = [
+export const VERTICAL_CONNECTORS = [
 	{
 		id: 'east-escalator',
 		label: 'East escalator',
@@ -176,10 +211,7 @@ export const ESCALATORS = [
 			carrySpeed: ESCALATOR_SPEED,
 		},
 	},
-] as const satisfies readonly EscalatorSpec[];
-
-export const STAIR_CONNECTORS = {
-	west: {
+	{
 		id: 'west-stairs',
 		label: 'West stairs',
 		kind: 'stairs',
@@ -192,6 +224,41 @@ export const STAIR_CONNECTORS = {
 		width: 2.4,
 		steps: 24,
 		apron: 1,
+		appearance: {
+			surfaceOffset: 0,
+			step: {
+				widthInset: 0,
+				treadThickness: 0.12,
+				treadDepthRatio: 0.92,
+				riserThickness: 0.06,
+				riserHeightRatio: 0.95,
+				riserDepthRatio: 0.45,
+			},
+			landing: {
+				widthExtra: 0.6,
+				bottomDepth: 1.4,
+				bottomOffset: 0.5,
+				topDepth: 1.5,
+				topOffset: 0.35,
+			},
+			rail: {
+				sideOffsetFromEdge: 0.06,
+				height: 0.75,
+				postCenterDrop: 0.35,
+				postRadius: 0.03,
+				postEverySteps: 1,
+				segmentThickness: 0.06,
+			},
+			guard: {
+				height: 0.95,
+				glassThickness: 0.03,
+				slabOffset: 0.12,
+				railOverhang: 0.04,
+				railHeight: 0.07,
+			},
+			stringer: { width: 0.1, heightExtra: 0.08, depthRatio: 0.95 },
+			sign: { width: 1.9, height: 0.48, centerY: 1.6, approachOffset: 0.2 },
+		},
 		opening: {
 			id: 'stairs-v1',
 			category: 'stairs',
@@ -208,7 +275,7 @@ export const STAIR_CONNECTORS = {
 			openMaxZ: -7.4,
 		},
 	},
-	secret: {
+	{
 		id: 'secret-stairs',
 		label: 'Secret stairs to roof',
 		kind: 'stairs',
@@ -221,6 +288,49 @@ export const STAIR_CONNECTORS = {
 		width: 2.6,
 		steps: 16,
 		apron: 0.5,
+		appearance: {
+			surfaceOffset: 0.05,
+			step: {
+				widthInset: 0.4,
+				treadThickness: 0.12,
+				treadDepthRatio: 0.9,
+				riserThickness: 0.06,
+				riserHeightRatio: 0.95,
+				riserDepthRatio: 0.42,
+			},
+			rail: {
+				sideOffsetFromEdge: -0.1,
+				height: 0.7,
+				postCenterDrop: 0.35,
+				postRadius: 0.03,
+				postEverySteps: 2,
+				segmentThickness: 0.06,
+			},
+			guard: {
+				height: 0.95,
+				glassThickness: 0.03,
+				slabOffset: 0.12,
+				railOverhang: 0.04,
+				railHeight: 0.07,
+			},
+			serviceEntrance: {
+				door: {
+					width: 1.4,
+					height: 2.2,
+					thickness: 0.12,
+					lateralOffset: -1.2,
+					verticalOffset: 1.1,
+					depthOffset: -0.8,
+				},
+				sign: {
+					width: 1.5,
+					height: 0.55,
+					lateralOffset: -1.2,
+					verticalOffset: 2,
+					depthOffset: -0.72,
+				},
+			},
+		},
 		opening: {
 			id: 'stairs-roof',
 			category: 'stairs',
@@ -237,9 +347,40 @@ export const STAIR_CONNECTORS = {
 			openMaxZ: 18,
 		},
 	},
-} as const satisfies Readonly<Record<string, StairSpec>>;
+] as const satisfies readonly VerticalConnector[];
 
-export const VERTICAL_CONNECTORS: readonly VerticalConnector[] = [...ESCALATORS, ...Object.values(STAIR_CONNECTORS)];
+function partitionVerticalConnectors(connectors: readonly VerticalConnector[]): Readonly<{
+	escalators: readonly EscalatorSpec[];
+	stairs: readonly StairSpec[];
+}> {
+	const escalators: EscalatorSpec[] = [];
+	const stairs: StairSpec[] = [];
+	for (const connector of connectors) {
+		switch (connector.kind) {
+			case 'escalator':
+				escalators.push(connector);
+				break;
+			case 'stairs':
+				stairs.push(connector);
+				break;
+			default:
+				unreachable(connector, 'unknown vertical connector kind');
+		}
+	}
+	return { escalators, stairs };
+}
+
+const CONNECTORS_BY_KIND = partitionVerticalConnectors(VERTICAL_CONNECTORS);
+export const ESCALATORS = CONNECTORS_BY_KIND.escalators;
+export const STAIR_CONNECTORS = CONNECTORS_BY_KIND.stairs;
+
+export function stairConnector(id: string): StairSpec {
+	const connector = STAIR_CONNECTORS.find((candidate) => candidate.id === id);
+	if (!connector) throw new Error(`no stair connector '${id}'`);
+	return connector;
+}
+
+const secretStairs = stairConnector('secret-stairs');
 
 export type MallWorldCategory = WorldCategory | 'helipad' | 'connector-opening' | 'glass-roof' | 'decorative-surface' | 'prop';
 
@@ -352,7 +493,7 @@ const V1_ATRIUM_PLAN = rectanglePlan(ATRIUM_OPENING);
 const V1_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_V1);
 const V0_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_V0);
 const P1_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_P1);
-export const SECRET_STAIRS_OPENING_PLAN = rectanglePlan(STAIR_CONNECTORS.secret.opening);
+export const SECRET_STAIRS_OPENING_PLAN = rectanglePlan(secretStairs.opening);
 export const SECRET_STAIRS_OPENING_BOUNDS = planBounds(SECRET_STAIRS_OPENING_PLAN);
 const ROOF_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_ROOF);
 
@@ -520,7 +661,7 @@ const HATCH_WIDTH = span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENIN
 const HATCH_DEPTH = span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ);
 
 export const HELIPAD_HATCH_FRAME_RAILS = cardinalWallPanels({
-	center: STAIR_CONNECTORS.secret.opening.center,
+	center: secretStairs.opening.center,
 	offset: {
 		x: half(HATCH_WIDTH + HATCH_FRAME_THICKNESS),
 		z: half(HATCH_DEPTH + HATCH_FRAME_THICKNESS),
@@ -535,7 +676,7 @@ export const HELIPAD_HATCH_FRAME: MallWorldEntity = {
 	category: 'helipad',
 	levels: ['roof'],
 	transform: {
-		position: { x: STAIR_CONNECTORS.secret.opening.center.x, y: HATCH_FRAME_Y, z: STAIR_CONNECTORS.secret.opening.center.z },
+		position: { x: secretStairs.opening.center.x, y: HATCH_FRAME_Y, z: secretStairs.opening.center.z },
 		rotation: ZERO_ROTATION,
 	},
 	volumes: HELIPAD_HATCH_FRAME_RAILS.map((rail) =>

@@ -11,6 +11,12 @@ import { cp } from 'node:fs/promises';
  */
 import { $, build } from 'bun';
 import { flag, readFlags } from 'dreamcli';
+import { assertValidVerticalConnectorRegistry } from '#/data/connectors';
+import { assertCanonicalLevelRegistry } from '#/data/levelSchema';
+import { VERTICAL_CONNECTORS } from '#/data/world';
+
+assertCanonicalLevelRegistry();
+assertValidVerticalConnectorRegistry(VERTICAL_CONNECTORS);
 
 await $`rm -rf dist`.cwd(import.meta.dir);
 
