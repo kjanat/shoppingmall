@@ -13,6 +13,7 @@ import { trimToColumns } from './out.ts';
 import { isSoftwareHeadless } from './playwright.ts';
 import type { RoutePose, Sample } from './probe.ts';
 import { FULL_MALL_ROUTE, profileRoute } from './routes.ts';
+import { median } from './stats.ts';
 import { isRecord, readArray, readNumber, readString } from './values.ts';
 
 const softwareHeadless = isSoftwareHeadless();
@@ -42,12 +43,6 @@ function uint32(name: string, value: string): number {
 
 function distance(a: RoutePose, b: RoutePose): number {
 	return Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-}
-
-function median(values: number[]): number {
-	if (values.length === 0) return 0;
-	const sorted = [...values].sort((a, b) => a - b);
-	return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
 type SegmentResult = { id: string; from: string; to: string; lap: number; durationMs: number; sample: Sample };

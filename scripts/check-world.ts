@@ -224,14 +224,14 @@ function controleHellingen(): void {
 // ── 3. vloergat ────────────────────────────────────────────────────────────
 
 /**
- * Het gat in de vloerplaat komt uit MallBuilder, de helling eronder uit
- * Collision. Dat stond er als comment bij ("must match the addRectHole calls in
- * MallBuilder") en werd door niets afgedwongen.
+ * De vloerplaat en de helling lezen nu hetzelfde connectorobject. Deze
+ * broncontrole bewaakt dat MallBuilder die objecten rechtstreeks blijft
+ * doorgeven en geen afgeleide kopie van de maten introduceert.
  */
 function controleVloergat(): void {
 	const mb = bron('scene/MallBuilder.ts');
-	eist(mb, 'addRectHole(ESC.x, ESC.holeCz, ESC.holeHalfW, ESC.holeHalfD);', 'het roltrapgat');
-	eist(mb, 'addRectHole(STAIR.x, STAIR.holeCz, STAIR.holeHalfW, STAIR.holeHalfD);', 'het trapgat');
+	eist(mb, 'addXZRectangleHole(f1Shape, ESCALATOR.opening);', 'het roltrapgat');
+	eist(mb, 'addXZRectangleHole(f1Shape, STAIRS.opening);', 'het trapgat');
 
 	for (const connector of [ESCALATOR, STAIRS]) {
 		const ramp = wereld.ramps.find((candidate) => candidate.label === connector.id);
@@ -282,7 +282,7 @@ function controleVloergat(): void {
 	}
 
 	// Het atriumgat: MallBuilder snijdt het, Collision laat je er doorheen vallen.
-	eist(mb, 'addRectHole(0, 0, half(ATRIUM_VOID.width), half(ATRIUM_VOID.depth));', 'het atriumgat');
+	eist(mb, 'addXZRectangleHole(f1Shape, { center: { x: 0, z: 0 }, size: ATRIUM_VOID });', 'het atriumgat');
 	const binnen: [number, number][] = [
 		[half(ATRIUM_VOID.width) - 0.1, 0],
 		[-(half(ATRIUM_VOID.width) - 0.1), 0],

@@ -2,59 +2,29 @@ import * as THREE from 'three';
 import { ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { level, levelY } from '#/data/levels';
 import { getOwner } from '#/data/shopOwners';
-import { type StoreDef, shopStores } from '#/data/stores';
-import { ELEVATOR_OPENING_ROOF, ELEVATOR_OPENING_V0, ELEVATOR_OPENING_V1, ESCALATOR, SECRET_STAIRS, STAIRS } from '#/data/world';
+import type { StoreDef } from '#/data/stores';
+import { shopStores } from '#/data/stores';
+import type { OpeningDef } from '#/data/world';
+import {
+	ELEVATOR_OPENING_ROOF,
+	ELEVATOR_OPENING_V0,
+	ELEVATOR_OPENING_V1,
+	ESCALATOR,
+	MALL_WALL_SPECS,
+	SECRET_STAIRS,
+	SHOP_HEIGHT,
+	SHOP_ROOM_DEPTH_FACTOR,
+	STAIRS,
+} from '#/data/world';
 import { lit } from '#/render/material';
+import { addBoxMesh, addPlaneMesh } from '#/render/meshFactory';
+import { addXZRectangleHole, xzRectangleShape } from '#/render/xzShape';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { half, midpoint } from '#/util/math';
+import { half, inverseLerpClamped, midpoint } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** One storey, straight from the deck heights. */
 const FLOOR_H = levelY('v1') - levelY('v0');
-
-/**
- * De oostelijke roltrap. Dit is de enige plek waar deze maten staan: ze moeten
- * kloppen met de `escalator`-ramp in Collision (x 20.7..23.3, z 8 → -2,
- * y 0 → FLOOR_H); het gat in de vloerplaat wordt hieruit afgeleid.
- */
-const ESC = {
-	x: ESCALATOR.x,
-	zBottom: ESCALATOR.zBottom,
-	zTop: ESCALATOR.zTop,
-	steps: ESCALATOR.steps,
-	/** Zo breed als de climbable band, anders loop je naast je eigen roltrap. */
-	width: ESCALATOR.width,
-	/** Midden en halve diepte van het gat in de vloerplaat, uit de ramp. */
-	holeCz: ESCALATOR.opening.center.z,
-	holeHalfD: ESCALATOR.opening.size.depth / 2,
-	/**
-	 * Halve breedte van dat gat: precies de x-band van de ramp. Ruimer en er
-	 * blijft een zwarte spleet naast de roltrap open waar je in kunt kijken,
-	 * krapper en het vakwerk steekt door de plaat.
-	 */
-	holeHalfW: ESCALATOR.opening.size.width / 2,
-	/**
-	 * Hoe ver aanloop en uitloop voorbij de helling doorlopen, omkeer inbegrepen.
-	 * De blokkeerdoos in Collision loopt van z -3.5 tot 9, dus 1.0 is het maximum.
-	 */
-	apron: ESCALATOR.apron,
-	/** Tredesnelheid langs de helling. Uit de fysica, die vervoert je ermee. */
-	speed: ESCALATOR.collision.carrySpeed,
-} as const;
-
-/**
- * De westelijke trap. Andere wand, kruist de roltrap nooit. Zelfde afspraak: dit
- * is de enige plek waar deze maten staan, het gat in de vloerplaat volgt eruit.
- */
-const STAIR = {
-	x: STAIRS.x,
-	zBottom: STAIRS.zBottom,
-	zTop: STAIRS.zTop,
-	width: STAIRS.width,
-	holeCz: STAIRS.opening.center.z,
-	holeHalfW: STAIRS.opening.size.width / 2,
-	holeHalfD: STAIRS.opening.size.depth / 2,
-} as const;
 
 /** Laagste stand van een trede: net boven de vloer, anders z-fightt hij ermee. */
 const ESC_STEP_MIN = 0.02;
@@ -81,7 +51,7 @@ const ESC_GLASS_HI = 0.99;
 const ESC_RAIL_R = 0.05;
 const ESC_RAIL_GAP = 0.02;
 /** De balustradekop is halfrond om het midden van het glas. */
-const ESC_GLASS_R = (ESC_GLASS_HI - ESC_GLASS_LO) / 2;
+const ESC_GLASS_R = half(ESC_GLASS_HI - ESC_GLASS_LO);
 const ESC_GLASS_MID = midpoint(ESC_GLASS_HI, ESC_GLASS_LO);
 /**
  * De leuning draait concentrisch om die kop, op vaste speling. Daar volgen zowel
@@ -92,14 +62,15 @@ const ESC_GLASS_MID = midpoint(ESC_GLASS_HI, ESC_GLASS_LO);
 const ESC_NEWEL_R = ESC_GLASS_R + ESC_RAIL_GAP + ESC_RAIL_R;
 const ESC_RAIL_Y = ESC_GLASS_MID + ESC_NEWEL_R;
 /** Halve breedte tot de buitenkant van de balustrade. */
-const ESC_SKIRT_X = ESC.width / 2 + ESC_SKIRT_GAP;
+const ESC_SKIRT_X = half(ESCALATOR.width) + ESC_SKIRT_GAP;
 /** Z van de rand van het vloergat aan de kant van de uitstap. */
-const ESC_HOLE_FAR_Z = ESC.holeCz - Math.sign(ESC.zBottom - ESC.zTop) * ESC.holeHalfD;
+const ESC_HOLE_FAR_Z =
+	ESCALATOR.opening.center.z - Math.sign(ESCALATOR.zBottom - ESCALATOR.zTop) * half(ESCALATOR.opening.size.depth);
 
 /** Hoogte van de roltraphelling op z, vlak op beide landingen. */
 function escLine(z: number): number {
-	const t = (z - ESC.zBottom) / (ESC.zTop - ESC.zBottom);
-	return FLOOR_H * (t < 0 ? 0 : t > 1 ? 1 : t);
+	const t = inverseLerpClamped(ESCALATOR.zBottom, ESCALATOR.zTop, z);
+	return FLOOR_H * t;
 }
 
 /**
@@ -113,34 +84,36 @@ function escLine(z: number): number {
  * Dicht bemonsterd, want dit pad gaat door een spline: met alleen de hoekpunten
  * bolt een lange rechte er tussenuit.
  */
-function escRailPath(zLo: number, zHi: number, off: number): [number, number][] {
+type EscRailPoint = Readonly<{ z: number; y: number }>;
+
+function escRailPath(zLo: number, zHi: number, off: number): EscRailPoint[] {
 	const r = ESC_NEWEL_R;
 	const dir = Math.sign(zHi - zLo);
-	const pts: [number, number][] = [];
+	const points: EscRailPoint[] = [];
 	// Halve slag rond de kop; `s` bepaalt of hij naar buiten of naar binnen bolt.
-	const newel = (zEnd: number, base: number, s: number): [number, number][] =>
+	const newel = (zEnd: number, base: number, direction: number): EscRailPoint[] =>
 		Array.from({ length: 13 }, (_, k) => {
 			const a = -Math.PI / 2 + (k / 12) * Math.PI;
-			return [zEnd + s * dir * r * Math.cos(a), base - r + r * Math.sin(a)];
+			return { z: zEnd + direction * dir * r * Math.cos(a), y: base - r + r * Math.sin(a) };
 		});
 	const straight = (za: number, ya: number, zb: number, yb: number, n: number) => {
 		for (let k = 1; k <= n; k++) {
-			pts.push([za + ((zb - za) * k) / n, ya + ((yb - ya) * k) / n]);
+			points.push({ z: za + ((zb - za) * k) / n, y: ya + ((yb - ya) * k) / n });
 		}
 	};
-	pts.push(...newel(zLo, off, -1));
-	straight(zLo, off, ESC.zBottom, off, 4);
-	straight(ESC.zBottom, off, ESC.zTop, FLOOR_H + off, 24);
-	straight(ESC.zTop, FLOOR_H + off, zHi, FLOOR_H + off, 5);
+	points.push(...newel(zLo, off, -1));
+	straight(zLo, off, ESCALATOR.zBottom, off, 4);
+	straight(ESCALATOR.zBottom, off, ESCALATOR.zTop, FLOOR_H + off, 24);
+	straight(ESCALATOR.zTop, FLOOR_H + off, zHi, FLOOR_H + off, 5);
 	// slice(1): de omkeer begint op hetzelfde punt waar de rechte eindigt. Laat je
 	// dat dubbel staan, dan is dat segment nul lang, is de raaklijn daar
 	// ongedefinieerd en klapt het frame van de buis om — een knik in de leuning.
-	pts.push(
+	points.push(
 		...newel(zHi, FLOOR_H + off, 1)
 			.reverse()
 			.slice(1),
 	);
-	return pts;
+	return points;
 }
 
 /**
@@ -151,9 +124,10 @@ function escRailPath(zLo: number, zHi: number, off: number): [number, number][] 
  * Het pad ligt in één ZY-vlak op x = 0, zodat de aanroeper hem in x kan
  * platdrukken tot een leuningprofiel zonder de buis zelf te vervormen.
  */
-function escRailTube(pts: [number, number][], radius: number): { geo: THREE.TubeGeometry; length: number } {
+
+function escRailTube(points: readonly EscRailPoint[], radius: number): { geo: THREE.TubeGeometry; length: number } {
 	const curve = new THREE.CatmullRomCurve3(
-		pts.map(([z, y]) => new THREE.Vector3(0, y, z)),
+		points.map(({ z, y }) => new THREE.Vector3(0, y, z)),
 		false,
 		'centripetal',
 	);
@@ -173,7 +147,14 @@ function hashStr(s: string): number {
 
 function makeTextTexture(
 	lines: string[],
-	opts: {
+	{
+		w = 512,
+		h = 256,
+		bg = '#111118',
+		fg = '#ffffff',
+		accent,
+		fontSize = lines.length > 1 ? 52 : 64,
+	}: {
 		w?: number;
 		h?: number;
 		bg?: string;
@@ -182,11 +163,9 @@ function makeTextTexture(
 		fontSize?: number;
 	} = {},
 ): THREE.CanvasTexture {
-	const w = opts.w ?? 512;
-	const h = opts.h ?? 256;
 	const { canvas, ctx } = labelCanvas(w, h);
 
-	ctx.fillStyle = opts.bg ?? '#111118';
+	ctx.fillStyle = bg;
 	ctx.fillRect(0, 0, w, h);
 
 	// subtle grid
@@ -198,22 +177,21 @@ function makeTextTexture(
 		ctx.stroke();
 	}
 
-	if (opts.accent) {
-		ctx.fillStyle = opts.accent;
+	if (accent) {
+		ctx.fillStyle = accent;
 		ctx.fillRect(0, h - 12, w, 12);
 		ctx.fillRect(0, 0, 8, h);
 	}
 
-	ctx.fillStyle = opts.fg ?? '#ffffff';
+	ctx.fillStyle = fg;
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
-	const fontSize = opts.fontSize ?? (lines.length > 1 ? 52 : 64);
 	ctx.font = `700 ${fontSize}px Outfit, system-ui, sans-serif`;
 
 	const totalH = lines.length * fontSize * 1.15;
-	let y = h / 2 - totalH / 2 + fontSize / 2;
+	let y = half(h) - half(totalH) + half(fontSize);
 	for (const line of lines) {
-		ctx.fillText(line, w / 2, y);
+		ctx.fillText(line, half(w), y);
 		y += fontSize * 1.15;
 	}
 
@@ -245,14 +223,14 @@ export class MallBuilder {
 
 	/** Laat de roltrap lopen. Zonder dit is het een trap met een kap erop. */
 	update(dt: number): void {
-		const stepDepth = Math.abs(ESC.zTop - ESC.zBottom) / ESC.steps;
-		const pitch = Math.hypot(stepDepth, FLOOR_H / ESC.steps);
-		this.escPhase = (this.escPhase + (ESC.speed * dt) / pitch) % 1;
+		const stepDepth = Math.abs(ESCALATOR.zTop - ESCALATOR.zBottom) / ESCALATOR.steps;
+		const pitch = Math.hypot(stepDepth, FLOOR_H / ESCALATOR.steps);
+		this.escPhase = (this.escPhase + (ESCALATOR.collision.carrySpeed * dt) / pitch) % 1;
 		this.placeEscalatorSteps();
 		// De leuning loopt mee via de textuur-offset; modulo houdt hem na een uur
 		// draaien nog steeds precies genoeg.
 		for (const map of this.escRailMaps) {
-			map.offset.y = (map.offset.y - (ESC.speed * dt) / ESC_RAIL_TICK) % 1;
+			map.offset.y = (map.offset.y - (ESCALATOR.collision.carrySpeed * dt) / ESC_RAIL_TICK) % 1;
 		}
 	}
 
@@ -314,36 +292,10 @@ export class MallBuilder {
 		tileTex.repeat.set(MALL_FOOTPRINT.width / 4, MALL_FOOTPRINT.depth / 4);
 		floorMat.map = tileTex;
 
-		const rectHole = (shape: THREE.Shape, cx: number, cz: number, hw: number, hd: number) => {
-			// rotateX(-π/2) maps shape-y → world −z, so cut at NEGATED z. Without
-			// this every asymmetric hole landed mirrored: the stair openings sat on
-			// the wrong side of the mall while the flights pierced solid slab. The
-			// atrium hole at (0,0) mirrored onto itself, which is why it "worked".
-			const sy = -cz;
-			const h = new THREE.Path();
-			h.moveTo(cx - hw, sy - hd);
-			h.lineTo(cx + hw, sy - hd);
-			h.lineTo(cx + hw, sy + hd);
-			h.lineTo(cx - hw, sy + hd);
-			h.lineTo(cx - hw, sy - hd);
-			shape.holes.push(h);
-		};
-
 		// The lift travels to P1, so V0 needs a real shaft opening too. The old
 		// BoxGeometry made the cabin pass through a solid ground-floor slab.
-		const floor0Shape = new THREE.Shape();
-		floor0Shape.moveTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
-		floor0Shape.lineTo(half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
-		floor0Shape.lineTo(half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
-		floor0Shape.lineTo(-half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
-		floor0Shape.closePath();
-		rectHole(
-			floor0Shape,
-			ELEVATOR_OPENING_V0.center.x,
-			ELEVATOR_OPENING_V0.center.z,
-			ELEVATOR_OPENING_V0.size.width / 2,
-			ELEVATOR_OPENING_V0.size.depth / 2,
-		);
+		const floor0Shape = xzRectangleShape({ center: { x: 0, z: 0 }, size: MALL_FOOTPRINT });
+		addXZRectangleHole(floor0Shape, ELEVATOR_OPENING_V0);
 		const floor0Geo = new THREE.ExtrudeGeometry(floor0Shape, { depth: 0.3, bevelEnabled: false });
 		floor0Geo.rotateX(-Math.PI / 2);
 		const floor0 = new THREE.Mesh(floor0Geo, floorMat);
@@ -353,33 +305,21 @@ export class MallBuilder {
 
 		// Floor 1 ring: atrium void + REAL openings where stairs/escalator meet floor 1
 		const floor1Mat = this.track(floorMat.clone());
-		const f1Shape = new THREE.Shape();
-		f1Shape.moveTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
-		f1Shape.lineTo(half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
-		f1Shape.lineTo(half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
-		f1Shape.lineTo(-half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
-		f1Shape.lineTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
-
-		const addRectHole = (cx: number, cz: number, hw: number, hd: number) => rectHole(f1Shape, cx, cz, hw, hd);
+		const f1Shape = xzRectangleShape({ center: { x: 0, z: 0 }, size: MALL_FOOTPRINT });
 
 		// Center atrium
-		addRectHole(0, 0, half(ATRIUM_VOID.width), half(ATRIUM_VOID.depth));
+		addXZRectangleHole(f1Shape, { center: { x: 0, z: 0 }, size: ATRIUM_VOID });
 
 		// The openings must sit OVER the flights, not next to their top landings —
 		// each hole spans from just past the top down to where the incline is ~2 m
 		// under the slab, which is the stretch where your head would hit concrete.
 		// West stairs: incline z=+4 (bottom) → z=-14 (top), so open z -14.6 … -7.4
-		addRectHole(STAIR.x, STAIR.holeCz, STAIR.holeHalfW, STAIR.holeHalfD);
+		addXZRectangleHole(f1Shape, STAIRS.opening);
 		// East escalator: incline z=+8 → z=-2, so open z -2.6 … +1.6
-		addRectHole(ESC.x, ESC.holeCz, ESC.holeHalfW, ESC.holeHalfD);
+		addXZRectangleHole(f1Shape, ESCALATOR.opening);
 		// Glazen lift (16, -8): schacht V0 → dak — zonder dit gat prikte de
 		// glascabine dwars door de verdieping-1-plaat heen
-		addRectHole(
-			ELEVATOR_OPENING_V1.center.x,
-			ELEVATOR_OPENING_V1.center.z,
-			ELEVATOR_OPENING_V1.size.width / 2,
-			ELEVATOR_OPENING_V1.size.depth / 2,
-		);
+		addXZRectangleHole(f1Shape, ELEVATOR_OPENING_V1);
 
 		// USA-dikke plaat (0.45), en de TOP ligt op FLOOR_H: extrude gaat +Y, dus
 		// de mesh zakt een plaatdikte. Voorheen stak de plaat 6.0→6.3 omhoog en
@@ -403,20 +343,13 @@ export class MallBuilder {
 				roughness: 0.9,
 			}),
 		);
-		const wallH = FLOOR_H * 2 + 2;
-
-		const walls: [number, number, number, number, number, number][] = [
-			// w, h, d, x, y, z
-			[MALL_FOOTPRINT.width + 1, wallH, 0.4, 0, half(wallH) - 0.3, -half(MALL_FOOTPRINT.depth)],
-			[MALL_FOOTPRINT.width + 1, wallH, 0.4, 0, half(wallH) - 0.3, half(MALL_FOOTPRINT.depth)],
-			[0.4, wallH, MALL_FOOTPRINT.depth, -half(MALL_FOOTPRINT.width), half(wallH) - 0.3, 0],
-			[0.4, wallH, MALL_FOOTPRINT.depth, half(MALL_FOOTPRINT.width), half(wallH) - 0.3, 0],
-		];
-		for (const [w, h, d, x, y, z] of walls) {
-			const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
-			mesh.position.set(x, y, z);
-			mesh.receiveShadow = true;
-			this.group.add(mesh);
+		for (const wall of MALL_WALL_SPECS) {
+			addBoxMesh(this.group, wallMat, {
+				name: `mall-wall-${wall.id}`,
+				...wall.size,
+				position: wall.position,
+				receiveShadow: true,
+			});
 		}
 
 		// Ceiling with atrium opening
@@ -431,31 +364,14 @@ export class MallBuilder {
 		// Own shape — NOT f1Shape.clone(): the ceiling used to inherit the two
 		// stairwell holes (gaping holes above nothing) and lacked the one opening
 		// it actually needs, where the secret service stairs exit to the roof.
-		const ceilShape = new THREE.Shape();
-		ceilShape.moveTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
-		ceilShape.lineTo(half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
-		ceilShape.lineTo(half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
-		ceilShape.lineTo(-half(MALL_FOOTPRINT.width), half(MALL_FOOTPRINT.depth));
-		ceilShape.lineTo(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth));
-		rectHole(ceilShape, 0, 0, half(ATRIUM_VOID.width), half(ATRIUM_VOID.depth));
+		const ceilShape = xzRectangleShape({ center: { x: 0, z: 0 }, size: MALL_FOOTPRINT });
+		addXZRectangleHole(ceilShape, { center: { x: 0, z: 0 }, size: ATRIUM_VOID });
 		// Secret stairs run (26, y6, z14) → (26, roof, z18); hole matches the ramp
-		rectHole(
-			ceilShape,
-			SECRET_STAIRS.opening.center.x,
-			SECRET_STAIRS.opening.center.z,
-			SECRET_STAIRS.opening.size.width / 2,
-			SECRET_STAIRS.opening.size.depth / 2,
-		);
+		addXZRectangleHole(ceilShape, SECRET_STAIRS.opening);
 		// Glazen lift (16, -8): schachtgat naar het dak. Eén gat, niet twee: hier
 		// stonden er twee op dezelfde plek met verschillende maat, dus een gat in
 		// een gat. De ruimste wint, die geeft de cabine en zijn deuren de ruimte.
-		rectHole(
-			ceilShape,
-			ELEVATOR_OPENING_ROOF.center.x,
-			ELEVATOR_OPENING_ROOF.center.z,
-			ELEVATOR_OPENING_ROOF.size.width / 2,
-			ELEVATOR_OPENING_ROOF.size.depth / 2,
-		);
+		addXZRectangleHole(ceilShape, ELEVATOR_OPENING_ROOF);
 		const ceilGeo = new THREE.ExtrudeGeometry(ceilShape, {
 			depth: 0.4, // USA dikte — het dakdek (13.95) rust hier bovenop
 			bevelEnabled: false,
@@ -681,7 +597,16 @@ export class MallBuilder {
 	}
 
 	/** Paneel evenwijdig aan de helling, met rechte koppen in plaats van schuine. */
-	private escPanel(opts: {
+	private escPanel({
+		x,
+		zLo,
+		zHi,
+		below,
+		above,
+		thick,
+		mat,
+		round = false,
+	}: {
 		x: number;
 		zLo: number;
 		zHi: number;
@@ -694,34 +619,34 @@ export class MallBuilder {
 	}): THREE.Mesh {
 		// De twee knikken zitten op z0 en z1, waar de helling in de vlakke
 		// landingen overgaat; zonder die punten snijdt het paneel de hoeken af.
-		const zs = [opts.zLo, ESC.zBottom, ESC.zTop, opts.zHi];
+		const zs = [zLo, ESCALATOR.zBottom, ESCALATOR.zTop, zHi];
 		const shape = new THREE.Shape();
 		const cap = (zEnd: number, outward: number, a0: number, a1: number) => {
-			if (!opts.round) return;
-			const cy = escLine(zEnd) + midpoint(opts.below, opts.above);
-			const r = (opts.above - opts.below) / 2;
+			if (!round) return;
+			const cy = escLine(zEnd) + midpoint(below, above);
+			const r = half(above - below);
 			for (let k = 1; k < 8; k++) {
 				const a = a0 + ((a1 - a0) * k) / 8;
 				shape.lineTo(zEnd + outward * r * Math.cos(a), cy + r * Math.sin(a));
 			}
 		};
-		const out = Math.sign(opts.zHi - opts.zLo);
-		shape.moveTo(opts.zLo, escLine(opts.zLo) + opts.below);
+		const out = Math.sign(zHi - zLo);
+		shape.moveTo(zLo, escLine(zLo) + below);
 		for (const z of zs.slice(1)) {
-			shape.lineTo(z, escLine(z) + opts.below);
+			shape.lineTo(z, escLine(z) + below);
 		}
-		cap(opts.zHi, out, -Math.PI / 2, Math.PI / 2);
+		cap(zHi, out, -Math.PI / 2, Math.PI / 2);
 		for (const z of [...zs].reverse()) {
-			shape.lineTo(z, escLine(z) + opts.above);
+			shape.lineTo(z, escLine(z) + above);
 		}
 		// Terug naar beneden langs a = 0, niet langs a = PI: die kant passeert
 		// cos = -1 en bolt de kop dus naar binnen in plaats van naar buiten.
-		cap(opts.zLo, -out, Math.PI / 2, -Math.PI / 2);
+		cap(zLo, -out, Math.PI / 2, -Math.PI / 2);
 		shape.closePath();
-		const geo = new THREE.ExtrudeGeometry(shape, { depth: opts.thick, bevelEnabled: false });
+		const geo = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
 		geo.rotateY(-Math.PI / 2);
-		geo.translate(opts.x + opts.thick / 2, 0, 0);
-		return new THREE.Mesh(geo, opts.mat);
+		geo.translate(x + half(thick), 0, 0);
+		return new THREE.Mesh(geo, mat);
 	}
 
 	/**
@@ -735,14 +660,14 @@ export class MallBuilder {
 		const g = new THREE.Group();
 		g.name = 'escalator';
 
-		const { x, zBottom: z0, zTop: z1, steps, width: w } = ESC;
+		const { x, zBottom: z0, zTop: z1, steps, width: w, apron, opening } = ESCALATOR;
 		const dir = z1 < z0 ? -1 : 1;
 		const stepDepth = Math.abs(z1 - z0) / steps;
 		const stepRise = FLOOR_H / steps;
 		// Waar de balustrade eindigt. De omkeer bolt daar nog een straal voorbij,
 		// dus het paneel stopt precies zoveel eerder als de apron toestaat.
-		const zLo = z0 - dir * (ESC.apron - ESC_NEWEL_R);
-		const zHi = z1 + dir * (ESC.apron - ESC_NEWEL_R);
+		const zLo = z0 - dir * (apron - ESC_NEWEL_R);
+		const zHi = z1 + dir * (apron - ESC_NEWEL_R);
 
 		const cleat = this.escStripeTexture(64, '#8b969d', '#5b6469', 1.6, w / 0.28);
 		// De scene heeft geen environment map, dus metalness boven ~0.5 heeft niets
@@ -773,7 +698,7 @@ export class MallBuilder {
 		// ── vakwerk, schortplaat, glas en de lichtstrip onder de leuning ──
 		// Het vakwerk hangt onder de tredebladen en steekt net buiten de balustrade
 		// uit, zodat die er niet naast zweeft.
-		const outerX = ESC_SKIRT_X + ESC_PANEL_T / 2;
+		const outerX = ESC_SKIRT_X + half(ESC_PANEL_T);
 		g.add(
 			this.escPanel({
 				x,
@@ -807,25 +732,25 @@ export class MallBuilder {
 		// De onderste kamplaat begint precies op z0, waar de helling nog nul is:
 		// daardoor komt een trede er vlak onder vandaan en klimt hij pas daarna.
 		const landW = outerX * 2 + 0.2;
-		const land0 = new THREE.Mesh(new THREE.BoxGeometry(landW, 0.02, ESC.apron + 0.3), steelMat);
-		land0.position.set(x, ESC_STEP_MIN - 0.01, z0 - (dir * (ESC.apron + 0.3)) / 2);
+		const land0 = new THREE.Mesh(new THREE.BoxGeometry(landW, 0.02, apron + 0.3), steelMat);
+		land0.position.set(x, ESC_STEP_MIN - 0.01, z0 - half(dir * (apron + 0.3)));
 		g.add(land0);
 		// Voorbij de top van de ramp loopt het gat nog door tot ESC_HOLE_FAR_Z;
 		// deze plaat vult precies dat stuk, zodat je bij de uitstap niet in de
 		// schacht stapt.
 		const gapD = Math.abs(ESC_HOLE_FAR_Z - z1);
-		const land1 = new THREE.Mesh(new THREE.BoxGeometry(ESC.holeHalfW * 2, 0.14, gapD), steelMat);
-		land1.position.set(x, FLOOR_H - 0.07, z1 + (dir * gapD) / 2);
+		const land1 = new THREE.Mesh(new THREE.BoxGeometry(opening.size.width, 0.14, gapD), steelMat);
+		land1.position.set(x, FLOOR_H - 0.07, z1 + half(dir * gapD));
 		g.add(land1);
 		// De kamplaat begint op de knik en loopt naar buiten, dus de trede die
 		// eronder ligt is precies de trede die nog vlak is.
 		const combD = stepDepth + 0.05;
-		for (const [z, y] of [
-			[z0 - (dir * combD) / 2, ESC_STEP_MIN],
-			[z1 + (dir * combD) / 2, FLOOR_H],
+		for (const combPosition of [
+			{ z: z0 - half(dir * combD), y: ESC_STEP_MIN },
+			{ z: z1 + half(dir * combD), y: FLOOR_H },
 		] as const) {
 			const comb = new THREE.Mesh(new THREE.BoxGeometry(ESC_SKIRT_X * 2, 0.05, combD), combMat);
-			comb.position.set(x, y + 0.02, z);
+			comb.position.set(x, combPosition.y + 0.02, combPosition.z);
 			g.add(comb);
 		}
 
@@ -835,18 +760,18 @@ export class MallBuilder {
 		const baseH = ESC_GLASS_MID + 0.02;
 		const baseT = 0.16;
 		const baseD = 0.85;
-		const noseGeo = new THREE.CylinderGeometry(baseT / 2, baseT / 2, baseH, 10);
+		const noseGeo = new THREE.CylinderGeometry(half(baseT), half(baseT), baseH, 10);
 		const baseGeo = new THREE.BoxGeometry(baseT, baseH, baseD);
-		for (const [zEnd, out] of [
-			[zLo, -dir],
-			[zHi, dir],
+		for (const end of [
+			{ z: zLo, outward: -dir },
+			{ z: zHi, outward: dir },
 		] as const) {
-			const yMid = escLine(zEnd) - 0.02 + baseH / 2;
-			const front = zEnd + out * ESC_GLASS_R;
+			const yMid = escLine(end.z) - 0.02 + half(baseH);
+			const front = end.z + end.outward * ESC_GLASS_R;
 			for (const side of [-1, 1] as const) {
 				const sx = x + side * ESC_SKIRT_X;
 				const block = new THREE.Mesh(baseGeo, trussMat);
-				block.position.set(sx, yMid, front - (out * baseD) / 2);
+				block.position.set(sx, yMid, front - half(end.outward * baseD));
 				g.add(block);
 				const nose = new THREE.Mesh(noseGeo, trussMat);
 				nose.position.set(sx, yMid, front);
@@ -868,13 +793,13 @@ export class MallBuilder {
 			const node = new THREE.Group();
 			node.position.x = x;
 			const tread = new THREE.Mesh(treadGeo, treadMat);
-			tread.position.y = -ESC_TREAD_T / 2;
+			tread.position.y = -half(ESC_TREAD_T);
 			node.add(tread);
 			const noseLine = new THREE.Mesh(noseLineGeo, noseLineMat);
-			noseLine.position.set(0, ESC_NOSE_LIFT + ESC_NOSE_H / 2, -dir * (stepDepth / 2 - ESC_NOSE_INSET - 0.025));
+			noseLine.position.set(0, ESC_NOSE_LIFT + half(ESC_NOSE_H), -dir * (half(stepDepth) - ESC_NOSE_INSET - 0.025));
 			node.add(noseLine);
 			const riser = new THREE.Mesh(riserGeo, riserMat);
-			riser.position.set(0, -ESC_TREAD_T - (stepRise + 0.02) / 2, -dir * (stepDepth / 2));
+			riser.position.set(0, -ESC_TREAD_T - half(stepRise + 0.02), -dir * half(stepDepth));
 			node.add(riser);
 			g.add(node);
 			this.escSteps.push({ node, index: i });
@@ -882,8 +807,8 @@ export class MallBuilder {
 		this.placeEscalatorSteps();
 
 		// ── leuning: één buis van kop tot kop, geen segmentnaden ──
-		const pts = escRailPath(zLo, zHi, ESC_RAIL_Y);
-		const { geo: railGeo, length: railLen } = escRailTube(pts, ESC_RAIL_R);
+		const railPoints = escRailPath(zLo, zHi, ESC_RAIL_Y);
+		const { geo: railGeo, length: railLen } = escRailTube(railPoints, ESC_RAIL_R);
 		const railTex = this.escRailTexture(railLen / ESC_RAIL_TICK);
 		const railMat = this.track(lit({ map: railTex, roughness: 0.85, metalness: 0.05 }));
 		this.escRailMaps.push(railTex);
@@ -896,10 +821,10 @@ export class MallBuilder {
 			bar.scale.x = 1.4;
 			g.add(bar);
 			// De buis is open aan beide koppen; twee dopjes sluiten hem af.
-			for (const end of [pts[0], pts[pts.length - 1]]) {
+			for (const end of [railPoints[0], railPoints[railPoints.length - 1]]) {
 				if (!end) continue;
 				const cap = new THREE.Mesh(capGeo, railMat);
-				cap.position.set(bar.position.x, end[1], end[0]);
+				cap.position.set(bar.position.x, end.y, end.z);
 				cap.scale.x = 1.4;
 				g.add(cap);
 			}
@@ -926,16 +851,16 @@ export class MallBuilder {
 			new THREE.PlaneGeometry(signW, (signW * sh) / sw),
 			this.track(new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false })),
 		);
-		const signZ = z0 - dir * ESC.apron;
-		sign.position.set(x, gantryH - (signW * sh) / sw / 2 - 0.06, signZ);
+		const signZ = z0 - dir * apron;
+		sign.position.set(x, gantryH - half((signW * sh) / sw) - 0.06, signZ);
 		g.add(sign);
 		for (const side of [-1, 1] as const) {
 			const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, gantryH, 8), steelMat);
-			post.position.set(x + side * (signW / 2 + 0.05), gantryH / 2, signZ);
+			post.position.set(x + side * (half(signW) + 0.05), half(gantryH), signZ);
 			g.add(post);
 		}
 
-		this.addHoleRails(g, { x, cz: ESC.holeCz, halfW: ESC.holeHalfW, halfD: ESC.holeHalfD, dir }, glassMat, steelMat);
+		this.addHoleRails(g, opening, dir, glassMat, steelMat);
 
 		this.group.add(g);
 	}
@@ -948,37 +873,39 @@ export class MallBuilder {
 	 */
 	private addHoleRails(
 		g: THREE.Group,
-		o: { x: number; cz: number; halfW: number; halfD: number; dir: number },
+		opening: OpeningDef,
+		direction: number,
 		glassMat: THREE.Material,
 		railMat: THREE.Material,
 	): void {
 		const GLASS_H = 0.95;
 		const T = 0.03;
+		const { center, size } = opening;
 		// Net buiten de gatrand, anders staat het hek op lucht.
-		const dx = o.halfW + 0.12;
-		const nearZ = o.cz - o.dir * (o.halfD + 0.12);
+		const sideX = half(size.width) + 0.12;
+		const nearZ = center.z - direction * (half(size.depth) + 0.12);
 		const panel = (px: number, pz: number, pw: number, pd: number) => {
 			const glass = new THREE.Mesh(new THREE.BoxGeometry(pw, GLASS_H, pd), glassMat);
-			glass.position.set(px, FLOOR_H + GLASS_H / 2, pz);
+			glass.position.set(px, FLOOR_H + half(GLASS_H), pz);
 			g.add(glass);
 			const rail = new THREE.Mesh(new THREE.BoxGeometry(pw + 0.04, 0.07, pd + 0.04), railMat);
 			rail.position.set(px, FLOOR_H + GLASS_H, pz);
 			g.add(rail);
 		};
 		for (const side of [-1, 1] as const) {
-			panel(o.x + side * dx, o.cz, T, o.halfD * 2 + 0.24);
+			panel(center.x + side * sideX, center.z, T, size.depth + 0.24);
 		}
-		panel(o.x, nearZ, dx * 2, T);
+		panel(center.x, nearZ, sideX * 2, T);
 	}
 
 	/** Zet elke trede op de huidige fase. u = 0 is de gebouwde stand. */
 	private placeEscalatorSteps(): void {
-		const dir = ESC.zTop < ESC.zBottom ? -1 : 1;
-		const stepDepth = Math.abs(ESC.zTop - ESC.zBottom) / ESC.steps;
-		const stepRise = FLOOR_H / ESC.steps;
+		const dir = ESCALATOR.zTop < ESCALATOR.zBottom ? -1 : 1;
+		const stepDepth = Math.abs(ESCALATOR.zTop - ESCALATOR.zBottom) / ESCALATOR.steps;
+		const stepRise = FLOOR_H / ESCALATOR.steps;
 		for (const s of this.escSteps) {
 			const k = s.index + 0.5 + this.escPhase;
-			s.node.position.z = ESC.zBottom + dir * k * stepDepth;
+			s.node.position.z = ESCALATOR.zBottom + dir * k * stepDepth;
 			// Onder- en bovenaan afgekapt: dat is precies het vlakke stuk waar een
 			// echte roltrap zijn treden onder de kamplaat in laat lopen.
 			const y = k * stepRise;
@@ -1025,10 +952,7 @@ export class MallBuilder {
 	private buildStairFlight(): void {
 		const g = new THREE.Group();
 		g.name = 'stairs';
-		// World-space build so nothing is rotated into another flight
-		const opts = STAIR;
-		const z0 = opts.zBottom;
-		const z1 = opts.zTop;
+		const { x, zBottom: z0, zTop: z1, width, opening } = STAIRS;
 		const run = Math.abs(z1 - z0);
 		const dir = z1 < z0 ? -1 : 1;
 		const steps = 14;
@@ -1048,13 +972,13 @@ export class MallBuilder {
 		const railMat = this.track(lit({ color: 0xb0bec5, metalness: 0.7, roughness: 0.3 }));
 
 		// Bottom landing
-		const land0 = new THREE.Mesh(new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.4), metal);
-		land0.position.set(opts.x, 0.06, z0 - dir * 0.5);
+		const land0 = new THREE.Mesh(new THREE.BoxGeometry(width + 0.6, 0.12, 1.4), metal);
+		land0.position.set(x, 0.06, z0 - dir * 0.5);
 		g.add(land0);
 
 		// Top landing (sits in floor-1 hole)
-		const land1 = new THREE.Mesh(new THREE.BoxGeometry(opts.width + 0.6, 0.12, 1.5), metal);
-		land1.position.set(opts.x, FLOOR_H + 0.06, z1 + dir * 0.35);
+		const land1 = new THREE.Mesh(new THREE.BoxGeometry(width + 0.6, 0.12, 1.5), metal);
+		land1.position.set(x, FLOOR_H + 0.06, z1 + dir * 0.35);
 		g.add(land1);
 
 		// Discrete steps — each tread only occupies its own band (no cross)
@@ -1063,17 +987,17 @@ export class MallBuilder {
 		for (let i = 0; i < steps; i++) {
 			const z = z0 + dir * (i + 0.5) * stepDepth;
 			const y = (i + 1) * stepRise;
-			const step = new THREE.Mesh(new THREE.BoxGeometry(opts.width, 0.12, stepDepth * 0.92), tread);
-			step.position.set(opts.x, y - 0.06, z);
+			const step = new THREE.Mesh(new THREE.BoxGeometry(width, 0.12, stepDepth * 0.92), tread);
+			step.position.set(x, y - 0.06, z);
 			g.add(step);
 			// riser
-			const riser = new THREE.Mesh(new THREE.BoxGeometry(opts.width, stepRise * 0.95, 0.06), metal);
-			riser.position.set(opts.x, y - stepRise * 0.5, z - dir * stepDepth * 0.45);
+			const riser = new THREE.Mesh(new THREE.BoxGeometry(width, stepRise * 0.95, 0.06), metal);
+			riser.position.set(x, y - half(stepRise), z - dir * stepDepth * 0.45);
 			g.add(riser);
 		}
 
 		// Side stringers (thin vertical boards, NOT a diagonal beam that looks like a cross)
-		for (const sx of [opts.x - opts.width / 2 - 0.06, opts.x + opts.width / 2 + 0.06]) {
+		for (const sx of [x - half(width) - 0.06, x + half(width) + 0.06]) {
 			for (let i = 0; i < steps; i++) {
 				const z = z0 + dir * (i + 0.5) * stepDepth;
 				const y = (i + 0.5) * stepRise;
@@ -1116,7 +1040,7 @@ export class MallBuilder {
 			new THREE.PlaneGeometry(1.9, 0.48),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		sign.position.set(opts.x, 1.6, z0 - dir * 0.2);
+		sign.position.set(x, 1.6, z0 - dir * 0.2);
 		g.add(sign);
 
 		// Hekje langs het gat in de vloerplaat, buiten de halve gatbreedte.
@@ -1130,7 +1054,7 @@ export class MallBuilder {
 				side: THREE.DoubleSide,
 			}),
 		);
-		this.addHoleRails(g, { x: opts.x, cz: opts.holeCz, halfW: opts.holeHalfW, halfD: opts.holeHalfD, dir }, glassMat, railMat);
+		this.addHoleRails(g, opening, dir, glassMat, railMat);
 
 		this.group.add(g);
 	}
@@ -1144,16 +1068,13 @@ export class MallBuilder {
 	}
 
 	private buildStorePod(store: StoreDef): THREE.Group {
+		const { id, x, z, level: storeLevel, rotation, width, depth, color, accent, hero, name } = store;
 		const g = new THREE.Group();
-		g.name = `store_${store.id}`;
-		g.position.set(store.x, levelY(store.level), store.z);
-		g.rotation.y = store.rotation;
+		g.name = `store_${id}`;
+		g.position.set(x, levelY(storeLevel), z);
+		g.rotation.y = rotation;
 
-		const w = store.width;
-		const d = store.depth;
-		const h = 4.2;
-
-		const bodyColor = new THREE.Color(store.color);
+		const bodyColor = new THREE.Color(color);
 		bodyColor.offsetHSL(0, 0, 0.1);
 		const wallMat = this.track(
 			lit({
@@ -1169,62 +1090,77 @@ export class MallBuilder {
 		 * Thin walls ONLY on back + left + right — NOTHING in the middle.
 		 */
 		const wallT = 0.18;
-		const roomDepth = d * 0.92;
+		const roomDepth = depth * SHOP_ROOM_DEPTH_FACTOR;
 		const backZ = -roomDepth;
 
 		// Floor of shop (visible mat)
-		const floor = new THREE.Mesh(
-			new THREE.BoxGeometry(w - 0.2, 0.06, roomDepth),
-			this.track(lit({ color: 0xe8dcc8, roughness: 0.85 })),
-		);
-		floor.position.set(0, 0.03, -roomDepth / 2);
-		g.add(floor);
+		addBoxMesh(g, this.track(lit({ color: 0xe8dcc8, roughness: 0.85 })), {
+			name: `${id}-floor`,
+			width: width - 0.2,
+			height: 0.06,
+			depth: roomDepth,
+			position: { x: 0, y: 0.03, z: -half(roomDepth) },
+		});
 
 		// BACK wall only (thin slab at rear)
-		const backWall = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), wallMat);
-		backWall.position.set(0, h / 2, backZ);
-		backWall.castShadow = true;
-		g.add(backWall);
+		addBoxMesh(g, wallMat, {
+			name: `${id}-back-wall`,
+			width,
+			height: SHOP_HEIGHT,
+			depth: wallT,
+			position: { x: 0, y: half(SHOP_HEIGHT), z: backZ },
+			castShadow: true,
+		});
 
 		// LEFT / RIGHT walls (thin, full depth — open storefront)
-		for (const sx of [-w / 2 + wallT / 2, w / 2 - wallT / 2]) {
-			const side = new THREE.Mesh(new THREE.BoxGeometry(wallT, h, roomDepth), wallMat);
-			side.position.set(sx, h / 2, -roomDepth / 2);
-			g.add(side);
+		for (const sideX of [-half(width) + half(wallT), half(width) - half(wallT)]) {
+			addBoxMesh(g, wallMat, {
+				name: `${id}-side-wall`,
+				width: wallT,
+				height: SHOP_HEIGHT,
+				depth: roomDepth,
+				position: { x: sideX, y: half(SHOP_HEIGHT), z: -half(roomDepth) },
+			});
 		}
 
 		// Thin ceiling so it reads as a room
-		const ceil = new THREE.Mesh(
-			new THREE.BoxGeometry(w - 0.1, 0.1, roomDepth),
-			this.track(lit({ color: 0xf5f0e8, roughness: 0.9 })),
-		);
-		ceil.position.set(0, h - 0.05, -roomDepth / 2);
-		g.add(ceil);
+		addBoxMesh(g, this.track(lit({ color: 0xf5f0e8, roughness: 0.9 })), {
+			name: `${id}-ceiling`,
+			width: width - 0.1,
+			height: 0.1,
+			depth: roomDepth,
+			position: { x: 0, y: SHOP_HEIGHT - 0.05, z: -half(roomDepth) },
+		});
 
 		// Interior paint on back wall (facing into shop = +Z)
-		const interior = new THREE.Mesh(
-			new THREE.PlaneGeometry(w - 0.4, h - 0.6),
+		addPlaneMesh(
+			g,
 			this.track(
 				lit({
-					color: new THREE.Color(store.accent).lerp(new THREE.Color(0xfff8f0), 0.5),
+					color: new THREE.Color(accent).lerp(new THREE.Color(0xfff8f0), 0.5),
 					roughness: 0.75,
-					emissive: new THREE.Color(store.accent),
+					emissive: new THREE.Color(accent),
 					emissiveIntensity: 0.1,
 					side: THREE.DoubleSide,
 				}),
 			),
+			{
+				name: `${id}-interior`,
+				width: width - 0.4,
+				height: SHOP_HEIGHT - 0.6,
+				position: { x: 0, y: half(SHOP_HEIGHT), z: backZ + half(wallT) + 0.02 },
+			},
 		);
-		interior.position.set(0, h / 2, backZ + wallT / 2 + 0.02);
-		g.add(interior);
 
 		// Counter + 5 guys on the floor (owner + 4 staff)
-		const counterW = Math.min(w * 0.78, 5.2);
-		const counter = new THREE.Mesh(
-			new THREE.BoxGeometry(counterW, 0.85, 0.5),
-			this.track(lit({ color: 0x5d4037, roughness: 0.7 })),
-		);
-		counter.position.set(0, 0.42, -roomDepth * 0.55);
-		g.add(counter);
+		const counterW = Math.min(width * 0.78, 5.2);
+		addBoxMesh(g, this.track(lit({ color: 0x5d4037, roughness: 0.7 })), {
+			name: `${id}-counter`,
+			width: counterW,
+			height: 0.85,
+			depth: 0.5,
+			position: { x: 0, y: 0.42, z: -roomDepth * 0.55 },
+		});
 
 		const crew = 5;
 		const span = Math.min(counterW * 0.88, 4.6);
@@ -1247,61 +1183,51 @@ export class MallBuilder {
 		octx.textBaseline = 'middle';
 		octx.fillText('OPEN', 128, 48);
 		const openTex = labelTexture(openCanvas);
-		const openSign = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.2, 0.45),
-			this.track(new THREE.MeshBasicMaterial({ map: openTex, toneMapped: false })),
-		);
-		openSign.position.set(w * 0.32, h - 1.3, 0.08);
-		g.add(openSign);
+		addPlaneMesh(g, this.track(new THREE.MeshBasicMaterial({ map: openTex, toneMapped: false })), {
+			name: `${id}-open-sign`,
+			width: 1.2,
+			height: 0.45,
+			position: { x: width * 0.32, y: SHOP_HEIGHT - 1.3, z: 0.08 },
+		});
 
 		// Bright interior lights so stock + keeper pop
 		// GEEN PointLights per winkel meer: 19 winkels × 2 lampen = ~38 lichten,
 		// en bij forward rendering rekent élk object met ál die lichten mee — dat
 		// was de grootste framekiller. Een emissive plafondpaneel leest hetzelfde.
-		const lightPanel = new THREE.Mesh(
-			new THREE.PlaneGeometry(w * 0.6, roomDepth * 0.5),
-			this.track(new THREE.MeshBasicMaterial({ color: 0xfff4e0, toneMapped: false })),
-		);
-		lightPanel.rotation.x = Math.PI / 2;
-		lightPanel.position.set(0, h - 0.15, -roomDepth * 0.4);
-		g.add(lightPanel);
+		addPlaneMesh(g, this.track(new THREE.MeshBasicMaterial({ color: 0xfff4e0, toneMapped: false })), {
+			name: `${id}-light-panel`,
+			width: width * 0.6,
+			height: half(roomDepth),
+			position: { x: 0, y: SHOP_HEIGHT - 0.15, z: -roomDepth * 0.4 },
+			rotation: { x: Math.PI / 2, y: 0, z: 0 },
+		});
 
 		// Sign board — bright MeshBasic so names always readable
-		const lines = store.name.split('\n');
+		const lines = name.split('\n');
 		const signTex = makeTextTexture(lines, {
-			bg: store.color,
-			fg: store.accent,
-			accent: store.hero ? store.accent : undefined,
-			fontSize: store.hero ? 72 : 56,
+			bg: color,
+			fg: accent,
+			accent: hero ? accent : undefined,
+			fontSize: hero ? 72 : 56,
 			w: 512,
-			h: store.hero ? 220 : 180,
+			h: hero ? 220 : 180,
 		});
-		const signH = store.hero ? 1.3 : 0.9;
-		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(w * 0.85, signH),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: signTex,
-					toneMapped: false,
-				}),
-			),
-		);
-		sign.position.set(0, h - 0.3, 0.12);
-		g.add(sign);
+		const signH = hero ? 1.3 : 0.9;
+		addPlaneMesh(g, this.track(new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false })), {
+			name: `${id}-sign`,
+			width: width * 0.85,
+			height: signH,
+			position: { x: 0, y: SHOP_HEIGHT - 0.3, z: 0.12 },
+		});
 
 		// Accent strip under sign (solid color, NO emissive — flicker source)
-		const strip = new THREE.Mesh(
-			new THREE.BoxGeometry(w * 0.9, 0.08, 0.06),
-			this.track(
-				lit({
-					color: store.accent,
-					roughness: 0.5,
-					metalness: 0.1,
-				}),
-			),
-		);
-		strip.position.set(0, h - 0.95, 0.12);
-		g.add(strip);
+		addBoxMesh(g, this.track(lit({ color: accent, roughness: 0.5, metalness: 0.1 })), {
+			name: `${id}-accent-strip`,
+			width: width * 0.9,
+			height: 0.08,
+			depth: 0.06,
+			position: { x: 0, y: SHOP_HEIGHT - 0.95, z: 0.12 },
+		});
 
 		// Pillars
 		const pillarMat = this.track(
@@ -1311,14 +1237,18 @@ export class MallBuilder {
 				roughness: 0.6,
 			}),
 		);
-		for (const px of [-w / 2 + 0.2, w / 2 - 0.2]) {
-			const p = new THREE.Mesh(new THREE.BoxGeometry(0.25, h, 0.25), pillarMat);
-			p.position.set(px, h / 2, 0);
-			g.add(p);
+		for (const pillarX of [-half(width) + 0.2, half(width) - 0.2]) {
+			addBoxMesh(g, pillarMat, {
+				name: `${id}-front-pillar`,
+				width: 0.25,
+				height: SHOP_HEIGHT,
+				depth: 0.25,
+				position: { x: pillarX, y: half(SHOP_HEIGHT), z: 0 },
+			});
 		}
 
 		// Hero extras for Kruidvat (matte green cross — still the joke destination)
-		if (store.hero) {
+		if (hero) {
 			const crossMat = this.track(
 				lit({
 					color: 0x00a651,
@@ -1326,11 +1256,9 @@ export class MallBuilder {
 					metalness: 0.1,
 				}),
 			);
-			const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.4, 0.15), crossMat);
-			const crossH = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.35, 0.15), crossMat);
-			crossV.position.set(-w / 2 + 1.2, h - 1.8, 0.2);
-			crossH.position.copy(crossV.position);
-			g.add(crossV, crossH);
+			const crossPosition = { x: -half(width) + 1.2, y: SHOP_HEIGHT - 1.8, z: 0.2 };
+			addBoxMesh(g, crossMat, { name: `${id}-cross-vertical`, width: 0.35, height: 1.4, depth: 0.15, position: crossPosition });
+			addBoxMesh(g, crossMat, { name: `${id}-cross-horizontal`, width: 1.1, height: 0.35, depth: 0.15, position: crossPosition });
 		}
 
 		return g;
@@ -1533,54 +1461,51 @@ export class MallBuilder {
 			}),
 		);
 
-		const aw = 16;
-		const ad = 12;
-		// Atrium edge railings on floor 1
-		const edges: [number, number, number, number, number][] = [
-			// x, z, w, rotY, along axis length
-			[0, -ad / 2, aw, 0, aw],
-			[0, ad / 2, aw, 0, aw],
-			[-aw / 2, 0, ad, Math.PI / 2, ad],
-			[aw / 2, 0, ad, Math.PI / 2, ad],
-		];
-
-		for (const [x, z, len] of [
-			[0, -ad / 2, aw],
-			[0, ad / 2, aw],
+		for (const run of [
+			{
+				name: 'north',
+				axis: 'x',
+				length: ATRIUM_VOID.width,
+				position: { x: 0, z: -half(ATRIUM_VOID.depth) },
+			},
+			{
+				name: 'south',
+				axis: 'x',
+				length: ATRIUM_VOID.width,
+				position: { x: 0, z: half(ATRIUM_VOID.depth) },
+			},
+			{
+				name: 'west',
+				axis: 'z',
+				length: ATRIUM_VOID.depth,
+				position: { x: -half(ATRIUM_VOID.width), z: 0 },
+			},
+			{
+				name: 'east',
+				axis: 'z',
+				length: ATRIUM_VOID.depth,
+				position: { x: half(ATRIUM_VOID.width), z: 0 },
+			},
 		] as const) {
-			const glass = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.1), glassMat);
-			glass.position.set(x, FLOOR_H + 0.55, z);
-			this.group.add(glass);
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.05, 0.05), railMat);
-			rail.position.set(x, FLOOR_H + 1.1, z);
-			this.group.add(rail);
+			const alongZ = run.axis === 'z';
+			addPlaneMesh(this.group, glassMat, {
+				name: `atrium-glass-${run.name}`,
+				width: run.length,
+				height: 1.1,
+				position: { ...run.position, y: FLOOR_H + 0.55 },
+				rotation: { x: 0, y: alongZ ? Math.PI / 2 : 0, z: 0 },
+			});
+			addBoxMesh(this.group, railMat, {
+				name: `atrium-rail-${run.name}`,
+				width: alongZ ? 0.05 : run.length,
+				height: 0.05,
+				depth: alongZ ? run.length : 0.05,
+				position: { ...run.position, y: FLOOR_H + 1.1 },
+			});
 		}
-		for (const [x, z, len] of [
-			[-aw / 2, 0, ad],
-			[aw / 2, 0, ad],
-		] as const) {
-			const glass = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.1), glassMat);
-			glass.rotation.y = Math.PI / 2;
-			glass.position.set(x, FLOOR_H + 0.55, z);
-			this.group.add(glass);
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, len), railMat);
-			rail.position.set(x, FLOOR_H + 1.1, z);
-			this.group.add(rail);
-		}
-		void edges;
 	}
 
 	private buildCeilingLights(): void {
-		const positions: [number, number, number][] = [];
-		for (let x = -28; x <= 28; x += 8) {
-			for (let z = -16; z <= 16; z += 8) {
-				// skip atrium hole-ish
-				if (Math.abs(x) < 10 && Math.abs(z) < 8) continue;
-				positions.push([x, FLOOR_H * 2 + 1.2, z]);
-				positions.push([x, FLOOR_H - 0.3, z]);
-			}
-		}
-
 		// Fluorescent panels (matte, no emissive strobe)
 		const bulbMat = this.track(
 			lit({
@@ -1589,10 +1514,23 @@ export class MallBuilder {
 			}),
 		);
 
-		for (const [x, y, z] of positions) {
-			const bulb = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.4), bulbMat);
-			bulb.position.set(x, y, z);
-			this.group.add(bulb);
+		const decks = [
+			{ name: 'v0', y: FLOOR_H - 0.3 },
+			{ name: 'v1', y: FLOOR_H * 2 + 1.2 },
+		] as const;
+		for (let x = -28; x <= 28; x += 8) {
+			for (let z = -16; z <= 16; z += 8) {
+				if (Math.abs(x) < 10 && Math.abs(z) < 8) continue;
+				for (const deck of decks) {
+					addBoxMesh(this.group, bulbMat, {
+						name: `ceiling-light-${deck.name}`,
+						width: 1.2,
+						height: 0.08,
+						depth: 0.4,
+						position: { x, y: deck.y, z },
+					});
+				}
+			}
 		}
 	}
 }

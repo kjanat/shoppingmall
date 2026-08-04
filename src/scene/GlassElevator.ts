@@ -5,6 +5,7 @@ import { ELEVATOR_SHAFT_WALLS, ELEVATOR_SPEC } from '#/data/world';
 import { EYE } from '#/player/constants';
 import type { LightPool } from '#/render/LightPool';
 import { type LitMaterial, lit } from '#/render/material';
+import { addXZRectangleHole, xzRectangleShape } from '#/render/xzShape';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { clamp, half, midpoint } from '#/util/math';
 import { pick } from '#/util/rand';
@@ -19,8 +20,6 @@ const CABIN_W = ELEVATOR_SPEC.cabin.width;
 const CABIN_D = ELEVATOR_SPEC.cabin.depth;
 const SPEED = ELEVATOR_SPEC.speed;
 
-/** Halve breedte van het plein op dak en garage, rond het hart van de schacht. */
-const PAD_HALF = ELEVATOR_SPEC.padHalf;
 /** Speling tussen de cabine en de rand van het schachtgat in dat plein. */
 const SHAFT_GAP = ELEVATOR_SPEC.shaftGap;
 
@@ -30,26 +29,16 @@ const SHAFT_GAP = ELEVATOR_SPEC.shaftGap;
  * plaats van dat de cabine er weer doorheen begint te snijden.
  */
 function padWithShaftHole(): THREE.ExtrudeGeometry {
-	const shape = new THREE.Shape();
-	shape.moveTo(-PAD_HALF, -PAD_HALF);
-	shape.lineTo(PAD_HALF, -PAD_HALF);
-	shape.lineTo(PAD_HALF, PAD_HALF);
-	shape.lineTo(-PAD_HALF, PAD_HALF);
-	shape.closePath();
-	const hx = half(CABIN_W) + SHAFT_GAP;
-	const hz = half(CABIN_D) + SHAFT_GAP;
-	const hole = new THREE.Path();
-	hole.moveTo(-hx, -hz);
-	hole.lineTo(hx, -hz);
-	hole.lineTo(hx, hz);
-	hole.lineTo(-hx, hz);
-	hole.closePath();
-	shape.holes.push(hole);
-	const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.12, bevelEnabled: false });
+	const shape = xzRectangleShape({ center: { x: 0, z: 0 }, size: ELEVATOR_SPEC.landingPad });
+	addXZRectangleHole(shape, {
+		center: { x: 0, z: 0 },
+		size: { width: CABIN_W + SHAFT_GAP * 2, depth: CABIN_D + SHAFT_GAP * 2 },
+	});
+	const geo = new THREE.ExtrudeGeometry(shape, { depth: ELEVATOR_SPEC.landingPad.thickness, bevelEnabled: false });
 	// Extrusie gaat +Z; leg hem plat en zet de bovenkant op y 0.
 	geo.rotateX(-Math.PI / 2);
 	// Zelfde dikte en zelfde loopvlak als de Box die hij vervangt.
-	geo.translate(0, -0.06, 0);
+	geo.translate(0, -half(ELEVATOR_SPEC.landingPad.thickness), 0);
 	return geo;
 }
 

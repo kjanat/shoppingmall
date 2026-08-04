@@ -4,6 +4,8 @@ import { levelY } from '#/data/levels';
 import { ELEVATOR_OPENING_P1, PARKING_EXIT_RAMP } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
+import { addBoxMesh } from '#/render/meshFactory';
+import { addXZRectangleHole, xzRectangleShape } from '#/render/xzShape';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half, midpoint } from '#/util/math';
 import { at } from '#/util/rand';
@@ -43,22 +45,8 @@ export class ParkingGarage {
 		const concrete = this.track(lit({ color: 0x5a5a5a, roughness: 0.95 }));
 		const dark = this.track(lit({ color: 0x37474f, roughness: 0.9 }));
 		// Deck floor
-		const floorShape = new THREE.Shape();
-		floorShape.moveTo(-half(PARKING_FOOTPRINT.width), -half(PARKING_FOOTPRINT.depth));
-		floorShape.lineTo(half(PARKING_FOOTPRINT.width), -half(PARKING_FOOTPRINT.depth));
-		floorShape.lineTo(half(PARKING_FOOTPRINT.width), half(PARKING_FOOTPRINT.depth));
-		floorShape.lineTo(-half(PARKING_FOOTPRINT.width), half(PARKING_FOOTPRINT.depth));
-		floorShape.closePath();
-		const shaft = new THREE.Path();
-		const halfShaftWidth = ELEVATOR_OPENING_P1.size.width / 2;
-		const halfShaftDepth = ELEVATOR_OPENING_P1.size.depth / 2;
-		const shaftShapeZ = -ELEVATOR_OPENING_P1.center.z;
-		shaft.moveTo(ELEVATOR_OPENING_P1.center.x - halfShaftWidth, shaftShapeZ - halfShaftDepth);
-		shaft.lineTo(ELEVATOR_OPENING_P1.center.x + halfShaftWidth, shaftShapeZ - halfShaftDepth);
-		shaft.lineTo(ELEVATOR_OPENING_P1.center.x + halfShaftWidth, shaftShapeZ + halfShaftDepth);
-		shaft.lineTo(ELEVATOR_OPENING_P1.center.x - halfShaftWidth, shaftShapeZ + halfShaftDepth);
-		shaft.closePath();
-		floorShape.holes.push(shaft);
+		const floorShape = xzRectangleShape({ center: { x: 0, z: 0 }, size: PARKING_FOOTPRINT });
+		addXZRectangleHole(floorShape, ELEVATOR_OPENING_P1);
 		const floorGeometry = new THREE.ExtrudeGeometry(floorShape, { depth: 0.25, bevelEnabled: false });
 		floorGeometry.rotateX(-Math.PI / 2);
 		const floor = new THREE.Mesh(floorGeometry, concrete);
@@ -73,22 +61,44 @@ export class ParkingGarage {
 
 		// Perimeter walls (open near elevator east + west exit ramp to city)
 		const wallH = 4.4;
-		const walls: [number, number, number, number, number, number][] = [
-			// N
-			[0, half(wallH), -half(PARKING_FOOTPRINT.depth) + 0.2, PARKING_FOOTPRINT.width, wallH, 0.35],
-			// S
-			[0, half(wallH), half(PARKING_FOOTPRINT.depth) - 0.2, PARKING_FOOTPRINT.width, wallH, 0.35],
-			// W — gap around z=0 for EXIT RAMP to outdoor city
-			[-half(PARKING_FOOTPRINT.width) + 0.2, half(wallH), -14, 0.35, wallH, 14],
-			[-half(PARKING_FOOTPRINT.width) + 0.2, half(wallH), 14, 0.35, wallH, 14],
-			// E (gap for elevator shaft around z=-8)
-			[half(PARKING_FOOTPRINT.width) - 0.2, half(wallH), -14, 0.35, wallH, 14],
-			[half(PARKING_FOOTPRINT.width) - 0.2, half(wallH), 10, 0.35, wallH, 20],
-		];
-		for (const [x, y, z, w, h, d] of walls) {
-			const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), dark);
-			m.position.set(x, y, z);
-			this.group.add(m);
+		for (const wall of [
+			{
+				name: 'parking-wall-north',
+				width: PARKING_FOOTPRINT.width,
+				height: wallH,
+				depth: 0.35,
+				position: { x: 0, y: half(wallH), z: -half(PARKING_FOOTPRINT.depth) + 0.2 },
+			},
+			{
+				name: 'parking-wall-south',
+				width: PARKING_FOOTPRINT.width,
+				height: wallH,
+				depth: 0.35,
+				position: { x: 0, y: half(wallH), z: half(PARKING_FOOTPRINT.depth) - 0.2 },
+			},
+			...[-14, 14].map((z, index) => ({
+				name: `parking-wall-west-${index}`,
+				width: 0.35,
+				height: wallH,
+				depth: 14,
+				position: { x: -half(PARKING_FOOTPRINT.width) + 0.2, y: half(wallH), z },
+			})),
+			{
+				name: 'parking-wall-east-north',
+				width: 0.35,
+				height: wallH,
+				depth: 14,
+				position: { x: half(PARKING_FOOTPRINT.width) - 0.2, y: half(wallH), z: -14 },
+			},
+			{
+				name: 'parking-wall-east-south',
+				width: 0.35,
+				height: wallH,
+				depth: 20,
+				position: { x: half(PARKING_FOOTPRINT.width) - 0.2, y: half(wallH), z: 10 },
+			},
+		]) {
+			addBoxMesh(this.group, dark, wall);
 		}
 
 		// ── West exit ramp → outdoor city (local y 0 = world GARAGE_Y) ──
@@ -97,26 +107,27 @@ export class ParkingGarage {
 
 	/** Ramp from P1 deck up to street level, heading west out of the mall */
 	private buildExitRamp(concrete: THREE.Material, dark: THREE.Material): void {
-		const start = PARKING_EXIT_RAMP.start;
-		const end = PARKING_EXIT_RAMP.end;
-		const localStartY = start.y - GARAGE_Y;
-		const localEndY = end.y - GARAGE_Y;
-		const run = Math.abs(end.x - start.x);
+		const { start, end, width, thickness, guardHeight } = PARKING_EXIT_RAMP;
+		const { x: startX, y: startY } = start;
+		const { x: endX, y: endY } = end;
+		const localStartY = startY - GARAGE_Y;
+		const localEndY = endY - GARAGE_Y;
+		const run = Math.abs(endX - startX);
 		const rise = localEndY - localStartY;
 		const length = Math.hypot(run, rise);
 		const angle = -Math.atan2(rise, run);
-		const centerX = midpoint(start.x, end.x);
+		const centerX = midpoint(startX, endX);
 		const surfaceCenterY = midpoint(localStartY, localEndY);
-		const slabNormalOffset = PARKING_EXIT_RAMP.thickness / 2;
-		const slab = new THREE.Mesh(new THREE.BoxGeometry(length, PARKING_EXIT_RAMP.thickness, PARKING_EXIT_RAMP.width), concrete);
+		const slabNormalOffset = half(thickness);
+		const slab = new THREE.Mesh(new THREE.BoxGeometry(length, thickness, width), concrete);
 		slab.position.set(centerX + Math.sin(angle) * slabNormalOffset, surfaceCenterY - Math.cos(angle) * slabNormalOffset, 0);
 		slab.rotation.z = angle;
 		slab.receiveShadow = true;
 		this.group.add(slab);
 
-		const railOffset = PARKING_EXIT_RAMP.guardHeight / 2;
-		for (const sideZ of [-PARKING_EXIT_RAMP.width / 2 - 0.15, PARKING_EXIT_RAMP.width / 2 + 0.15]) {
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(length, PARKING_EXIT_RAMP.guardHeight, 0.12), dark);
+		const railOffset = half(guardHeight);
+		for (const sideZ of [-half(width) - 0.15, half(width) + 0.15]) {
+			const rail = new THREE.Mesh(new THREE.BoxGeometry(length, guardHeight, 0.12), dark);
 			rail.position.set(centerX - Math.sin(angle) * railOffset, surfaceCenterY + Math.cos(angle) * railOffset, sideZ);
 			rail.rotation.z = angle;
 			this.group.add(rail);

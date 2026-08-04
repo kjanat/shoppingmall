@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
 import { type LitMaterial, lit } from '#/render/material';
+import { distanceToSegment2 } from '#/util/geometry2';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { at } from '#/util/rand';
 
@@ -126,12 +127,7 @@ export function rimDistance(x: number, z: number): number {
 	for (let i = 0; i < POOL_POLYGON.length; i++) {
 		const a = at(POOL_POLYGON, i);
 		const b = at(POOL_POLYGON, i + 1);
-		const dx = b[0] - a[0];
-		const dz = b[1] - a[1];
-		const len2 = dx * dx + dz * dz;
-		const raw = len2 > 0 ? ((x - a[0]) * dx + (z - a[1]) * dz) / len2 : 0;
-		const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
-		const d = Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t));
+		const d = distanceToSegment2(x, z, a[0], a[1], b[0], b[1]);
 		if (d < best) best = d;
 	}
 	return best;

@@ -71,7 +71,7 @@ export const ELEVATOR_SPEC = {
 		topOverrun: 3,
 	},
 	shaftGap: 0.12,
-	padHalf: 2.75,
+	landingPad: { width: 5.5, depth: 5.5, thickness: 0.12 },
 	speed: 1.85,
 } as const;
 
@@ -507,21 +507,36 @@ const MALL_WALL_MIN_Y = -0.3;
 const MALL_WALL_MAX_Y = MALL_WALL_MIN_Y + MALL_WALL_HEIGHT;
 const MALL_WALL_THICKNESS = 0.4;
 
-const MALL_WALLS: readonly MallWorldEntity[] = [
-	['north', 0, -half(MALL_FOOTPRINT.depth), MALL_FOOTPRINT.width + 1, MALL_WALL_THICKNESS],
-	['south', 0, half(MALL_FOOTPRINT.depth), MALL_FOOTPRINT.width + 1, MALL_WALL_THICKNESS],
-	['west', -half(MALL_FOOTPRINT.width), 0, MALL_WALL_THICKNESS, MALL_FOOTPRINT.depth],
-	['east', half(MALL_FOOTPRINT.width), 0, MALL_WALL_THICKNESS, MALL_FOOTPRINT.depth],
-].map(([side, x, z, width, depth]) => ({
-	id: `mall-wall-${String(side)}`,
-	label: `${String(side)} mall wall`,
+export const MALL_WALL_SPECS = [
+	{
+		id: 'north',
+		position: { x: 0, y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: -half(MALL_FOOTPRINT.depth) },
+		size: { width: MALL_FOOTPRINT.width + 1, height: MALL_WALL_HEIGHT, depth: MALL_WALL_THICKNESS },
+	},
+	{
+		id: 'south',
+		position: { x: 0, y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: half(MALL_FOOTPRINT.depth) },
+		size: { width: MALL_FOOTPRINT.width + 1, height: MALL_WALL_HEIGHT, depth: MALL_WALL_THICKNESS },
+	},
+	{
+		id: 'west',
+		position: { x: -half(MALL_FOOTPRINT.width), y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: 0 },
+		size: { width: MALL_WALL_THICKNESS, height: MALL_WALL_HEIGHT, depth: MALL_FOOTPRINT.depth },
+	},
+	{
+		id: 'east',
+		position: { x: half(MALL_FOOTPRINT.width), y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: 0 },
+		size: { width: MALL_WALL_THICKNESS, height: MALL_WALL_HEIGHT, depth: MALL_FOOTPRINT.depth },
+	},
+] as const;
+
+const MALL_WALLS: readonly MallWorldEntity[] = MALL_WALL_SPECS.map(({ id, position, size }) => ({
+	id: `mall-wall-${id}`,
+	label: `${id} mall wall`,
 	category: 'wall',
 	levels: ['v0', 'v1'],
-	transform: {
-		position: { x: Number(x), y: midpoint(MALL_WALL_MIN_Y, MALL_WALL_MAX_Y), z: Number(z) },
-		rotation: ZERO_ROTATION,
-	},
-	volumes: [solidPrism('wall', rectangle(Number(x), Number(z), Number(width), Number(depth)), MALL_WALL_MIN_Y, MALL_WALL_MAX_Y)],
+	transform: { position, rotation: ZERO_ROTATION },
+	volumes: [solidPrism('wall', rectangle(position.x, position.z, size.width, size.depth), MALL_WALL_MIN_Y, MALL_WALL_MAX_Y)],
 	ports: NO_PORTS,
 	placement: structurePlacement(),
 	kinematics: { kind: 'static' },
@@ -529,7 +544,7 @@ const MALL_WALLS: readonly MallWorldEntity[] = [
 	receiver: STATIC_RECEIVER,
 	emitters: NO_EMITTERS,
 	map: map('structure', undefined, 70),
-	tags: ['wall', 'structural', String(side)],
+	tags: ['wall', 'structural', id],
 }));
 
 export const HELIPAD_DECK: MallWorldEntity = {

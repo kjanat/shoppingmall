@@ -1,4 +1,5 @@
-import { clamp01, half, midpoint } from '#/util/math';
+import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
+import { half, midpoint } from '#/util/math';
 
 export type Vec2 = Readonly<{ x: number; z: number }>;
 export type Vec3 = Readonly<{ x: number; y: number; z: number }>;
@@ -359,7 +360,7 @@ function pointInPlan(shape: PlanShape, x: number, z: number): boolean {
 		const sine = Math.sin(-shape.yaw);
 		const localX = dx * cosine - dz * sine;
 		const localZ = dx * sine + dz * cosine;
-		return Math.abs(localX) <= shape.width / 2 + EPSILON && Math.abs(localZ) <= shape.depth / 2 + EPSILON;
+		return Math.abs(localX) <= half(shape.width) + EPSILON && Math.abs(localZ) <= half(shape.depth) + EPSILON;
 	}
 	let inside = false;
 	for (let i = 0, j = shape.points.length - 1; i < shape.points.length; j = i, i++) {
@@ -413,32 +414,16 @@ function horizontalOverlap(a: SpatialGeometry, b: SpatialGeometry): boolean {
 }
 
 function flightSurfaceY(geometry: StairGeometry | RampGeometry | FlightClearanceGeometry, x: number, z: number): number {
-	const dx = geometry.end.x - geometry.start.x;
-	const dz = geometry.end.z - geometry.start.z;
-	const lengthSquared = dx * dx + dz * dz;
-	if (lengthSquared <= EPSILON) return geometry.start.y;
-	const t = clamp01(((x - geometry.start.x) * dx + (z - geometry.start.z) * dz) / lengthSquared);
+	const t = segmentParameter2(x, z, geometry.start.x, geometry.start.z, geometry.end.x, geometry.end.z);
 	return geometry.start.y + (geometry.end.y - geometry.start.y) * t;
 }
 
 function pointInFlightPlan(geometry: StairGeometry | RampGeometry, x: number, z: number): boolean {
-	const dx = geometry.end.x - geometry.start.x;
-	const dz = geometry.end.z - geometry.start.z;
-	const length = Math.hypot(dx, dz);
-	if (length <= EPSILON) return false;
-	const along = ((x - geometry.start.x) * dx + (z - geometry.start.z) * dz) / length;
-	const across = ((x - geometry.start.x) * -dz + (z - geometry.start.z) * dx) / length;
-	return along >= -EPSILON && along <= length + EPSILON && Math.abs(across) <= geometry.width / 2 + EPSILON;
+	return pointInSegmentStrip2(x, z, geometry.start.x, geometry.start.z, geometry.end.x, geometry.end.z, geometry.width, EPSILON);
 }
 
 function pointInClearancePlan(geometry: FlightClearanceGeometry, x: number, z: number): boolean {
-	const dx = geometry.end.x - geometry.start.x;
-	const dz = geometry.end.z - geometry.start.z;
-	const length = Math.hypot(dx, dz);
-	if (length <= EPSILON) return false;
-	const along = ((x - geometry.start.x) * dx + (z - geometry.start.z) * dz) / length;
-	const across = ((x - geometry.start.x) * -dz + (z - geometry.start.z) * dx) / length;
-	return along >= -EPSILON && along <= length + EPSILON && Math.abs(across) <= geometry.width / 2 + EPSILON;
+	return pointInSegmentStrip2(x, z, geometry.start.x, geometry.start.z, geometry.end.x, geometry.end.z, geometry.width, EPSILON);
 }
 
 function prismFlightOverlap(prism: PrismGeometry, flight: StairGeometry | RampGeometry): boolean {

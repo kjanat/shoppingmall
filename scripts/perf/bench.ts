@@ -23,6 +23,7 @@ import { resolve } from 'node:path';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
 import type { Sample } from './probe.ts';
+import { median } from './stats.ts';
 
 const BASELINE_DIR = resolve(import.meta.dirname, '../../.perf');
 const WIDTH = 1600;
@@ -53,12 +54,6 @@ type Run = {
 	driftFraction: number;
 	samples: number[];
 };
-
-function median(values: number[]): number {
-	if (values.length === 0) return 0;
-	const sorted = [...values].sort((a, b) => a - b);
-	return sorted[Math.floor(sorted.length / 2)] ?? 0;
-}
 
 /**
  * Least-squares slope over the samples, normalised by the median, so it reads as

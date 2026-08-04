@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { lit } from '#/render/material';
+import { distanceToSegment2 } from '#/util/geometry2';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { at } from '#/util/rand';
 
@@ -184,10 +185,7 @@ export class CityPark {
 			for (let i = 0; i < PATH.length - 1; i++) {
 				const [ax, az] = at(PATH, i);
 				const [bx, bz] = at(PATH, i + 1);
-				const dx = bx - ax;
-				const dz = bz - az;
-				const u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
-				best = Math.min(best, Math.hypot(x - (ax + dx * u), z - (az + dz * u)));
+				best = Math.min(best, distanceToSegment2(x, z, ax, az, bx, bz));
 			}
 			return best;
 		};
