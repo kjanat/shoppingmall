@@ -14,6 +14,7 @@ import { PathMesh } from '@/path/PathMesh';
 import { CollisionWorld } from '@/physics/Collision';
 import { PlayerControls } from '@/player/Controls';
 import { createComposer } from '@/post/Composer';
+import { GpuTimer } from '@/render/GpuTimer';
 import { lampCount } from '@/render/graphicsPrefs';
 import { LightPool } from '@/render/LightPool';
 import { SceneBatcher } from '@/render/SceneBatcher';
@@ -171,6 +172,8 @@ export class App {
 	private slideT = -1;
 	/** FPS-chip + het uitklapbare prestatiepaneel */
 	private perfHud: PerfOverlay | null = null;
+	/** Alleen aanwezig als het paneel meekomt: het is puur meetgereedschap. */
+	private gpuTimer: GpuTimer | null = null;
 	/** Zaallicht-schaal en de discodim lopen allebei hierlangs. */
 	private daylight!: DaylightDimmer;
 	/** Hergebruikt: getDrawingBufferSize schrijft in een doelvector, elk frame. */
@@ -521,6 +524,8 @@ export class App {
 		// in dode code staat, en dan valt alleen het aanroepen weg (1,9 KB) in
 		// plaats van het paneel zelf. Het laadt tijdens de laadscreen.
 		if (!feature('NO_PERF_HUD')) {
+			const gl = this.renderer.getContext();
+			if (gl instanceof WebGL2RenderingContext) this.gpuTimer = new GpuTimer(gl);
 			void import('@/ui/PerfOverlay').then(({ PerfOverlay }) => {
 				this.perfHud = new PerfOverlay(uiRoot);
 			});
@@ -2255,7 +2260,9 @@ export class App {
 		// de matrixWorld van elk object dat een lamp volgt is hier vers.
 		this.pool.update(this.camera);
 		const afterBatch = performance.now();
+		this.gpuTimer?.begin();
 		this.composer.render(dt);
+		this.gpuTimer?.end();
 		// Let op bij het lezen: dit is de tijd om het frame te versturen, niet om
 		// het te tekenen. De driver blokkeert hier pas als hij achterloopt, en dan
 		// loopt juist dít getal op terwijl de GPU de echte schuldige is.
@@ -2276,6 +2283,8 @@ export class App {
 				bufferHeight: buffer.height,
 				renderScale: this.dynScale,
 				cpuMs: afterRender - cpuStart,
+				gpuMs: this.gpuTimer?.ms ?? 0,
+				gpuSupported: this.gpuTimer?.supported ?? false,
 				logicMs: afterLogic - cpuStart,
 				batchMs: afterBatch - afterLogic,
 				submitMs: afterRender - afterBatch,

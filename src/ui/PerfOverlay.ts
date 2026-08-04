@@ -19,6 +19,7 @@ const ROWS: [id: string, label: string][] = [
 	['low', '1% laag'],
 	['ms', 'frametijd'],
 	['cpu', 'cpu'],
+	['gpu', 'gpu'],
 	['phases', 'logica/batch/sub'],
 	['p95', 'p95'],
 	['worst', 'slechtste'],
@@ -48,6 +49,9 @@ export type PerfFrame = {
 	renderScale: number;
 	/** Main-thread time for the whole frame callback, and its three phases. */
 	cpuMs: number;
+	/** GPU time for the render submission, from a timer query. 0 when unsupported. */
+	gpuMs: number;
+	gpuSupported: boolean;
 	logicMs: number;
 	batchMs: number;
 	submitMs: number;
@@ -240,6 +244,12 @@ export class PerfOverlay {
 		// de rem, ver eronder = de GPU (of vsync) bepaalt het tempo.
 		const cpuShare = avgMs > 0 ? Math.round((frame.cpuMs / avgMs) * 100) : 0;
 		set('cpu', `${frame.cpuMs.toFixed(1)} ms · ${cpuShare}%`);
+		// The cpu figure counts the render call, and the driver blocks in there
+		// once its queue is full, so GPU pressure shows up as CPU time. This is
+		// the number that settles it: if gpu is close to the frame time, the card
+		// is the limit however busy the main thread looks.
+		const gpuShare = avgMs > 0 ? Math.round((frame.gpuMs / avgMs) * 100) : 0;
+		set('gpu', frame.gpuSupported ? `${frame.gpuMs.toFixed(1)} ms · ${gpuShare}%` : 'n/b');
 		set('phases', `${frame.logicMs.toFixed(1)}/${frame.batchMs.toFixed(1)}/${frame.submitMs.toFixed(1)}`);
 		set('p95', `${p95.toFixed(1)} ms`);
 		set('worst', `${worst.toFixed(0)} ms`);
