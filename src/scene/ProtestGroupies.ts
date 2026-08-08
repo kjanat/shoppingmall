@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { spatial } from '#/audio/SpatialAudio';
 import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
@@ -67,30 +68,23 @@ type Protester = {
 };
 
 const SIGN_LINES: [string, string][] = [
+	['LOVE', 'WINS'],
 	['CLIMATE', 'JUSTICE'],
-	['LGBTQIA+', 'PRIDE'],
-	['LOVE', 'WINS 🌈'],
-	['NO HATE', 'ONLY HUGS'],
-	['REFUGEES', 'WELCOME'],
-	['TOFU', 'NOT WAR'],
 	['WIR SCHAFFEN', 'DAS'],
-	['Wir schaffen', 'das!'],
+	['PRIDE', ''],
+	['PEACE', ''],
+	['EQUALITY', ''],
+	['JUSTICE', ''],
+	['NO', 'BORDERS'],
 ];
 
 type FlagKind = 'progress' | 'rainbow' | 'trans' | 'bi' | 'lesbian' | 'nb' | 'pan' | 'intersex';
 
 type CrowdInstances = {
-	torsos: THREE.InstancedMesh;
-	heads: THREE.InstancedMesh;
-	hair: THREE.InstancedMesh;
-	buns: THREE.InstancedMesh;
-	eyes: THREE.InstancedMesh;
-	legs: THREE.InstancedMesh;
-	arms: THREE.InstancedMesh;
-	scarves: THREE.InstancedMesh;
+	bodies: THREE.InstancedMesh;
+	faces: THREE.InstancedMesh;
 	sticks: THREE.InstancedMesh;
 	signs: THREE.InstancedMesh;
-	pins: THREE.InstancedMesh;
 };
 
 const CROWD_COUNT = 24;
@@ -536,33 +530,20 @@ export class ProtestGroupies {
 			if (index === null) continue;
 			const moving = Math.hypot(p.vx, p.vz);
 			const motion = Math.min(1, moving / Math.max(0.01, p.speed));
-			const swing = Math.sin(p.walkPhase + p.phase) * 0.55 * motion;
 			const bob = Math.abs(Math.sin(p.walkPhase + p.phase)) * 0.075 * motion;
 			const squash = p.landSquash / 0.18;
-			const width = 0.9 + (Math.sin(p.phase * 2.7) + 1) * 0.08;
-			const height = 0.92 + (Math.cos(p.phase * 1.9) + 1) * 0.07;
+			const scale = 0.95 + (Math.sin(p.phase * 2.7) + 1) * 0.06;
 			this.tempPosition.set(p.x, p.jumpY + bob, p.z);
 			this.tempRotation.set(0, p.facing, Math.sin(p.walkPhase * 0.5 + p.phase) * 0.035);
 			this.tempQuaternion.setFromEuler(this.tempRotation);
-			this.tempScale.set(width * (1 + squash * 0.08), height * (1 - squash * 0.16), 1 + squash * 0.08);
+			this.tempScale.set(scale * (1 + squash * 0.08), scale * (1 - squash * 0.16), scale * (1 + squash * 0.08));
 			this.rootMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
 
-			this.writePart(crowd.torsos, index, 0, 1.02, 0, 0, 0, 0, 1, 1, 1);
-			this.writePart(crowd.heads, index, 0, 1.58, 0.01, 0, 0, 0, 1, 0.92, 0.86);
-			this.writePart(crowd.hair, index, 0, 1.68, -0.015, 0, 0, 0, 1, 1, 1);
-			const bunScale = index % 3 === 0 ? 1 : 0;
-			this.writePart(crowd.buns, index, 0, 1.84, -0.07, 0, 0, 0, bunScale, bunScale, bunScale);
-			this.writePart(crowd.eyes, index * 2, -0.075, 1.61, 0.19, 0, 0, 0, 1, 1, 1);
-			this.writePart(crowd.eyes, index * 2 + 1, 0.075, 1.61, 0.19, 0, 0, 0, 1, 1, 1);
-			this.writePart(crowd.legs, index * 2, -0.13, 0.38, 0, swing, 0, 0, 1, 1, 1);
-			this.writePart(crowd.legs, index * 2 + 1, 0.13, 0.38, 0, -swing, 0, 0, 1, 1, 1);
-			this.writePart(crowd.arms, index * 2, -0.32, 1.1, 0.02, -swing * 0.8, 0, 0.16, 1, 1, 1);
-			this.writePart(crowd.arms, index * 2 + 1, 0.32, 1.1, 0.02, swing * 0.8, 0, -0.16, 1, 1, 1);
-			this.writePart(crowd.scarves, index, 0, 1.36, 0.075, Math.PI / 2.4, 0, 0, 1, 1, 1);
+			crowd.bodies.setMatrixAt(index, this.rootMatrix);
+			crowd.faces.setMatrixAt(index, this.rootMatrix);
 			const signTilt = Math.sin(this.t * 2.1 + p.phase) * 0.12;
-			this.writePart(crowd.sticks, index, -0.38, 1.35, 0.2, signTilt * 0.25, 0, signTilt, 1, 1, 1);
-			this.writePart(crowd.signs, index, -0.38, 1.98, 0.21, signTilt * 0.35, 0, signTilt, 1, 1, 1);
-			this.writePart(crowd.pins, index, 0.12, 1.24, 0.165, 0, 0, 0, 1, 1, 1);
+			this.writePart(crowd.sticks, index, 0, 0.53, 0.42, 0, 0, signTilt * 0.3, 1, 1, 1);
+			this.writePart(crowd.signs, index, 0, 1.34, 0.43, 0, 0.12, 0.08 + signTilt, 1, 1, 1);
 		}
 		for (const mesh of Object.values(crowd)) mesh.instanceMatrix.needsUpdate = true;
 	}
@@ -1108,11 +1089,6 @@ export class ProtestGroupies {
 	}
 
 	private buildCrowd(n: number): void {
-		const skins = [0xf5c9a8, 0xe0a878, 0xc68642, 0x8d5524, 0xffdbac];
-		const tops = [0x1565c0, 0x2e7d32, 0x6a1b9a, 0xc62828, 0xffeb3b, 0x00897b, 0xec407a, 0xffffff];
-		const hairs = [0x2c1810, 0xc4a35a, 0x111111, 0xd35400, 0xf5f5f5, 0x4a148c];
-		const pants = [0x37474f, 0x5d4037, 0x283593, 0x33691e];
-		const scarfColors = [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982];
 		const voiceKeys = [
 			'Conrad',
 			'Katja',
@@ -1136,7 +1112,7 @@ export class ProtestGroupies {
 			'Eric',
 		];
 		const crowd = this.buildCrowdInstances(n);
-		const color = new THREE.Color();
+		const protestBlue = new THREE.Color(0x3a8fd6);
 
 		for (let i = 0; i < n; i++) {
 			// A sunflower distribution fills an ellipse without a dense ring or
@@ -1148,19 +1124,9 @@ export class ProtestGroupies {
 			const bz = Math.cos(preferredAngle) * preferredRadius * 0.78;
 			const root = new THREE.Group();
 			root.position.set(bx, 0, bz);
-			crowd.torsos.setColorAt(i, color.set(at(tops, i)));
-			crowd.heads.setColorAt(i, color.set(at(skins, i)));
-			crowd.hair.setColorAt(i, color.set(at(hairs, i)));
-			crowd.buns.setColorAt(i, color.set(at(hairs, i)));
-			crowd.legs.setColorAt(i * 2, color.set(at(pants, i)));
-			crowd.legs.setColorAt(i * 2 + 1, color.set(at(pants, i)));
-			crowd.arms.setColorAt(i * 2, color.set(at(skins, i)));
-			crowd.arms.setColorAt(i * 2 + 1, color.set(at(skins, i)));
-			crowd.scarves.setColorAt(i, color.set(at(scarfColors, i)));
+			crowd.bodies.setColorAt(i, protestBlue);
 			const signTiles = crowd.signs.geometry.getAttribute('instanceTile');
-			const pinTiles = crowd.pins.geometry.getAttribute('instanceTile');
 			signTiles.setX(i, i % SIGN_LINES.length);
-			pinTiles.setX(i, (i + 2) % 8);
 
 			const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
 			const speechTex = labelTexture(sc);
@@ -1212,38 +1178,29 @@ export class ProtestGroupies {
 				voiceCd: 0,
 			});
 		}
-		for (const mesh of [crowd.torsos, crowd.heads, crowd.hair, crowd.buns, crowd.legs, crowd.arms, crowd.scarves]) {
-			if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-		}
+		if (crowd.bodies.instanceColor) crowd.bodies.instanceColor.needsUpdate = true;
 		crowd.signs.geometry.getAttribute('instanceTile').needsUpdate = true;
-		crowd.pins.geometry.getAttribute('instanceTile').needsUpdate = true;
 		this.crowdInstances = crowd;
 		this.updateCrowdInstances();
 	}
 
 	private buildCrowdInstances(count: number): CrowdInstances {
-		const coloured = (roughness: number) => this.track(lit({ color: 0xffffff, roughness }));
-		const torsos = this.makeCrowdMesh(new THREE.BoxGeometry(0.5, 0.72, 0.3), coloured(0.75), count, 'protest torsos');
-		const heads = this.makeCrowdMesh(new THREE.SphereGeometry(0.22, 6, 4), coloured(0.9), count, 'protest heads');
-		const hair = this.makeCrowdMesh(
-			new THREE.SphereGeometry(0.23, 6, 4, 0, Math.PI * 2, 0, Math.PI * 0.58),
-			coloured(0.9),
+		const bodies = this.makeCrowdMesh(
+			this.makeCrowdBodyGeometry(),
+			this.track(lit({ color: 0xffffff, roughness: 0.85, flatShading: true })),
 			count,
-			'protest hair',
+			'protest bodies',
 		);
-		const buns = this.makeCrowdMesh(new THREE.SphereGeometry(0.095, 5, 3), coloured(0.9), count, 'protest buns');
-		const eyes = this.makeCrowdMesh(
-			new THREE.BoxGeometry(0.045, 0.055, 0.025),
-			this.track(new THREE.MeshBasicMaterial({ color: 0x21140e })),
-			count * 2,
-			'protest eyes',
+		const faces = this.makeCrowdMesh(
+			this.makeCrowdFaceGeometry(),
+			this.track(new THREE.MeshBasicMaterial({ color: 0x1a1a1a })),
+			count,
+			'protest faces',
 		);
-		const legs = this.makeCrowdMesh(new THREE.BoxGeometry(0.14, 0.54, 0.16), coloured(0.85), count * 2, 'protest legs');
-		const arms = this.makeCrowdMesh(new THREE.BoxGeometry(0.12, 0.48, 0.14), coloured(0.85), count * 2, 'protest arms');
-		const scarves = this.makeCrowdMesh(new THREE.TorusGeometry(0.14, 0.03, 4, 6), coloured(0.8), count, 'protest scarves');
+		faces.castShadow = false;
 		const sticks = this.makeCrowdMesh(
-			new THREE.CylinderGeometry(0.02, 0.025, 1.15, 5),
-			this.track(lit({ color: 0x8d6e63, roughness: 0.9 })),
+			new THREE.CylinderGeometry(0.02, 0.02, 1.05, 5),
+			this.track(lit({ color: 0x5d4037, roughness: 0.9 })),
 			count,
 			'protest sign sticks',
 		);
@@ -1251,10 +1208,35 @@ export class ProtestGroupies {
 		const signGeometry = new THREE.PlaneGeometry(0.76, 0.52);
 		signGeometry.setAttribute('instanceTile', new THREE.InstancedBufferAttribute(new Float32Array(count), 1));
 		const signs = this.makeCrowdMesh(signGeometry, this.makeAtlasMaterial(this.makeSignAtlas(), 4, 2), count, 'protest signs');
-		const pinGeometry = new THREE.PlaneGeometry(0.14, 0.09);
-		pinGeometry.setAttribute('instanceTile', new THREE.InstancedBufferAttribute(new Float32Array(count), 1));
-		const pins = this.makeCrowdMesh(pinGeometry, this.makeAtlasMaterial(this.makePrideAtlas(), 4, 2), count, 'protest pins');
-		return { torsos, heads, hair, buns, eyes, legs, arms, scarves, sticks, signs, pins };
+		signs.castShadow = false;
+		return { bodies, faces, sticks, signs };
+	}
+
+	private makeCrowdBodyGeometry(): THREE.BufferGeometry {
+		const torso = new THREE.CylinderGeometry(0.28, 0.32, 0.75, 10);
+		torso.translate(0, 0.72, 0);
+		const lowerBody = new THREE.SphereGeometry(0.32, 10, 7);
+		lowerBody.translate(0, 0.36, 0);
+		const head = new THREE.SphereGeometry(0.26, 10, 7);
+		head.translate(0, 1.28, 0);
+		const raisedArm = new THREE.CylinderGeometry(0.055, 0.055, 0.4, 6);
+		raisedArm.rotateZ(-0.5);
+		raisedArm.translate(0.35, 0.95, 0.05);
+		const merged = mergeGeometries([torso, lowerBody, head, raisedArm]);
+		if (!merged) throw new Error('protester body geometry could not be merged');
+		return merged;
+	}
+
+	private makeCrowdFaceGeometry(): THREE.BufferGeometry {
+		const leftEye = new THREE.SphereGeometry(0.038, 5, 4);
+		leftEye.translate(-0.08, 1.32, 0.23);
+		const rightEye = new THREE.SphereGeometry(0.038, 5, 4);
+		rightEye.translate(0.08, 1.32, 0.23);
+		const mouth = new THREE.BoxGeometry(0.1, 0.028, 0.03);
+		mouth.translate(0, 1.18, 0.24);
+		const merged = mergeGeometries([leftEye, rightEye, mouth]);
+		if (!merged) throw new Error('protester face geometry could not be merged');
+		return merged;
 	}
 
 	private makeCrowdMesh(
@@ -1311,18 +1293,6 @@ export class ProtestGroupies {
 		return labelTexture(canvas);
 	}
 
-	private makePrideAtlas(): THREE.CanvasTexture {
-		const kinds: FlagKind[] = ['progress', 'rainbow', 'trans', 'bi', 'lesbian', 'nb', 'pan', 'intersex'];
-		const { canvas, ctx } = labelCanvas(1024, 320);
-		for (let i = 0; i < kinds.length; i++) {
-			ctx.save();
-			ctx.translate((i % 4) * 256, Math.floor(i / 4) * 160);
-			this.paintPrideFlag(ctx, at(kinds, i));
-			ctx.restore();
-		}
-		return labelTexture(canvas);
-	}
-
 	private makeSignTex(lines: [string, string], seed: number): THREE.CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(256, 176);
 		this.paintSign(ctx, lines, seed);
@@ -1330,23 +1300,28 @@ export class ProtestGroupies {
 	}
 
 	private paintSign(ctx: CanvasRenderingContext2D, lines: [string, string], seed: number): void {
-		const bgs = ['#ffffff', '#fff59d', '#e3f2fd', '#f3e5f5', '#e8f5e9'];
-		ctx.fillStyle = at(bgs, seed);
+		ctx.fillStyle = '#f8f4e8';
 		ctx.fillRect(0, 0, 256, 176);
-		ctx.strokeStyle = '#212121';
-		ctx.lineWidth = 6;
-		ctx.strokeRect(4, 4, 248, 168);
-		const cols = ['#e40303', '#ff8c00', '#ffed00', '#008026', '#24408e', '#732982'];
-		cols.forEach((col, i) => {
-			ctx.fillStyle = col;
-			ctx.fillRect(10 + i * 39, 12, 36, 10);
-		});
-		ctx.fillStyle = '#111';
+		if (seed < 3) {
+			const rainbow = ['#e40303', '#ff8c00', '#ffed00', '#008026', '#24408e', '#732982'];
+			rainbow.forEach((color, i) => {
+				ctx.fillStyle = color;
+				ctx.fillRect(0, i * 6, 256, 6);
+				ctx.fillRect(0, 170 - i * 6, 256, 6);
+			});
+		} else {
+			ctx.strokeStyle = '#222222';
+			ctx.lineWidth = 8;
+			ctx.strokeRect(4, 4, 248, 168);
+		}
+		const visibleLines = lines.filter((line) => line.length > 0);
+		ctx.fillStyle = '#111111';
+		ctx.font = 'bold 28px system-ui, sans-serif';
 		ctx.textAlign = 'center';
-		ctx.font = 'bold 30px system-ui';
-		ctx.fillText(lines[0], 128, 90);
-		ctx.font = 'bold 34px system-ui';
-		ctx.fillText(lines[1], 128, 140);
+		ctx.textBaseline = 'middle';
+		visibleLines.forEach((line, i) => {
+			ctx.fillText(line, 128, 88 - (visibleLines.length - 1) * 16 + i * 32);
+		});
 	}
 
 	private makeTextSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
