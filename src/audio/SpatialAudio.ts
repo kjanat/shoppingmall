@@ -34,6 +34,8 @@ export type PlayAtOpts = {
 	loop?: boolean;
 	/** override global binaural for this source */
 	binaural?: boolean;
+	/** Cancel an in-flight fetch when the caller's playback slot expires. */
+	signal?: AbortSignal;
 };
 
 export class SpatialAudio {
@@ -154,7 +156,7 @@ export class SpatialAudio {
 		let buffer: AudioBuffer;
 		if (typeof urlOrBuffer === 'string') {
 			try {
-				const res = await fetch(urlOrBuffer);
+				const res = await fetch(urlOrBuffer, { signal: opts.signal });
 				const ab = await res.arrayBuffer();
 				buffer = await ctx.decodeAudioData(ab.slice(0));
 			} catch {

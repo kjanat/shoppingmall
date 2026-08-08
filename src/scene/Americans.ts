@@ -121,6 +121,10 @@ type Sim = {
 	pos: THREE.Vector3;
 	/** unit direction of travel — THE VECTOR */
 	velocity: THREE.Vector3;
+	/** Visible-body footprint used for walls and last-resort overlap repair. */
+	radius: number;
+	/** Reciprocal lateral velocity assigned before movement for this frame. */
+	avoidance: THREE.Vector3;
 	path: THREE.Vector3[];
 	pathI: number;
 	wait: number;
@@ -216,9 +220,10 @@ function shopEntrance(s: StoreDef): THREE.Vector3 {
  * True mall NPCs: shop → shop routes, velocity vector, legs+feet that walk hard,
  * head plates (destination / € spent / unhappiness), occasional farts + noises.
  */
-const SIM_RADIUS = 0.55;
-/** Hard personal space — no walking through each other */
-const SIM_SEPARATE = 2.05;
+/** Distance at which reciprocal collision avoidance starts steering. */
+const SIM_COMFORT_DISTANCE = 2.05;
+const SIM_AVOIDANCE_HORIZON = 1.25;
+const SIM_MAX_LATERAL_SPEED = 1.2;
 
 const GIBBER = [
 	'Komunicare… humanos!',
@@ -274,7 +279,7 @@ export class Americans {
 		for (let i = 0; i < count; i++) {
 			const sim = this.spawn(i);
 			// snap start out of solid geometry
-			const fixed = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, SIM_RADIUS);
+			const fixed = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius);
 			sim.pos.x = fixed.x;
 			sim.pos.z = fixed.z;
 			sim.root.position.copy(sim.pos);
@@ -312,7 +317,7 @@ export class Americans {
 			sb.coupleSide = 1;
 			// Same start shop + shared path
 			sb.shopId = sa.shopId;
-			sb.pos.copy(sa.pos).add(new THREE.Vector3(0.9, 0, 0));
+			sb.pos.copy(sa.pos).add(new THREE.Vector3(sa.radius + sb.radius + 0.2, 0, 0));
 			sb.root.position.copy(sb.pos);
 			this.assignNextShop(sa);
 			// copy path to partner
@@ -584,6 +589,7 @@ export class Americans {
 			}
 		} else {
 			const viewer = this.listener ? levelAt(this.listener.y) : null;
+			this.assignCollisionAdvisories();
 			for (const s of this.sims) {
 				s.lag += dt;
 				// Voor de throttle: een zichtbare plaat moet bijwerken, ook als deze
@@ -873,13 +879,77 @@ export class Americans {
 		}
 	}
 
-	/** Static walls/stores + hard sim-sim separation (no walking through people) */
+	/**
+	 * Give every conflicting pair equal and opposite lateral velocity before they
+	 * move. The stable pair-side choice prevents two walkers from repeatedly
+	 * changing their minds while approaching each other.
+	 */
+	private assignCollisionAdvisories(): void {
+		for (const sim of this.sims) sim.avoidance.set(0, 0, 0);
+
+		for (let i = 0; i < this.sims.length; i++) {
+			for (let j = i + 1; j < this.sims.length; j++) {
+				const a = this.sims[i];
+				const b = this.sims[j];
+				if (!a || !b || Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
+
+				const rx = b.pos.x - a.pos.x;
+				const rz = b.pos.z - a.pos.z;
+				const rvx = b.velocity.x - a.velocity.x;
+				const rvz = b.velocity.z - a.velocity.z;
+				const relativeSpeedSq = rvx * rvx + rvz * rvz;
+				const closestTime =
+					relativeSpeedSq > 1e-5 ? THREE.MathUtils.clamp(-(rx * rvx + rz * rvz) / relativeSpeedSq, 0, SIM_AVOIDANCE_HORIZON) : 0;
+				const closestX = rx + rvx * closestTime;
+				const closestZ = rz + rvz * closestTime;
+				const currentDistance = Math.hypot(rx, rz);
+				const predictedDistance = Math.hypot(closestX, closestZ);
+				const physicalDistance = a.radius + b.radius;
+				const couple = a.f.partnerId === b.f.id || b.f.partnerId === a.f.id;
+				const comfortDistance = couple ? physicalDistance + 0.2 : Math.max(SIM_COMFORT_DISTANCE, physicalDistance + 0.35);
+				if (currentDistance > comfortDistance * 1.2 && predictedDistance > comfortDistance) continue;
+
+				let forwardX = a.velocity.x + b.velocity.x;
+				let forwardZ = a.velocity.z + b.velocity.z;
+				let forwardLength = Math.hypot(forwardX, forwardZ);
+				if (forwardLength < 0.05) {
+					forwardX = a.velocity.x - b.velocity.x;
+					forwardZ = a.velocity.z - b.velocity.z;
+					forwardLength = Math.hypot(forwardX, forwardZ);
+				}
+				if (forwardLength < 0.05) {
+					forwardX = rx;
+					forwardZ = rz;
+					forwardLength = currentDistance;
+				}
+				if (forwardLength < 0.05) {
+					forwardX = 1;
+					forwardZ = 0;
+					forwardLength = 1;
+				}
+
+				const side = (a.f.id * 31 + b.f.id * 17) % 2 === 0 ? 1 : -1;
+				const lateralX = (-forwardZ / forwardLength) * side;
+				const lateralZ = (forwardX / forwardLength) * side;
+				const urgency = THREE.MathUtils.clamp(1 - Math.min(currentDistance, predictedDistance) / comfortDistance, 0, 1);
+				const speed = 0.35 + urgency * 0.85;
+				a.avoidance.x += lateralX * speed;
+				a.avoidance.z += lateralZ * speed;
+				b.avoidance.x -= lateralX * speed;
+				b.avoidance.z -= lateralZ * speed;
+			}
+		}
+
+		for (const sim of this.sims) sim.avoidance.clampLength(0, SIM_MAX_LATERAL_SPEED);
+	}
+
+	/** Static walls/stores + physical overlap repair after reciprocal avoidance. */
 	private resolveAgents(): void {
 		// More passes = less clumping when a crowd packs a corridor
 		for (let pass = 0; pass < 4; pass++) {
 			for (const s of this.sims) {
 				s.pos.y = this.world.snapFloorY(s.pos.x, s.pos.z, s.pos.y);
-				const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, SIM_RADIUS);
+				const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, s.radius);
 				s.pos.x = r.x;
 				s.pos.z = r.z;
 			}
@@ -889,9 +959,7 @@ export class Americans {
 					const b = this.sims[j];
 					if (!a || !b) continue;
 					if (Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
-					const couple = a.f.partnerId === b.f.id || b.f.partnerId === a.f.id;
-					// Couples still need space — not merge into one mesh
-					const minD = couple ? 1.05 : SIM_SEPARATE;
+					const minD = a.radius + b.radius;
 					const sep = this.world.separate(a.pos.x, a.pos.z, b.pos.x, b.pos.z, minD);
 					a.pos.x = sep.ax;
 					a.pos.z = sep.az;
@@ -902,7 +970,7 @@ export class Americans {
 		}
 		for (const s of this.sims) {
 			s.pos.y = this.world.snapFloorY(s.pos.x, s.pos.z, s.pos.y);
-			const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, SIM_RADIUS);
+			const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, s.radius);
 			s.pos.x = r.x;
 			s.pos.z = r.z;
 			s.root.position.set(s.pos.x, s.pos.y, s.pos.z);
@@ -989,6 +1057,9 @@ export class Americans {
 		const scale = isKid ? 0.62 : isMiss ? 1.08 : 0.95 + thicc * 0.18;
 		const bellyR = isMiss ? 0.2 : isKid ? 0.22 : 0.34 + thicc * 0.36;
 		const legLen = isMiss ? 0.82 : isKid ? 0.42 : 0.62;
+		const torsoRadius = isMiss ? bellyR * 1.45 : bellyR * (1.2 + thicc * 0.1);
+		const armRadius = bellyR * 1.05 + 0.09;
+		const radius = Math.max(isKid ? 0.28 : 0.38, Math.max(torsoRadius, armRadius) * scale + 0.08);
 
 		const legL = this.makeLeg(f.pants, legLen, -1);
 		const legR = this.makeLeg(f.pants, legLen, 1);
@@ -1237,6 +1308,8 @@ export class Americans {
 			talkPhase: 0,
 			pos: start.clone(),
 			velocity: new THREE.Vector3(),
+			radius,
+			avoidance: new THREE.Vector3(),
 			path: [],
 			pathI: 0,
 			wait: rng() * 1.5,
@@ -1509,15 +1582,15 @@ export class Americans {
 		const dir = to.normalize();
 		const spd = f.speed * (f.mood === 'hyped' ? 1.3 : f.mood === 'hangry' ? 1.2 : f.mood === 'chill' ? 0.8 : 1);
 
-		sim.velocity.copy(dir).multiplyScalar(spd);
+		sim.velocity.set(dir.x * spd + sim.avoidance.x, 0, dir.z * spd + sim.avoidance.z).clampLength(0, spd);
 		const prevX = sim.pos.x;
 		const prevZ = sim.pos.z;
 		// Never step past the waypoint. An off-level sim spends up to four frames
 		// of dt in one call, and at the 0.05 s dt ceiling that is further than the
 		// 0.4 m retire radius: it would stride over the node, turn, stride back.
-		const advance = Math.min(spd * dt, dist);
-		sim.pos.x += dir.x * advance;
-		sim.pos.z += dir.z * advance;
+		const travelTime = Math.min(dt, dist / Math.max(spd, 1e-4));
+		sim.pos.x += sim.velocity.x * travelTime;
+		sim.pos.z += sim.velocity.z * travelTime;
 		// Climb only on escalator/stairs; otherwise hard floor snap
 		if (Math.abs(target.y - sim.pos.y) > 0.5) {
 			sim.pos.y = THREE.MathUtils.lerp(sim.pos.y, target.y, Math.min(1, dt * 2.5));
@@ -1526,37 +1599,19 @@ export class Americans {
 		// Floor snap — feet stay on slab (no through-floor / floating)
 		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, target.y);
 
-		const hit = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, SIM_RADIUS);
+		const hit = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius);
 		sim.pos.x = hit.x;
 		sim.pos.z = hit.z;
 		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, sim.pos.y);
 
-		// Soft push off nearby walkers mid-step (stops body-merge before resolveAgents)
-		for (const other of this.sims) {
-			if (other === sim) continue;
-			if (Math.abs(other.pos.y - sim.pos.y) > 2.5) continue;
-			const couple = sim.f.partnerId === other.f.id || other.f.partnerId === sim.f.id;
-			const minD = couple ? 1.0 : SIM_SEPARATE * 0.95;
-			const dx = sim.pos.x - other.pos.x;
-			const dz = sim.pos.z - other.pos.z;
-			const d2 = dx * dx + dz * dz;
-			if (d2 > minD * minD || d2 < 1e-8) continue;
-			const d = Math.sqrt(d2);
-			const push = (minD - d) * 0.55;
-			sim.pos.x += (dx / d) * push;
-			sim.pos.z += (dz / d) * push;
-		}
-
-		const moved = Math.hypot(sim.pos.x - prevX, sim.pos.z - prevZ);
-		if (moved < spd * dt * 0.2 && dist > 0.8) {
+		const remaining = Math.hypot(target.x - sim.pos.x, target.z - sim.pos.z);
+		const routeProgress = dist - remaining;
+		if (routeProgress < spd * dt * 0.08 && dist > 0.8) {
 			sim.stuckTime += dt;
-			// Unstick: skip waypoint + random lateral kick so they don't form a meat loopband
-			if (sim.stuckTime > 0.45) {
+			// Retire a genuinely blocked route node. A random shove here made a
+			// collision correction look like progress and slowly displaced crowds.
+			if (sim.stuckTime > 1.2) {
 				sim.pathI++;
-				const kick = (Math.random() - 0.5) * 2.4;
-				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(kick);
-				sim.pos.x += side.x;
-				sim.pos.z += side.z;
 				sim.stuckTime = 0;
 			}
 		} else {
@@ -1578,13 +1633,14 @@ export class Americans {
 		if (f.partnerId !== null && sim.coupleSide !== 0) {
 			const partner = this.sims.find((s) => s.f.id === f.partnerId);
 			if (partner) {
-				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(sim.coupleSide * 0.55);
+				const spacing = sim.radius + partner.radius + 0.2;
+				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(sim.coupleSide * spacing);
 				// Soft pull toward parallel lane next to partner lead path
 				if (f.id > f.partnerId) {
 					const ideal = partner.pos.clone().add(side);
 					sim.pos.x = THREE.MathUtils.lerp(sim.pos.x, ideal.x, 0.12);
 					sim.pos.z = THREE.MathUtils.lerp(sim.pos.z, ideal.z, 0.12);
-					const fix = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, SIM_RADIUS);
+					const fix = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius);
 					sim.pos.x = fix.x;
 					sim.pos.z = fix.z;
 				}

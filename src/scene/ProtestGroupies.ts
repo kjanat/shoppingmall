@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { spatial } from '#/audio/SpatialAudio';
+import { type SpatialSource, spatial } from '#/audio/SpatialAudio';
 import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
@@ -87,6 +87,19 @@ type CrowdInstances = {
 	signs: THREE.InstancedMesh;
 };
 
+type ChantState =
+	| { kind: 'locked' }
+	| { kind: 'waiting'; remaining: number }
+	| {
+			kind: 'speaking';
+			token: number;
+			speaker: Protester;
+			source: SpatialSource | null;
+			controller: AbortController;
+			elapsed: number;
+			deadline: number;
+	  };
+
 const CROWD_COUNT = 24;
 const SWARM_RADIUS = 6.5;
 const SWARM_WANDER_RADIUS = 8;
@@ -106,7 +119,6 @@ export class ProtestGroupies {
 	private people: Protester[] = [];
 	private plantedFlags: THREE.Group[] = [];
 	private t = 0;
-	private chantCd = 0.6;
 	private audioStarted = false;
 	private stopAudio: (() => void) | null = null;
 	private banner!: THREE.Mesh;
@@ -116,9 +128,9 @@ export class ProtestGroupies {
 	private clips: ProtestClip[] = [...PROTEST_CLIPS];
 	private crowdClips: ProtestClip[] = PROTEST_CLIPS.filter((c) => c.kind === 'crowd');
 	private merkelClips: ProtestClip[] = PROTEST_CLIPS.filter((c) => c.kind === 'merkel');
-	/** Max concurrent spatial voices so the mall doesn't explode */
-	private activeVoices = 0;
-	private static readonly MAX_VOICES = 5;
+	/** One owner for voice and bubble timing. No timer callback may start a chant. */
+	private chantState: ChantState = { kind: 'locked' };
+	private chantToken = 0;
 	private lastGlobalClip = -1;
 	private crowdInstances: CrowdInstances | null = null;
 	private swarmX = 0;
@@ -205,22 +217,7 @@ export class ProtestGroupies {
 			{ volume: 0.18, k: 0.05, maxDistance: 22 },
 		);
 		this.stopAudio = () => handle.stop();
-		// Kick a first wave so you hear them immediately
-		window.setTimeout(() => this.yellWave(4), 400);
-	}
-
-	/** Fire n people yelling with real multi-voice audio */
-	private yellWave(n: number): void {
-		if (!this.audioStarted || !this.people.length) return;
-		const order = this.people
-			.map((_, i) => i)
-			.sort(() => Math.random() - 0.5)
-			.slice(0, n);
-		order.forEach((personIndex, k) => {
-			const p = this.people[personIndex];
-			if (!p) return;
-			window.setTimeout(() => this.yellFrom(p), k * 90 + Math.random() * 80);
-		});
+		this.chantState = { kind: 'waiting', remaining: 0.4 };
 	}
 
 	private pickClip(p: Protester): ProtestClip {
@@ -245,18 +242,46 @@ export class ProtestGroupies {
 		return at(bank, idx);
 	}
 
-	private yellFrom(p: Protester): void {
-		if (p.voiceCd > 0) return;
-		if (this.activeVoices >= ProtestGroupies.MAX_VOICES) {
-			// Still show bubble without audio so the wall of text stays
-			const clip = this.pickClip(p);
-			this.showBubble(p, clip.label, !!p.isMerkel);
+	private tickChant(dt: number): void {
+		const state = this.chantState;
+		if (state.kind === 'speaking') {
+			state.elapsed += dt;
+			if (state.elapsed >= state.deadline) {
+				state.controller.abort();
+				state.source?.stop();
+				this.finishChant(state.token);
+				return;
+			}
+			if (state.source) {
+				state.speaker.speechLife = 0.1;
+				state.speaker.speech.visible = true;
+			}
 			return;
 		}
+		if (state.kind !== 'waiting') return;
+		state.remaining -= dt;
+		if (state.remaining > 0) return;
+		const speaker = this.pickNextSpeaker();
+		if (speaker) this.startChant(speaker);
+		else state.remaining = 0.5;
+	}
+
+	private pickNextSpeaker(): Protester | null {
+		const available = this.people.filter((person) => person.voiceCd <= 0);
+		if (!available.length) return null;
+		const merkel = this.merkelIdx >= 0 ? this.people[this.merkelIdx] : undefined;
+		if (merkel && merkel.voiceCd <= 0 && Math.random() < 0.18) return merkel;
+		const crowd = available.filter((person) => !person.isMerkel);
+		return pick(crowd.length ? crowd : available);
+	}
+
+	private startChant(p: Protester): void {
 		const clip = this.pickClip(p);
-		p.voiceCd = 2.2 + Math.random() * 1.8;
-		this.showBubble(p, clip.label, !!p.isMerkel);
-		this.activeVoices++;
+		const token = ++this.chantToken;
+		const controller = new AbortController();
+		// A stalled fetch releases the slot after eight seconds. There is no
+		// pending queue, so repeated updates cannot accumulate future chants.
+		this.chantState = { kind: 'speaking', token, speaker: p, source: null, controller, elapsed: 0, deadline: 8 };
 		const wx = this.pos.x + p.x;
 		const wz = this.pos.z + p.z;
 		const vol = p.isMerkel ? 0.95 : 0.72 + Math.random() * 0.2;
@@ -269,21 +294,62 @@ export class ProtestGroupies {
 					k: 0.028,
 					maxDistance: 32,
 					refDistance: 2.2,
+					signal: controller.signal,
 				},
 			)
-			.finally(() => {
-				this.activeVoices = Math.max(0, this.activeVoices - 1);
-			});
+			.then(
+				(source) => {
+					const state = this.chantState;
+					if (state.kind !== 'speaking' || state.token !== token) {
+						source?.stop();
+						return;
+					}
+					if (!source) {
+						this.finishChant(token);
+						return;
+					}
+					state.source = source;
+					state.elapsed = 0;
+					state.deadline = source.duration + 0.5;
+					p.voiceCd = Math.max(2.2, source.duration + 1.5);
+					this.showBubble(p, clip.label, p.isMerkel);
+					const releaseSource = source.onEnded;
+					source.onEnded = () => {
+						releaseSource?.();
+						this.finishChant(token);
+					};
+				},
+				() => this.finishChant(token),
+			);
+	}
+
+	private finishChant(token: number): void {
+		const state = this.chantState;
+		if (state.kind !== 'speaking' || state.token !== token) return;
+		state.speaker.speechLife = 0;
+		state.speaker.speech.visible = false;
+		this.chantState = { kind: 'waiting', remaining: 0.9 + Math.random() * 1.6 };
+	}
+
+	private stopChant(): void {
+		const state = this.chantState;
+		if (state.kind === 'speaking') {
+			state.controller.abort();
+			state.source?.stop();
+			state.speaker.speechLife = 0;
+			state.speaker.speech.visible = false;
+		}
+		this.chantState = { kind: 'locked' };
 	}
 
 	update(dt: number, playerPos?: THREE.Vector3): void {
 		this.t += dt;
-		this.chantCd -= dt;
 		this.tickSwarm(dt, playerPos);
 
 		for (const p of this.people) {
 			p.voiceCd = Math.max(0, p.voiceCd - dt);
 		}
+		this.tickChant(dt);
 
 		// Planted flags flutter (stay at camp)
 		for (let i = 0; i < this.plantedFlags.length; i++) {
@@ -298,18 +364,6 @@ export class ProtestGroupies {
 
 		if (this.banner) {
 			this.banner.rotation.z = Math.sin(this.t * 1.3) * 0.04;
-		}
-
-		// Empowered overlapping chants — real multi-voice audio
-		if (this.chantCd <= 0) {
-			this.chantCd = 0.55 + Math.random() * 0.85;
-			const n = 2 + Math.floor(Math.random() * 4);
-			this.yellWave(n);
-			// Occasional full Merkel megaphone drop
-			if (this.audioStarted && Math.random() < 0.3 && this.merkelIdx >= 0) {
-				const m = this.people[this.merkelIdx];
-				if (m) window.setTimeout(() => this.yellFrom(m), 200);
-			}
 		}
 	}
 
@@ -571,6 +625,7 @@ export class ProtestGroupies {
 	}
 
 	dispose(): void {
+		this.stopChant();
 		this.stopAudio?.();
 	}
 
