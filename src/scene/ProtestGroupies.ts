@@ -28,27 +28,38 @@ const PROTEST_CLIPS: ProtestClip[] = MANIFEST.map((c) => ({
 }));
 
 type Protester = {
+	/** Speech anchor. Merkel also keeps her bespoke visible model here. */
 	root: THREE.Group;
 	/** local pos relative to group (camp) */
 	x: number;
 	z: number;
 	vx: number;
 	vz: number;
-	tx: number;
-	tz: number;
+	preferredAngle: number;
+	preferredRadius: number;
 	speed: number;
-	retargetCd: number;
 	phase: number;
-	sign: THREE.Object3D;
+	energy: number;
+	facing: number;
+	walkPhase: number;
+	jumpY: number;
+	jumpVy: number;
+	jumpCooldown: number;
+	jumpUrge: number;
+	landSquash: number;
+	separationX: number;
+	separationZ: number;
+	/** Null for Merkel, otherwise the shared-mesh instance index. */
+	instanceIndex: number | null;
+	sign?: THREE.Object3D;
 	speech: THREE.Sprite;
 	speechTex: THREE.CanvasTexture;
 	speechCtx: CanvasRenderingContext2D;
 	speechLife: number;
 	fist?: THREE.Object3D;
 	flag?: THREE.Object3D;
-	isMerkel?: boolean;
+	isMerkel: boolean;
 	lineIdx: number;
-	legPhase: number;
 	/** Sticky voice identity: only play clips matching this voice key when possible */
 	voiceKey: string;
 	/** cooldown so one body doesn't spam audio */
@@ -67,6 +78,27 @@ const SIGN_LINES: [string, string][] = [
 ];
 
 type FlagKind = 'progress' | 'rainbow' | 'trans' | 'bi' | 'lesbian' | 'nb' | 'pan' | 'intersex';
+
+type CrowdInstances = {
+	torsos: THREE.InstancedMesh;
+	heads: THREE.InstancedMesh;
+	hair: THREE.InstancedMesh;
+	buns: THREE.InstancedMesh;
+	eyes: THREE.InstancedMesh;
+	legs: THREE.InstancedMesh;
+	arms: THREE.InstancedMesh;
+	scarves: THREE.InstancedMesh;
+	sticks: THREE.InstancedMesh;
+	signs: THREE.InstancedMesh;
+	pins: THREE.InstancedMesh;
+};
+
+const CROWD_COUNT = 24;
+const SWARM_RADIUS = 6.5;
+const SWARM_WANDER_RADIUS = 8;
+const SEPARATION_RADIUS = 0.9;
+const SEPARATION_CELL = 1.2;
+const JUMP_GRAVITY = 9.5;
 
 /**
  * Atrium protest — liberal groupies + LGBTQIA+ flags +
@@ -94,6 +126,24 @@ export class ProtestGroupies {
 	private activeVoices = 0;
 	private static readonly MAX_VOICES = 5;
 	private lastGlobalClip = -1;
+	private crowdInstances: CrowdInstances | null = null;
+	private swarmX = 0;
+	private swarmZ = 0;
+	private swarmVx = 0;
+	private swarmVz = 0;
+	private swarmTargetX = 0;
+	private swarmTargetZ = 0;
+	private swarmRetargetCd = 1;
+	private surgeTime = 0;
+	private surgeCd = 12 + Math.random() * 10;
+	private readonly separationGrid = new Map<number, number[]>();
+	private readonly rootMatrix = new THREE.Matrix4();
+	private readonly partMatrix = new THREE.Matrix4();
+	private readonly instanceMatrix = new THREE.Matrix4();
+	private readonly tempPosition = new THREE.Vector3();
+	private readonly tempScale = new THREE.Vector3();
+	private readonly tempRotation = new THREE.Euler();
+	private readonly tempQuaternion = new THREE.Quaternion();
 
 	constructor(world: CollisionWorld) {
 		this.world = world;
@@ -102,7 +152,7 @@ export class ProtestGroupies {
 		this.buildBanner();
 		this.buildPlantedFlags();
 		this.buildMerkel();
-		this.buildCrowd(12);
+		this.buildCrowd(CROWD_COUNT);
 		this.buildMegaphoneStand();
 	}
 
@@ -262,7 +312,7 @@ export class ProtestGroupies {
 			const n = 2 + Math.floor(Math.random() * 4);
 			this.yellWave(n);
 			// Occasional full Merkel megaphone drop
-			if (Math.random() < 0.3 && this.merkelIdx >= 0) {
+			if (this.audioStarted && Math.random() < 0.3 && this.merkelIdx >= 0) {
 				const m = this.people[this.merkelIdx];
 				if (m) window.setTimeout(() => this.yellFrom(m), 200);
 			}
@@ -270,131 +320,273 @@ export class ProtestGroupies {
 	}
 
 	/**
-	 * Zombie-swarm march: wander targets + cohesion + separation + mild player curiosity.
-	 * Camp decorations stay put; bodies roam floor 0.
+	 * A soft moving centre gives the protest a readable shape. Each person keeps
+	 * a stable place around it, then noise, separation and jumps disturb that
+	 * composition without dissolving it into unrelated wanderers.
 	 */
 	private tickSwarm(dt: number, playerPos?: THREE.Vector3): void {
-		// Swarm centroid (local)
-		let cx = 0;
-		let cz = 0;
-		for (const p of this.people) {
-			cx += p.x;
-			cz += p.z;
+		this.tickSwarmCenter(dt, playerPos);
+		this.rebuildSeparationGrid();
+		this.measureSeparation();
+
+		this.surgeCd -= dt;
+		this.surgeTime = Math.max(0, this.surgeTime - dt);
+		if (this.surgeCd <= 0) {
+			this.surgeTime = 3 + Math.random() * 2;
+			this.surgeCd = 18 + Math.random() * 16;
 		}
-		const n = Math.max(1, this.people.length);
-		cx /= n;
-		cz /= n;
-		// Soft pull swarm toward player when nearby (zombie mall brains)
-		let attractX = cx;
-		let attractZ = cz;
+
+		for (const p of this.people) this.tickProtester(p, dt);
+		this.updateCrowdInstances();
+	}
+
+	private tickSwarmCenter(dt: number, playerPos?: THREE.Vector3): void {
+		this.swarmRetargetCd -= dt;
+		if (this.swarmRetargetCd <= 0) {
+			const angle = Math.random() * Math.PI * 2;
+			const radius = Math.sqrt(Math.random()) * SWARM_WANDER_RADIUS;
+			this.swarmTargetX = Math.sin(angle) * radius;
+			this.swarmTargetZ = Math.cos(angle) * radius;
+			this.swarmRetargetCd = 6 + Math.random() * 6;
+		}
+
+		let targetX = this.swarmTargetX;
+		let targetZ = this.swarmTargetZ;
 		if (playerPos && levelAt(playerPos.y) === 'v0') {
-			const pwx = playerPos.x - this.pos.x;
-			const pwz = playerPos.z - this.pos.z;
-			const pd = Math.hypot(pwx - cx, pwz - cz);
-			if (pd < 22) {
-				const w = 0.35 * (1 - pd / 22);
-				attractX = cx * (1 - w) + pwx * w;
-				attractZ = cz * (1 - w) + pwz * w;
+			const playerX = playerPos.x - this.pos.x;
+			const playerZ = playerPos.z - this.pos.z;
+			const distance = Math.hypot(playerX - this.swarmX, playerZ - this.swarmZ);
+			if (distance < 18) {
+				const curiosity = 0.22 * (1 - distance / 18);
+				targetX = THREE.MathUtils.lerp(targetX, playerX, curiosity);
+				targetZ = THREE.MathUtils.lerp(targetZ, playerZ, curiosity);
 			}
 		}
 
+		const dx = targetX - this.swarmX;
+		const dz = targetZ - this.swarmZ;
+		const distance = Math.hypot(dx, dz);
+		const speed = this.surgeTime > 0 ? 1.05 : 0.72;
+		const desiredX = distance > 0.05 ? (dx / distance) * Math.min(speed, distance * 0.45) : 0;
+		const desiredZ = distance > 0.05 ? (dz / distance) * Math.min(speed, distance * 0.45) : 0;
+		const follow = Math.min(1, dt * 0.9);
+		this.swarmVx = THREE.MathUtils.lerp(this.swarmVx, desiredX, follow);
+		this.swarmVz = THREE.MathUtils.lerp(this.swarmVz, desiredZ, follow);
+
+		const nextX = this.swarmX + this.swarmVx * dt;
+		const nextZ = this.swarmZ + this.swarmVz * dt;
+		const solved = this.world.resolveCircle(this.pos.x + nextX, this.pos.z + nextZ, 0.5, 0.65, 3, true);
+		this.swarmX = solved.x - this.pos.x;
+		this.swarmZ = solved.z - this.pos.z;
+		if (Math.abs(this.swarmX - nextX) > 0.01) this.swarmVx *= 0.25;
+		if (Math.abs(this.swarmZ - nextZ) > 0.01) this.swarmVz *= 0.25;
+	}
+
+	private rebuildSeparationGrid(): void {
+		for (const bucket of this.separationGrid.values()) bucket.length = 0;
 		for (let i = 0; i < this.people.length; i++) {
 			const p = this.people[i];
 			if (!p) continue;
-			p.retargetCd -= dt;
-			if (p.retargetCd <= 0) {
-				p.retargetCd = 2.5 + Math.random() * 4;
-				// New wander near attractor / camp with wide mall radius
-				const ang = Math.random() * Math.PI * 2;
-				const rad = 3 + Math.random() * 14;
-				p.tx = attractX + Math.cos(ang) * rad + (Math.random() - 0.5) * 4;
-				p.tz = attractZ + Math.sin(ang) * rad + (Math.random() - 0.5) * 4;
-				// Clamp roam box (local to camp)
-				p.tx = THREE.MathUtils.clamp(p.tx, -26, 28);
-				p.tz = THREE.MathUtils.clamp(p.tz, -18, 22);
-			}
+			const gx = Math.floor(p.x / SEPARATION_CELL);
+			const gz = Math.floor(p.z / SEPARATION_CELL);
+			const key = gx + gz * 1024;
+			const bucket = this.separationGrid.get(key);
+			if (bucket) bucket.push(i);
+			else this.separationGrid.set(key, [i]);
+		}
+	}
 
-			// Desired velocity: wander + cohesion
-			let dx = p.tx - p.x;
-			let dz = p.tz - p.z;
-			const toT = Math.hypot(dx, dz) || 1;
-			dx = (dx / toT) * p.speed;
-			dz = (dz / toT) * p.speed;
-			// Cohesion
-			dx += (attractX - p.x) * 0.35;
-			dz += (attractZ - p.z) * 0.35;
-			// Separation (don't stack like tofu)
-			for (let j = 0; j < this.people.length; j++) {
-				if (j === i) continue;
-				const o = this.people[j];
-				if (!o) continue;
-				const sx = p.x - o.x;
-				const sz = p.z - o.z;
-				const d = Math.hypot(sx, sz);
-				const minD = p.isMerkel || o.isMerkel ? 1.4 : 0.95;
-				if (d > 0.01 && d < minD) {
-					const push = ((minD - d) / minD) * 1.8;
-					dx += (sx / d) * push;
-					dz += (sz / d) * push;
+	private measureSeparation(): void {
+		for (let i = 0; i < this.people.length; i++) {
+			const p = this.people[i];
+			if (!p) continue;
+			p.separationX = 0;
+			p.separationZ = 0;
+			p.jumpUrge = 0;
+			const gx = Math.floor(p.x / SEPARATION_CELL);
+			const gz = Math.floor(p.z / SEPARATION_CELL);
+			for (let ox = -3; ox <= 3; ox++) {
+				for (let oz = -3; oz <= 3; oz++) {
+					const bucket = this.separationGrid.get(gx + ox + (gz + oz) * 1024);
+					if (!bucket) continue;
+					for (const otherIndex of bucket) {
+						if (otherIndex === i) continue;
+						const other = this.people[otherIndex];
+						if (!other) continue;
+						let dx = p.x - other.x;
+						let dz = p.z - other.z;
+						let distance = Math.hypot(dx, dz);
+						if (distance < 0.001) {
+							const angle = i * 2.399;
+							dx = Math.sin(angle) * 0.001;
+							dz = Math.cos(angle) * 0.001;
+							distance = 0.001;
+						}
+						const personalSpace = p.isMerkel || other.isMerkel ? 1.25 : SEPARATION_RADIUS;
+						if (distance < personalSpace) {
+							const strength = ((personalSpace - distance) / personalSpace) * 3;
+							p.separationX += (dx / distance) * strength;
+							p.separationZ += (dz / distance) * strength;
+						}
+						if (other.jumpY > 0.08 && distance < 2.8) p.jumpUrge += 1 - distance / 2.8;
+					}
 				}
 			}
+		}
+	}
 
-			// Integrate with drag
-			p.vx = THREE.MathUtils.lerp(p.vx, dx, Math.min(1, dt * 2.2));
-			p.vz = THREE.MathUtils.lerp(p.vz, dz, Math.min(1, dt * 2.2));
-			const sp = Math.hypot(p.vx, p.vz);
-			const maxSp = p.speed * (p.isMerkel ? 0.75 : 1.15);
-			if (sp > maxSp) {
-				p.vx = (p.vx / sp) * maxSp;
-				p.vz = (p.vz / sp) * maxSp;
-			}
+	private tickProtester(p: Protester, dt: number): void {
+		const orbit = Math.sin(this.t * 0.19 + p.phase) * 0.2;
+		const breathe = 1 + Math.sin(this.t * 0.31 + p.phase * 1.7) * 0.08;
+		const angle = p.preferredAngle + orbit;
+		const radius = p.preferredRadius * breathe;
+		const idealX = this.swarmX + Math.sin(angle) * radius;
+		const idealZ = this.swarmZ + Math.cos(angle) * radius * 0.78;
+		const dx = idealX - p.x;
+		const dz = idealZ - p.z;
+		const distance = Math.hypot(dx, dz);
+		const surge = this.surgeTime > 0 ? 1.35 : 1;
+		const maxSpeed = p.speed * p.energy * surge * (p.isMerkel ? 0.72 : 1);
+		const desiredSpeed = Math.min(maxSpeed, distance * 1.2);
+		const noiseX = Math.sin(this.t * 0.73 + p.phase * 4.1) * 0.18;
+		const noiseZ = Math.cos(this.t * 0.61 + p.phase * 3.7) * 0.18;
+		const desiredX = distance > 0.01 ? (dx / distance) * desiredSpeed : 0;
+		const desiredZ = distance > 0.01 ? (dz / distance) * desiredSpeed : 0;
+		const maxForce = 2.8 * p.energy;
+		let forceX = desiredX - p.vx + noiseX + p.separationX;
+		let forceZ = desiredZ - p.vz + noiseZ + p.separationZ;
+		const force = Math.hypot(forceX, forceZ);
+		if (force > maxForce) {
+			forceX = (forceX / force) * maxForce;
+			forceZ = (forceZ / force) * maxForce;
+		}
+		p.vx += forceX * dt;
+		p.vz += forceZ * dt;
+		const speed = Math.hypot(p.vx, p.vz);
+		if (speed > maxSpeed) {
+			p.vx = (p.vx / speed) * maxSpeed;
+			p.vz = (p.vz / speed) * maxSpeed;
+		}
 
-			let nx = p.x + p.vx * dt;
-			let nz = p.z + p.vz * dt;
-			// World collision
-			const wx = this.pos.x + nx;
-			const wz = this.pos.z + nz;
-			const hitR = p.isMerkel ? 0.55 : 0.35;
-			const solved = this.world.resolveCircle(wx, wz, 0.5, hitR, 3, true);
-			nx = solved.x - this.pos.x;
-			nz = solved.z - this.pos.z;
-			p.x = nx;
-			p.z = nz;
+		const nextX = p.x + p.vx * dt;
+		const nextZ = p.z + p.vz * dt;
+		const hitRadius = p.isMerkel ? 0.55 : 0.34;
+		const solved = this.world.resolveCircle(this.pos.x + nextX, this.pos.z + nextZ, 0.5, hitRadius, 3, true);
+		p.x = solved.x - this.pos.x;
+		p.z = solved.z - this.pos.z;
+		if (Math.abs(p.x - nextX) > 0.01) p.vx *= 0.35;
+		if (Math.abs(p.z - nextZ) > 0.01) p.vz *= 0.35;
 
-			// Face move dir (zombie shuffle)
-			const face = Math.hypot(p.vx, p.vz);
-			if (face > 0.05) {
-				const yaw = Math.atan2(p.vx, p.vz);
-				let dy = yaw - p.root.rotation.y;
-				while (dy > Math.PI) dy -= Math.PI * 2;
-				while (dy < -Math.PI) dy += Math.PI * 2;
-				p.root.rotation.y += dy * Math.min(1, dt * 4);
-			}
+		const moving = Math.hypot(p.vx, p.vz);
+		if (moving > 0.04) {
+			const wanted = Math.atan2(p.vx, p.vz);
+			p.facing += shortestAngle(p.facing, wanted) * Math.min(1, dt * 4);
+		}
+		p.walkPhase += dt * (2.5 + moving * 4.5) * p.energy;
 
-			p.legPhase += dt * (4 + face * 3);
-			const march = Math.sin(p.legPhase + p.phase);
-			const bob = Math.abs(march) * (p.isMerkel ? 0.05 : 0.09);
-			p.root.position.set(p.x, bob, p.z);
-			p.root.rotation.z = Math.sin(p.legPhase * 0.5) * 0.04;
-
-			// Props
-			p.sign.rotation.z = Math.sin(this.t * 2.4 + p.phase) * (p.isMerkel ? 0.1 : 0.22);
-			p.sign.rotation.x = Math.sin(this.t * 1.8 + p.phase * 0.5) * 0.1;
-			if (p.fist) {
-				const baseY = p.isMerkel ? 1.75 : 1.55;
-				p.fist.position.y = baseY + Math.max(0, march) * 0.2;
-				p.fist.rotation.z = -0.4 - Math.max(0, march) * 0.5;
-			}
-			if (p.flag) {
-				p.flag.rotation.y = Math.sin(this.t * 2.8 + p.phase) * 0.4;
-				p.flag.rotation.z = Math.sin(this.t * 3.1 + p.phase * 0.6) * 0.15;
-			}
-
-			if (p.speechLife > 0) {
-				p.speechLife -= dt;
-				if (p.speechLife <= 0) p.speech.visible = false;
+		p.jumpCooldown = Math.max(0, p.jumpCooldown - dt);
+		p.landSquash = Math.max(0, p.landSquash - dt);
+		if (p.jumpY <= 0 && p.jumpCooldown <= 0) {
+			const rate = (0.018 * p.energy + p.jumpUrge * 0.1) * (this.surgeTime > 0 ? 3 : 1);
+			if (Math.random() < 1 - Math.exp(-rate * dt)) {
+				p.jumpVy = 2.8 + p.energy * 0.75;
+				p.jumpCooldown = 3.5 + Math.random() * 5;
 			}
 		}
+		if (p.jumpY > 0 || p.jumpVy > 0) {
+			p.jumpVy -= JUMP_GRAVITY * dt;
+			p.jumpY += p.jumpVy * dt;
+			if (p.jumpY <= 0) {
+				p.jumpY = 0;
+				p.jumpVy = 0;
+				p.landSquash = 0.18;
+			}
+		}
+
+		const march = Math.sin(p.walkPhase + p.phase);
+		const bob = Math.abs(march) * Math.min(1, moving / Math.max(0.01, p.speed)) * (p.isMerkel ? 0.045 : 0.075);
+		p.root.position.set(p.x, p.jumpY + bob, p.z);
+		p.root.rotation.y = p.facing;
+		p.root.rotation.z = Math.sin(p.walkPhase * 0.5 + p.phase) * 0.035;
+
+		if (p.sign) {
+			p.sign.rotation.z = Math.sin(this.t * 2.4 + p.phase) * 0.1;
+			p.sign.rotation.x = Math.sin(this.t * 1.8 + p.phase * 0.5) * 0.1;
+		}
+		if (p.fist) {
+			p.fist.position.y = 1.75 + Math.max(0, march) * 0.2;
+			p.fist.rotation.z = -0.4 - Math.max(0, march) * 0.5;
+		}
+		if (p.flag) {
+			p.flag.rotation.y = Math.sin(this.t * 2.8 + p.phase) * 0.4;
+			p.flag.rotation.z = Math.sin(this.t * 3.1 + p.phase * 0.6) * 0.15;
+		}
+
+		if (p.speechLife > 0) {
+			p.speechLife -= dt;
+			if (p.speechLife <= 0) p.speech.visible = false;
+		}
+	}
+
+	private updateCrowdInstances(): void {
+		const crowd = this.crowdInstances;
+		if (!crowd) return;
+		for (const p of this.people) {
+			const index = p.instanceIndex;
+			if (index === null) continue;
+			const moving = Math.hypot(p.vx, p.vz);
+			const motion = Math.min(1, moving / Math.max(0.01, p.speed));
+			const swing = Math.sin(p.walkPhase + p.phase) * 0.55 * motion;
+			const bob = Math.abs(Math.sin(p.walkPhase + p.phase)) * 0.075 * motion;
+			const squash = p.landSquash / 0.18;
+			const width = 0.9 + (Math.sin(p.phase * 2.7) + 1) * 0.08;
+			const height = 0.92 + (Math.cos(p.phase * 1.9) + 1) * 0.07;
+			this.tempPosition.set(p.x, p.jumpY + bob, p.z);
+			this.tempRotation.set(0, p.facing, Math.sin(p.walkPhase * 0.5 + p.phase) * 0.035);
+			this.tempQuaternion.setFromEuler(this.tempRotation);
+			this.tempScale.set(width * (1 + squash * 0.08), height * (1 - squash * 0.16), 1 + squash * 0.08);
+			this.rootMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+
+			this.writePart(crowd.torsos, index, 0, 1.02, 0, 0, 0, 0, 1, 1, 1);
+			this.writePart(crowd.heads, index, 0, 1.58, 0.01, 0, 0, 0, 1, 0.92, 0.86);
+			this.writePart(crowd.hair, index, 0, 1.68, -0.015, 0, 0, 0, 1, 1, 1);
+			const bunScale = index % 3 === 0 ? 1 : 0;
+			this.writePart(crowd.buns, index, 0, 1.84, -0.07, 0, 0, 0, bunScale, bunScale, bunScale);
+			this.writePart(crowd.eyes, index * 2, -0.075, 1.61, 0.19, 0, 0, 0, 1, 1, 1);
+			this.writePart(crowd.eyes, index * 2 + 1, 0.075, 1.61, 0.19, 0, 0, 0, 1, 1, 1);
+			this.writePart(crowd.legs, index * 2, -0.13, 0.38, 0, swing, 0, 0, 1, 1, 1);
+			this.writePart(crowd.legs, index * 2 + 1, 0.13, 0.38, 0, -swing, 0, 0, 1, 1, 1);
+			this.writePart(crowd.arms, index * 2, -0.32, 1.1, 0.02, -swing * 0.8, 0, 0.16, 1, 1, 1);
+			this.writePart(crowd.arms, index * 2 + 1, 0.32, 1.1, 0.02, swing * 0.8, 0, -0.16, 1, 1, 1);
+			this.writePart(crowd.scarves, index, 0, 1.36, 0.075, Math.PI / 2.4, 0, 0, 1, 1, 1);
+			const signTilt = Math.sin(this.t * 2.1 + p.phase) * 0.12;
+			this.writePart(crowd.sticks, index, -0.38, 1.35, 0.2, signTilt * 0.25, 0, signTilt, 1, 1, 1);
+			this.writePart(crowd.signs, index, -0.38, 1.98, 0.21, signTilt * 0.35, 0, signTilt, 1, 1, 1);
+			this.writePart(crowd.pins, index, 0.12, 1.24, 0.165, 0, 0, 0, 1, 1, 1);
+		}
+		for (const mesh of Object.values(crowd)) mesh.instanceMatrix.needsUpdate = true;
+	}
+
+	private writePart(
+		mesh: THREE.InstancedMesh,
+		index: number,
+		x: number,
+		y: number,
+		z: number,
+		rx: number,
+		ry: number,
+		rz: number,
+		sx: number,
+		sy: number,
+		sz: number,
+	): void {
+		this.tempPosition.set(x, y, z);
+		this.tempRotation.set(rx, ry, rz);
+		this.tempQuaternion.setFromEuler(this.tempRotation);
+		this.tempScale.set(sx, sy, sz);
+		this.partMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+		this.instanceMatrix.multiplyMatrices(this.rootMatrix, this.partMatrix);
+		mesh.setMatrixAt(index, this.instanceMatrix);
 	}
 
 	dispose(): void {
@@ -557,7 +749,11 @@ export class ProtestGroupies {
 
 	private makePrideFlagTex(kind: FlagKind): THREE.CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(256, 160);
+		this.paintPrideFlag(ctx, kind);
+		return labelTexture(c);
+	}
 
+	private paintPrideFlag(ctx: CanvasRenderingContext2D, kind: FlagKind): void {
 		const stripes = (cols: string[]) => {
 			const h = 160 / cols.length;
 			cols.forEach((col, i) => {
@@ -645,9 +841,6 @@ export class ProtestGroupies {
 		ctx.strokeStyle = 'rgba(0,0,0,0.35)';
 		ctx.lineWidth = 4;
 		ctx.strokeRect(2, 2, 252, 156);
-
-		const tex = labelTexture(c);
-		return tex;
 	}
 
 	/**
@@ -830,11 +1023,21 @@ export class ProtestGroupies {
 			z: base.z,
 			vx: 0,
 			vz: 0,
-			tx: base.x + 2,
-			tz: base.z + 2,
+			preferredAngle: 0,
+			preferredRadius: 1.2,
 			speed: 0.85,
-			retargetCd: 1,
 			phase: 0.2,
+			energy: 0.72,
+			facing: 0,
+			walkPhase: 0,
+			jumpY: 0,
+			jumpVy: 0,
+			jumpCooldown: 6,
+			jumpUrge: 0,
+			landSquash: 0,
+			separationX: 0,
+			separationZ: 0,
+			instanceIndex: null,
 			sign,
 			speech,
 			speechTex,
@@ -844,7 +1047,6 @@ export class ProtestGroupies {
 			flag,
 			isMerkel: true,
 			lineIdx: -1,
-			legPhase: 0,
 			// Sticky German Mutti voice bank
 			voiceKey: 'Killian',
 			voiceCd: 0,
@@ -909,121 +1111,56 @@ export class ProtestGroupies {
 		const skins = [0xf5c9a8, 0xe0a878, 0xc68642, 0x8d5524, 0xffdbac];
 		const tops = [0x1565c0, 0x2e7d32, 0x6a1b9a, 0xc62828, 0xffeb3b, 0x00897b, 0xec407a, 0xffffff];
 		const hairs = [0x2c1810, 0xc4a35a, 0x111111, 0xd35400, 0xf5f5f5, 0x4a148c];
-		const handFlags: FlagKind[] = ['progress', 'trans', 'rainbow', 'bi', 'lesbian', 'nb', 'pan', 'intersex'];
+		const pants = [0x37474f, 0x5d4037, 0x283593, 0x33691e];
+		const scarfColors = [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982];
+		const voiceKeys = [
+			'Conrad',
+			'Katja',
+			'Jenny',
+			'Guy',
+			'Ryan',
+			'Sonia',
+			'Natasha',
+			'Connor',
+			'Aria',
+			'Thomas',
+			'Clara',
+			'Libby',
+			'Michelle',
+			'Neerja',
+			'Molly',
+			'Ana',
+			'Maisie',
+			'Andrew',
+			'Emily',
+			'Eric',
+		];
+		const crowd = this.buildCrowdInstances(n);
+		const color = new THREE.Color();
 
 		for (let i = 0; i < n; i++) {
-			const ang = (i / n) * Math.PI * 1.7 + 0.15;
-			const r = 1.65 + (i % 3) * 0.35;
-			const bx = Math.sin(ang) * r;
-			const bz = Math.cos(ang) * r * 0.85 - 0.2;
+			// A sunflower distribution fills an ellipse without a dense ring or
+			// overlapping centre. The spot remains this person's soft home.
+			const normalizedRadius = Math.sqrt((i + 0.7) / n);
+			const preferredRadius = 0.8 + normalizedRadius * SWARM_RADIUS;
+			const preferredAngle = i * 2.399 + 0.2;
+			const bx = Math.sin(preferredAngle) * preferredRadius;
+			const bz = Math.cos(preferredAngle) * preferredRadius * 0.78;
 			const root = new THREE.Group();
 			root.position.set(bx, 0, bz);
-
-			const skin = this.track(lit({ color: skins[i % skins.length], roughness: 0.85 }));
-			const shirt = this.track(lit({ color: tops[i % tops.length], roughness: 0.7 }));
-			const pants = this.track(
-				lit({
-					color: i % 2 === 0 ? 0x37474f : 0x5d4037,
-					roughness: 0.85,
-				}),
-			);
-			const hairM = this.track(
-				lit({
-					color: hairs[i % hairs.length],
-					roughness: 0.9,
-				}),
-			);
-
-			const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.5, 3, 6), pants);
-			const legR = legL.clone();
-			legL.position.set(-0.1, 0.42, 0);
-			legR.position.set(0.1, 0.42, 0);
-			root.add(legL, legR);
-
-			const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 4, 8), shirt);
-			body.position.y = 1.05;
-			root.add(body);
-
-			const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), skin);
-			head.position.y = 1.65;
-			root.add(head);
-
-			if (i % 3 === 0) {
-				const bun = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), hairM);
-				bun.position.set(0, 1.82, -0.05);
-				root.add(bun);
-			}
-			const hair = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
-			hair.position.set(0, 1.72, -0.02);
-			root.add(hair);
-
-			// Pride scarf / lanyard rainbow torus
-			const scarf = new THREE.Mesh(
-				new THREE.TorusGeometry(0.14, 0.035, 6, 12),
-				this.track(
-					lit({
-						color: [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982][i % 6],
-						roughness: 0.8,
-					}),
-				),
-			);
-			scarf.position.set(0, 1.42, 0.05);
-			scarf.rotation.x = Math.PI / 2.4;
-			root.add(scarf);
-
-			let fist: THREE.Object3D | undefined;
-			let flag: THREE.Object3D | undefined;
-			if (i % 2 === 0) {
-				const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.35, 3, 5), skin);
-				arm.position.set(0.28, 1.45, 0.05);
-				arm.rotation.z = -0.9;
-				root.add(arm);
-				const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), skin);
-				hand.position.set(0.42, 1.7, 0.08);
-				root.add(hand);
-				fist = hand;
-			} else {
-				// Hand flag instead of fist
-				const hf = this.makeHandFlag(at(handFlags, i));
-				hf.position.set(0.35, 1.15, 0.15);
-				root.add(hf);
-				flag = hf;
-			}
-
-			// Cardboard sign
-			const stick = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.02, 0.025, 1.1, 5),
-				this.track(lit({ color: 0x8d6e63, roughness: 0.9 })),
-			);
-			stick.position.set(-0.32, 1.35, 0.2);
-			root.add(stick);
-
-			const sign = new THREE.Mesh(
-				new THREE.PlaneGeometry(0.7, 0.48),
-				this.track(
-					new THREE.MeshBasicMaterial({
-						map: this.makeSignTex(at(SIGN_LINES, i), i),
-						side: THREE.DoubleSide,
-						toneMapped: false,
-					}),
-				),
-			);
-			sign.position.set(-0.32, 2.0, 0.2);
-			root.add(sign);
-
-			// Mini pride flag pin on chest
-			const pin = new THREE.Mesh(
-				new THREE.PlaneGeometry(0.12, 0.08),
-				this.track(
-					new THREE.MeshBasicMaterial({
-						map: this.makePrideFlagTex(at(handFlags, i + 2)),
-						side: THREE.DoubleSide,
-						toneMapped: false,
-					}),
-				),
-			);
-			pin.position.set(0.12, 1.25, 0.24);
-			root.add(pin);
+			crowd.torsos.setColorAt(i, color.set(at(tops, i)));
+			crowd.heads.setColorAt(i, color.set(at(skins, i)));
+			crowd.hair.setColorAt(i, color.set(at(hairs, i)));
+			crowd.buns.setColorAt(i, color.set(at(hairs, i)));
+			crowd.legs.setColorAt(i * 2, color.set(at(pants, i)));
+			crowd.legs.setColorAt(i * 2 + 1, color.set(at(pants, i)));
+			crowd.arms.setColorAt(i * 2, color.set(at(skins, i)));
+			crowd.arms.setColorAt(i * 2 + 1, color.set(at(skins, i)));
+			crowd.scarves.setColorAt(i, color.set(at(scarfColors, i)));
+			const signTiles = crowd.signs.geometry.getAttribute('instanceTile');
+			const pinTiles = crowd.pins.geometry.getAttribute('instanceTile');
+			signTiles.setX(i, i % SIGN_LINES.length);
+			pinTiles.setX(i, (i + 2) % 8);
 
 			const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
 			const speechTex = labelTexture(sc);
@@ -1042,64 +1179,157 @@ export class ProtestGroupies {
 			speechHolder.add(speech);
 			root.add(speechHolder);
 			tagLevelCulled(speechHolder);
-
-			const tag = this.makeNameTag(i);
-			tag.position.set(0, 1.95, 0.12);
-			root.add(tag);
-			tagLevelCulled(tag);
-
-			// Each body sticks to a different prebaked voice identity
-			const voiceKeys = [
-				'Conrad',
-				'Katja',
-				'Jenny',
-				'Guy',
-				'Ryan',
-				'Sonia',
-				'Natasha',
-				'Connor',
-				'Aria',
-				'Thomas',
-				'Clara',
-				'Libby',
-				'Michelle',
-				'Neerja',
-				'Molly',
-				'Ana',
-				'Maisie',
-				'Andrew',
-				'Emily',
-				'Eric',
-			];
 			this.group.add(root);
+			const energy = 0.7 + normalizedRadius * 0.55 + Math.random() * 0.08;
 			this.people.push({
 				root,
 				x: bx,
 				z: bz,
 				vx: 0,
 				vz: 0,
-				tx: bx + (Math.random() - 0.5) * 6,
-				tz: bz + (Math.random() - 0.5) * 6,
-				speed: 1.05 + Math.random() * 0.55,
-				retargetCd: Math.random() * 2,
+				preferredAngle,
+				preferredRadius,
+				speed: 1.05 + Math.random() * 0.25,
 				phase: i * 0.9 + 0.5,
-				sign,
+				energy,
+				facing: preferredAngle + Math.PI,
+				walkPhase: Math.random() * Math.PI * 2,
+				jumpY: 0,
+				jumpVy: 0,
+				jumpCooldown: Math.random() * 8,
+				jumpUrge: 0,
+				landSquash: 0,
+				separationX: 0,
+				separationZ: 0,
+				instanceIndex: i,
 				speech,
 				speechTex,
 				speechCtx,
 				speechLife: 0,
-				fist,
-				flag,
+				isMerkel: false,
 				lineIdx: i,
-				legPhase: Math.random() * 10,
 				voiceKey: at(voiceKeys, i),
 				voiceCd: 0,
 			});
 		}
+		for (const mesh of [crowd.torsos, crowd.heads, crowd.hair, crowd.buns, crowd.legs, crowd.arms, crowd.scarves]) {
+			if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+		}
+		crowd.signs.geometry.getAttribute('instanceTile').needsUpdate = true;
+		crowd.pins.geometry.getAttribute('instanceTile').needsUpdate = true;
+		this.crowdInstances = crowd;
+		this.updateCrowdInstances();
+	}
+
+	private buildCrowdInstances(count: number): CrowdInstances {
+		const coloured = (roughness: number) => this.track(lit({ color: 0xffffff, roughness }));
+		const torsos = this.makeCrowdMesh(new THREE.BoxGeometry(0.5, 0.72, 0.3), coloured(0.75), count, 'protest torsos');
+		const heads = this.makeCrowdMesh(new THREE.SphereGeometry(0.22, 6, 4), coloured(0.9), count, 'protest heads');
+		const hair = this.makeCrowdMesh(
+			new THREE.SphereGeometry(0.23, 6, 4, 0, Math.PI * 2, 0, Math.PI * 0.58),
+			coloured(0.9),
+			count,
+			'protest hair',
+		);
+		const buns = this.makeCrowdMesh(new THREE.SphereGeometry(0.095, 5, 3), coloured(0.9), count, 'protest buns');
+		const eyes = this.makeCrowdMesh(
+			new THREE.BoxGeometry(0.045, 0.055, 0.025),
+			this.track(new THREE.MeshBasicMaterial({ color: 0x21140e })),
+			count * 2,
+			'protest eyes',
+		);
+		const legs = this.makeCrowdMesh(new THREE.BoxGeometry(0.14, 0.54, 0.16), coloured(0.85), count * 2, 'protest legs');
+		const arms = this.makeCrowdMesh(new THREE.BoxGeometry(0.12, 0.48, 0.14), coloured(0.85), count * 2, 'protest arms');
+		const scarves = this.makeCrowdMesh(new THREE.TorusGeometry(0.14, 0.03, 4, 6), coloured(0.8), count, 'protest scarves');
+		const sticks = this.makeCrowdMesh(
+			new THREE.CylinderGeometry(0.02, 0.025, 1.15, 5),
+			this.track(lit({ color: 0x8d6e63, roughness: 0.9 })),
+			count,
+			'protest sign sticks',
+		);
+
+		const signGeometry = new THREE.PlaneGeometry(0.76, 0.52);
+		signGeometry.setAttribute('instanceTile', new THREE.InstancedBufferAttribute(new Float32Array(count), 1));
+		const signs = this.makeCrowdMesh(signGeometry, this.makeAtlasMaterial(this.makeSignAtlas(), 4, 2), count, 'protest signs');
+		const pinGeometry = new THREE.PlaneGeometry(0.14, 0.09);
+		pinGeometry.setAttribute('instanceTile', new THREE.InstancedBufferAttribute(new Float32Array(count), 1));
+		const pins = this.makeCrowdMesh(pinGeometry, this.makeAtlasMaterial(this.makePrideAtlas(), 4, 2), count, 'protest pins');
+		return { torsos, heads, hair, buns, eyes, legs, arms, scarves, sticks, signs, pins };
+	}
+
+	private makeCrowdMesh(
+		geometry: THREE.BufferGeometry,
+		material: THREE.Material,
+		count: number,
+		name: string,
+	): THREE.InstancedMesh {
+		const mesh = new THREE.InstancedMesh(geometry, material, count);
+		mesh.name = name;
+		mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		mesh.castShadow = true;
+		mesh.receiveShadow = true;
+		// Instance motion does not invalidate Three's lazy bound. A fixed swarm
+		// sphere stays correct while avoiding one per-instance cull walk.
+		mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), SWARM_RADIUS + SWARM_WANDER_RADIUS + 8);
+		this.group.add(mesh);
+		return mesh;
+	}
+
+	private makeAtlasMaterial(map: THREE.CanvasTexture, columns: number, rows: number): THREE.MeshBasicMaterial {
+		const material = this.track(
+			new THREE.MeshBasicMaterial({
+				map,
+				side: THREE.DoubleSide,
+				toneMapped: false,
+			}),
+		);
+		material.onBeforeCompile = (shader) => {
+			shader.vertexShader = shader.vertexShader
+				.replace('#include <common>', '#include <common>\nattribute float instanceTile;')
+				.replace(
+					'#include <map_vertex>',
+					`#include <map_vertex>
+#ifdef USE_MAP
+	vec2 tileSize = vec2(${columns.toFixed(1)}, ${rows.toFixed(1)});
+	vec2 tile = vec2(mod(instanceTile, tileSize.x), tileSize.y - 1.0 - floor(instanceTile / tileSize.x));
+	vMapUv = (clamp(vMapUv, vec2(0.006), vec2(0.994)) + tile) / tileSize;
+#endif`,
+				);
+		};
+		material.customProgramCacheKey = () => `protest-atlas-${columns}x${rows}`;
+		return material;
+	}
+
+	private makeSignAtlas(): THREE.CanvasTexture {
+		const { canvas, ctx } = labelCanvas(1024, 352);
+		for (let i = 0; i < SIGN_LINES.length; i++) {
+			ctx.save();
+			ctx.translate((i % 4) * 256, Math.floor(i / 4) * 176);
+			this.paintSign(ctx, at(SIGN_LINES, i), i);
+			ctx.restore();
+		}
+		return labelTexture(canvas);
+	}
+
+	private makePrideAtlas(): THREE.CanvasTexture {
+		const kinds: FlagKind[] = ['progress', 'rainbow', 'trans', 'bi', 'lesbian', 'nb', 'pan', 'intersex'];
+		const { canvas, ctx } = labelCanvas(1024, 320);
+		for (let i = 0; i < kinds.length; i++) {
+			ctx.save();
+			ctx.translate((i % 4) * 256, Math.floor(i / 4) * 160);
+			this.paintPrideFlag(ctx, at(kinds, i));
+			ctx.restore();
+		}
+		return labelTexture(canvas);
 	}
 
 	private makeSignTex(lines: [string, string], seed: number): THREE.CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(256, 176);
+		this.paintSign(ctx, lines, seed);
+		return labelTexture(c);
+	}
+
+	private paintSign(ctx: CanvasRenderingContext2D, lines: [string, string], seed: number): void {
 		const bgs = ['#ffffff', '#fff59d', '#e3f2fd', '#f3e5f5', '#e8f5e9'];
 		ctx.fillStyle = at(bgs, seed);
 		ctx.fillRect(0, 0, 256, 176);
@@ -1117,13 +1347,6 @@ export class ProtestGroupies {
 		ctx.fillText(lines[0], 128, 90);
 		ctx.font = 'bold 34px system-ui';
 		ctx.fillText(lines[1], 128, 140);
-		const tex = labelTexture(c);
-		return tex;
-	}
-
-	private makeNameTag(i: number): THREE.Sprite {
-		const names = ['Greta-fan', 'Lena', 'Jonas', 'Sophie', 'Kai', 'Mila', 'Noah', 'Emma'];
-		return this.makeTextSprite(at(names, i), 'rgba(30,80,180,0.9)', 160, 40);
 	}
 
 	private makeTextSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
@@ -1178,4 +1401,11 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 	ctx.arcTo(x, y + h, x, y, r);
 	ctx.arcTo(x, y, x + w, y, r);
 	ctx.closePath();
+}
+
+function shortestAngle(from: number, to: number): number {
+	let delta = to - from;
+	while (delta > Math.PI) delta -= Math.PI * 2;
+	while (delta < -Math.PI) delta += Math.PI * 2;
+	return delta;
 }
