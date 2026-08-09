@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FOUNTAIN_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
 
@@ -51,11 +52,12 @@ export class Amenities {
 	}
 
 	private buildFountain(): void {
+		const { center, basin: basinSpec } = FOUNTAIN_SPEC;
 		const base = new THREE.Mesh(
-			new THREE.CylinderGeometry(2.4, 2.8, 0.45, 24),
+			new THREE.CylinderGeometry(basinSpec.topRadius, basinSpec.bottomRadius, basinSpec.height, 24),
 			this.track(lit({ color: 0xb0bec5, metalness: 0.5, roughness: 0.4 })),
 		);
-		base.position.set(0, 0.22, 0);
+		base.position.set(center.x, basinSpec.centerY, center.z);
 		this.group.add(base);
 
 		const basin = new THREE.Mesh(

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CATWALK_DECK, CATWALK_SPEC, catwalkSeatRows } from '#/data/world';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { at } from '#/util/rand';
@@ -9,12 +10,9 @@ import { at } from '#/util/rand';
  * Sits at x=-28, z=-4…12 — deliberately clear of every wayfinding edge, so the
  * shopper crowd never tries to path through the show.
  */
-const RUNWAY_X = -28;
-const START_Z = -3.5;
-// Tip circle reaches TIP_Z + 2.55; the WC back wall starts at z 12.35 — keep clear
-const TIP_Z = 9.5;
-const PODIUM_Y = 0.34;
-const HALF_W = 1.35;
+const { runwayX: RUNWAY_X, startZ: START_Z, tipZ: TIP_Z, podiumY: PODIUM_Y, halfWidth: HALF_W } = CATWALK_SPEC;
+const DECK_LENGTH = CATWALK_DECK.length;
+const DECK_CENTER_Z = CATWALK_DECK.centerZ;
 
 const WALK_SPEED = 1.15;
 const POSE_TIME = 2.6;
@@ -493,24 +491,24 @@ export class Catwalk {
 	// ── set dressing ───────────────────────────────────────
 
 	private buildRunway(): void {
-		const deck = new THREE.Mesh(
-			new THREE.BoxGeometry(HALF_W * 2, PODIUM_Y, TIP_Z - START_Z + 2.4),
-			this.mat(0xf7f5f2, 0.25, 0.15),
-		);
-		deck.position.set(RUNWAY_X, PODIUM_Y / 2, (START_Z + TIP_Z) / 2);
+		const deck = new THREE.Mesh(new THREE.BoxGeometry(HALF_W * 2, PODIUM_Y, DECK_LENGTH), this.mat(0xf7f5f2, 0.25, 0.15));
+		deck.position.set(RUNWAY_X, PODIUM_Y / 2, DECK_CENTER_Z);
 		deck.receiveShadow = true;
 		this.group.add(deck);
 
 		// LED strips along both edges
 		const strip = this.track(new THREE.MeshBasicMaterial({ color: 0xff4fa3, toneMapped: false }));
 		for (const side of [-1, 1] as const) {
-			const led = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, TIP_Z - START_Z + 2.4), strip);
-			led.position.set(RUNWAY_X + side * (HALF_W - 0.02), PODIUM_Y - 0.03, (START_Z + TIP_Z) / 2);
+			const led = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, DECK_LENGTH), strip);
+			led.position.set(RUNWAY_X + side * (HALF_W - 0.02), PODIUM_Y - 0.03, DECK_CENTER_Z);
 			this.group.add(led);
 		}
 		// Rounded tip
-		const tip = new THREE.Mesh(new THREE.CylinderGeometry(HALF_W, HALF_W, PODIUM_Y, 20), this.mat(0xf7f5f2, 0.25, 0.15));
-		tip.position.set(RUNWAY_X, PODIUM_Y / 2, TIP_Z + 1.2);
+		const tip = new THREE.Mesh(
+			new THREE.CylinderGeometry(CATWALK_DECK.noseRadius, CATWALK_DECK.noseRadius, PODIUM_Y, 20),
+			this.mat(0xf7f5f2, 0.25, 0.15),
+		);
+		tip.position.set(RUNWAY_X, PODIUM_Y / 2, CATWALK_DECK.noseCenterZ);
 		this.group.add(tip);
 	}
 
@@ -528,10 +526,11 @@ export class Catwalk {
 			[0.2, 0.2],
 		];
 
+		const { seating } = CATWALK_SPEC;
 		for (const side of [-1, 1] as const) {
-			for (let i = 0; i < 7; i++) {
+			for (let i = 0; i < catwalkSeatRows(); i++) {
 				const chair = new THREE.Group();
-				chair.position.set(RUNWAY_X + side * 2.3, 0, START_Z + 1.4 + i * 2);
+				chair.position.set(RUNWAY_X + side * seating.offsetX, 0, START_Z + seating.firstOffset + i * seating.spacing);
 				chair.rotation.y = side === -1 ? Math.PI / 2 : -Math.PI / 2;
 
 				const seat = new THREE.Mesh(seatGeo, seatMat);
@@ -552,8 +551,9 @@ export class Catwalk {
 
 	private buildBackdrop(): void {
 		const frame = this.mat(0x14141a, 0.7);
-		const wall = new THREE.Mesh(new THREE.BoxGeometry(5.4, 4.2, 0.18), frame);
-		wall.position.set(RUNWAY_X, 2.1, START_Z - 1.6);
+		const { backdrop } = CATWALK_SPEC;
+		const wall = new THREE.Mesh(new THREE.BoxGeometry(backdrop.width, backdrop.height, backdrop.thickness), frame);
+		wall.position.set(RUNWAY_X, backdrop.height / 2, START_Z - backdrop.offset);
 		this.group.add(wall);
 
 		// Backdrop banner

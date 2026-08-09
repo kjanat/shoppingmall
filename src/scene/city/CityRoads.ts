@@ -17,9 +17,9 @@ const HALF_W = ROAD_W / 2;
 const ROAD_Y = 0.03; // net boven de parkeerplaats-plane, anders z-fight bingo
 const ZEBRA_Y = 0.06;
 
-/** Middellijnen van de stroken. */
-const LANE_X = INNER_X + HALF_W; // 51.5 — de noord-zuid stroken
-const LANE_Z = INNER_Z + HALF_W; // 37.5 — de oost-west stroken
+/** Middellijnen van de stroken. CityTraffic rijdt er zijn auto's overheen. */
+export const LANE_X = INNER_X + HALF_W; // 51.5 — de noord-zuid stroken
+export const LANE_Z = INNER_Z + HALF_W; // 37.5 — de oost-west stroken
 
 /** Één texture-tegel is 8 wereldmeter asfalt; de streep zit in het midden. */
 const TILE_LEN = 8;

@@ -33,5 +33,7 @@
 			"$/*": ["./*"]
 		}
 	},
+	// `**/*` skips dot-prefixed files, so a stray `.probe.ts` in the root typechecked clean.
+	"include": ["**/*", ".*.ts"],
 	"exclude": ["dist", "node_modules"]
 }

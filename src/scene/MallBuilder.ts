@@ -7,6 +7,8 @@ import type { StoreDef } from '#/data/stores';
 import { shopStores } from '#/data/stores';
 import {
 	ESCALATORS,
+	FOUNTAIN_SPEC,
+	KIOSK_SPEC,
 	MALL_SLAB_SPECS,
 	MALL_WALL_SPECS,
 	SHOP_HEIGHT,
@@ -484,7 +486,7 @@ export class MallBuilder {
 		this.buildGodStatue();
 
 		const accent = new THREE.Mesh(
-			new THREE.RingGeometry(2.6, 3.0, 48),
+			new THREE.RingGeometry(FOUNTAIN_SPEC.kerbRadius, FOUNTAIN_SPEC.kerbRadius + FOUNTAIN_SPEC.accentWidth, 48),
 			this.track(
 				lit({
 					color: 0xc4b5a0,
@@ -1394,7 +1396,7 @@ export class MallBuilder {
 
 	private buildKiosk(): void {
 		const g = new THREE.Group();
-		g.position.set(0, 0, 10);
+		g.position.set(KIOSK_SPEC.center.x, 0, KIOSK_SPEC.center.z);
 		g.name = 'kiosk';
 
 		const bodyMat = this.track(

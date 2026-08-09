@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SPACESHIP_FRAME_RAILS, SPACESHIP_FRAME_Y, SPACESHIP_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -20,7 +21,7 @@ export class Spaceship {
 	private materials: THREE.Material[] = [];
 	private pool: LightPool;
 	/** Hovers inside the atrium void — above floor 1, under the skylight */
-	private baseY = 9.6;
+	private baseY = SPACESHIP_SPEC.saucer.hoverY;
 
 	constructor(pool: LightPool) {
 		this.pool = pool;
@@ -32,7 +33,7 @@ export class Spaceship {
 		this.buildLandingPad();
 		this.ship = this.buildShip();
 		// Slightly smaller saucer — was dominating the atrium
-		this.ship.scale.setScalar(0.78);
+		this.ship.scale.setScalar(SPACESHIP_SPEC.saucer.scale);
 		this.ship.position.y = this.baseY;
 		this.group.add(this.ship);
 
@@ -77,18 +78,11 @@ export class Spaceship {
 	private buildLandingPad(): void {
 		const hMat = this.track(new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }));
 
-		// Hazard frame hugging the floor-1 void edge (hole is 16 × 12)
+		// Hazard frame hugging the floor-1 void edge
 		const edge = this.track(new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }));
-		const railLong = new THREE.BoxGeometry(16.8, 0.05, 0.35);
-		const railShort = new THREE.BoxGeometry(0.35, 0.05, 12.8);
-		for (const z of [-6.2, 6.2]) {
-			const bar = new THREE.Mesh(railLong, edge);
-			bar.position.set(0, 6.17, z);
-			this.group.add(bar);
-		}
-		for (const x of [-8.2, 8.2]) {
-			const bar = new THREE.Mesh(railShort, edge);
-			bar.position.set(x, 6.17, 0);
+		for (const rail of SPACESHIP_FRAME_RAILS) {
+			const bar = new THREE.Mesh(new THREE.BoxGeometry(rail.size.width, SPACESHIP_SPEC.frame.height, rail.size.depth), edge);
+			bar.position.set(rail.center.x, SPACESHIP_FRAME_Y, rail.center.z);
 			this.group.add(bar);
 		}
 
@@ -154,7 +148,10 @@ export class Spaceship {
 		);
 
 		// Saucer disc
-		const disc = new THREE.Mesh(new THREE.SphereGeometry(4.2, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.45), hull);
+		const disc = new THREE.Mesh(
+			new THREE.SphereGeometry(SPACESHIP_SPEC.saucer.hullRadius, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.45),
+			hull,
+		);
 		disc.scale.set(1, 0.28, 1);
 		disc.position.y = 0;
 		disc.castShadow = true;

@@ -54,7 +54,7 @@ import { PoolPeople } from '#/scene/PoolPeople';
 import { PrayerRoom } from '#/scene/PrayerRoom';
 import { ProtestGroupies } from '#/scene/ProtestGroupies';
 import { Restrooms } from '#/scene/Restrooms';
-import { RoofIsland } from '#/scene/RoofIsland';
+import { RoofIsland, SLIDE_PLATFORM, SLIDE_PLATFORM_TOP_Y } from '#/scene/RoofIsland';
 import { ScrubberBuggy } from '#/scene/ScrubberBuggy';
 import { SecurityGuards } from '#/scene/SecurityGuards';
 import { ShopVoice } from '#/scene/ShopVoice';
@@ -79,6 +79,8 @@ import { loadGame, pathToPersist, saveGame } from './GamePersist';
 const PERSIST_EVERY = 0.75; // seconds
 /** Praatafstand tot een verkoper — E praat én de E-melding luistert hiernaar. */
 const TALK_RADIUS = 7;
+/** Reikwijdte rond het glijbaanplatform waarbinnen E de glijbaan start. */
+const SLIDE_BOARD_REACH = 2.2;
 /**
  * Dynamische resolutie: vaste treden i.p.v. een glijdende schaal, want elke
  * wissel laat composer.setSize twee HalfFloat-fullscreentargets heralloceren.
@@ -761,11 +763,7 @@ export class App {
 					this.boardDrone();
 				} else if (!this.possessId && this.freeMove && this.heli.boardable && this.heli.distanceTo(this.camera.position) < 4.5) {
 					this.boardHeli();
-				} else if (
-					this.slideT < 0 &&
-					this.player.feetHeight > 17 &&
-					Math.hypot(this.camera.position.x + 28.5, this.camera.position.z + 10) < 2.2
-				) {
+				} else if (this.atSlideTop(this.camera.position)) {
 					// Bovenop de glijbaantoren: E = WHEEE
 					this.startSlide();
 				} else if (this.djBartek.inRange(this.camera.position)) {
@@ -1928,9 +1926,15 @@ export class App {
 		if (free && this.scrubber.distanceTo(p) < 3.5 && levelAt(p.y) === 'v0') return true;
 		if (free && this.drone.distanceTo(p) < 3.2) return true;
 		if (free && this.heli.boardable && this.heli.distanceTo(p) < 4.5) return true;
-		if (this.slideT < 0 && this.player.feetHeight > 17 && Math.hypot(p.x + 28.5, p.z + 10) < 2.2) return true;
+		if (this.atSlideTop(p)) return true;
 		if (this.djBartek.inRange(p)) return true;
 		return this.keeperInTalkRange();
+	}
+
+	/** Sta je bovenop de glijbaantoren, dus is E de glijbaan? */
+	private atSlideTop(p: THREE.Vector3): boolean {
+		if (this.slideT >= 0 || this.player.feetHeight < SLIDE_PLATFORM_TOP_Y - 1) return false;
+		return Math.hypot(p.x - SLIDE_PLATFORM.center.x, p.z - SLIDE_PLATFORM.center.z) < SLIDE_BOARD_REACH;
 	}
 
 	/** Staat er een verkoper binnen praatafstand op jouw dek? Zoals ShopVoice.talkNear kiest. */

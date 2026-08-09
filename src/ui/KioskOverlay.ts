@@ -1,16 +1,14 @@
+import { HOME_POS } from '#/camera/Director';
 import { EDGES, NODES } from '#/data/graph';
 import { getInventory } from '#/data/inventory';
 import { ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
-import { type LevelId, level, levelAt } from '#/data/levels';
-import { CATEGORY_LABELS, getKruidvat, STORES, type StoreCategory, type StoreDef } from '#/data/stores';
-import {
-	ELEVATOR_OPENING_ROOF,
-	HELIPAD_DECK_BOUNDS,
-	HELIPAD_PAD_SPEC,
-	SECRET_STAIRS_OPENING_BOUNDS,
-	VERTICAL_CONNECTORS,
-	WORLD_ENTITIES,
-} from '#/data/world';
+import type { LevelId } from '#/data/levels';
+import { LEVELS, LEVELS_BOTTOM_UP, level, levelAt, levelY } from '#/data/levels';
+import type { MapPresentation, PlanShape, SpatialGeometry, Vec2 } from '#/data/spatial';
+import { geometryBounds, planBounds } from '#/data/spatial';
+import { CATEGORY_LABELS, getKruidvat, requireStore, STORES, type StoreCategory, type StoreDef } from '#/data/stores';
+import { HELIPAD_PAD_SPEC, type MallWorldEntity, WORLD_ENTITIES } from '#/data/world';
+import { POOL_POLYGON, ROOF_ISLAND_PAD, SLIDE_PLATFORM } from '#/scene/RoofIsland';
 import { qs } from '#/util/dom';
 import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
@@ -32,9 +30,8 @@ const ZOOM_STEPS = [2.4, 3.4, 4.8, 6.6] as const;
 
 const NODE_BY_ID = new Map(NODES.map((n) => [n.id, n]));
 
-function connectorLevels(connector: (typeof VERTICAL_CONNECTORS)[number]): readonly LevelId[] {
-	return [connector.from, connector.to];
-}
+/** Where the route starts: the info kiosk's own directory record. */
+const KIOSK = requireStore('info');
 
 /** Same-floor graph edges = the corridors worth drawing on the map. */
 const CORRIDORS = EDGES.flatMap((e) => {
@@ -46,45 +43,246 @@ const CORRIDORS = EDGES.flatMap((e) => {
 	return [{ level: la, ax: a.x, az: a.z, bx: b.x, bz: b.z }];
 });
 
-/** Every authored vertical connector becomes a level-aware map feature. */
-const VERTICALS = VERTICAL_CONNECTORS.map((connector) => ({
-	x: connector.x,
-	z: midpoint(connector.zBottom, connector.zTop),
-	minZ: Math.min(connector.zBottom, connector.zTop) - connector.apron,
-	maxZ: Math.max(connector.zBottom, connector.zTop) + connector.apron,
-	width: connector.width,
-	levels: connectorLevels(connector),
-	label: connector.kind === 'escalator' ? 'ROLTRAP' : 'TRAP',
-	short: '⇅',
-}));
+type MapLayer = MapPresentation['layer'];
 
-/** Things worth walking to that aren't shops. */
-const LANDMARKS: { x: number; z: number; level: LevelId; short: string; label: string }[] = [
-	{ x: -28, z: 3, level: 'v0', short: '👗', label: 'CATWALK' },
-	{ x: 0, z: 0, level: 'v0', short: '⛲', label: 'FONTEIN · GOD' },
-	{ x: 0, z: 0, level: 'v1', short: '🛸', label: 'UFO · WEIDE' },
-	{ x: -31.5, z: -19.5, level: 'v0', short: '🕌', label: 'GEBEDSRUIMTE' },
-	{ x: -28, z: 15.5, level: 'v0', short: '🚻', label: 'WC' },
-];
+type LayerStyle = Readonly<{
+	fill: string;
+	stroke: string;
+	lineWidth: number;
+	dash: number;
+	glyph: string;
+	labelColor: string | null;
+}>;
+
+const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
+	structure: {
+		fill: 'rgba(30,41,59,0.55)',
+		stroke: 'rgba(148,163,184,0.6)',
+		lineWidth: 2,
+		dash: 0,
+		glyph: '',
+		labelColor: 'rgba(148,163,184,0.85)',
+	},
+	opening: {
+		fill: 'rgba(8,11,20,0.9)',
+		stroke: 'rgba(248,113,113,0.7)',
+		lineWidth: 1.5,
+		dash: 3.6,
+		glyph: '',
+		labelColor: null,
+	},
+	shop: {
+		fill: 'rgba(148,163,184,0.28)',
+		stroke: 'rgba(226,232,240,0.45)',
+		lineWidth: 1.4,
+		dash: 0,
+		glyph: '',
+		labelColor: 'rgba(241,245,249,0.92)',
+	},
+	circulation: {
+		fill: 'rgba(251,191,36,0.35)',
+		stroke: '#fbbf24',
+		lineWidth: 1.4,
+		dash: 0,
+		glyph: '⇅',
+		labelColor: '#fbbf24',
+	},
+	parking: {
+		fill: 'rgba(69,90,100,0.5)',
+		stroke: 'rgba(255,193,7,0.5)',
+		lineWidth: 1.4,
+		dash: 0,
+		glyph: '',
+		labelColor: '#ffc107',
+	},
+	fixture: {
+		fill: 'rgba(192,132,252,0.26)',
+		stroke: 'rgba(240,171,252,0.75)',
+		lineWidth: 1.4,
+		dash: 0,
+		glyph: '',
+		labelColor: '#f0abfc',
+	},
+	clutter: {
+		fill: 'rgba(148,163,184,0.18)',
+		stroke: 'rgba(148,163,184,0.3)',
+		lineWidth: 1,
+		dash: 0,
+		glyph: '',
+		labelColor: null,
+	},
+};
+
+const HERO_FILL = 'rgba(0,166,81,0.55)';
+const HERO_STROKE = '#00e676';
+const HERO_LABEL = '#5eead4';
+
+/**
+ * A plan is a horizontal cut through the deck, so geometry that only starts
+ * above it is ceiling and belongs to no room outline.
+ */
+const PLAN_CUT_HEIGHT = 1.2;
+
+type MapFeature = Readonly<{
+	layer: MapLayer;
+	label: string;
+	hero: boolean;
+	priority: number;
+	shapes: readonly PlanShape[];
+	anchor: Vec2;
+}>;
+
+function oneLine(text: string): string {
+	return text.split('\n').join(' ');
+}
+
+function volumePlan(geometry: SpatialGeometry): PlanShape {
+	if (geometry.kind === 'prism') return geometry.plan;
+	if (geometry.kind === 'cylinder' && geometry.axis === 'y') {
+		return { kind: 'circle', center: { x: geometry.center.x, z: geometry.center.z }, radius: geometry.radius };
+	}
+	const bounds = geometryBounds(geometry);
+	return {
+		kind: 'rectangle',
+		center: { x: midpoint(bounds.minX, bounds.maxX), z: midpoint(bounds.minZ, bounds.maxZ) },
+		width: span(bounds.minX, bounds.maxX),
+		depth: span(bounds.minZ, bounds.maxZ),
+		yaw: 0,
+	};
+}
+
+function planKey(shape: PlanShape): string {
+	if (shape.kind === 'circle') return `c ${shape.center.x} ${shape.center.z} ${shape.radius}`;
+	if (shape.kind === 'polygon') return `p ${shape.points.map((point) => `${point.x},${point.z}`).join(' ')}`;
+	return `r ${shape.center.x} ${shape.center.z} ${shape.width} ${shape.depth} ${shape.yaw}`;
+}
+
+function featureAnchor(shapes: readonly PlanShape[]): Vec2 {
+	let minX = Number.POSITIVE_INFINITY;
+	let maxX = Number.NEGATIVE_INFINITY;
+	let minZ = Number.POSITIVE_INFINITY;
+	let maxZ = Number.NEGATIVE_INFINITY;
+	for (const shape of shapes) {
+		const bounds = planBounds(shape);
+		minX = Math.min(minX, bounds.minX);
+		maxX = Math.max(maxX, bounds.maxX);
+		minZ = Math.min(minZ, bounds.minZ);
+		maxZ = Math.max(maxZ, bounds.maxZ);
+	}
+	return { x: midpoint(minX, maxX), z: midpoint(minZ, maxZ) };
+}
+
+/** An opening is a hole in the slab of the highest deck it reaches, and nowhere else. */
+function planLevels(entity: MallWorldEntity): readonly LevelId[] {
+	if (entity.map.layer !== 'opening' || entity.levels.length < 2) return entity.levels;
+	return [entity.levels.reduce((top, id) => (levelY(id) > levelY(top) ? id : top))];
+}
+
+function planShapes(entity: MallWorldEntity, levelId: LevelId): readonly PlanShape[] {
+	const cut = levelY(levelId) + PLAN_CUT_HEIGHT;
+	const shapes: PlanShape[] = [];
+	const seen = new Set<string>();
+	for (const volume of entity.volumes) {
+		if (geometryBounds(volume.geometry).minY > cut) continue;
+		const plan = volumePlan(volume.geometry);
+		const key = planKey(plan);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		shapes.push(plan);
+	}
+	return shapes;
+}
+
+/** The map's only source of rooms: every entity the world schema marks visible. */
+function buildFeatures(): Map<LevelId, MapFeature[]> {
+	const byLevel = new Map<LevelId, MapFeature[]>(LEVELS.map((deck): [LevelId, MapFeature[]] => [deck.id, []]));
+	for (const entity of WORLD_ENTITIES) {
+		if (!entity.map.visible) continue;
+		const store = STORES.find((candidate) => `shop-${candidate.id}` === entity.id);
+		for (const levelId of planLevels(entity)) {
+			const shapes = planShapes(entity, levelId);
+			if (shapes.length === 0) continue;
+			byLevel.get(levelId)?.push({
+				layer: entity.map.layer,
+				label: oneLine(entity.map.label ?? ''),
+				hero: store?.hero === true,
+				priority: entity.map.priority,
+				shapes,
+				anchor: featureAnchor(shapes),
+			});
+		}
+	}
+	for (const features of byLevel.values()) features.sort((a, b) => a.priority - b.priority);
+	return byLevel;
+}
+
+const FEATURES_BY_LEVEL = buildFeatures();
+
+/** Named features, most important first, so a crowded corner keeps the label that matters. */
+const LABELS_BY_LEVEL = new Map<LevelId, MapFeature[]>(
+	[...FEATURES_BY_LEVEL].map(([levelId, features]): [LevelId, MapFeature[]] => [
+		levelId,
+		features.filter((feature) => feature.label !== '' && LAYER_STYLES[feature.layer].labelColor !== null).toReversed(),
+	]),
+);
+
+function featuresOn(levelId: LevelId): readonly MapFeature[] {
+	return FEATURES_BY_LEVEL.get(levelId) ?? [];
+}
+
+function labelsOn(levelId: LevelId): readonly MapFeature[] {
+	return LABELS_BY_LEVEL.get(levelId) ?? [];
+}
+
+const RECT_CORNERS = [
+	[-1, -1],
+	[1, -1],
+	[1, 1],
+	[-1, 1],
+] as const;
+
+function tracePlan(ctx: CanvasRenderingContext2D, shape: PlanShape): void {
+	ctx.beginPath();
+	if (shape.kind === 'circle') {
+		ctx.arc(shape.center.x, shape.center.z, shape.radius, 0, Math.PI * 2);
+		return;
+	}
+	if (shape.kind === 'polygon') {
+		shape.points.forEach((point, index) => {
+			if (index === 0) ctx.moveTo(point.x, point.z);
+			else ctx.lineTo(point.x, point.z);
+		});
+		ctx.closePath();
+		return;
+	}
+	const cosine = Math.cos(shape.yaw);
+	const sine = Math.sin(shape.yaw);
+	RECT_CORNERS.forEach(([signX, signZ], index) => {
+		const localX = signX * half(shape.width);
+		const localZ = signZ * half(shape.depth);
+		const x = shape.center.x + localX * cosine + localZ * sine;
+		const z = shape.center.z - localX * sine + localZ * cosine;
+		if (index === 0) ctx.moveTo(x, z);
+		else ctx.lineTo(x, z);
+	});
+	ctx.closePath();
+}
+
+type ScreenPoint = Readonly<{ x: number; y: number }>;
+
+/** Screen-space spacing a label needs before it is dropped as unreadable. */
+const BIG_LABEL_GAP = 22;
+const MINI_LABEL_GAP = 14;
+
+function tooClose(placed: readonly ScreenPoint[], x: number, y: number, gap: number): boolean {
+	return placed.some((point) => Math.abs(point.x - x) < gap && Math.abs(point.y - y) < gap);
+}
 
 function isTypingTarget(t: EventTarget | null): boolean {
 	const el = t as HTMLElement | null;
 	if (!el?.tagName) return false;
 	return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
 }
-
-function shortName(store: StoreDef): string {
-	return store.name.replace('\n', ' ');
-}
-
-/** Which deck a big-map tab stands for; the markup carries the id. */
-function tabLevel(btn: HTMLElement): LevelId {
-	const id = btn.dataset['level'];
-	return LANDMARK_LEVELS.find((l) => l === id) ?? 'v0';
-}
-
-/** Decks the big map can show, in tab order. */
-const LANDMARK_LEVELS = ['v0', 'v1', 'roof'] as const satisfies readonly LevelId[];
 
 export type UICallbacks = {
 	onSelectStore: (store: StoreDef) => void;
@@ -124,11 +322,12 @@ export class KioskOverlay {
 	private elNearby!: HTMLElement;
 	private elPossessBanner!: HTMLElement;
 
+	/** Waar de speler begint, tot de eerste frame hem bijwerkt. */
 	private map: MapState = {
-		x: 0,
-		z: 10,
+		x: HOME_POS.x,
+		z: HOME_POS.z,
 		yaw: 0,
-		level: 'v0',
+		level: levelAt(HOME_POS.y),
 		path: [],
 		blips: [],
 		target: null,
@@ -137,6 +336,7 @@ export class KioskOverlay {
 	private bigOpen = false;
 	private bigLevel: LevelId = 'v0';
 	private mapClock = 0;
+	private bigTabs: { button: HTMLButtonElement; level: LevelId }[] = [];
 
 	constructor(root: HTMLElement, callbacks: UICallbacks) {
 		this.root = root;
@@ -248,10 +448,7 @@ export class KioskOverlay {
               <h2>Plattegrond · Prairie Lakes</h2>
               <p>Jij bent de pijl. Geel = route. <b>⇅</b> = roltrap/trap naar de andere verdieping.</p>
             </div>
-            <div class="bigmap-tabs">
-              <button type="button" class="bigmap-tab" data-level="v0">Begane grond</button>
-              <button type="button" class="bigmap-tab" data-level="v1">Verdieping 1</button>
-              <button type="button" class="bigmap-tab" data-level="roof">Dak 🚁</button>
+            <div class="bigmap-tabs" id="bigmap-tabs">
               <button type="button" class="btn ghost" id="bigmap-close">Sluiten (M)</button>
             </div>
           </header>
@@ -469,13 +666,7 @@ export class KioskOverlay {
 			if (e.target === this.elBigMap) this.toggleBigMap(false);
 		});
 
-		this.root.querySelectorAll<HTMLElement>('.bigmap-tab').forEach((btn) => {
-			btn.addEventListener('click', () => {
-				this.bigLevel = tabLevel(btn);
-				this.renderBigTabs();
-				this.paintBigMap();
-			});
-		});
+		this.buildBigTabs();
 
 		this.elMinimap.addEventListener(
 			'wheel',
@@ -507,10 +698,28 @@ export class KioskOverlay {
 		this.zoom = Math.max(0, Math.min(ZOOM_STEPS.length - 1, step));
 	}
 
+	/** One tab per deck the world has, bottom deck first. */
+	private buildBigTabs(): void {
+		const host = qs(this.root, '#bigmap-tabs');
+		const close = qs(this.root, '#bigmap-close');
+		for (const deck of LEVELS_BOTTOM_UP) {
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'bigmap-tab';
+			button.textContent = deck.name;
+			button.title = deck.hint;
+			button.addEventListener('click', () => {
+				this.bigLevel = deck.id;
+				this.renderBigTabs();
+				this.paintBigMap();
+			});
+			host.insertBefore(button, close);
+			this.bigTabs.push({ button, level: deck.id });
+		}
+	}
+
 	private renderBigTabs(): void {
-		this.root.querySelectorAll<HTMLElement>('.bigmap-tab').forEach((btn) => {
-			btn.classList.toggle('active', tabLevel(btn) === this.bigLevel);
-		});
+		for (const tab of this.bigTabs) tab.button.classList.toggle('active', tab.level === this.bigLevel);
 	}
 
 	private prep(canvas: HTMLCanvasElement, cssW: number, cssH: number): CanvasRenderingContext2D | null {
@@ -570,28 +779,26 @@ export class KioskOverlay {
 		ctx.restore();
 
 		// Upright labels for whatever is close by
-		ctx.font = '600 8px ui-monospace, monospace';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 		const reach = (r - 8) / scale;
-		for (const s of STORES) {
-			if (s.id === 'info' || s.level !== lvl) continue;
-			if (Math.abs(s.x - this.map.x) > reach || Math.abs(s.z - this.map.z) > reach) continue;
-			const { sx, sy } = this.project(s.x, s.z, cx, cy, scale);
-			ctx.fillStyle = s.hero ? '#5eead4' : 'rgba(226,232,240,0.8)';
-			ctx.fillText(shortName(s).slice(0, 8), sx, sy);
-		}
-		for (const v of VERTICALS) {
-			const { sx, sy } = this.project(v.x, v.z, cx, cy, scale);
-			ctx.fillStyle = '#fbbf24';
-			ctx.font = '700 11px ui-monospace, monospace';
-			ctx.fillText(v.short, sx, sy);
-		}
-		ctx.font = '11px system-ui, sans-serif';
-		for (const l of LANDMARKS) {
-			if (l.level !== lvl) continue;
-			const { sx, sy } = this.project(l.x, l.z, cx, cy, scale);
-			ctx.fillText(l.short, sx, sy);
+		const placed: ScreenPoint[] = [];
+		for (const feature of labelsOn(lvl)) {
+			const style = LAYER_STYLES[feature.layer];
+			if (style.labelColor === null) continue;
+			if (Math.abs(feature.anchor.x - this.map.x) > reach || Math.abs(feature.anchor.z - this.map.z) > reach) continue;
+			const { sx, sy } = this.project(feature.anchor.x, feature.anchor.z, cx, cy, scale);
+			if (tooClose(placed, sx, sy, MINI_LABEL_GAP)) continue;
+			placed.push({ x: sx, y: sy });
+			if (style.glyph === '') {
+				ctx.font = '600 8px ui-monospace, monospace';
+				ctx.fillStyle = feature.hero ? HERO_LABEL : style.labelColor;
+				ctx.fillText(feature.label.slice(0, 8), sx, sy);
+			} else {
+				ctx.font = '700 11px ui-monospace, monospace';
+				ctx.fillStyle = style.stroke;
+				ctx.fillText(style.glyph, sx, sy);
+			}
 		}
 
 		// View cone — screen space, always pointing up
@@ -628,20 +835,36 @@ export class KioskOverlay {
 		this.drawArrow(ctx, cx, cy, 0, 7);
 	}
 
-	/** Everything in world units. `scale` converts px → world for line widths. */
-	/** Daklaag: dekken, trapgat, helipad-H, eiland + zwembad, lift, skylight. */
+	/** Every map-visible entity on this deck, painted by its schema layer. */
+	private paintFeatures(ctx: CanvasRenderingContext2D, lvl: LevelId, px: number): void {
+		for (const feature of featuresOn(lvl)) {
+			const style = LAYER_STYLES[feature.layer];
+			ctx.fillStyle = feature.hero ? HERO_FILL : style.fill;
+			ctx.strokeStyle = feature.hero ? HERO_STROKE : style.stroke;
+			ctx.lineWidth = style.lineWidth * px;
+			ctx.setLineDash(style.dash > 0 ? [style.dash * px, style.dash * px] : []);
+			for (const shape of feature.shapes) {
+				tracePlan(ctx, shape);
+				ctx.fill();
+				ctx.stroke();
+			}
+		}
+		ctx.setLineDash([]);
+	}
+
+	/**
+	 * Daklaag bovenop de schema-lagen: het zandeiland, het open skylight, de
+	 * helipad-H, het zwembad en de glijbaantoren. Dekken, trapgat en liftschacht
+	 * komen uit `WORLD_ENTITIES`.
+	 */
 	private paintRoofLayer(ctx: CanvasRenderingContext2D, px: number): void {
-		// Loopbare dekken
-		ctx.fillStyle = 'rgba(90,100,115,0.55)';
-		ctx.fillRect(
-			HELIPAD_DECK_BOUNDS.minX,
-			HELIPAD_DECK_BOUNDS.minZ,
-			span(HELIPAD_DECK_BOUNDS.minX, HELIPAD_DECK_BOUNDS.maxX),
-			span(HELIPAD_DECK_BOUNDS.minZ, HELIPAD_DECK_BOUNDS.maxZ),
-		);
-		ctx.fillRect(12, -12, 16, 20); // lift-corridor
 		ctx.fillStyle = 'rgba(214,196,150,0.6)'; // zand
-		ctx.fillRect(-32, -20, 26, 40); // ROOF ISLAND
+		ctx.fillRect(
+			ROOF_ISLAND_PAD.minX,
+			ROOF_ISLAND_PAD.minZ,
+			span(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX),
+			span(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ),
+		);
 
 		// Atrium-skylight (open — hier vlieg je doorheen)
 		ctx.fillStyle = 'rgba(56,120,190,0.4)';
@@ -659,39 +882,24 @@ export class KioskOverlay {
 		ctx.arc(HELIPAD_PAD_SPEC.center.x, HELIPAD_PAD_SPEC.center.z, HELIPAD_PAD_SPEC.mapRadius, 0, Math.PI * 2);
 		ctx.stroke();
 
-		// Trapgat naar V1 (secret stairs) — open gat, rood gemarkeerd
-		ctx.fillStyle = 'rgba(8,11,20,0.9)';
-		ctx.fillRect(
-			SECRET_STAIRS_OPENING_BOUNDS.minX,
-			SECRET_STAIRS_OPENING_BOUNDS.minZ,
-			span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENING_BOUNDS.maxX),
-			span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ),
-		);
-		ctx.strokeStyle = 'rgba(248,113,113,0.9)';
-		ctx.lineWidth = 1.4 * px;
-		ctx.strokeRect(
-			SECRET_STAIRS_OPENING_BOUNDS.minX,
-			SECRET_STAIRS_OPENING_BOUNDS.minZ,
-			span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENING_BOUNDS.maxX),
-			span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ),
-		);
-
-		// Glazen lift
-		ctx.fillStyle = 'rgba(125,211,252,0.7)';
-		ctx.fillRect(
-			ELEVATOR_OPENING_ROOF.center.x - ELEVATOR_OPENING_ROOF.size.width / 2,
-			ELEVATOR_OPENING_ROOF.center.z - ELEVATOR_OPENING_ROOF.size.depth / 2,
-			ELEVATOR_OPENING_ROOF.size.width,
-			ELEVATOR_OPENING_ROOF.size.depth,
-		);
-
-		// Zwembad + glijbaantoren op het eiland
+		// Zwembad: dezelfde waterlijn waar inPool() op rekent
 		ctx.fillStyle = 'rgba(56,189,248,0.75)';
 		ctx.beginPath();
-		ctx.ellipse(-20, 2.5, 6.5, 4.6, 0, 0, Math.PI * 2);
+		POOL_POLYGON.forEach(([x, z], index) => {
+			if (index === 0) ctx.moveTo(x, z);
+			else ctx.lineTo(x, z);
+		});
+		ctx.closePath();
 		ctx.fill();
+
+		// Glijbaantoren
 		ctx.fillStyle = '#ffca28';
-		ctx.fillRect(-29.4, -10.9, 1.8, 1.8); // glijbaantoren
+		ctx.fillRect(
+			SLIDE_PLATFORM.center.x - half(SLIDE_PLATFORM.size),
+			SLIDE_PLATFORM.center.z - half(SLIDE_PLATFORM.size),
+			SLIDE_PLATFORM.size,
+			SLIDE_PLATFORM.size,
+		);
 	}
 
 	private paintWorld(ctx: CanvasRenderingContext2D, lvl: LevelId, scale: number): void {
@@ -699,18 +907,10 @@ export class KioskOverlay {
 		ctx.lineJoin = 'round';
 		ctx.lineCap = 'round';
 
-		// Shell
-		ctx.fillStyle = 'rgba(30,41,59,0.55)';
-		ctx.fillRect(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth), MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth);
-		ctx.lineWidth = 2 * px;
-		ctx.strokeStyle = 'rgba(148,163,184,0.6)';
-		ctx.strokeRect(-half(MALL_FOOTPRINT.width), -half(MALL_FOOTPRINT.depth), MALL_FOOTPRINT.width, MALL_FOOTPRINT.depth);
+		// Rooms, shells, shafts and holes — whatever the schema puts on this deck
+		this.paintFeatures(ctx, lvl, px);
 
-		// DAK: eigen laag — geen V1-gangen maar helipad, eiland, trapgat en lift
-		if (lvl === 'roof') {
-			this.paintRoofLayer(ctx, px);
-			return;
-		}
+		if (lvl === 'roof') this.paintRoofLayer(ctx, px);
 
 		// Walkable corridors, straight from the wayfinding graph
 		ctx.strokeStyle = 'rgba(226,232,240,0.14)';
@@ -722,50 +922,6 @@ export class KioskOverlay {
 			ctx.lineTo(c.bx, c.bz);
 		}
 		ctx.stroke();
-
-		// Atrium: fountain downstairs, open void upstairs
-		if (lvl === 'v0') {
-			ctx.beginPath();
-			ctx.arc(0, 0, 2.6, 0, Math.PI * 2);
-			ctx.fillStyle = 'rgba(56,189,248,0.35)';
-			ctx.fill();
-		} else {
-			ctx.fillStyle = 'rgba(8,11,20,0.9)';
-			ctx.fillRect(-half(ATRIUM_VOID.width), -half(ATRIUM_VOID.depth), ATRIUM_VOID.width, ATRIUM_VOID.depth);
-			ctx.setLineDash([1.2 * px * 3, 1.2 * px * 3]);
-			ctx.strokeStyle = 'rgba(248,113,113,0.7)';
-			ctx.lineWidth = 1.5 * px;
-			ctx.strokeRect(-half(ATRIUM_VOID.width), -half(ATRIUM_VOID.depth), ATRIUM_VOID.width, ATRIUM_VOID.depth);
-			ctx.setLineDash([]);
-		}
-
-		// Stores
-		for (const shop of WORLD_ENTITIES) {
-			if (shop.category !== 'shop' || !shop.levels.includes(lvl)) continue;
-			const room = shop.volumes.find((volume) => volume.id === 'room-shell');
-			if (room?.geometry.kind !== 'prism' || room.geometry.plan.kind !== 'rectangle') continue;
-			const store = STORES.find((candidate) => `shop-${candidate.id}` === shop.id);
-			const plan = room.geometry.plan;
-			ctx.save();
-			ctx.translate(plan.center.x, plan.center.z);
-			ctx.rotate(-plan.yaw);
-			ctx.fillStyle = store?.hero ? 'rgba(0,166,81,0.55)' : 'rgba(148,163,184,0.28)';
-			ctx.fillRect(-plan.width / 2, -plan.depth / 2, plan.width, plan.depth);
-			ctx.lineWidth = 1.4 * px;
-			ctx.strokeStyle = store?.hero ? '#00e676' : 'rgba(226,232,240,0.45)';
-			ctx.strokeRect(-plan.width / 2, -plan.depth / 2, plan.width, plan.depth);
-			ctx.restore();
-		}
-
-		// Escalator + stairs shafts
-		for (const v of VERTICALS) {
-			if (!v.levels.includes(lvl)) continue;
-			ctx.fillStyle = 'rgba(251,191,36,0.35)';
-			ctx.fillRect(v.x - half(v.width), v.minZ, v.width, span(v.minZ, v.maxZ));
-			ctx.strokeStyle = '#fbbf24';
-			ctx.lineWidth = 1.4 * px;
-			ctx.strokeRect(v.x - half(v.width), v.minZ, v.width, span(v.minZ, v.maxZ));
-		}
 
 		// Route — bright on this floor, ghosted on the other
 		const path = this.map.path;
@@ -790,11 +946,13 @@ export class KioskOverlay {
 			}
 		}
 
-		// Kiosk
-		ctx.fillStyle = '#22d3ee';
-		ctx.beginPath();
-		ctx.arc(0, 10, 1.1, 0, Math.PI * 2);
-		ctx.fill();
+		// Kiosk — alleen op het dek waar hij staat
+		if (lvl === KIOSK.level) {
+			ctx.fillStyle = '#22d3ee';
+			ctx.beginPath();
+			ctx.arc(KIOSK.x, KIOSK.z, 1.1, 0, Math.PI * 2);
+			ctx.fill();
+		}
 
 		// Sims
 		ctx.fillStyle = 'rgba(248,250,252,0.75)';
@@ -827,36 +985,22 @@ export class KioskOverlay {
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 
-		for (const s of STORES) {
-			if (s.id === 'info' || s.level !== lvl) continue;
-			ctx.fillStyle = s.hero ? '#5eead4' : 'rgba(241,245,249,0.92)';
-			ctx.font = `${s.hero ? 700 : 600} 11px ui-monospace, monospace`;
-			ctx.fillText(shortName(s), sx(s.x), sy(s.z));
-		}
-
-		ctx.fillStyle = '#fbbf24';
-		ctx.font = '700 11px ui-monospace, monospace';
-		for (const v of VERTICALS) {
-			ctx.fillText(`${v.short} ${v.label}`, sx(v.x), sy(v.z + 7.6));
-		}
-
-		ctx.fillStyle = '#22d3ee';
-		ctx.font = '600 10px ui-monospace, monospace';
-		ctx.fillText('KIOSK · START', sx(0), sy(12.4));
-
-		for (const l of LANDMARKS) {
-			if (l.level !== lvl) continue;
-			ctx.font = '14px system-ui, sans-serif';
-			ctx.fillStyle = '#fff';
-			ctx.fillText(l.short, sx(l.x), sy(l.z));
-			ctx.font = '700 10px ui-monospace, monospace';
-			ctx.fillStyle = '#f0abfc';
-			ctx.fillText(l.label, sx(l.x), sy(l.z) + 16);
+		const placed: ScreenPoint[] = [];
+		for (const feature of labelsOn(lvl)) {
+			const style = LAYER_STYLES[feature.layer];
+			if (style.labelColor === null) continue;
+			const x = sx(feature.anchor.x);
+			const y = sy(feature.anchor.z);
+			if (tooClose(placed, x, y, BIG_LABEL_GAP)) continue;
+			placed.push({ x, y });
+			ctx.fillStyle = feature.hero ? HERO_LABEL : style.labelColor;
+			ctx.font = `${feature.hero ? 700 : 600} 11px ui-monospace, monospace`;
+			ctx.fillText(style.glyph === '' ? feature.label : `${style.glyph} ${feature.label}`, x, y);
 		}
 
 		ctx.fillStyle = 'rgba(148,163,184,0.8)';
 		ctx.font = '600 10px ui-monospace, monospace';
-		ctx.fillText('N ↑', sx(0), sy(-half(MALL_FOOTPRINT.depth)) - 12);
+		ctx.fillText('N ↑', cssW / 2, sy(-half(MALL_FOOTPRINT.depth)) - 12);
 	}
 
 	private paintBigMap(): void {

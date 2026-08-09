@@ -3,10 +3,42 @@ import { levelY } from '#/data/levels';
 import { type LitMaterial, lit } from '#/render/material';
 import { distanceToSegment2 } from '#/util/geometry2';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { midpoint, span } from '#/util/math';
+import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 const DECK_Y = levelY('roof');
+
+/** Zandplaat van het eiland. De dekmesh, de collider en de plattegrond lezen dezelfde randen. */
+export const ROOF_ISLAND_PAD = { minX: -32, maxX: -6, minZ: -20, maxZ: 20 } as const;
+
+/** Glijbaantoren: de plaat waar je bovenop staat. Mesh, collider en kaart hangen eraan. */
+export const SLIDE_PLATFORM = {
+	center: { x: -28.5, z: -10 },
+	size: 1.9,
+	thickness: 0.15,
+	standHeight: 4,
+} as const;
+
+/** Loopvlak van die plaat: bovenkant van de doos, niet het hart. */
+export const SLIDE_PLATFORM_TOP_Y = DECK_Y + SLIDE_PLATFORM.standHeight + half(SLIDE_PLATFORM.thickness);
+
+/**
+ * De ladder aan de zuidkant, ruimer dan zijn sporten: arcade-klimmen. Alles gemeten
+ * vanaf de plaat waar hij op uitkomt, want los ingetikt liep hij ernaast.
+ */
+const SLIDE_LADDER = { halfWidth: 0.7, topInset: 0.05, run: 1.3, openBefore: 0.6, openAfter: 0.5 } as const;
+
+const SLIDE_LADDER_TOP_Z = SLIDE_PLATFORM.center.z - half(SLIDE_PLATFORM.size) + SLIDE_LADDER.topInset;
+
+/** Klimkoker van de ladder, zoals CollisionWorld hem als helling opneemt. */
+export const SLIDE_LADDER_CLIMB = {
+	minX: SLIDE_PLATFORM.center.x - SLIDE_LADDER.halfWidth,
+	maxX: SLIDE_PLATFORM.center.x + SLIDE_LADDER.halfWidth,
+	zTop: SLIDE_LADDER_TOP_Z,
+	zBottom: SLIDE_LADDER_TOP_Z - SLIDE_LADDER.run,
+	openMinZ: SLIDE_LADDER_TOP_Z - SLIDE_LADDER.openBefore,
+	openMaxZ: SLIDE_LADDER_TOP_Z + SLIDE_LADDER.openAfter,
+} as const;
 
 /** Waterspiegel-centrum in wereldcoördinaten. PoolPeople zet er zwemmers op. */
 export const POOL_CENTER = { x: -20, z: 2 } as const;
@@ -164,7 +196,7 @@ export class RoofIsland {
 	readonly group = new THREE.Group();
 
 	/** Loopbaar dek voor de integrator */
-	readonly roofPad = { minX: -32, maxX: -6, minZ: -20, maxZ: 20, y: DECK_Y };
+	readonly roofPad = { ...ROOF_ISLAND_PAD, y: DECK_Y };
 	/** Landmark voor de kaart/wayfinder */
 	readonly landmark = { x: -19, z: 0, label: '🏝 ROOF ISLAND' };
 	/** De glijbaan-baan — App laat de speler hier overheen glijden (E bovenaan). */
@@ -234,13 +266,15 @@ export class RoofIsland {
 		return tex;
 	}
 
-	/** Zandkleurige dekplaat: x -32..-6, z -20..20, top op DECK_Y */
+	/** Zandkleurige dekplaat, top op DECK_Y. */
 	private buildDeck(): void {
+		const { minX, maxX, minZ, maxZ } = ROOF_ISLAND_PAD;
+		const thickness = 0.35;
 		const deck = new THREE.Mesh(
-			this.geo(new THREE.BoxGeometry(26, 0.35, 40)),
+			this.geo(new THREE.BoxGeometry(span(minX, maxX), thickness, span(minZ, maxZ))),
 			this.track(lit({ color: 0xe6cf9c, roughness: 0.95 })),
 		);
-		deck.position.set(-19, DECK_Y - 0.175, 0);
+		deck.position.set(midpoint(minX, maxX), DECK_Y - half(thickness), midpoint(minZ, maxZ));
 		deck.receiveShadow = true;
 		this.group.add(deck);
 	}
@@ -308,9 +342,11 @@ export class RoofIsland {
 		const g = new THREE.Group();
 		g.name = 'slide';
 		const steel = this.track(lit({ color: 0x90a4ae, metalness: 0.6, roughness: 0.4 }));
+		const { center, size, thickness, standHeight } = SLIDE_PLATFORM;
+		const railInset = 0.05;
 
-		// Torenpoten + platform op DECK_Y + 4
-		const legGeo = this.geo(new THREE.CylinderGeometry(0.09, 0.09, 4, 8));
+		// Torenpoten + platform
+		const legGeo = this.geo(new THREE.CylinderGeometry(0.09, 0.09, standHeight, 8));
 		for (const [dx, dz] of [
 			[-0.8, -0.8],
 			[0.8, -0.8],
@@ -318,44 +354,46 @@ export class RoofIsland {
 			[0.8, 0.8],
 		] as const) {
 			const leg = new THREE.Mesh(legGeo, steel);
-			leg.position.set(-28.5 + dx, DECK_Y + 2, -10 + dz);
+			leg.position.set(center.x + dx, DECK_Y + half(standHeight), center.z + dz);
 			g.add(leg);
 		}
 		const platform = new THREE.Mesh(
-			this.geo(new THREE.BoxGeometry(1.9, 0.15, 1.9)),
+			this.geo(new THREE.BoxGeometry(size, thickness, size)),
 			this.track(lit({ color: 0x455a64, roughness: 0.7 })),
 		);
-		platform.position.set(-28.5, DECK_Y + 4, -10);
+		platform.position.set(center.x, DECK_Y + standHeight, center.z);
 		g.add(platform);
 
 		// Platform-railing: drie zijden dicht, de vierde is de glijbaan zelf
-		const railGeo = this.geo(new THREE.BoxGeometry(1.9, 0.06, 0.06));
+		const railEdge = half(size) - railInset;
+		const railGeo = this.geo(new THREE.BoxGeometry(size, 0.06, 0.06));
 		for (const [rx, rz, ry] of [
-			[-28.5, -10.9, 0],
-			[-28.5, -9.1, 0],
-			[-29.4, -10, Math.PI / 2],
+			[center.x, center.z - railEdge, 0],
+			[center.x, center.z + railEdge, 0],
+			[center.x - railEdge, center.z, Math.PI / 2],
 		] as const) {
 			const rail = new THREE.Mesh(railGeo, steel);
-			rail.position.set(rx, DECK_Y + 4.7, rz);
+			rail.position.set(rx, DECK_Y + standHeight + 0.7, rz);
 			rail.rotation.y = ry;
 			g.add(rail);
 			const railLow = new THREE.Mesh(railGeo, steel);
-			railLow.position.set(rx, DECK_Y + 4.35, rz);
+			railLow.position.set(rx, DECK_Y + standHeight + 0.35, rz);
 			railLow.rotation.y = ry;
 			g.add(railLow);
 		}
 
 		// Ladder aan de zuidkant
+		const ladderZ = center.z - half(size) - 0.03;
 		const rungGeo = this.geo(new THREE.BoxGeometry(0.5, 0.05, 0.05));
 		for (let i = 0; i < 8; i++) {
 			const rung = new THREE.Mesh(rungGeo, steel);
-			rung.position.set(-28.5, DECK_Y + 0.5 + i * 0.48, -10.98);
+			rung.position.set(center.x, DECK_Y + 0.5 + i * 0.48, ladderZ);
 			g.add(rung);
 		}
-		const ladderRailGeo = this.geo(new THREE.CylinderGeometry(0.035, 0.035, 4.3, 6));
+		const ladderRailGeo = this.geo(new THREE.CylinderGeometry(0.035, 0.035, standHeight + 0.3, 6));
 		for (const dx of [-0.27, 0.27]) {
 			const lr = new THREE.Mesh(ladderRailGeo, steel);
-			lr.position.set(-28.5 + dx, DECK_Y + 2.2, -10.98);
+			lr.position.set(center.x + dx, DECK_Y + 2.2, ladderZ);
 			g.add(lr);
 		}
 

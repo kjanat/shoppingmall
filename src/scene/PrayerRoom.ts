@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { spatial } from '#/audio/SpatialAudio';
+import { levelY } from '#/data/levels';
+import { PRAYER_ROOM_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -35,7 +38,7 @@ const GOAT_SCREAMS = [
  */
 export class PrayerRoom {
 	readonly group = new THREE.Group();
-	readonly pos = new THREE.Vector3(-31.5, 0, -19.5);
+	readonly pos = new THREE.Vector3(PRAYER_ROOM_SPEC.center.x, levelY('v0'), PRAYER_ROOM_SPEC.center.z);
 	private materials: THREE.Material[] = [];
 	private audioStarted = false;
 	private stopAudio: (() => void) | null = null;
@@ -72,10 +75,32 @@ export class PrayerRoom {
 	getColliders(): { minX: number; maxX: number; minZ: number; maxZ: number; label: string }[] {
 		const cx = this.pos.x;
 		const cz = this.pos.z;
+		const { room, wallThickness, backWallOffset, sideWallOffset } = PRAYER_ROOM_SPEC;
+		const halfWall = half(wallThickness);
+		const sideExtent = half(room.width);
+		const depthExtent = half(room.depth);
 		return [
-			{ minX: cx - 2.85, maxX: cx + 2.85, minZ: cz - 2.2, maxZ: cz - 1.85, label: 'prayer_back' },
-			{ minX: cx - 2.85, maxX: cx - 2.55, minZ: cz - 2.2, maxZ: cz + 2.1, label: 'prayer_w' },
-			{ minX: cx + 2.55, maxX: cx + 2.85, minZ: cz - 2.2, maxZ: cz + 2.1, label: 'prayer_e' },
+			{
+				minX: cx - sideExtent,
+				maxX: cx + sideExtent,
+				minZ: cz - backWallOffset - halfWall,
+				maxZ: cz - backWallOffset + halfWall,
+				label: 'prayer_back',
+			},
+			{
+				minX: cx - sideWallOffset - halfWall,
+				maxX: cx - sideWallOffset + halfWall,
+				minZ: cz - depthExtent,
+				maxZ: cz + depthExtent,
+				label: 'prayer_w',
+			},
+			{
+				minX: cx + sideWallOffset - halfWall,
+				maxX: cx + sideWallOffset + halfWall,
+				minZ: cz - depthExtent,
+				maxZ: cz + depthExtent,
+				label: 'prayer_e',
+			},
 		];
 	}
 
@@ -351,25 +376,32 @@ export class PrayerRoom {
 
 	private build(): void {
 		// Small quiet room shell
+		const { room, floorThickness, wallHeight, wallThickness, backWallOffset, sideWallOffset } = PRAYER_ROOM_SPEC;
+		const rug = PRAYER_ROOM_SPEC.carpet;
 		const wall = this.track(lit({ color: 0xe8e4d9, roughness: 0.9 }));
-		const floor = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.08, 4.2), this.track(lit({ color: 0xc4a574, roughness: 0.85 })));
-		floor.position.y = 0.04;
+		const floor = new THREE.Mesh(
+			new THREE.BoxGeometry(room.width, floorThickness, room.depth),
+			this.track(lit({ color: 0xc4a574, roughness: 0.85 })),
+		);
+		floor.position.y = half(floorThickness);
 		this.group.add(floor);
 
 		// three walls (open to mall corridor on +X toward center)
-		const back = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.2, 0.15), wall);
-		back.position.set(0, 1.6, -2.0);
+		const back = new THREE.Mesh(new THREE.BoxGeometry(room.width, wallHeight, wallThickness), wall);
+		back.position.set(0, half(wallHeight), -backWallOffset);
 		this.group.add(back);
-		const left = new THREE.Mesh(new THREE.BoxGeometry(0.15, 3.2, 4.2), wall);
-		left.position.set(-2.7, 1.6, 0);
-		this.group.add(left);
-		const right = new THREE.Mesh(new THREE.BoxGeometry(0.15, 3.2, 4.2), wall);
-		right.position.set(2.7, 1.6, 0);
-		this.group.add(right);
+		for (const sign of [-1, 1] as const) {
+			const side = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, room.depth), wall);
+			side.position.set(sign * sideWallOffset, half(wallHeight), 0);
+			this.group.add(side);
+		}
 
 		// green carpet strip
-		const carpet = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.03, 2.8), this.track(lit({ color: 0x1b5e20, roughness: 0.95 })));
-		carpet.position.set(0, 0.1, -0.2);
+		const carpet = new THREE.Mesh(
+			new THREE.BoxGeometry(rug.width, rug.thickness, rug.depth),
+			this.track(lit({ color: 0x1b5e20, roughness: 0.95 })),
+		);
+		carpet.position.set(0, rug.centerY, rug.offsetZ);
 		this.group.add(carpet);
 
 		// prayer mats (enough for the ayatollahs)

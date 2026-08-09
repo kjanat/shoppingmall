@@ -276,6 +276,20 @@ describe('authoritative spatial world', () => {
 		assert.deepEqual(validateSpatialWorld(WORLD_ENTITIES), []);
 	});
 
+	test('a walkable deck laid across a wall is rejected even where neither corner sits inside the other', () => {
+		const floor = entity('deck-floor', 'structure', [prism('slab', 'support', 0, 0, 40, 40, -0.3, 0, false, true)]);
+		const runway = entity('runway', 'fixture', [prism('deck', 'walkable', 0, 0, 2.7, 16, 0, 0.34, false, false)]);
+		const wall = entity('room', 'fixture', [prism('wall-north', 'solid', 0, 6, 8, 0.16, 0, 3, true, true)]);
+		assert.ok(
+			validateSpatialWorld([floor, runway, wall]).some(
+				(problem) => problem.code === 'blocked-clearance' && problem.message === 'runway.deck runs through room.wall-north',
+			),
+		);
+
+		const shortened = entity('runway', 'fixture', [prism('deck', 'walkable', 0, -3, 2.7, 10, 0, 0.34, false, false)]);
+		assert.deepEqual(validateSpatialWorld([floor, shortened, wall]), []);
+	});
+
 	test('low fixtures fit below an open stair while tall fixtures intersect it', () => {
 		const stairs = entity('stairs', 'connector', [OPEN_STAIR]);
 		const floor = entity('floor', 'structure', [prism('surface', 'support', 0, 3, 4, 4, -0.2, 0, false, true)]);

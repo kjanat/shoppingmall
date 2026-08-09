@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { levelY } from '#/data/levels';
+import { BEARD_CAVE_LOOT_CENTER, BEARD_CAVE_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { type LitMaterial, lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 
 /**
  * Baard-dief hideout — rocky west-wall cave stuffed with juwelen & goud.
@@ -10,9 +13,9 @@ import { labelCanvas, labelTexture } from '#/util/label';
 export class BeardCave {
 	readonly group = new THREE.Group();
 	/** World center of the cave mouth (path target) */
-	readonly entrance = new THREE.Vector3(-33.5, 0, 20);
+	readonly entrance = new THREE.Vector3(BEARD_CAVE_SPEC.entrance.x, levelY('v0'), BEARD_CAVE_SPEC.entrance.z);
 	/** Deep pile of loot (for confetti / glow) */
-	readonly lootCenter = new THREE.Vector3(-34.7, 0.4, 20);
+	readonly lootCenter = new THREE.Vector3(BEARD_CAVE_LOOT_CENTER.x, BEARD_CAVE_LOOT_CENTER.y, BEARD_CAVE_LOOT_CENTER.z);
 	private materials: THREE.Material[] = [];
 	private lootGroup = new THREE.Group();
 	private pulseT = 0;
@@ -34,12 +37,34 @@ export class BeardCave {
 	getColliders(): { minX: number; maxX: number; minZ: number; maxZ: number; label: string }[] {
 		const cx = this.entrance.x;
 		const cz = this.entrance.z;
+		const { interiorOffsetX, backWall, sideWall } = BEARD_CAVE_SPEC;
+		const sideMinX = cx + interiorOffsetX - half(sideWall.width);
+		const sideMaxX = cx + interiorOffsetX + half(sideWall.width);
+		const halfSideDepth = half(sideWall.depth);
 		return [
 			// back wall (west)
-			{ minX: cx - 2.6, maxX: cx - 2.2, minZ: cz - 2.4, maxZ: cz + 2.4, label: 'cave_back' },
-			// north / south rock
-			{ minX: cx - 2.4, maxX: cx + 0.6, minZ: cz - 2.6, maxZ: cz - 2.2, label: 'cave_n' },
-			{ minX: cx - 2.4, maxX: cx + 0.6, minZ: cz + 2.2, maxZ: cz + 2.6, label: 'cave_s' },
+			{
+				minX: cx + backWall.offsetX - half(backWall.width),
+				maxX: cx + backWall.offsetX + half(backWall.width),
+				minZ: cz - half(backWall.depth),
+				maxZ: cz + half(backWall.depth),
+				label: 'cave_back',
+			},
+			// north / south rock — exactly the slabs buildShell puts there
+			{
+				minX: sideMinX,
+				maxX: sideMaxX,
+				minZ: cz - sideWall.offsetZ - halfSideDepth,
+				maxZ: cz - sideWall.offsetZ + halfSideDepth,
+				label: 'cave_n',
+			},
+			{
+				minX: sideMinX,
+				maxX: sideMaxX,
+				minZ: cz + sideWall.offsetZ - halfSideDepth,
+				maxZ: cz + sideWall.offsetZ + halfSideDepth,
+				label: 'cave_s',
+			},
 			// mouth pillars leave a walkable gap ~1.4m toward +X (mall)
 		];
 	}
@@ -91,40 +116,43 @@ export class BeardCave {
 			}),
 		);
 
+		const { interiorOffsetX, floor: floorSpec, backWall, ceiling, sideWall, pillar } = BEARD_CAVE_SPEC;
+
 		// Floor slab inside cave
-		const floor = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.18, 4.2), floorMat);
-		floor.position.set(-1.0, 0.05, 0);
+		const floor = new THREE.Mesh(new THREE.BoxGeometry(floorSpec.width, floorSpec.height, floorSpec.depth), floorMat);
+		floor.position.set(interiorOffsetX, floorSpec.centerY, 0);
 		this.group.add(floor);
 
 		// Back wall + ceiling blob
-		const back = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.8, 4.4), rockDark);
-		back.position.set(-2.35, 1.35, 0);
+		const back = new THREE.Mesh(new THREE.BoxGeometry(backWall.width, backWall.height, backWall.depth), rockDark);
+		back.position.set(backWall.offsetX, backWall.centerY, 0);
 		this.group.add(back);
 
-		const ceil = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.4, 4.0), rock);
-		ceil.position.set(-1.0, 2.7, 0);
+		const ceil = new THREE.Mesh(new THREE.BoxGeometry(ceiling.width, ceiling.height, ceiling.depth), rock);
+		ceil.position.set(interiorOffsetX, ceiling.centerY, 0);
 		this.group.add(ceil);
 
 		// Side walls (rough)
-		const nWall = new THREE.Mesh(new THREE.BoxGeometry(3.0, 2.6, 0.5), rock);
-		nWall.position.set(-1.0, 1.25, -2.15);
+		const nWall = new THREE.Mesh(new THREE.BoxGeometry(sideWall.width, sideWall.height, sideWall.depth), rock);
+		nWall.position.set(interiorOffsetX, sideWall.centerY, -sideWall.offsetZ);
 		this.group.add(nWall);
 		const sWall = nWall.clone();
-		sWall.position.z = 2.15;
+		sWall.position.z = sideWall.offsetZ;
 		this.group.add(sWall);
 
 		// Mouth pillars + arch (opening toward mall = +X in local)
-		const pillarGeo = new THREE.CylinderGeometry(0.38, 0.48, 2.6, 8);
+		const pillarGeo = new THREE.CylinderGeometry(pillar.topRadius, pillar.bottomRadius, pillar.height, 8);
 		const pL = new THREE.Mesh(pillarGeo, rock);
-		pL.position.set(0.55, 1.25, -1.15);
+		pL.position.set(pillar.offsetX, pillar.centerY, -pillar.offsetZ);
 		const pR = new THREE.Mesh(pillarGeo, rock);
-		pR.position.set(0.55, 1.25, 1.15);
+		pR.position.set(pillar.offsetX, pillar.centerY, pillar.offsetZ);
 		this.group.add(pL, pR);
 
-		const arch = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.28, 8, 16, Math.PI), rock);
+		const { arch: archSpec } = BEARD_CAVE_SPEC;
+		const arch = new THREE.Mesh(new THREE.TorusGeometry(archSpec.radius, archSpec.tube, 8, 16, Math.PI), rock);
 		arch.rotation.z = Math.PI / 2;
 		arch.rotation.y = Math.PI / 2;
-		arch.position.set(0.55, 2.15, 0);
+		arch.position.set(pillar.offsetX, archSpec.centerY, 0);
 		this.group.add(arch);
 
 		// Rocky boulders framing the entrance
@@ -147,7 +175,7 @@ export class BeardCave {
 			distance: 8,
 			decay: 2,
 			follow: this.group,
-			offset: new THREE.Vector3(-1.2, 1.4, 0),
+			offset: new THREE.Vector3(BEARD_CAVE_SPEC.loot.offsetX, 1.4, 0),
 		});
 	}
 

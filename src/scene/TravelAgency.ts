@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { levelY } from '#/data/levels';
+import { ISLAND_HOP_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 import { tagLevelCulled } from '#/util/visibility';
 
 /**
@@ -13,7 +16,7 @@ export class TravelAgency {
 	readonly group = new THREE.Group();
 	/** World center — east of the gold cave mouth */
 	/** West wall, between toilets and beard cave */
-	readonly pos = new THREE.Vector3(-30, 0, 18);
+	readonly pos = new THREE.Vector3(ISLAND_HOP_SPEC.center.x, levelY('v0'), ISLAND_HOP_SPEC.center.z);
 	private materials: THREE.Material[] = [];
 	private bob: THREE.Object3D[] = [];
 	private t = 0;
@@ -36,11 +39,32 @@ export class TravelAgency {
 	getColliders(): { minX: number; maxX: number; minZ: number; maxZ: number; label: string }[] {
 		const cx = this.pos.x;
 		const cz = this.pos.z;
+		const { slab, backWall, sideWall } = ISLAND_HOP_SPEC;
+		const halfBack = half(backWall.thickness);
+		const halfSide = half(sideWall.thickness);
 		return [
 			// back (west, toward cave)
-			{ minX: cx - 2.1, maxX: cx - 1.85, minZ: cz - 1.8, maxZ: cz + 1.8, label: 'travel_back' },
-			{ minX: cx - 2.0, maxX: cx + 1.5, minZ: cz - 2.0, maxZ: cz - 1.75, label: 'travel_n' },
-			{ minX: cx - 2.0, maxX: cx + 1.5, minZ: cz + 1.75, maxZ: cz + 2.0, label: 'travel_s' },
+			{
+				minX: cx + backWall.offsetX - halfBack,
+				maxX: cx + backWall.offsetX + halfBack,
+				minZ: cz - half(slab.depth),
+				maxZ: cz + half(slab.depth),
+				label: 'travel_back',
+			},
+			{
+				minX: cx + sideWall.offsetX - half(sideWall.width),
+				maxX: cx + sideWall.offsetX + half(sideWall.width),
+				minZ: cz - sideWall.offsetZ - halfSide,
+				maxZ: cz - sideWall.offsetZ + halfSide,
+				label: 'travel_n',
+			},
+			{
+				minX: cx + sideWall.offsetX - half(sideWall.width),
+				maxX: cx + sideWall.offsetX + half(sideWall.width),
+				minZ: cz + sideWall.offsetZ - halfSide,
+				maxZ: cz + sideWall.offsetZ + halfSide,
+				label: 'travel_s',
+			},
 		];
 	}
 
@@ -75,24 +99,26 @@ export class TravelAgency {
 		);
 		const floor = this.track(lit({ color: 0xe0f2f1, roughness: 0.7 }));
 
-		const slab = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.1, 3.8), floor);
-		slab.position.set(0, 0.05, 0);
+		const { slab: slabSpec, wallHeight, backWall, sideWall, fascia: fasciaSpec } = ISLAND_HOP_SPEC;
+
+		const slab = new THREE.Mesh(new THREE.BoxGeometry(slabSpec.width, slabSpec.thickness, slabSpec.depth), floor);
+		slab.position.set(0, half(slabSpec.thickness), 0);
 		this.group.add(slab);
 
 		// Three-sided booth open to +X (mall)
-		const back = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.6, 3.8), wall);
-		back.position.set(-1.9, 1.3, 0);
+		const back = new THREE.Mesh(new THREE.BoxGeometry(backWall.thickness, wallHeight, slabSpec.depth), wall);
+		back.position.set(backWall.offsetX, half(wallHeight), 0);
 		this.group.add(back);
-		const n = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.6, 0.16), wall);
-		n.position.set(-0.1, 1.3, -1.85);
+		const n = new THREE.Mesh(new THREE.BoxGeometry(sideWall.width, wallHeight, sideWall.thickness), wall);
+		n.position.set(sideWall.offsetX, half(wallHeight), -sideWall.offsetZ);
 		this.group.add(n);
 		const s = n.clone();
-		s.position.z = 1.85;
+		s.position.z = sideWall.offsetZ;
 		this.group.add(s);
 
 		// Gold trim fascia
-		const fascia = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.35, 3.9), trim);
-		fascia.position.set(1.55, 2.45, 0);
+		const fascia = new THREE.Mesh(new THREE.BoxGeometry(fasciaSpec.width, fasciaSpec.height, fasciaSpec.depth), trim);
+		fascia.position.set(fasciaSpec.offsetX, fasciaSpec.centerY, 0);
 		this.group.add(fascia);
 
 		// Soft tropical light
@@ -114,11 +140,12 @@ export class TravelAgency {
 				metalness: 0.1,
 			}),
 		);
-		const desk = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 0.7), wood);
-		desk.position.set(0.55, 0.45, 0);
+		const deskSpec = ISLAND_HOP_SPEC.desk;
+		const desk = new THREE.Mesh(new THREE.BoxGeometry(deskSpec.width, deskSpec.height, deskSpec.depth), wood);
+		desk.position.set(deskSpec.offsetX, half(deskSpec.height), 0);
 		this.group.add(desk);
-		const deskTop = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.78), top);
-		deskTop.position.set(0.55, 0.94, 0);
+		const deskTop = new THREE.Mesh(new THREE.BoxGeometry(deskSpec.top.width, deskSpec.top.thickness, deskSpec.top.depth), top);
+		deskTop.position.set(deskSpec.offsetX, deskSpec.height + half(deskSpec.top.thickness), 0);
 		this.group.add(deskTop);
 
 		// Computer

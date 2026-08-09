@@ -17,12 +17,15 @@
  */
 import { readFileSync } from 'node:fs';
 import { assertValidVerticalConnectorRegistry } from '#/data/connectors';
+import type { GraphNode } from '#/data/graph';
 import { NODES } from '#/data/graph';
 import { getInventory } from '#/data/inventory';
 import { ATRIUM_VOID } from '#/data/layout';
 import { assertCanonicalLevelRegistry } from '#/data/levelSchema';
 import { LEVELS, levelY } from '#/data/levels';
+import { geometryBounds } from '#/data/spatial';
 import { STORES, shopStores } from '#/data/stores';
+import type { MallWorldEntity } from '#/data/world';
 import {
 	ATRIUM_OPENING,
 	ELEVATOR_SHAFT_WALLS,
@@ -32,6 +35,7 @@ import {
 	MALL_SLAB_SPECS,
 	PARKING_EXIT_RAMP,
 	VERTICAL_CONNECTORS,
+	WORLD_ENTITIES,
 } from '#/data/world';
 import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
 import { PLAYER_RADIUS } from '#/player/constants';
@@ -97,6 +101,57 @@ function getal(tekst: string, patroon: RegExp, wat: string): number {
 
 function eist(tekst: string, fragment: string, wat: string): void {
 	if (!tekst.includes(fragment)) throw new Error(`${wat} staat niet meer in de bron: \`${fragment}\``);
+}
+
+/** De body van een klassemethode, van zijn openingsaccolade tot de bijbehorende sluiting. */
+function methodeBody(tekst: string, naam: string): string {
+	const kop = tekst.indexOf(`private ${naam}(`);
+	if (kop < 0) throw new Error(`geen methode ${naam} meer in de bron — hernoemd of herschreven?`);
+	const open = tekst.indexOf('{', kop);
+	if (open < 0) throw new Error(`methode ${naam} heeft geen body`);
+	let diepte = 0;
+	for (let i = open; i < tekst.length; i++) {
+		const teken = tekst[i];
+		if (teken === '{') diepte++;
+		else if (teken === '}') {
+			diepte--;
+			if (diepte === 0) return tekst.slice(open + 1, i);
+		}
+	}
+	throw new Error(`de body van ${naam} loopt niet af`);
+}
+
+/**
+ * Elke aanroep waarvan `patroon` de naam vangt en op de openingshaak eindigt,
+ * met zijn argumenten op het bovenste haakjesniveau.
+ */
+function aanroepArgumenten(tekst: string, patroon: RegExp): { naam: string; args: string[] }[] {
+	const uit: { naam: string; args: string[] }[] = [];
+	for (const treffer of tekst.matchAll(patroon)) {
+		const naam = treffer[1];
+		if (naam === undefined) continue;
+		const args: string[] = [];
+		let arg = '';
+		let diepte = 1;
+		for (let i = treffer.index + treffer[0].length; i < tekst.length; i++) {
+			const teken = tekst[i];
+			if (teken === undefined) break;
+			if (teken === '(' || teken === '[') diepte++;
+			else if (teken === ')' || teken === ']') {
+				diepte--;
+				if (diepte === 0) break;
+			}
+			if (diepte === 1 && teken === ',') {
+				args.push(arg.trim());
+				arg = '';
+				continue;
+			}
+			arg += teken;
+		}
+		args.push(arg.trim());
+		uit.push({ naam, args });
+	}
+	return uit;
 }
 
 // ── 1. voorraad ────────────────────────────────────────────────────────────
@@ -361,7 +416,7 @@ function controleHellinglijn(): void {
 				const grond = wereld.groundHeightAt(x, z, lijn, WALK_STEP);
 				if (bijna(grond, lijn, 1e-4)) continue;
 				// Bovenaan een klim mag een platform het overnemen: daar stap je erop.
-				const plat = wereld.platforms.find((p) => dekt(p, x, z) && bijna(p.y, grond, 1e-4));
+				const plat = wereld.platforms.find((p) => wereld.platformCovers(p, x, z) && bijna(p.y, grond, 1e-4));
 				if (plat && lijn >= plat.y - 0.35) continue;
 				const pad = wereld.roofPads.find((p) => dekt(p, x, z) && bijna(p.y, grond, 1e-4));
 				if (pad) {
@@ -661,6 +716,7 @@ function controlePlatforms(): void {
 	for (const p of wereld.platforms) {
 		for (let x = p.minX + 0.05; x <= p.maxX; x += 0.25) {
 			for (let z = p.minZ + 0.05; z <= p.maxZ; z += 0.25) {
+				if (!wereld.platformCovers(p, x, z)) continue;
 				const grond = wereld.groundHeightAt(x, z, p.y, WALK_STEP);
 				if (!bijna(grond, p.y)) {
 					fout('platforms', `${p.label}: op (${nr(x)}, ${nr(z)}) is de vloer ${nr(grond)} in plaats van het dek ${nr(p.y)}`);
@@ -703,6 +759,299 @@ function controleWinkeldata(): void {
 	if (afgeleid.length === 0) fout('winkeldata', 'het wereldmodel bevat geen enkel dek met shop-fixtures');
 }
 
+// ── 11. de geschreven features ─────────────────────────────────────────────
+
+const ENTITEIT_PER_ID = new Map(WORLD_ENTITIES.map((entity) => [entity.id, entity]));
+
+/**
+ * Catwalk, toiletten, gebedsruimte, grot, reisbureau en de parkeerschil hebben
+ * elk een tijd lang alleen als tekst bestaan: een emoji op een los coördinaat in
+ * KioskOverlay en verder niets in het wereldmodel. Nu hebben ze een footprint,
+ * en dat mag niet stilletjes terug. Een entiteit zonder volume met omvang, of
+ * met `map.visible = false`, tekent net zo min als geen entiteit.
+ */
+const GESCHREVEN_FEATURES = [
+	'catwalk',
+	'restrooms',
+	'prayer-room',
+	'beard-cave',
+	'shop-island_hop',
+	'parking-deck',
+	'atrium-fountain',
+	'info-kiosk',
+	'food-court',
+	'protest',
+	'spaceship',
+] as const;
+
+function heeftOmvang(entity: MallWorldEntity): boolean {
+	return entity.volumes.some((volume) => {
+		const b = geometryBounds(volume.geometry);
+		return b.maxX - b.minX > EPS && b.maxZ - b.minZ > EPS && b.maxY - b.minY > EPS;
+	});
+}
+
+function controleFeatures(): void {
+	for (const id of GESCHREVEN_FEATURES) {
+		const entity = ENTITEIT_PER_ID.get(id);
+		if (!entity) {
+			fout('features', `${id} staat niet meer in WORLD_ENTITIES — terug naar een zwevend label`);
+			continue;
+		}
+		if (!heeftOmvang(entity)) fout('features', `${id} heeft geen enkel volume met omvang in x, z én y`);
+		if (!entity.map.visible) fout('features', `${id} staat op map.visible = false en valt dus van de plattegrond`);
+		if (entity.map.label === undefined || entity.map.label.trim() === '') {
+			fout('features', `${id} heeft geen kaartlabel, dus niets om mee te tekenen`);
+		}
+	}
+}
+
+// ── 11b. de wanden waar je tegenaan loopt ──────────────────────────────────
+
+/** Welke collisiondoos van een kamerbouwer bij welk volume van zijn entiteit hoort. */
+const KAMERWANDEN: Record<string, Record<string, string>> = {
+	restrooms: { wc_wall_w: 'wall-west', wc_wall_e: 'wall-east', wc_wall_n: 'wall-north', wc_divider: 'divider' },
+	'prayer-room': { prayer_back: 'wall-north', prayer_w: 'wall-west', prayer_e: 'wall-east' },
+	'beard-cave': { cave_back: 'cave-back-wall', cave_n: 'cave-wall-north', cave_s: 'cave-wall-south' },
+};
+
+/**
+ * De plattegrond tekent de wanden uit het wereldmodel; de speler botst tegen de
+ * dozen uit getColliders(). Die twee stonden tot 30 cm uit elkaar, en de
+ * scheidingswand van de toiletten bestond alleen als collisiondoos: een
+ * onzichtbare muur van vijf meter dwars door één getekende ruimte.
+ */
+async function controleKamerwanden(): Promise<void> {
+	stubDocument();
+	const [THREE, { LightPool }, { Restrooms }, { PrayerRoom }, { BeardCave }] = await Promise.all([
+		import('three'),
+		import('#/render/LightPool'),
+		import('#/scene/Restrooms'),
+		import('#/scene/PrayerRoom'),
+		import('#/scene/BeardCave'),
+	]);
+	const pool = new LightPool(new THREE.Scene());
+	const kamers: [string, { minX: number; maxX: number; minZ: number; maxZ: number; label: string }[]][] = [
+		['restrooms', new Restrooms(pool).getColliders()],
+		['prayer-room', new PrayerRoom(pool).getColliders()],
+		['beard-cave', new BeardCave(pool).getColliders()],
+	];
+
+	for (const [entiteitId, colliders] of kamers) {
+		const entity = ENTITEIT_PER_ID.get(entiteitId);
+		const tabel = KAMERWANDEN[entiteitId];
+		if (!entity || !tabel) {
+			fout('kamerwanden', `${entiteitId} staat niet meer in WORLD_ENTITIES of in de wandtabel`);
+			continue;
+		}
+		for (const [label, volumeId] of Object.entries(tabel)) {
+			if (!colliders.some((collider) => collider.label === label)) {
+				fout('kamerwanden', `${entiteitId} heeft geen collisiondoos '${label}' meer — hernoemd of weggevallen`);
+			}
+			if (!entity.volumes.some((volume) => volume.id === volumeId)) {
+				fout('kamerwanden', `${entiteitId} heeft geen volume '${volumeId}' meer voor collisiondoos '${label}'`);
+			}
+		}
+		for (const collider of colliders) {
+			const volumeId = tabel[collider.label];
+			if (volumeId === undefined) {
+				fout('kamerwanden', `${entiteitId}: collisiondoos '${collider.label}' hoort bij geen enkel volume`);
+				continue;
+			}
+			const volume = entity.volumes.find((candidate) => candidate.id === volumeId);
+			if (!volume) continue;
+			const b = geometryBounds(volume.geometry);
+			for (const [naam, doos, model] of [
+				['minX', collider.minX, b.minX],
+				['maxX', collider.maxX, b.maxX],
+				['minZ', collider.minZ, b.minZ],
+				['maxZ', collider.maxZ, b.maxZ],
+			] as const) {
+				if (!bijna(doos, model, 1e-6)) {
+					fout(
+						'kamerwanden',
+						`${entiteitId}.${volumeId}: de collisiondoos ${naam} ${nr(doos)} wijkt af van de getekende wand (${nr(model)})`,
+					);
+				}
+			}
+		}
+	}
+}
+
+// ── 12. elke bestemming heeft geometrie ────────────────────────────────────
+
+/** Waar een directorynaam zijn geometrie vandaan haalt als het geen `shop-${id}` is. */
+const STORE_ENTITEIT: Record<string, string> = {
+	toilets: 'restrooms',
+	prayer: 'prayer-room',
+	beard_cave: 'beard-cave',
+	helipad: 'helipad-deck',
+	secret_stairs: 'secret-stairs',
+	elevator: 'glass-elevator',
+	parking: 'parking-deck',
+	info: 'info-kiosk',
+	foodcourt: 'food-court',
+	protest: 'protest',
+};
+
+/** En waar een knooppuntlabel de zijne vandaan haalt, als geen winkel op dat knooppunt wijst. */
+const NODE_ENTITEIT: Record<string, string> = {
+	f0_c: 'opening-atrium-v1',
+	e0: 'east-escalator',
+	e1: 'east-escalator',
+	st0: 'west-stairs',
+	st1: 'west-stairs',
+	elev_fb: 'glass-elevator',
+	elev_f1: 'glass-elevator',
+	elev_f2: 'glass-elevator',
+	sec_mid: 'secret-stairs',
+	s_kruidvat: 'shop-kruidvat',
+};
+
+const STORE_ZONDER_ENTITEIT: Record<string, string> = {};
+
+const NODE_ZONDER_ENTITEIT: Record<string, string> = {
+	f0_ww: 'gangpunt in de westelijke strook, geen bestemming',
+	roof_mid: 'padpunt tussen lift en helipad, geen bestemming',
+};
+
+/**
+ * De invariant die brak. De directory en de graaf noemen plekken; het
+ * wereldmodel bouwt ze. Zolang niets die twee tegen elkaar hield konden vijf
+ * bestemmingen als naam blijven bestaan zonder dat er ooit iets stond. Een
+ * bestemming zonder geometrie mag daarom alleen nog met een reden erbij, en die
+ * reden moet weg zodra de geometrie er wél is.
+ */
+function controleBestemmingen(): void {
+	const winkelIds = new Set(STORES.map((s) => s.id));
+	const knoopIds = new Set<string>(NODES.map((n) => n.id));
+	const knopen: readonly GraphNode[] = NODES;
+
+	for (const [id, doel] of Object.entries(STORE_ENTITEIT)) {
+		if (!winkelIds.has(id)) fout('bestemmingen', `STORE_ENTITEIT noemt winkel ${id}, die niet in STORES staat`);
+		if (!ENTITEIT_PER_ID.has(doel))
+			fout('bestemmingen', `STORE_ENTITEIT wijst ${id} naar ${doel}, die niet in WORLD_ENTITIES staat`);
+	}
+	for (const [id, doel] of Object.entries(NODE_ENTITEIT)) {
+		if (!knoopIds.has(id)) fout('bestemmingen', `NODE_ENTITEIT noemt knooppunt ${id}, dat niet in de graaf staat`);
+		if (!ENTITEIT_PER_ID.has(doel))
+			fout('bestemmingen', `NODE_ENTITEIT wijst ${id} naar ${doel}, die niet in WORLD_ENTITIES staat`);
+	}
+	for (const id of Object.keys(STORE_ZONDER_ENTITEIT)) {
+		if (!winkelIds.has(id)) fout('bestemmingen', `vrijstelling voor winkel ${id}, die niet in STORES staat`);
+	}
+	for (const id of Object.keys(NODE_ZONDER_ENTITEIT)) {
+		if (!knoopIds.has(id)) fout('bestemmingen', `vrijstelling voor knooppunt ${id}, dat niet in de graaf staat`);
+	}
+
+	for (const s of STORES) {
+		const doel = STORE_ENTITEIT[s.id] ?? `shop-${s.id}`;
+		const bestaat = ENTITEIT_PER_ID.has(doel);
+		const reden = STORE_ZONDER_ENTITEIT[s.id];
+		if (reden === undefined) {
+			if (!bestaat) {
+				fout('bestemmingen', `${s.id} staat in de directory maar heeft geen entiteit ${doel}: hij bestaat alleen als tekst`);
+			}
+		} else if (bestaat) {
+			fout('bestemmingen', `${s.id} is vrijgesteld ("${reden}") maar heeft nu ${doel} — haal de vrijstelling weg`);
+		}
+	}
+
+	const winkelPerKnoop = new Map(STORES.map((s) => [String(s.nodeId), s.id]));
+	for (const knoop of knopen) {
+		if (knoop.label === undefined) continue;
+		const viaWinkel = winkelPerKnoop.get(knoop.id);
+		const doel = NODE_ENTITEIT[knoop.id];
+		const reden = NODE_ZONDER_ENTITEIT[knoop.id];
+		const plek = `knooppunt ${knoop.id} ("${knoop.label}")`;
+		if ([viaWinkel, doel, reden].filter((waarde) => waarde !== undefined).length > 1) {
+			fout('bestemmingen', `${plek} staat in meer dan één tabel; laat één bron zijn geometrie aanwijzen`);
+			continue;
+		}
+		if (viaWinkel !== undefined || doel !== undefined || reden !== undefined) continue;
+		fout('bestemmingen', `${plek} noemt een plek zonder entiteit: geef hem geometrie of zet hem in NODE_ZONDER_ENTITEIT`);
+	}
+}
+
+// ── 13. de kiosk tekent geen eigen wereld ──────────────────────────────────
+
+/** Canvasaanroepen waarvan de eerste twee argumenten in de wereldtekenaars meters zijn. */
+const CANVAS_PLAATSING = /\bctx\.(fillRect|strokeRect|rect|arc|ellipse|moveTo|lineTo|translate)\(/g;
+/** De wereld→scherm-helpers van de grote plattegrond: hun argument is een meter. */
+const SCHERMPROJECTIE = /\b(sx|sy)\(/g;
+/** Een kaartmarkering op een handgeschreven coördinaat: `{ x: …, z: …, level: … }`. */
+const MARKERING = /\{[^{}]*\bx:\s*(-?\d+(?:\.\d+)?)\s*,\s*z:\s*(-?\d+(?:\.\d+)?)\s*,\s*level:/g;
+const LOS_GETAL = /^-?\d+(?:\.\d+)?$/;
+
+/**
+ * Zoals check-lights `new PointLight` uit de bron weert. Een los getal in een
+ * canvasaanroep binnen de wereldtekenaars is een coördinaat in meters, en dus
+ * een tweede kopie van een maat die al ergens in `data/` staat. Zo tekende de
+ * kiosk vijf features op posities die niemand met de scene meebewoog.
+ *
+ * De controle kijkt alleen naar de argumenten die een plek aanwijzen. Straal,
+ * breedte, hoek en lijndikte staan er los van: `arc(t.x, t.z, 2.4, …)` mag,
+ * `arc(0, 10, 1.1, …)` niet. Buiten `paintWorld` en `paintRoofLayer` rekent het
+ * canvas in schermpixels en wordt er niets getoetst.
+ */
+function controleKioskCoordinaten(): void {
+	const tekst = bron('ui/KioskOverlay.ts');
+
+	for (const naam of ['paintWorld', 'paintRoofLayer']) {
+		const body = methodeBody(tekst, naam);
+		for (const aanroep of aanroepArgumenten(body, CANVAS_PLAATSING)) {
+			const plaats = aanroep.args.slice(0, 2).filter((arg) => LOS_GETAL.test(arg));
+			if (plaats.length === 0) continue;
+			fout(
+				'kioskcoordinaten',
+				`${naam}: ctx.${aanroep.naam}(${aanroep.args.join(', ')}) plaatst op losse meters ${plaats.join(', ')} — lees ze uit data/`,
+			);
+		}
+	}
+
+	for (const aanroep of aanroepArgumenten(tekst, SCHERMPROJECTIE)) {
+		const arg = aanroep.args[0];
+		if (arg === undefined || !LOS_GETAL.test(arg)) continue;
+		fout('kioskcoordinaten', `${aanroep.naam}(${arg}) projecteert een los coördinaat naar het scherm — lees het uit data/`);
+	}
+
+	for (const treffer of tekst.matchAll(MARKERING)) {
+		fout('kioskcoordinaten', `kaartmarkering op losse coördinaat (${treffer[1]}, ${treffer[2]}) — leid hem af uit zijn entiteit`);
+	}
+}
+
+// ── 14. elk dek staat op de plattegrond ────────────────────────────────────
+
+/**
+ * P1 bestaat in LEVELS, in de graaf, in de lift en als parkeerdek, maar de
+ * grote plattegrond had drie handgeschreven tabbladen en dat was er één te
+ * weinig. Een dek dat je kunt belopen en niet kunt opzoeken bestaat voor de
+ * speler niet, dus de tabbladen horen uit LEVELS te komen en niet uit een
+ * tweede lijst ernaast. Een tabblad met een geschreven dek-id erin is precies
+ * die tweede lijst, en dus zelf de fout.
+ */
+function controleKaartdekken(): void {
+	const tekst = bron('ui/KioskOverlay.ts');
+	const dekIds = new Set<string>(LEVELS.map((l) => l.id));
+
+	eist(tekst, 'LEVELS_BOTTOM_UP', 'de bron van de tabbladen op de grote plattegrond');
+	if (!/for \(const \w+ of LEVELS_BOTTOM_UP\)/.test(tekst)) {
+		fout('kaartdekken', 'KioskOverlay loopt niet meer over LEVELS_BOTTOM_UP heen; een nieuw dek krijgt dan geen tabblad');
+	}
+	for (const treffer of tekst.matchAll(/data-level="([^"]+)"/g)) {
+		fout('kaartdekken', `tabblad data-level="${treffer[1]}" is met de hand geschreven; leid het af uit LEVELS`);
+	}
+
+	for (const treffer of tekst.matchAll(/\[\s*'[a-z0-9_]+'(?:\s*,\s*'[a-z0-9_]+')*\s*\]/g)) {
+		const leden = [...treffer[0].matchAll(/'([a-z0-9_]+)'/g)].map((lid) => lid[1]);
+		if (!leden.every((lid) => lid !== undefined && dekIds.has(lid))) continue;
+		fout(
+			'kaartdekken',
+			`KioskOverlay houdt een eigen deklijst bij (${leden.join(', ')}); leid de tabbladen af uit LEVELS zodat er geen dek buiten valt`,
+		);
+	}
+}
+
 // ── uitvoeren ──────────────────────────────────────────────────────────────
 
 const controles: { naam: string; draai: () => void | Promise<void> }[] = [
@@ -718,6 +1067,11 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'badgasten', draai: controleBadgasten },
 	{ naam: 'platforms', draai: controlePlatforms },
 	{ naam: 'winkeldata', draai: controleWinkeldata },
+	{ naam: 'features', draai: controleFeatures },
+	{ naam: 'kamerwanden', draai: controleKamerwanden },
+	{ naam: 'bestemmingen', draai: controleBestemmingen },
+	{ naam: 'kioskcoordinaten', draai: controleKioskCoordinaten },
+	{ naam: 'kaartdekken', draai: controleKaartdekken },
 ];
 
 for (const c of controles) {

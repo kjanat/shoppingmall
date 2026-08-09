@@ -1,23 +1,19 @@
 import * as THREE from 'three';
 import { lit } from '#/render/material';
+import { LANE_X, LANE_Z } from '#/scene/city/CityRoads';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { at } from '#/util/rand';
 
 /**
  * Ringweg-verkeer: veertien burgerauto's en zes taxi's die eeuwig met de klok
  * mee rondjes rijden om een mall waar ze nooit parkeren. Het pad volgt de
- * strookmiddellijnen van CityRoads (|x| = 51.5, |z| = 37.5).
+ * strookmiddellijnen van CityRoads.
  *
  * De stoplichten regelen technisch gezien een kruising die op een
  * eenrichtingsring niet bestaat — iedereen stopt er toch keurig voor.
  * Iedereen rijdt bovendien exact op de middenstreep; het rijexamen is in
  * deze stad optioneel.
  */
-
-// Zelfde maten als CityRoads. Niet geïmporteerd: het contract zegt 'three'
-// en verder niets, dus de getallen staan hier nog een keer.
-const LANE_X = 51.5;
-const LANE_Z = 37.5;
 
 type EdgePhase = 'ns' | 'ew';
 

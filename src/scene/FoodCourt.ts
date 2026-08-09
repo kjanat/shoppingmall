@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { levelY } from '#/data/levels';
+import { FOOD_COURT_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 
 /**
  * Open food court — floor 1, south balcony over the atrium.
@@ -11,7 +14,7 @@ import { labelCanvas, labelTexture } from '#/util/label';
 export class FoodCourt {
 	readonly group = new THREE.Group();
 	/** V1 south balcony strip — between atrium void and south store wall */
-	readonly pos = new THREE.Vector3(0, 6, 11.5);
+	readonly pos = new THREE.Vector3(FOOD_COURT_SPEC.center.x, levelY('v1'), FOOD_COURT_SPEC.center.z);
 	private materials: THREE.Material[] = [];
 	private pool: LightPool;
 
@@ -34,8 +37,9 @@ export class FoodCourt {
 	private buildFloor(): void {
 		// Checker tile plaza
 		// Compact balcony plaza (must not eat south store footprints at z=18)
+		const { plaza, stripe } = FOOD_COURT_SPEC;
 		const floor = new THREE.Mesh(
-			new THREE.BoxGeometry(14, 0.06, 5.2),
+			new THREE.BoxGeometry(plaza.width, plaza.thickness, plaza.depth),
 			this.track(
 				lit({
 					color: 0xe8dcc8,
@@ -44,19 +48,19 @@ export class FoodCourt {
 				}),
 			),
 		);
-		floor.position.y = 0.03;
+		floor.position.y = half(plaza.thickness);
 		floor.receiveShadow = true;
 		this.group.add(floor);
 
 		// Yellow caution strip border
 		const strip = new THREE.Mesh(
-			new THREE.BoxGeometry(14.2, 0.04, 0.18),
+			new THREE.BoxGeometry(stripe.width, stripe.thickness, stripe.depth),
 			this.track(new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false })),
 		);
-		strip.position.set(0, 0.06, -2.5);
+		strip.position.set(0, stripe.centerY, -stripe.offsetZ);
 		this.group.add(strip);
 		const strip2 = strip.clone();
-		strip2.position.z = 2.5;
+		strip2.position.z = stripe.offsetZ;
 		this.group.add(strip2);
 	}
 

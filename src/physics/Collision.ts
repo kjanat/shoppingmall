@@ -2,9 +2,25 @@ import type { VerticalConnector } from '#/data/connectors';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
 import { STORES } from '#/data/stores';
-import { HELIPAD_DECK_BOUNDS, PARKING_EXIT_RAMP, SECRET_STAIRS_OPENING_BOUNDS, VERTICAL_CONNECTORS } from '#/data/world';
-import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '#/scene/RoofIsland';
-import { clamp, clamp01, half } from '#/util/math';
+import {
+	CATWALK_DECK,
+	FOUNTAIN_SPEC,
+	HELIPAD_DECK_BOUNDS,
+	KIOSK_SPEC,
+	PARKING_EXIT_RAMP,
+	parkingDeckColliders,
+	SECRET_STAIRS_OPENING_BOUNDS,
+	VERTICAL_CONNECTORS,
+} from '#/data/world';
+import {
+	POOL_FLOOR_Y,
+	POOL_WATER_Y,
+	poolFloorY,
+	SLIDE_LADDER_CLIMB,
+	SLIDE_PLATFORM,
+	SLIDE_PLATFORM_TOP_Y,
+} from '#/scene/RoofIsland';
+import { clamp, clamp01, half, midpoint } from '#/util/math';
 
 export { ESCALATOR_SPEED } from '#/data/world';
 
@@ -42,6 +58,20 @@ export type Ramp = {
 	 * Ontbreekt hij, dan is het een gewone trap en vervoert hij niemand.
 	 */
 	carrySpeed?: number;
+};
+
+/**
+ * A low deck whose top face is the walkable surface. `nose` rounds off the maxZ end:
+ * past `centerZ` the deck is that circle, so the box corners beyond it are not floor.
+ */
+export type Platform = {
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+	y: number;
+	label: string;
+	nose?: { centerZ: number; radius: number };
 };
 
 type PathRamp = Readonly<{
@@ -91,6 +121,9 @@ const BASEMENT_H = levelY('p1');
  */
 export const WALK_STEP = 0.5;
 
+/** Hoeveel de kerbdoos onder het loopvlak van een platform stopt, zodat je erop kunt staan. */
+const KERB_LIP = 0.04;
+
 /**
  * Tredesnelheid van de roltrap langs de helling (m/s). Staat hier omdat de
  * fysica hem nodig heeft om je te vervoeren en MallBuilder om de treden ermee te
@@ -116,17 +149,7 @@ export class CollisionWorld {
 		...VERTICAL_CONNECTORS.map(connectorRamp),
 		// Glijbaan-ladder op het dakeiland: extreem steile "ramp" — loop er
 		// noordwaarts tegenaan en je klautert naar het platform (arcade-klimmen)
-		{
-			minX: -29.2,
-			maxX: -27.8,
-			zBottom: -12.2,
-			zTop: -10.9,
-			yBottom: 13.95,
-			yTop: 18.03,
-			label: 'slide_ladder',
-			openMinZ: -11.5,
-			openMaxZ: -10.4,
-		},
+		{ ...SLIDE_LADDER_CLIMB, yBottom: ROOF_H, yTop: SLIDE_PLATFORM_TOP_Y, label: 'slide_ladder' },
 	];
 
 	/**
@@ -182,11 +205,26 @@ export class CollisionWorld {
 	];
 
 	/** Low platforms you can hop onto (deck top is the walkable surface). */
-	readonly platforms: { minX: number; maxX: number; minZ: number; maxZ: number; y: number; label: string }[] = [
+	readonly platforms: Platform[] = [
 		// Catwalk deck incl. rounded tip — jump on, strut, jump off
-		{ minX: -29.5, maxX: -26.5, minZ: -4.7, maxZ: 12.05, y: 0.34, label: 'catwalk' },
+		{
+			minX: CATWALK_DECK.minX,
+			maxX: CATWALK_DECK.maxX,
+			minZ: CATWALK_DECK.minZ,
+			maxZ: CATWALK_DECK.maxZ,
+			y: CATWALK_DECK.topY,
+			label: 'catwalk',
+			nose: { centerZ: CATWALK_DECK.noseCenterZ, radius: CATWALK_DECK.noseRadius },
+		},
 		// Glijbaan-platform op het dakeiland (boven de ladder)
-		{ minX: -29.45, maxX: -27.55, minZ: -10.95, maxZ: -9.05, y: 18.03, label: 'slide_platform' },
+		{
+			minX: SLIDE_PLATFORM.center.x - half(SLIDE_PLATFORM.size),
+			maxX: SLIDE_PLATFORM.center.x + half(SLIDE_PLATFORM.size),
+			minZ: SLIDE_PLATFORM.center.z - half(SLIDE_PLATFORM.size),
+			maxZ: SLIDE_PLATFORM.center.z + half(SLIDE_PLATFORM.size),
+			y: SLIDE_PLATFORM_TOP_Y,
+			label: 'slide_platform',
+		},
 	];
 
 	/** Atrium hole in the floor-1 slab — jump the balustrade and you drop through. */
@@ -272,7 +310,13 @@ export class CollisionWorld {
 		// handled vertically instead — see `Ramp.openMinZ` / `groundHeightAt`.
 
 		// Atrium fountain / planter (floor 0)
-		this.add(-2.6, 2.6, -2.6, 2.6, { minY: -0.5, maxY: 3.5, label: 'fountain' });
+		this.add(
+			FOUNTAIN_SPEC.center.x - FOUNTAIN_SPEC.kerbRadius,
+			FOUNTAIN_SPEC.center.x + FOUNTAIN_SPEC.kerbRadius,
+			FOUNTAIN_SPEC.center.z - FOUNTAIN_SPEC.kerbRadius,
+			FOUNTAIN_SPEC.center.z + FOUNTAIN_SPEC.kerbRadius,
+			{ minY: -0.5, maxY: FOUNTAIN_SPEC.blockHeight, label: 'fountain' },
+		);
 
 		// Floor-1 VOID (architect: weide/void) — cannot walk over atrium hole
 		// Hole is roughly ±8 x ±6 on floor 1 — solid barrier so sims don't hang mid-air
@@ -286,15 +330,43 @@ export class CollisionWorld {
 		//  floor-1 balcony at z≈16 is walkable again.)
 
 		// Catwalk deck (Fashion Week, floor 0 west in front of Douglas).
-		// maxY sits just under the deck top (0.34): standing ON the deck skips this
-		// box, standing on the floor bumps into the kerb — so you hop on, not clip in.
-		this.add(-29.5, -26.5, -5.2, 11.5, { minY: -0.5, maxY: 0.3, label: 'catwalk' });
+		// maxY sits just under the deck top: standing ON the deck skips this box,
+		// standing on the floor bumps into the kerb — so you hop on, not clip in.
+		this.add(CATWALK_DECK.minX, CATWALK_DECK.maxX, CATWALK_DECK.minZ, CATWALK_DECK.maxZ, {
+			minY: -0.5,
+			maxY: CATWALK_DECK.topY - KERB_LIP,
+			label: 'catwalk',
+		});
 
 		// Aperol bar
 		this.add(-16, -12, 9, 11.5, { minY: -0.5, maxY: 3, label: 'aperol' });
 
 		// Kiosk base
-		this.add(-1.0, 1.0, 9.0, 11.0, { minY: -0.5, maxY: 3, label: 'kiosk' });
+		this.add(
+			KIOSK_SPEC.center.x - KIOSK_SPEC.baseRadius,
+			KIOSK_SPEC.center.x + KIOSK_SPEC.baseRadius,
+			KIOSK_SPEC.center.z - KIOSK_SPEC.baseRadius,
+			KIOSK_SPEC.center.z + KIOSK_SPEC.baseRadius,
+			{ minY: -0.5, maxY: KIOSK_SPEC.height, label: 'kiosk' },
+		);
+
+		// De parkeerschil: dezelfde wanden, kolommen en cabine die de plattegrond
+		// tekent. P1 had helemaal geen geometrie en je liep dwars door alles heen.
+		for (const collider of parkingDeckColliders()) {
+			this.add(collider.minX, collider.maxX, collider.minZ, collider.maxZ, {
+				minY: collider.minY,
+				maxY: collider.maxY,
+				label: collider.label,
+			});
+		}
+	}
+
+	/** True where this platform's top face is really floor, rounded nose included. */
+	platformCovers(platform: Platform, x: number, z: number): boolean {
+		if (x < platform.minX || x > platform.maxX || z < platform.minZ || z > platform.maxZ) return false;
+		const nose = platform.nose;
+		if (!nose || z <= nose.centerZ) return true;
+		return Math.hypot(x - midpoint(platform.minX, platform.maxX), z - nose.centerZ) <= nose.radius;
 	}
 
 	/**
@@ -355,7 +427,7 @@ export class CollisionWorld {
 		// so anything standing on one is unreachable if the pad is asked first.
 		// Both are gated on already being at that height, so nothing below changes.
 		for (const p of this.platforms) {
-			if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
+			if (!this.platformCovers(p, x, z)) continue;
 			if (currentY >= p.y - 0.35 && currentY < p.y + 2) return p.y;
 		}
 		for (const r of this.ramps) {

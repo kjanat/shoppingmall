@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { levelY } from '#/data/levels';
+import { RESTROOMS_DIVIDER, RESTROOMS_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { type LitMaterial, lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 
 /**
  * Mall toilets next to the gebedsruimte (not inside it).
@@ -13,7 +16,7 @@ export class Restrooms {
 	readonly group = new THREE.Group();
 	/** Center of the WC block (world) */
 	/** West wall utility strip — clear of south-store fronts */
-	readonly pos = new THREE.Vector3(-30, 0, 12);
+	readonly pos = new THREE.Vector3(RESTROOMS_SPEC.center.x, levelY('v0'), RESTROOMS_SPEC.center.z);
 	private materials: THREE.Material[] = [];
 	private pool: LightPool;
 
@@ -28,17 +31,28 @@ export class Restrooms {
 		this.buildCorridorSigns();
 	}
 
-	/** AABBs for CollisionWorld (world-space min/max XZ) */
+	/** AABBs for CollisionWorld, read off the same walls the shell builds. */
 	getColliders(): { minX: number; maxX: number; minZ: number; maxZ: number; label: string }[] {
 		const cx = this.pos.x;
 		const cz = this.pos.z;
+		const { shell, wallThickness, wallInset } = RESTROOMS_SPEC;
+		const sideX = half(shell.width) - wallInset;
+		const frontZ = half(shell.depth) - wallInset;
+		const shellX = half(shell.width);
+		const shellZ = half(shell.depth);
+		const halfWall = half(wallThickness);
+		const halfDivider = half(RESTROOMS_DIVIDER.thickness);
 		return [
-			// outer shell walls (approximate solid boxes for corridor sides)
-			{ minX: cx - 4.2, maxX: cx - 3.9, minZ: cz - 3.2, maxZ: cz + 3.2, label: 'wc_wall_w' },
-			{ minX: cx + 3.9, maxX: cx + 4.2, minZ: cz - 3.2, maxZ: cz + 3.2, label: 'wc_wall_e' },
-			{ minX: cx - 4.2, maxX: cx + 4.2, minZ: cz - 3.4, maxZ: cz - 3.1, label: 'wc_wall_n' },
-			// divider between men/women
-			{ minX: cx - 0.15, maxX: cx + 0.15, minZ: cz - 2.8, maxZ: cz + 2.6, label: 'wc_divider' },
+			{ minX: cx - sideX - halfWall, maxX: cx - sideX + halfWall, minZ: cz - shellZ, maxZ: cz + shellZ, label: 'wc_wall_w' },
+			{ minX: cx + sideX - halfWall, maxX: cx + sideX + halfWall, minZ: cz - shellZ, maxZ: cz + shellZ, label: 'wc_wall_e' },
+			{ minX: cx - shellX, maxX: cx + shellX, minZ: cz - frontZ - halfWall, maxZ: cz - frontZ + halfWall, label: 'wc_wall_n' },
+			{
+				minX: cx - halfDivider,
+				maxX: cx + halfDivider,
+				minZ: cz + RESTROOMS_DIVIDER.minZ,
+				maxZ: cz + RESTROOMS_DIVIDER.maxZ,
+				label: 'wc_divider',
+			},
 		];
 	}
 
@@ -52,25 +66,35 @@ export class Restrooms {
 	}
 
 	private buildShell(): void {
-		const floor = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.08, 6.4), this.tileMat(0xd5d0c8));
-		floor.position.y = 0.04;
+		const { shell, floorThickness, wallHeight, wallThickness, wallInset, fascia, divider } = RESTROOMS_SPEC;
+		const sideX = half(shell.width) - wallInset;
+		const frontZ = half(shell.depth) - wallInset;
+
+		const floor = new THREE.Mesh(new THREE.BoxGeometry(shell.width, floorThickness, shell.depth), this.tileMat(0xd5d0c8));
+		floor.position.y = half(floorThickness);
 		this.group.add(floor);
 
 		const wall = this.tileMat(0xece8e1);
 		// back wall (closed)
-		const back = new THREE.Mesh(new THREE.BoxGeometry(8.2, 3.0, 0.16), wall);
-		back.position.set(0, 1.5, -3.15);
+		const back = new THREE.Mesh(new THREE.BoxGeometry(shell.width, wallHeight, wallThickness), wall);
+		back.position.set(0, half(wallHeight), -frontZ);
 		this.group.add(back);
 		// side walls
-		for (const sx of [-4.05, 4.05]) {
-			const side = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.0, 6.4), wall);
-			side.position.set(sx, 1.5, 0);
+		for (const sign of [-1, 1] as const) {
+			const side = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, shell.depth), wall);
+			side.position.set(sign * sideX, half(wallHeight), 0);
 			this.group.add(side);
 		}
+		// scheidingswand heren/dames — hij stond alleen in de collision, dus je liep
+		// tegen een onzichtbare muur van vijf meter aan
+		const split = new THREE.Mesh(new THREE.BoxGeometry(divider.thickness, wallHeight, RESTROOMS_DIVIDER.depth), wall);
+		split.position.set(0, half(wallHeight), RESTROOMS_DIVIDER.centerZ);
+		this.group.add(split);
+
 		// front open with partial fascia
-		const fascia = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.5, 0.12), wall);
-		fascia.position.set(0, 2.75, 3.15);
-		this.group.add(fascia);
+		const header = new THREE.Mesh(new THREE.BoxGeometry(shell.width, fascia.height, fascia.thickness), wall);
+		header.position.set(0, wallHeight - half(fascia.height), frontZ);
+		this.group.add(header);
 
 		// ceiling strip lights
 		this.pool.register({

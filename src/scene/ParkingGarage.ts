@@ -1,7 +1,14 @@
 import * as THREE from 'three';
-import { PARKING_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
-import { PARKING_EXIT_RAMP, PARKING_SLAB_SPEC } from '#/data/world';
+import {
+	ELEVATOR_SPEC,
+	PARKING_CEILING_SPEC,
+	PARKING_DECK_SPEC,
+	PARKING_EXIT_RAMP,
+	PARKING_SLAB_SPEC,
+	PARKING_WALL_PANELS,
+	parkingPillarCenters,
+} from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { addBoxMesh } from '#/render/meshFactory';
@@ -50,51 +57,24 @@ export class ParkingGarage {
 			receiveShadow: true,
 		});
 
-		// Ceiling slab (underside of mall)
-		const ceil = new THREE.Mesh(new THREE.BoxGeometry(PARKING_FOOTPRINT.width, 0.3, PARKING_FOOTPRINT.depth), dark);
-		ceil.position.y = 4.6;
-		this.group.add(ceil);
+		// Ceiling slab (underside of mall). Cut like the floor: the glass elevator
+		// travels through it, so a solid box put 30 cm of concrete in the cabin.
+		const { clearHeight } = PARKING_DECK_SPEC;
+		addExtrudedXZMesh(this.group, dark, {
+			...PARKING_CEILING_SPEC,
+			name: 'parking-ceiling',
+			topY: PARKING_CEILING_SPEC.topY - GARAGE_Y,
+		});
 
 		// Perimeter walls (open near elevator east + west exit ramp to city)
-		const wallH = 4.4;
-		for (const wall of [
-			{
-				name: 'parking-wall-north',
-				width: PARKING_FOOTPRINT.width,
-				height: wallH,
-				depth: 0.35,
-				position: { x: 0, y: half(wallH), z: -half(PARKING_FOOTPRINT.depth) + 0.2 },
-			},
-			{
-				name: 'parking-wall-south',
-				width: PARKING_FOOTPRINT.width,
-				height: wallH,
-				depth: 0.35,
-				position: { x: 0, y: half(wallH), z: half(PARKING_FOOTPRINT.depth) - 0.2 },
-			},
-			...[-14, 14].map((z, index) => ({
-				name: `parking-wall-west-${index}`,
-				width: 0.35,
-				height: wallH,
-				depth: 14,
-				position: { x: -half(PARKING_FOOTPRINT.width) + 0.2, y: half(wallH), z },
-			})),
-			{
-				name: 'parking-wall-east-north',
-				width: 0.35,
-				height: wallH,
-				depth: 14,
-				position: { x: half(PARKING_FOOTPRINT.width) - 0.2, y: half(wallH), z: -14 },
-			},
-			{
-				name: 'parking-wall-east-south',
-				width: 0.35,
-				height: wallH,
-				depth: 20,
-				position: { x: half(PARKING_FOOTPRINT.width) - 0.2, y: half(wallH), z: 10 },
-			},
-		]) {
-			addBoxMesh(this.group, dark, wall);
+		for (const panel of PARKING_WALL_PANELS) {
+			addBoxMesh(this.group, dark, {
+				name: `parking-wall-${panel.id}`,
+				width: panel.size.width,
+				height: clearHeight,
+				depth: panel.size.depth,
+				position: { x: panel.center.x, y: half(clearHeight), z: panel.center.z },
+			});
 		}
 
 		// ── West exit ramp → outdoor city (local y 0 = world GARAGE_Y) ──
@@ -159,16 +139,11 @@ export class ParkingGarage {
 				metalness: 0.1,
 			}),
 		);
-		for (let ix = -3; ix <= 3; ix++) {
-			for (let iz = -2; iz <= 2; iz++) {
-				// leave free around elevator (16, -8) world → local x=16, z=-8
-				const x = ix * 8;
-				const z = iz * 8;
-				if (Math.abs(x - 16) < 5 && Math.abs(z + 8) < 5) continue;
-				const p = new THREE.Mesh(new THREE.BoxGeometry(0.7, 4.4, 0.7), mat);
-				p.position.set(x, 2.2, z);
-				this.group.add(p);
-			}
+		const { pillar, clearHeight } = PARKING_DECK_SPEC;
+		for (const { x, z } of parkingPillarCenters()) {
+			const p = new THREE.Mesh(new THREE.BoxGeometry(pillar.width, clearHeight, pillar.width), mat);
+			p.position.set(x, half(clearHeight), z);
+			this.group.add(p);
 		}
 	}
 
@@ -255,11 +230,12 @@ export class ParkingGarage {
 	}
 
 	private buildBooth(): void {
+		const spec = PARKING_DECK_SPEC.booth;
 		const booth = new THREE.Group();
-		booth.position.set(22, 0, -4);
+		booth.position.set(spec.center.x, 0, spec.center.z);
 		const wood = this.track(lit({ color: 0xffc107, roughness: 0.7 }));
-		const box = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.4, 2.0), wood);
-		box.position.y = 1.2;
+		const box = new THREE.Mesh(new THREE.BoxGeometry(spec.width, spec.height, spec.depth), wood);
+		box.position.y = half(spec.height);
 		booth.add(box);
 		const win = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.2, 0.8),
@@ -284,7 +260,7 @@ export class ParkingGarage {
 		big.position.set(0, 3.2, -19.5);
 		this.group.add(big);
 		const exit = this.makeTextPlane('↑ LIFT · V0', 2.5, 0.55, '#b71c1c', '#fff');
-		exit.position.set(14, 2.4, -8);
+		exit.position.set(ELEVATOR_SPEC.center.x - 2, 2.4, ELEVATOR_SPEC.center.z);
 		exit.rotation.y = -Math.PI / 2;
 		this.group.add(exit);
 		const no = this.makeTextPlane('MAX 2.1 m', 2.2, 0.4, '#212121', '#ffc107');
@@ -322,7 +298,7 @@ export class ParkingGarage {
 			intensity: 4,
 			distance: 12,
 			decay: 2,
-			position: new THREE.Vector3(16, GARAGE_Y + 3.5, -8),
+			position: new THREE.Vector3(ELEVATOR_SPEC.center.x, GARAGE_Y + 3.5, ELEVATOR_SPEC.center.z),
 		});
 	}
 

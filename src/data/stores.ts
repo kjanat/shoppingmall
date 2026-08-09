@@ -502,6 +502,13 @@ export function getStore(id: string): StoreDef | undefined {
 	return STORES.find((s) => s.id === id);
 }
 
+/** For authored world geometry that must not silently drift off a missing directory record. */
+export function requireStore(id: string): StoreDef {
+	const store = getStore(id);
+	if (!store) throw new Error(`no store '${id}' in STORES`);
+	return store;
+}
+
 /**
  * De winkels: alles wat een winkelpod, schappen en een verkoper krijgt.
  * Utility-bestemmingen en de infokiosk hebben elk hun eigen bouwer (FoodCourt,

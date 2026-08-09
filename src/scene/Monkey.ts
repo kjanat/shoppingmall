@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { levelAt } from '#/data/levels';
+import { PRAYER_ROOM_SPEC } from '#/data/world';
 import type { CollisionWorld } from '#/physics/Collision';
 import { type LitMaterial, lit } from '#/render/material';
 import { ctx2d } from '#/util/dom';
@@ -17,8 +18,8 @@ const SPLAT_LIFE = 9;
 /** Closer than this → monkey aims at you. Farther → gebedsruimte gets it. */
 const PLAYER_RANGE = 13;
 
-/** Gebedsruimte (see PrayerRoom.pos) — default target when you're a coward */
-const PRAYER_POS = new THREE.Vector3(-31.5, 1.35, -19.5);
+/** Gebedsruimte — default target when you're a coward. Aimed at torso height. */
+const PRAYER_POS = new THREE.Vector3(PRAYER_ROOM_SPEC.center.x, 1.35, PRAYER_ROOM_SPEC.center.z);
 
 /** Palm-top perches around the atrium. */
 const PERCHES: [number, number, number][] = [

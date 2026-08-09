@@ -399,11 +399,31 @@ function prismContainsPlanPoint(prism: PrismGeometry, point: Vec2): boolean {
 	return pointInPlan(prism.plan, point.x, point.z) && !prism.holes.some((hole) => pointInPlan(hole, point.x, point.z));
 }
 
+/**
+ * Two plans crossing like a plus sign put no corner of either inside the other, so the
+ * shared window has to be sampled as well. A runway laid straight through a toilet wall
+ * read as clear on corners alone.
+ */
+function sharedWindowSamples(a: PrismGeometry, b: PrismGeometry): readonly Vec2[] {
+	const boundsA = planBounds(a.plan);
+	const boundsB = planBounds(b.plan);
+	const minX = Math.max(boundsA.minX, boundsB.minX);
+	const maxX = Math.min(boundsA.maxX, boundsB.maxX);
+	const minZ = Math.max(boundsA.minZ, boundsB.minZ);
+	const maxZ = Math.min(boundsA.maxZ, boundsB.maxZ);
+	if (minX > maxX || minZ > maxZ) return [];
+	return [
+		{ x: midpoint(minX, maxX), z: midpoint(minZ, maxZ) },
+		{ x: minX, z: minZ },
+		{ x: minX, z: maxZ },
+		{ x: maxX, z: minZ },
+		{ x: maxX, z: maxZ },
+	];
+}
+
 function prismPlanOverlap(a: PrismGeometry, b: PrismGeometry): boolean {
-	return (
-		planSamples(a.plan).some((point) => prismContainsPlanPoint(a, point) && prismContainsPlanPoint(b, point)) ||
-		planSamples(b.plan).some((point) => prismContainsPlanPoint(a, point) && prismContainsPlanPoint(b, point))
-	);
+	const samples = [...planSamples(a.plan), ...planSamples(b.plan), ...sharedWindowSamples(a, b)];
+	return samples.some((point) => prismContainsPlanPoint(a, point) && prismContainsPlanPoint(b, point));
 }
 
 function horizontalOverlap(a: SpatialGeometry, b: SpatialGeometry): boolean {
@@ -524,6 +544,28 @@ function overlapAllowed(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, 
 		);
 	}
 	return volumeA.allowsOverlapFrom.includes(b.placement.class) && volumeB.allowsOverlapFrom.includes(a.placement.class);
+}
+
+/**
+ * A flight's bounding box is far wider than its body, so only volumes whose bounds
+ * are their shape can be compared this way.
+ */
+function boundedByItsShape(geometry: SpatialGeometry): boolean {
+	return geometry.kind === 'prism' || geometry.kind === 'cylinder';
+}
+
+/**
+ * A surface you are meant to walk on cannot pass through something that stops bodies:
+ * the far end of it is unreachable. Neither of the rules above sees this. The physical
+ * overlap rule needs `blocksMovement` on both sides and a deck blocks nothing itself,
+ * and `allowsOverlapFrom` lets any two authored fixtures share space on purpose.
+ */
+function obstructedSurface(a: SpatialVolume, b: SpatialVolume): boolean {
+	if (!boundedByItsShape(a.geometry) || !boundedByItsShape(b.geometry)) return false;
+	const walkable = a.role === 'walkable' ? a : b.role === 'walkable' ? b : null;
+	if (!walkable) return false;
+	const obstacle = walkable === a ? b : a;
+	return obstacle.blocksMovement;
 }
 
 export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialProblem[] {
@@ -661,6 +703,14 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 						problems.push({
 							code: 'unsupported-placement',
 							message: `${a.id}.${volumeA.id} physically overlaps ${b.id}.${volumeB.id}`,
+							entities: [a.id, b.id],
+						});
+					} else if (obstructedSurface(volumeA, volumeB)) {
+						const surface = volumeA.role === 'walkable' ? { entity: a, volume: volumeA } : { entity: b, volume: volumeB };
+						const obstacle = surface.volume === volumeA ? { entity: b, volume: volumeB } : { entity: a, volume: volumeA };
+						problems.push({
+							code: 'blocked-clearance',
+							message: `${surface.entity.id}.${surface.volume.id} runs through ${obstacle.entity.id}.${obstacle.volume.id}`,
 							entities: [a.id, b.id],
 						});
 					}

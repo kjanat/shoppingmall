@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { levelY } from '#/data/levels';
+import { BEARD_CAVE_SPEC } from '#/data/world';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -19,7 +21,7 @@ export class BakerThief {
 	private world: CollisionWorld;
 	private onLoot: ((pos: THREE.Vector3) => void) | null = null;
 	private onHome: ((pos: THREE.Vector3) => void) | null = null;
-	private caveHome = new THREE.Vector3(-33.5, 0, 20);
+	private caveHome = new THREE.Vector3(BEARD_CAVE_SPEC.entrance.x, levelY('v0'), BEARD_CAVE_SPEC.entrance.z);
 	private homeReported = false;
 	private lingerT = 0;
 
