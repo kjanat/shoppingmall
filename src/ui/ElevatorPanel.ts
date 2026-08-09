@@ -1,4 +1,5 @@
-import { LEVELS, type LevelId } from '#/data/levels';
+import type { LevelId } from '#/data/levels';
+import { LEVELS } from '#/data/levels';
 import { qs } from '#/util/dom';
 
 /**

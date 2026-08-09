@@ -14,7 +14,8 @@ import { join } from 'node:path';
 import { env } from 'node:process';
 import { blue } from 'ansispeck';
 import { dim, red } from 'ansispeck/safe';
-import { type BrowserContext, chromium, type Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
+import { chromium } from 'playwright';
 import { BROWSER_LOCK_PATH as LOCK_PATH, PERF_DIR, PROFILE_DIR as PERF_PROFILE_FRAGMENT } from './paths.ts';
 import { isRecord, readString } from './values.ts';
 

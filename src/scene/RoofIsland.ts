@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
-import { type LitMaterial, lit } from '#/render/material';
+import type { LitMaterial } from '#/render/material';
+import { lit } from '#/render/material';
 import { distanceToSegment2 } from '#/util/geometry2';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { half, midpoint, span } from '#/util/math';

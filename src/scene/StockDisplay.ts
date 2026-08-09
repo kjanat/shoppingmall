@@ -1,7 +1,9 @@
 import * as THREE from 'three';
-import { getInventory, type StockItem, type StockKind } from '#/data/inventory';
+import type { StockItem, StockKind } from '#/data/inventory';
+import { getInventory } from '#/data/inventory';
 import { levelY } from '#/data/levels';
-import { type StoreDef, shopStores } from '#/data/stores';
+import type { StoreDef } from '#/data/stores';
+import { shopStores } from '#/data/stores';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';

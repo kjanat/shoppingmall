@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { ShittyDiscoMusic } from '#/audio/ShittyDisco';
 import type { LightHandle, LightPool } from '#/render/LightPool';
-import { type LitMaterial, lit } from '#/render/material';
+import type { LitMaterial } from '#/render/material';
+import { lit } from '#/render/material';
 import type { DaylightDimmer } from '#/scene/Lighting';
 import { at } from '#/util/rand';
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { type SpatialSource, spatial } from '#/audio/SpatialAudio';
+import type { SpatialSource } from '#/audio/SpatialAudio';
+import { spatial } from '#/audio/SpatialAudio';
 import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';

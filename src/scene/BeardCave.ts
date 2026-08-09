@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { levelY } from '#/data/levels';
 import { BEARD_CAVE_LOOT_CENTER, BEARD_CAVE_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
-import { type LitMaterial, lit } from '#/render/material';
+import type { LitMaterial } from '#/render/material';
+import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half } from '#/util/math';
 

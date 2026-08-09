@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { speakLine } from '#/audio/ElevenVoice';
 import { levelAt } from '#/data/levels';
-import { getOwner, type ShopOwner } from '#/data/shopOwners';
+import type { ShopOwner } from '#/data/shopOwners';
+import { getOwner } from '#/data/shopOwners';
 import { STORES } from '#/data/stores';
 
 import { fitText, labelCanvas, labelTexture } from '#/util/label';

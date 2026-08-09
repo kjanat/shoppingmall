@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { type LitMaterial, lit } from '#/render/material';
+import type { LitMaterial } from '#/render/material';
+import { lit } from '#/render/material';
 import { at } from '#/util/rand';
 
 /**

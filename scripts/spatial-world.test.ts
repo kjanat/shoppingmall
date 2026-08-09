@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { STANDING_PEDESTRIAN } from '#/data/character';
-import { CONNECTOR_LIMITS, type EscalatorSpec, VerticalConnectorRegistrySchema, validateEscalatorSpec } from '#/data/connectors';
+import type { EscalatorSpec } from '#/data/connectors';
+import { CONNECTOR_LIMITS, VerticalConnectorRegistrySchema, validateEscalatorSpec } from '#/data/connectors';
 import { LEVEL_LIMITS, LevelRegistrySchema } from '#/data/levelSchema';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt } from '#/data/levels';
 import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';

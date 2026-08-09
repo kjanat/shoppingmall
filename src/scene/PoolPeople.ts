@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
-import { type LitMaterial, lit } from '#/render/material';
+import type { LitMaterial } from '#/render/material';
+import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { at } from '#/util/rand';
 import { inPool, POOL_CENTER, POOL_WATER_Y, rimDistance } from './RoofIsland';

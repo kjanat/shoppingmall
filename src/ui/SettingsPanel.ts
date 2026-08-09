@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle';
-import { type ControlSettings, DEFAULT_SETTINGS } from '#/player/Controls';
+import type { ControlSettings } from '#/player/Controls';
+import { DEFAULT_SETTINGS } from '#/player/Controls';
 import {
 	batchMode,
 	FILL_CHOICES,

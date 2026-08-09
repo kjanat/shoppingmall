@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levelAt } from '#/data/levels';
-import { type BatchMode, batchMode } from '#/render/graphicsPrefs';
+import type { BatchMode } from '#/render/graphicsPrefs';
+import { batchMode } from '#/render/graphicsPrefs';
 import { span } from '#/util/math';
 
 type ColorMaterial = THREE.Material & { color?: THREE.Color };

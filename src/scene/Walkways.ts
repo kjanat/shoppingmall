@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { type LitMaterial, lit } from '#/render/material';
+import type { LitMaterial } from '#/render/material';
+import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
 
 type Belt = {

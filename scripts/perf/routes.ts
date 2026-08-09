@@ -1,4 +1,5 @@
-import { type LevelId, levelY } from '#/data/levels';
+import type { LevelId } from '#/data/levels';
+import { levelY } from '#/data/levels';
 import { PARKING_EXIT_RAMP } from '#/data/world';
 import { EYE } from '#/player/constants';
 import { midpoint } from '#/util/math';

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { MALL_SHELL } from '#/data/layout';
-import { type LevelId, levelAt } from '#/data/levels';
-import { type CollisionWorld, WALK_STEP } from '#/physics/Collision';
+import type { LevelId } from '#/data/levels';
+import { levelAt } from '#/data/levels';
+import type { CollisionWorld } from '#/physics/Collision';
+import { WALK_STEP } from '#/physics/Collision';
 import { EYE, PLAYER_RADIUS } from '#/player/constants';
 import { half } from '#/util/math';
 
