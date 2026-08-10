@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { GraphNode } from '#/data/graph';
+import { half } from '#/util/math';
 import { at } from '#/util/rand';
 
 /**
@@ -57,7 +58,7 @@ export class PathMesh {
 	}
 
 	private buildRibbon(samples: THREE.Vector3[], width: number): THREE.Mesh {
-		const half = width / 2;
+		const halfWidth = half(width);
 		const positions: number[] = [];
 		const uvs: number[] = [];
 		const indices: number[] = [];
@@ -78,8 +79,8 @@ export class PathMesh {
 			const side = new THREE.Vector3().crossVectors(up, tangent).normalize();
 			if (side.lengthSq() < 0.001) side.set(1, 0, 0);
 
-			const l = p.clone().addScaledVector(side, half);
-			const r = p.clone().addScaledVector(side, -half);
+			const l = p.clone().addScaledVector(side, halfWidth);
+			const r = p.clone().addScaledVector(side, -halfWidth);
 			positions.push(l.x, l.y, l.z, r.x, r.y, r.z);
 			const u = i / (samples.length - 1);
 			uvs.push(u, 0, u, 1);

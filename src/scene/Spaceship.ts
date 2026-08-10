@@ -3,6 +3,7 @@ import { SPACESHIP_FRAME_RAILS, SPACESHIP_FRAME_Y, SPACESHIP_SPEC } from '#/data
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 
 /**
  * The ultimate mall ending: a chrome saucer hovering above the landing pad.
@@ -158,7 +159,7 @@ export class Spaceship {
 		s.add(disc);
 
 		// Underside
-		const under = new THREE.Mesh(new THREE.SphereGeometry(3.6, 24, 12, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.35), dark);
+		const under = new THREE.Mesh(new THREE.SphereGeometry(3.6, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI * 0.35), dark);
 		under.scale.set(1, 0.35, 1);
 		under.position.y = -0.15;
 		s.add(under);
@@ -250,7 +251,7 @@ export class Spaceship {
 			}),
 		);
 		const mesh = new THREE.Mesh(geo, mat);
-		mesh.position.y = this.baseY / 2;
+		mesh.position.y = half(this.baseY);
 		return mesh;
 	}
 

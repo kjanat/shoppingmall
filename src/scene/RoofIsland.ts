@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
+import type { Polygon2 } from '#/data/spatial';
+import { planBounds, pointInPlan } from '#/data/spatial';
 import {
 	ROOF_ISLAND_DECK_THICKNESS,
 	ROOF_ISLAND_PAD,
@@ -96,17 +98,12 @@ export const POOL_POLYGON: ReadonlyArray<readonly [number, number]> = POOL_OUTLI
 	return [POOL_CENTER.x + lx * c + lz * s, POOL_CENTER.z - lx * s + lz * c] as const;
 });
 
+/** Dezelfde waterlijn als planvorm, zodat de gedeelde vlakwiskunde erop werkt. */
+const POOL_PLAN: Polygon2 = { kind: 'polygon', points: POOL_POLYGON.map(([x, z]) => ({ x, z })) };
+
 /** Ligt (x, z) in het water? Ray casting op de echte waterlijn. */
 export function inPool(x: number, z: number): boolean {
-	let inside = false;
-	for (let i = 0, j = POOL_POLYGON.length - 1; i < POOL_POLYGON.length; j = i++) {
-		const a = at(POOL_POLYGON, i);
-		const b = at(POOL_POLYGON, j);
-		if (a[1] > z !== b[1] > z && x < ((b[0] - a[0]) * (z - a[1])) / (b[1] - a[1]) + a[0]) {
-			inside = !inside;
-		}
-	}
-	return inside;
+	return pointInPlan(POOL_PLAN, x, z);
 }
 
 /** Waterspiegel in wereld-y: het watervlak uit buildPool ligt precies hier. */
@@ -120,22 +117,8 @@ export const POOL_FLOOR_Y = POOL_WATER_Y - 1.15;
 /** Breedte van de aflopende instap: binnen deze band waad je naar het diepe. */
 const POOL_SHALLOW_W = 1.8;
 
-function polygonBounds(): { minX: number; maxX: number; minZ: number; maxZ: number } {
-	let minX = Infinity;
-	let maxX = -Infinity;
-	let minZ = Infinity;
-	let maxZ = -Infinity;
-	for (const [x, z] of POOL_POLYGON) {
-		minX = Math.min(minX, x);
-		maxX = Math.max(maxX, x);
-		minZ = Math.min(minZ, z);
-		maxZ = Math.max(maxZ, z);
-	}
-	return { minX, maxX, minZ, maxZ };
-}
-
 /** Doos om de waterlijn, zodat alles wat er niet in staat de raycast overslaat. */
-const POOL_BOUNDS = polygonBounds();
+const POOL_BOUNDS = planBounds(POOL_PLAN);
 
 /** Kortste afstand tot de waterlijn: hoe verder naar binnen, hoe dieper. */
 export function rimDistance(x: number, z: number): number {
@@ -401,7 +384,7 @@ export class RoofIsland {
 				supGeoCache.set(key, sg);
 			}
 			const sup = new THREE.Mesh(sg, steel);
-			sup.position.set(p.x, DECK_Y + h / 2, p.z);
+			sup.position.set(p.x, DECK_Y + half(h), p.z);
 			g.add(sup);
 		}
 
@@ -469,7 +452,7 @@ export class RoofIsland {
 				ctx.fillStyle = '#ffe082';
 				ctx.font = 'bold 44px system-ui,sans-serif';
 				ctx.textAlign = 'center';
-				ctx.fillText('TIKI BAR', w / 2, 56);
+				ctx.fillText('TIKI BAR', half(w), 56);
 				ctx.font = '22px system-ui';
 				fitText(ctx, 'cocktails op dakprijzen', { x: 16, y: 74, w: w - 32, h: 40 }, { size: 30, maxLines: 1 });
 			},
@@ -802,10 +785,10 @@ export class RoofIsland {
 				ctx.fillStyle = '#26c6da';
 				ctx.font = 'bold 40px system-ui,sans-serif';
 				ctx.textAlign = 'center';
-				ctx.fillText('🏝 ROOF ISLAND', w / 2, 55);
+				ctx.fillText('🏝 ROOF ISLAND', half(w), 55);
 				ctx.fillStyle = '#e2e8f0';
 				ctx.font = '20px system-ui';
-				ctx.fillText('zwembad · tiki bar · glijmiddel gratis', w / 2, 95);
+				ctx.fillText('zwembad · tiki bar · glijmiddel gratis', half(w), 95);
 			},
 			512,
 			128,

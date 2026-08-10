@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { clamp, lerp } from '#/util/math';
 
 /**
  * Passagiersdrone — stap in (E) en vlieg. De camera zit in het bolletje;
@@ -50,11 +51,11 @@ export class Drone {
 	/** Tijdens de vlucht: om de camera heen hangen, kantelen met de beweging. */
 	followCamera(cam: THREE.PerspectiveCamera, dt: number): void {
 		if (!this.occupied) {
-			this.rotorSpeed = THREE.MathUtils.lerp(this.rotorSpeed, 2, dt);
+			this.rotorSpeed = lerp(this.rotorSpeed, 2, dt);
 			for (const r of this.rotors) r.rotation.y += this.rotorSpeed * dt;
 			return;
 		}
-		this.rotorSpeed = THREE.MathUtils.lerp(this.rotorSpeed, 26, dt * 2);
+		this.rotorSpeed = lerp(this.rotorSpeed, 26, dt * 2);
 		const vx = (cam.position.x - this.prevCam.x) / Math.max(dt, 1e-4);
 		const vz = (cam.position.z - this.prevCam.z) / Math.max(dt, 1e-4);
 		this.prevCam.copy(cam.position);
@@ -67,8 +68,8 @@ export class Drone {
 		// naar voren hangen bij snelheid, opzij in de bocht (assen mee-geflipt)
 		const fwd = -(vx * Math.sin(e.y) + vz * Math.cos(e.y));
 		const side = vx * Math.cos(e.y) - vz * Math.sin(e.y);
-		this.body.rotation.x = THREE.MathUtils.clamp(-fwd * 0.02, -0.3, 0.3);
-		this.body.rotation.z = THREE.MathUtils.clamp(side * 0.02, -0.3, 0.3);
+		this.body.rotation.x = clamp(-fwd * 0.02, -0.3, 0.3);
+		this.body.rotation.z = clamp(side * 0.02, -0.3, 0.3);
 
 		for (const r of this.rotors) r.rotation.y += this.rotorSpeed * dt;
 	}
@@ -97,7 +98,7 @@ export class Drone {
 		this.materials.push(glass);
 
 		// Stoel-pod: open bol zodat je er als speler doorheen kunt kijken
-		const pod = new THREE.Mesh(new THREE.SphereGeometry(0.75, 16, 12, 0, Math.PI * 2, Math.PI * 0.35, Math.PI * 0.5), glass);
+		const pod = new THREE.Mesh(new THREE.SphereGeometry(0.75, 16, 12, 0, Math.PI * 2, Math.PI * 0.35, Math.PI / 2), glass);
 		pod.position.y = 0.35;
 		this.body.add(pod);
 		const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.55), dark);

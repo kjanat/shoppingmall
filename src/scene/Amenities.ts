@@ -3,6 +3,10 @@ import { FOUNTAIN_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
 
+// ── particles ────────────────────────────────────────────
+/** Sideways speed a respawned drop leaves the nozzle with, either way. */
+const DROP_SIDE_SPEED = 0.5;
+
 /**
  * Fountain (particles), monkey in tree, Aperol Spritz bar.
  * Architect-friendly: no floating nonsense, grounded on floor 0 atrium.
@@ -82,7 +86,7 @@ export class Amenities {
 		this.group.add(pillar);
 
 		const bowl = new THREE.Mesh(
-			new THREE.SphereGeometry(0.55, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
+			new THREE.SphereGeometry(0.55, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2),
 			this.track(lit({ color: 0xcfd8dc, metalness: 0.5, roughness: 0.3 })),
 		);
 		bowl.position.set(0, 1.9, 0);
@@ -246,9 +250,9 @@ export class Amenities {
 				arr[i] = (Math.random() - 0.5) * 0.35;
 				arr[i + 1] = resetY;
 				arr[i + 2] = (Math.random() - 0.5) * 0.35;
-				vel[i] = (Math.random() - 0.5) * 0.5;
+				vel[i] = (Math.random() - 0.5) * DROP_SIDE_SPEED;
 				vel[i + 1] = 1.5 + Math.random() * 2.5;
-				vel[i + 2] = (Math.random() - 0.5) * 0.5;
+				vel[i + 2] = (Math.random() - 0.5) * DROP_SIDE_SPEED;
 			}
 		}
 		pos.needsUpdate = true;

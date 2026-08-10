@@ -1012,7 +1012,7 @@ export const ELEVATOR_ENTITY: MallWorldEntity = {
 	ports: LEVELS.map((entry) => ({
 		id: `elevator-${entry.id}`,
 		kind: 'elevator',
-		position: { x: ELEVATOR_SPEC.center.x, y: entry.y, z: ELEVATOR_SPEC.center.z + ELEVATOR_SPEC.cabin.depth / 2 },
+		position: { x: ELEVATOR_SPEC.center.x, y: entry.y, z: ELEVATOR_SPEC.center.z + half(ELEVATOR_SPEC.cabin.depth) },
 		direction: { x: 0, y: 0, z: 1 },
 		width: ELEVATOR_SPEC.cabin.width,
 		height: ELEVATOR_SPEC.cabin.height,

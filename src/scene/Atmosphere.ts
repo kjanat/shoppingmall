@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CollisionWorld } from '#/physics/Collision';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 import { Americans } from './Americans';
 
 /**
@@ -41,7 +42,7 @@ export class Atmosphere {
 			ctx.textBaseline = 'middle';
 			const lines = ad.text.split('\n');
 			lines.forEach((line, i) => {
-				ctx.fillText(line, 256, 128 + (i - (lines.length - 1) / 2) * 56);
+				ctx.fillText(line, 256, 128 + (i - half(lines.length - 1)) * 56);
 			});
 			const tex = labelTexture(canvas);
 			// MeshBasic — no emissive pulse / bloom flicker

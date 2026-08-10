@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 import { at } from '#/util/rand';
 
 /**
@@ -13,7 +14,7 @@ import { at } from '#/util/rand';
 const INNER_X = 48;
 const INNER_Z = 34;
 const ROAD_W = 7;
-const HALF_W = ROAD_W / 2;
+const HALF_W = half(ROAD_W);
 const ROAD_Y = 0.03; // net boven de parkeerplaats-plane, anders z-fight bingo
 const ZEBRA_Y = 0.06;
 
@@ -208,7 +209,7 @@ export class CityRoads {
 		];
 		for (const cr of crossings) {
 			for (let i = 0; i < BARS; i++) {
-				const off = (i - (BARS - 1) / 2) * 0.85;
+				const off = (i - half(BARS - 1)) * 0.85;
 				dummy.position.set(cr.x + (cr.rotY === 0 ? off : 0), ZEBRA_Y, cr.z + (cr.rotY === 0 ? 0 : off));
 				dummy.rotation.set(0, cr.rotY, 0);
 				dummy.updateMatrix();

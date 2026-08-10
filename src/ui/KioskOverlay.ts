@@ -12,7 +12,7 @@ import type { MallWorldEntity } from '#/data/world';
 import { HELIPAD_PAD_SPEC, WORLD_ENTITIES } from '#/data/world';
 import { POOL_POLYGON, SLIDE_PLATFORM } from '#/scene/RoofIsland';
 import { qs } from '#/util/dom';
-import { half, midpoint, span } from '#/util/math';
+import { clamp, half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** One dot on the map — a sim, mostly. */
@@ -508,7 +508,7 @@ function drawLabel(
 	ctx.font = labelFont(weight, label.size);
 	const step = label.size * LABEL_LINE_HEIGHT;
 	label.lines.forEach((line, index) => {
-		const y = (index - (label.lines.length - 1) / 2) * step;
+		const y = (index - half(label.lines.length - 1)) * step;
 		// De rand eerst: de kaart tekent zijn vloerlijnen onder het label door, en
 		// TOILETTEN werd door negen hokjesomtrekken doorsneden.
 		ctx.lineWidth = LABEL_HALO_WIDTH;
@@ -1022,7 +1022,7 @@ export class KioskOverlay {
 	}
 
 	private setZoom(step: number): void {
-		this.zoom = Math.max(0, Math.min(ZOOM_STEPS.length - 1, step));
+		this.zoom = clamp(step, 0, ZOOM_STEPS.length - 1);
 	}
 
 	/** One tab per deck the world has, bottom deck first. */
@@ -1083,9 +1083,9 @@ export class KioskOverlay {
 		const ctx = this.prep(this.elMinimap, size, size);
 		if (!ctx) return;
 
-		const cx = size / 2;
-		const cy = size / 2;
-		const r = size / 2 - 3;
+		const cx = half(size);
+		const cy = half(size);
+		const r = half(size) - 3;
 		const scale = at(ZOOM_STEPS, this.zoom);
 		const lvl = this.map.level;
 
@@ -1116,10 +1116,10 @@ export class KioskOverlay {
 
 		// View cone — screen space, always pointing up
 		const cone = 44;
-		const half = 0.61; // ~70° fov
+		const halfFov = 0.61; // ~70° fov
 		ctx.beginPath();
 		ctx.moveTo(cx, cy);
-		ctx.arc(cx, cy, cone, -Math.PI / 2 - half, -Math.PI / 2 + half);
+		ctx.arc(cx, cy, cone, -Math.PI / 2 - halfFov, -Math.PI / 2 + halfFov);
 		ctx.closePath();
 		const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cone);
 		grad.addColorStop(0, 'rgba(96,165,250,0.35)');
@@ -1285,8 +1285,8 @@ export class KioskOverlay {
 
 	/** North-up labels for the big plan, in screen space so text stays crisp. */
 	private paintBigLabels(ctx: CanvasRenderingContext2D, cssW: number, cssH: number, scale: number, lvl: LevelId): void {
-		const sx = (x: number) => cssW / 2 + (x - PLAN_FRAME_CENTER.x) * scale;
-		const sy = (z: number) => cssH / 2 + (z - PLAN_FRAME_CENTER.z) * scale;
+		const sx = (x: number) => half(cssW) + (x - PLAN_FRAME_CENTER.x) * scale;
+		const sy = (z: number) => half(cssH) + (z - PLAN_FRAME_CENTER.z) * scale;
 		paintLabels(ctx, lvl, (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED);
 
 		ctx.fillStyle = 'rgba(148,163,184,0.8)';
@@ -1306,7 +1306,7 @@ export class KioskOverlay {
 
 		const scale = Math.min(cssW / PLAN_FRAME_WIDTH, cssH / PLAN_FRAME_DEPTH);
 		ctx.save();
-		ctx.translate(cssW / 2, cssH / 2);
+		ctx.translate(half(cssW), half(cssH));
 		ctx.scale(scale, scale);
 		ctx.translate(-PLAN_FRAME_CENTER.x, -PLAN_FRAME_CENTER.z);
 		this.paintWorld(ctx, this.bigLevel, scale);
@@ -1315,8 +1315,8 @@ export class KioskOverlay {
 
 		// You are here — only on the deck you're standing on
 		if (this.bigLevel === this.map.level) {
-			const sx = cssW / 2 + (this.map.x - PLAN_FRAME_CENTER.x) * scale;
-			const sy = cssH / 2 + (this.map.z - PLAN_FRAME_CENTER.z) * scale;
+			const sx = half(cssW) + (this.map.x - PLAN_FRAME_CENTER.x) * scale;
+			const sy = half(cssH) + (this.map.z - PLAN_FRAME_CENTER.z) * scale;
 			this.drawArrow(ctx, sx, sy, -this.map.yaw, 9);
 		} else {
 			ctx.fillStyle = 'rgba(226,232,240,0.75)';

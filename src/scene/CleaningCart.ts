@@ -4,6 +4,7 @@ import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { clamp, half } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -12,6 +13,10 @@ import { tagLevelCulled } from '#/util/visibility';
  * generator writes next to the mp3s, so the list can't drift from the files.
  */
 import WEI_YELLS from '$/public/voices/wei/manifest.json' with { type: 'json' };
+
+// ── patrol ───────────────────────────────────────────────
+/** Blocked by the player: the route parameter winds back this fast, so he stalls in place. */
+const BLOCKED_REWIND = 0.5;
 
 /**
  * Ride-on floor scrubber with Chinese cleaner Wei Chen —
@@ -136,7 +141,7 @@ export class CleaningCart {
 				p.x += pushX;
 				p.z += pushZ;
 				// Stall while blocked so he keeps yelling in place
-				this.t = Math.max(0, this.t - dt * 0.5);
+				this.t = Math.max(0, this.t - dt * BLOCKED_REWIND);
 				const wr = this.world.resolveCircle(p.x, p.z, 0.5, this.radius, 2, true);
 				p.x = wr.x;
 				p.z = wr.z;
@@ -236,7 +241,7 @@ export class CleaningCart {
 
 		// One voice only (was double: HTMLAudio + spatial)
 		const d = this.distTo(playerPos);
-		const vol = Math.max(0.5, Math.min(1, 1.1 - d * 0.07));
+		const vol = clamp(1.1 - d * 0.07, 0.5, 1);
 		try {
 			spatial.ensure();
 			const src = await spatial.playAt(
@@ -604,8 +609,8 @@ export class CleaningCart {
 		const fs = lines.length > 1 ? Math.floor(h * 0.28) : Math.floor(h * 0.38);
 		ctx.font = `bold ${fs}px system-ui`;
 		lines.forEach((line, i) => {
-			const y = h / 2 + (i - (lines.length - 1) / 2) * (fs + 4);
-			ctx.fillText(line, w / 2, y);
+			const y = half(h) + (i - half(lines.length - 1)) * (fs + 4);
+			ctx.fillText(line, half(w), y);
 		});
 		const tex = labelTexture(c);
 		return tex;
@@ -619,7 +624,7 @@ export class CleaningCart {
 		ctx.font = `bold ${Math.floor(h * 0.4)}px system-ui`;
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText(text, w / 2, h / 2);
+		ctx.fillText(text, half(w), half(h));
 		const tex = labelTexture(c);
 		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}

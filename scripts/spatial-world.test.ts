@@ -10,7 +10,7 @@ import { PLAN_ENVELOPE_TAG, receiverAccepts, validateSpatialWorld } from '#/data
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
 import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATORS, VERTICAL_CONNECTORS, WORLD_ENTITIES } from '#/data/world';
 import { segmentParameter2 } from '#/util/geometry2';
-import { lerp } from '#/util/math';
+import { half, lerp } from '#/util/math';
 
 const ZERO_ROTATION = { yaw: 0, pitch: 0, roll: 0 } as const;
 const STATIC_RECEIVER = {
@@ -115,7 +115,7 @@ describe('authoritative spatial world', () => {
 
 		const cramped = LevelRegistrySchema.safeParse([
 			LEVELS[0],
-			{ ...LEVELS[1], y: LEVELS[0].y - LEVEL_LIMITS.deckGap.min / 2 },
+			{ ...LEVELS[1], y: LEVELS[0].y - half(LEVEL_LIMITS.deckGap.min) },
 			...LEVELS.slice(2),
 		]);
 		assert.equal(cramped.success, false);

@@ -5,6 +5,7 @@ import { RENTAL_CAR_SPEC, RENTAL_CAR_SPOTS } from '#/data/world';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { clamp, clamp01 } from '#/util/math';
 import { GARAGE_Y } from './ParkingGarage';
 import type { DriveInput } from './ScrubberBuggy';
 
@@ -170,7 +171,7 @@ export class DriveableCars {
 			else this.speed = Math.min(0, this.speed + FRICTION * dt);
 		}
 
-		const steerAuth = Math.max(0.25, Math.min(1, Math.abs(this.speed) / 5));
+		const steerAuth = clamp(Math.abs(this.speed) / 5, 0.25, 1);
 		if (Math.abs(steer) > 0.05) {
 			const dir = this.speed >= -0.2 ? 1 : -1;
 			this.yaw += steer * TURN_RATE * steerAuth * dir * dt;
@@ -197,7 +198,7 @@ export class DriveableCars {
 		mesh.position.copy(this.pos);
 		mesh.rotation.y = this.yaw;
 		// Slight body roll
-		mesh.rotation.z = THREE.MathUtils.clamp(-steer * Math.abs(this.speed) * 0.012, -0.12, 0.12);
+		mesh.rotation.z = clamp(-steer * Math.abs(this.speed) * 0.012, -0.12, 0.12);
 
 		const spin = this.speed * dt * 1.4;
 		for (const w of this.wheels) w.rotation.x += spin;
@@ -213,7 +214,7 @@ export class DriveableCars {
 		// Exit corridor west of mall, centered near z=0
 		if (x < -26 && x > -48 && Math.abs(z) < 6) {
 			// linear ramp
-			const t = THREE.MathUtils.clamp((-x - 28) / 14, 0, 1);
+			const t = clamp01((-x - 28) / 14);
 			const rampY = GARAGE_Y + t * (0 - GARAGE_Y);
 			// Prefer ramp when near it
 			if (fallback < 1 || Math.abs(fallback - rampY) < 3) return rampY;

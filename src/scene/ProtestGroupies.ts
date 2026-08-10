@@ -5,7 +5,8 @@ import { spatial } from '#/audio/SpatialAudio';
 import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { fitText, labelCanvas, labelTexture, speechTail } from '#/util/label';
+import { half, lerp } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 import MANIFEST from '$/public/voices/protest/manifest.json' with { type: 'json' };
@@ -107,6 +108,20 @@ const SWARM_WANDER_RADIUS = 8;
 const SEPARATION_RADIUS = 0.9;
 const SEPARATION_CELL = 1.2;
 const JUMP_GRAVITY = 9.5;
+
+// ── body sway: one lean per stride, so half the step frequency ──
+const SWAY_PHASE_RATIO = 0.5;
+const SWAY_TILT = 0.035;
+
+// ── sign wobble: roll and pitch swing equally far, each on its own clock so they drift apart ──
+const SIGN_WOBBLE_AMP = 0.1;
+const SIGN_ROLL_FREQ = 2.4;
+const SIGN_PITCH_FREQ = 1.8;
+const SIGN_PITCH_PHASE_RATIO = 0.5;
+
+// ── raised fist: hanging angle plus how far the march beat punches it up ──
+const FIST_REST_ROT = -0.4;
+const FIST_PUNCH_ROT = 0.5;
 
 /**
  * Atrium protest — liberal groupies + LGBTQIA+ flags +
@@ -407,8 +422,8 @@ export class ProtestGroupies {
 			const distance = Math.hypot(playerX - this.swarmX, playerZ - this.swarmZ);
 			if (distance < 18) {
 				const curiosity = 0.22 * (1 - distance / 18);
-				targetX = THREE.MathUtils.lerp(targetX, playerX, curiosity);
-				targetZ = THREE.MathUtils.lerp(targetZ, playerZ, curiosity);
+				targetX = lerp(targetX, playerX, curiosity);
+				targetZ = lerp(targetZ, playerZ, curiosity);
 			}
 		}
 
@@ -419,8 +434,8 @@ export class ProtestGroupies {
 		const desiredX = distance > 0.05 ? (dx / distance) * Math.min(speed, distance * 0.45) : 0;
 		const desiredZ = distance > 0.05 ? (dz / distance) * Math.min(speed, distance * 0.45) : 0;
 		const follow = Math.min(1, dt * 0.9);
-		this.swarmVx = THREE.MathUtils.lerp(this.swarmVx, desiredX, follow);
-		this.swarmVz = THREE.MathUtils.lerp(this.swarmVz, desiredZ, follow);
+		this.swarmVx = lerp(this.swarmVx, desiredX, follow);
+		this.swarmVz = lerp(this.swarmVz, desiredZ, follow);
 
 		const nextX = this.swarmX + this.swarmVx * dt;
 		const nextZ = this.swarmZ + this.swarmVz * dt;
@@ -556,15 +571,15 @@ export class ProtestGroupies {
 		const bob = Math.abs(march) * Math.min(1, moving / Math.max(0.01, p.speed)) * (p.isMerkel ? 0.045 : 0.075);
 		p.root.position.set(p.x, p.jumpY + bob, p.z);
 		p.root.rotation.y = p.facing;
-		p.root.rotation.z = Math.sin(p.walkPhase * 0.5 + p.phase) * 0.035;
+		p.root.rotation.z = Math.sin(p.walkPhase * SWAY_PHASE_RATIO + p.phase) * SWAY_TILT;
 
 		if (p.sign) {
-			p.sign.rotation.z = Math.sin(this.t * 2.4 + p.phase) * 0.1;
-			p.sign.rotation.x = Math.sin(this.t * 1.8 + p.phase * 0.5) * 0.1;
+			p.sign.rotation.z = Math.sin(this.t * SIGN_ROLL_FREQ + p.phase) * SIGN_WOBBLE_AMP;
+			p.sign.rotation.x = Math.sin(this.t * SIGN_PITCH_FREQ + p.phase * SIGN_PITCH_PHASE_RATIO) * SIGN_WOBBLE_AMP;
 		}
 		if (p.fist) {
 			p.fist.position.y = 1.75 + Math.max(0, march) * 0.2;
-			p.fist.rotation.z = -0.4 - Math.max(0, march) * 0.5;
+			p.fist.rotation.z = FIST_REST_ROT - Math.max(0, march) * FIST_PUNCH_ROT;
 		}
 		if (p.flag) {
 			p.flag.rotation.y = Math.sin(this.t * 2.8 + p.phase) * 0.4;
@@ -589,7 +604,7 @@ export class ProtestGroupies {
 			const squash = p.landSquash / 0.18;
 			const scale = 0.95 + (Math.sin(p.phase * 2.7) + 1) * 0.06;
 			this.tempPosition.set(p.x, p.jumpY + bob, p.z);
-			this.tempRotation.set(0, p.facing, Math.sin(p.walkPhase * 0.5 + p.phase) * 0.035);
+			this.tempRotation.set(0, p.facing, Math.sin(p.walkPhase * SWAY_PHASE_RATIO + p.phase) * SWAY_TILT);
 			this.tempQuaternion.setFromEuler(this.tempRotation);
 			this.tempScale.set(scale * (1 + squash * 0.08), scale * (1 - squash * 0.16), scale * (1 + squash * 0.08));
 			this.rootMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
@@ -727,7 +742,7 @@ export class ProtestGroupies {
 			}),
 		);
 		const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, height, 6), poleMat);
-		pole.position.y = height / 2;
+		pole.position.y = half(height);
 		g.add(pole);
 		const ball = new THREE.Mesh(
 			new THREE.SphereGeometry(0.05, 8, 8),
@@ -1388,7 +1403,7 @@ export class ProtestGroupies {
 		ctx.font = `bold ${Math.floor(h * 0.4)}px system-ui`;
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText(text, w / 2, h / 2);
+		ctx.fillText(text, half(w), half(h));
 		const tex = labelTexture(c);
 		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(0.85, 0.22, 1);
@@ -1406,11 +1421,7 @@ export class ProtestGroupies {
 		roundRect(ctx, 8, 6, w - 16, h - 20, 12);
 		ctx.fill();
 		ctx.stroke();
-		ctx.beginPath();
-		ctx.moveTo(w * 0.45, h - 14);
-		ctx.lineTo(w * 0.5, h - 2);
-		ctx.lineTo(w * 0.55, h - 14);
-		ctx.closePath();
+		speechTail(ctx, w, h);
 		ctx.fillStyle = merkel ? 'rgba(26,35,126,0.95)' : 'rgba(255,255,255,0.95)';
 		ctx.fill();
 		ctx.stroke();

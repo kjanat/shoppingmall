@@ -7,6 +7,10 @@ import { labelCanvas, labelTexture } from '#/util/label';
 import { at } from '#/util/rand';
 import type { BeardCave } from './BeardCave';
 
+// ── heist ────────────────────────────────────────────────
+/** Path segments per second — slow heist, you can actually see it. */
+const SPRINT_SPEED = 0.5;
+
 /**
  * Long baker-beard guy who sprints through after enough shop transactions
  * and yeets everyone's juwelen/goud — then dumps it in Beard-man's Cave.
@@ -88,7 +92,7 @@ export class BakerThief {
 
 		const a = at(this.path, this.i);
 		const b = at(this.path, this.i + 1);
-		this.t += dt * 0.5; // slow heist — you can actually see it
+		this.t += dt * SPRINT_SPEED;
 		if (this.t >= 1) {
 			this.t = 0;
 			this.i++;

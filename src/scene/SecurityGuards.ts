@@ -5,6 +5,7 @@ import type { CollisionWorld } from '#/physics/Collision';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { lerp } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -293,8 +294,8 @@ export class SecurityGuards {
 			g.segT = 0;
 			g.patrolI = (g.patrolI + 1) % g.patrol.length;
 		}
-		const x = THREE.MathUtils.lerp(a.x, b.x, g.segT);
-		const z = THREE.MathUtils.lerp(a.z, b.z, g.segT);
+		const x = lerp(a.x, b.x, g.segT);
+		const z = lerp(a.z, b.z, g.segT);
 		const y = a.y; // routes stay on one floor
 		const fixed = this.world.resolveCircle(x, z, y + 1, 0.4);
 		const bob = Math.abs(Math.sin(g.legPhase)) * 0.04;
@@ -521,7 +522,7 @@ export class SecurityGuards {
 		root.add(shades);
 		// Buzzcut / high-and-tight
 		const hair = new THREE.Mesh(
-			new THREE.SphereGeometry(0.165, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
+			new THREE.SphereGeometry(0.165, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
 			this.track(lit({ color: 0x3e2723, roughness: 0.9 })),
 		);
 		hair.position.set(0, 1.68, 0);

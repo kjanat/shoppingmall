@@ -10,7 +10,7 @@ import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { extrudedXZGeometry } from '#/render/xzShape';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { clamp, half, midpoint } from '#/util/math';
+import { clamp, half, lerp, midpoint } from '#/util/math';
 import { pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -56,7 +56,7 @@ const CALL_HOUSING_H = 0.4;
 const CALL_HOUSING_D = 0.18;
 const CALL_BTN_R = CALL_HOUSING_W * 0.3;
 /** Bovenkant behuizing: alles wat erboven hangt wordt hiervan afgeleid. */
-const CALL_TOP = CALL_BTN_Y + CALL_HOUSING_H / 2;
+const CALL_TOP = CALL_BTN_Y + half(CALL_HOUSING_H);
 
 // Canvasmaat van bord en zwevend label. De mesh erft deze verhouding, dus het
 // staat hier één keer: een tweede kopie bij de aanroeper rekt de tekst zodra
@@ -363,8 +363,8 @@ export class GlassElevator {
 		// Wait with doors open, or travel
 		if (!this.moving) {
 			// Doors open
-			this.doorL.position.x = THREE.MathUtils.lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorOpenOffset, 0.12);
-			this.doorR.position.x = THREE.MathUtils.lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorOpenOffset, 0.12);
+			this.doorL.position.x = lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorOpenOffset, 0.12);
+			this.doorR.position.x = lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorOpenOffset, 0.12);
 
 			if (this.holdForCall || inside) {
 				// Rider aboard — stay put until they pick a floor (or leave)
@@ -376,7 +376,7 @@ export class GlassElevator {
 					const next = levelElevationIndex(this.stop) + this.travelDir;
 					if (next >= LEVELS.length - 1) this.travelDir = -1;
 					if (next <= 0) this.travelDir = 1;
-					const i = THREE.MathUtils.clamp(levelElevationIndex(this.stop) + this.travelDir, 0, LEVELS.length - 1);
+					const i = clamp(levelElevationIndex(this.stop) + this.travelDir, 0, LEVELS.length - 1);
 					this.stop = levelAtElevationIndex(i) ?? this.stop;
 					this.targetY = levelY(this.stop);
 					this.moving = true;
@@ -384,8 +384,8 @@ export class GlassElevator {
 			}
 		} else {
 			// Doors closed while moving
-			this.doorL.position.x = THREE.MathUtils.lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
-			this.doorR.position.x = THREE.MathUtils.lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
+			this.doorL.position.x = lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
+			this.doorR.position.x = lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
 			const dir = Math.sign(this.targetY - this.cabinY);
 			if (dir !== 0) {
 				this.cabinY += dir * SPEED * dt;
@@ -411,7 +411,7 @@ export class GlassElevator {
 		if (this.liftman) {
 			this.liftman.position.y = 0.02 + Math.sin(this.t * 1.4) * 0.015;
 			const face = inside ? Math.PI * 0.15 : Math.PI;
-			this.liftman.rotation.y = THREE.MathUtils.lerp(this.liftman.rotation.y, face + Math.sin(this.t * 0.4) * 0.08, 0.08);
+			this.liftman.rotation.y = lerp(this.liftman.rotation.y, face + Math.sin(this.t * 0.4) * 0.08, 0.08);
 		}
 
 		// Floor indicator
@@ -643,10 +643,10 @@ export class GlassElevator {
 
 		// Lage voetplaat: markeert de plek, is geen obstakel om overheen te struikelen
 		const base = new THREE.Mesh(new THREE.CylinderGeometry(CALL_BASE_R, CALL_BASE_R + 0.06, CALL_BASE_H, 14), metal);
-		base.position.y = CALL_BASE_H / 2;
+		base.position.y = half(CALL_BASE_H);
 		station.add(base);
 		const pole = new THREE.Mesh(new THREE.CylinderGeometry(CALL_POLE_R, CALL_POLE_R + 0.02, CALL_BTN_Y, 10), metal);
-		pole.position.y = CALL_BTN_Y / 2;
+		pole.position.y = half(CALL_BTN_Y);
 		station.add(pole);
 
 		// Housing box so it reads as a CONTROL PANEL, not a ball
@@ -655,7 +655,7 @@ export class GlassElevator {
 		station.add(housing);
 
 		// Paddenstoelknop steekt net uit het paneel, genoeg om te zien dat je hem indrukt
-		const face = CALL_HOUSING_D / 2;
+		const face = half(CALL_HOUSING_D);
 		const btn = new THREE.Mesh(new THREE.CylinderGeometry(CALL_BTN_R, CALL_BTN_R + 0.01, 0.08, 20), green);
 		btn.position.set(0, CALL_BTN_Y, face + 0.01);
 		btn.rotation.x = Math.PI / 2;
@@ -678,7 +678,7 @@ export class GlassElevator {
 		const signW = CALL_HOUSING_W * 2.2;
 		const signH = signW * (CALL_SIGN_TEX_H / CALL_SIGN_TEX_W);
 		const sign = this.makeCallSign('GROENE KNOP · E', signW, signH);
-		sign.position.set(0, CALL_BTN_Y - CALL_HOUSING_H / 2 - signH / 2 - 0.04, CALL_POLE_R + 0.02);
+		sign.position.set(0, CALL_BTN_Y - half(CALL_HOUSING_H) - half(signH) - 0.04, CALL_POLE_R + 0.02);
 		station.add(sign);
 		this.tagInteract(sign, 'call', id);
 
@@ -688,7 +688,7 @@ export class GlassElevator {
 		const spriteW = 2.0;
 		const spriteH = spriteW * (CALL_SPRITE_TEX_H / CALL_SPRITE_TEX_W);
 		const sp = this.makeCallSprite('🟢 LIFT · E');
-		sp.position.set(0, CALL_TOP + 0.09 + spriteH / 2, 0);
+		sp.position.set(0, CALL_TOP + 0.09 + half(spriteH), 0);
 		sp.scale.set(spriteW, spriteH, 1);
 		station.add(sp);
 		this.tagInteract(sp, 'call', id);
@@ -729,7 +729,7 @@ export class GlassElevator {
 		ctx.font = 'bold 42px system-ui';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText(text, cw / 2, ch / 2);
+		ctx.fillText(text, half(cw), half(ch));
 		const tex = labelTexture(c);
 		return new THREE.Mesh(
 			new THREE.PlaneGeometry(w, h),
@@ -756,7 +756,7 @@ export class GlassElevator {
 		ctx.font = 'bold 40px system-ui';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText(text, cw / 2, ch / 2);
+		ctx.fillText(text, half(cw), half(ch));
 		const tex = labelTexture(c);
 		return new THREE.Sprite(
 			new THREE.SpriteMaterial({
@@ -818,7 +818,7 @@ export class GlassElevator {
 		const wallH = CABIN_H - 0.2;
 		const mkWall = (w: number, d: number, x: number, z: number) => {
 			const m = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, d), glass);
-			m.position.set(x, wallH / 2 + 0.1, z);
+			m.position.set(x, half(wallH) + 0.1, z);
 			this.cabin.add(m);
 		};
 		mkWall(CABIN_W - 0.15, ELEVATOR_SPEC.cabin.wallThickness, 0, -half(CABIN_D) + ELEVATOR_SPEC.cabin.wallInset);
@@ -910,7 +910,7 @@ export class GlassElevator {
 		const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), skin);
 		head.position.y = 1.5;
 		g.add(head);
-		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
+		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), hairM);
 		hair.position.set(0, 1.56, -0.01);
 		g.add(hair);
 

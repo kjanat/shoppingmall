@@ -17,8 +17,9 @@ export function span(min: number, max: number): number {
 	return max - min;
 }
 
+/** The weighted form THREE.MathUtils.lerp itself uses, so the calls the rekenhulpen check moved here return the same bits. */
 export function lerp(start: number, end: number, t: number): number {
-	return start + (end - start) * t;
+	return (1 - t) * start + t * end;
 }
 
 export function clamp(value: number, min: number, max: number): number {

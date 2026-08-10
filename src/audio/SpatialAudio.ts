@@ -10,6 +10,8 @@
  * when HRTF is unavailable / disabled.
  */
 
+import { clamp01 } from '#/util/math';
+
 export type ListenerPose = {
 	x: number;
 	y: number;
@@ -333,9 +335,9 @@ function quadraticGain(
 		// Soft tail so music doesn't hard-cut at the edge (was silent mid-mall)
 		const over = d - maxDistance;
 		const tail = volume * 0.06 * Math.exp(-over * 0.12);
-		return Math.max(0, Math.min(1, tail));
+		return clamp01(tail);
 	}
-	return Math.max(0, Math.min(1, volume / (1 + k * d * d)));
+	return clamp01(volume / (1 + k * d * d));
 }
 
 // ── buffer source ─────────────────────────────────────────────────
@@ -577,7 +579,7 @@ export class SpatialElement {
 
 	/** Base volume (booth fader); distance applied in apply() */
 	setBaseVolume(v: number): void {
-		this.volume = Math.max(0, Math.min(1, v));
+		this.volume = clamp01(v);
 	}
 
 	/** Seconds into the media element (for beat-sync) */

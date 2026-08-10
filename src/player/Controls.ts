@@ -6,7 +6,7 @@ import type { CollisionWorld } from '#/physics/Collision';
 import { WALK_STEP } from '#/physics/Collision';
 import { EYE, PLAYER_RADIUS } from '#/player/constants';
 import { CITY_BOUNDS, CITY_GROUND_Y } from '#/scene/city/cityPlan';
-import { clamp, half } from '#/util/math';
+import { clamp, half, lerp } from '#/util/math';
 
 export { EYE } from '#/player/constants';
 
@@ -261,7 +261,7 @@ export class PlayerControls {
 	syncFromCamera(): void {
 		const e = new THREE.Euler().setFromQuaternion(this.cam.quaternion, 'YXZ');
 		this.yaw = e.y;
-		this.pitch = THREE.MathUtils.clamp(e.x, -PITCH_MAX, PITCH_MAX);
+		this.pitch = clamp(e.x, -PITCH_MAX, PITCH_MAX);
 		this.feetY = this.world.groundHeightAt(this.cam.position.x, this.cam.position.z, this.cam.position.y - EYE);
 		this.vel.set(0, 0, 0);
 		this.vy = 0;
@@ -282,7 +282,7 @@ export class PlayerControls {
 		if (dx * dx + dz * dz > 1e-4) this.yaw = Math.atan2(-dx, -dz);
 		const dy = p.y - this.cam.position.y;
 		const flat = Math.hypot(dx, dz);
-		this.pitch = THREE.MathUtils.clamp(Math.atan2(dy, Math.max(0.001, flat)), -PITCH_MAX, PITCH_MAX);
+		this.pitch = clamp(Math.atan2(dy, Math.max(0.001, flat)), -PITCH_MAX, PITCH_MAX);
 	}
 
 	releaseLook(): void {
@@ -313,8 +313,8 @@ export class PlayerControls {
 		// stick X as steer when no keys
 		if (Math.abs(steer) < 0.05) steer = -this.axisX;
 		return {
-			throttle: THREE.MathUtils.clamp(throttle, -1, 1),
-			steer: THREE.MathUtils.clamp(steer, -1, 1),
+			throttle: clamp(throttle, -1, 1),
+			steer: clamp(steer, -1, 1),
 			boost: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'),
 		};
 	}
@@ -331,7 +331,7 @@ export class PlayerControls {
 		if (this.keys.has('KeyR')) tilt += 1;
 		if (this.keys.has('KeyF')) tilt -= 1;
 		if (tilt !== 0) {
-			this.pitch = THREE.MathUtils.clamp(this.pitch + tilt * PITCH_SPEED * dt, -PITCH_MAX * 0.7, PITCH_MAX * 0.55);
+			this.pitch = clamp(this.pitch + tilt * PITCH_SPEED * dt, -PITCH_MAX * 0.7, PITCH_MAX * 0.55);
 		}
 		// Mouse look still adjusts pitch via pointermove (yaw ignored while driving)
 		this.cam.rotation.order = 'YXZ';
@@ -391,7 +391,7 @@ export class PlayerControls {
 		if (this.keys.has('KeyR')) tilt += 1;
 		if (this.keys.has('KeyF')) tilt -= 1;
 		if (tilt !== 0) {
-			this.pitch = THREE.MathUtils.clamp(this.pitch + tilt * PITCH_SPEED * dt, -PITCH_MAX, PITCH_MAX);
+			this.pitch = clamp(this.pitch + tilt * PITCH_SPEED * dt, -PITCH_MAX, PITCH_MAX);
 		}
 
 		const sin = Math.sin(this.yaw);
@@ -400,8 +400,8 @@ export class PlayerControls {
 		// Wish direction in world space (forward = where you look)
 		let wx = 0;
 		let wz = 0;
-		fwd = THREE.MathUtils.clamp(fwd, -1, 1);
-		strafe = THREE.MathUtils.clamp(strafe, -1, 1);
+		fwd = clamp(fwd, -1, 1);
+		strafe = clamp(strafe, -1, 1);
 
 		wx = -sin * fwd + cos * strafe;
 		wz = -cos * fwd - sin * strafe;
@@ -412,7 +412,7 @@ export class PlayerControls {
 			wz /= wishLen;
 		}
 
-		const speed = (sprint ? RUN : WALK) * Math.min(1, Math.max(wishLen, moving ? 0.4 : 0)) * (1 - (1 - WADE_SPEED) * wadeT);
+		const speed = (sprint ? RUN : WALK) * clamp(wishLen, moving ? 0.4 : 0, 1) * (1 - (1 - WADE_SPEED) * wadeT);
 		const tx = wx * speed;
 		const tz = wz * speed;
 		const rate = (moving ? (this.grounded ? ACCEL : AIR_ACCEL) : FRICTION) * dt;
@@ -474,7 +474,7 @@ export class PlayerControls {
 			if (this.grounded) {
 				// Follow the surface: snappy on ramps, instant on flat ground
 				const near = Math.abs(ground - this.feetY);
-				this.feetY = near < 0.02 ? ground : THREE.MathUtils.lerp(this.feetY, ground, Math.min(1, 22 * dt));
+				this.feetY = near < 0.02 ? ground : lerp(this.feetY, ground, Math.min(1, 22 * dt));
 				if (this.feetY - ground > 0.9) {
 					this.grounded = false;
 					this.vy = 0;
@@ -498,11 +498,11 @@ export class PlayerControls {
 			const amp = Math.min(1, sp / RUN) * 0.055;
 			this.bob = Math.sin(this.bobT * 2) * amp;
 		} else {
-			this.bob = THREE.MathUtils.lerp(this.bob, 0, Math.min(1, 8 * dt));
+			this.bob = lerp(this.bob, 0, Math.min(1, 8 * dt));
 		}
-		this.dip = THREE.MathUtils.lerp(this.dip, 0, Math.min(1, 7 * dt));
-		this.lean = THREE.MathUtils.lerp(this.lean, strafe * (sprint ? 0.02 : 0.013), Math.min(1, 6 * dt));
-		this.sink = THREE.MathUtils.lerp(this.sink, wadeT * WADE_SINK, Math.min(1, 8 * dt));
+		this.dip = lerp(this.dip, 0, Math.min(1, 7 * dt));
+		this.lean = lerp(this.lean, strafe * (sprint ? 0.02 : 0.013), Math.min(1, 6 * dt));
+		this.sink = lerp(this.sink, wadeT * WADE_SINK, Math.min(1, 8 * dt));
 
 		p.y = this.feetY + EYE + this.bob - this.dip - this.sink;
 
@@ -594,8 +594,8 @@ export class PlayerControls {
 		if (!this.enabled) return;
 
 		if (e.pointerId === this.stickId) {
-			const dx = THREE.MathUtils.clamp((e.clientX - this.stickOx) / STICK_MAX, -1, 1);
-			const dy = THREE.MathUtils.clamp((e.clientY - this.stickOz) / STICK_MAX, -1, 1);
+			const dx = clamp((e.clientX - this.stickOx) / STICK_MAX, -1, 1);
+			const dy = clamp((e.clientY - this.stickOz) / STICK_MAX, -1, 1);
 			this.axisX = Math.abs(dx) < 0.15 ? 0 : dx;
 			this.axisY = Math.abs(dy) < 0.15 ? 0 : -dy;
 			return;
@@ -633,7 +633,7 @@ export class PlayerControls {
 			this.wrapYaw();
 		}
 		this.pitch -= dy * sens * s.sensitivity * (s.invertY ? -1 : 1);
-		this.pitch = THREE.MathUtils.clamp(this.pitch, -PITCH_MAX, PITCH_MAX);
+		this.pitch = clamp(this.pitch, -PITCH_MAX, PITCH_MAX);
 	};
 
 	/** Drone-vlucht: traag versnellen, muren tellen binnen, plafond via clamp. */
@@ -673,9 +673,9 @@ export class PlayerControls {
 		const vSpeed = heli ? 7.5 : 6;
 		const tx = (-sin * fwd + cos * strafe) * speed;
 		const tz = (-cos * fwd - sin * strafe) * speed;
-		this.vel.x = THREE.MathUtils.lerp(this.vel.x, tx, Math.min(1, dt * accel));
-		this.vel.z = THREE.MathUtils.lerp(this.vel.z, tz, Math.min(1, dt * accel));
-		this.vy = THREE.MathUtils.lerp(this.vy, vert * vSpeed, Math.min(1, dt * accel));
+		this.vel.x = lerp(this.vel.x, tx, Math.min(1, dt * accel));
+		this.vel.z = lerp(this.vel.z, tz, Math.min(1, dt * accel));
+		this.vy = lerp(this.vy, vert * vSpeed, Math.min(1, dt * accel));
 
 		const p = this.cam.position;
 		const wantX = p.x + this.vel.x * dt;
@@ -702,7 +702,7 @@ export class PlayerControls {
 		// Boven het dakbad is de waterspiegel de bodem: de badbodem ligt onder de
 		// dekplaat, dus daarop klemmen zet de drone middenin het dakbeton.
 		const floor = g + this.world.waterDepthAt(p.x, p.z, g) + 0.45;
-		this.feetY = THREE.MathUtils.clamp(this.feetY, floor, ceiling);
+		this.feetY = clamp(this.feetY, floor, ceiling);
 
 		p.y = this.feetY + 0.55; // ooghoogte in het stoeltje
 		this.cam.rotation.order = 'YXZ';

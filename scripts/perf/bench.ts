@@ -21,7 +21,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { argv } from 'node:process';
-import { median } from '#/util/math';
+import { median, midpoint } from '#/util/math';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
 import { BASELINE_DIR } from './paths.ts';
@@ -72,7 +72,7 @@ type Run = {
 function driftFraction(values: number[]): number {
 	const n = values.length;
 	if (n < 2) return 0;
-	const meanX = (n - 1) / 2;
+	const meanX = midpoint(0, n - 1);
 	const meanY = values.reduce((a, b) => a + b, 0) / n;
 	let numerator = 0;
 	let denominator = 0;

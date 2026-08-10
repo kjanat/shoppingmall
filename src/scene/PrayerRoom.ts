@@ -4,8 +4,8 @@ import { levelY } from '#/data/levels';
 import { PRAYER_ROOM_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { half } from '#/util/math';
+import { fitText, labelCanvas, labelTexture, speechTail } from '#/util/label';
+import { clamp01, half } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -31,6 +31,10 @@ const GOAT_SCREAMS = [
 	'/prayer-music/goat_scream_original.mp3',
 	'/prayer-music/goat_scream_punch.mp3',
 ];
+
+// ── McD litter: how far a dropped bag may tip out of true, in radians ──
+const BAG_TILT_X = 0.4;
+const BAG_TILT_Z = 0.5;
 
 /**
  * Gebedsruimte — Allahu Trapbar loop + full-room chants + sacrificial goat mascot.
@@ -354,11 +358,7 @@ export class PrayerRoom {
 		roundRect(ctx, 8, 4, w - 16, h - 18, 12);
 		ctx.fill();
 		ctx.stroke();
-		ctx.beginPath();
-		ctx.moveTo(w * 0.45, h - 14);
-		ctx.lineTo(w * 0.5, h - 2);
-		ctx.lineTo(w * 0.55, h - 14);
-		ctx.closePath();
+		speechTail(ctx, w, h);
 		ctx.fillStyle = 'rgba(27,94,32,0.94)';
 		ctx.fill();
 		ctx.stroke();
@@ -468,7 +468,7 @@ export class PrayerRoom {
 			const m2 = m1.clone();
 			m2.position.x = 0.03;
 			g.add(m1, m2);
-			g.rotation.set((rng(seed) - 0.5) * 0.4, rng(seed + 1) * Math.PI * 2, (rng(seed + 2) - 0.5) * 0.5);
+			g.rotation.set((rng(seed) - 0.5) * BAG_TILT_X, rng(seed + 1) * Math.PI * 2, (rng(seed + 2) - 0.5) * BAG_TILT_Z);
 			return g;
 		};
 
@@ -869,7 +869,7 @@ export class PrayerRoom {
 		const fs = n <= 2 ? 36 : n === 3 ? 30 : 26;
 		ctx.font = `bold ${fs}px "Comic Sans MS", "Segoe Print", system-ui, sans-serif`;
 		lines.forEach((line, i) => {
-			const y = 128 + (i - (n - 1) / 2) * (fs + 8);
+			const y = 128 + (i - half(n - 1)) * (fs + 8);
 			ctx.fillText(line, 128, y);
 		});
 		const tex = labelTexture(c);
@@ -1160,7 +1160,7 @@ export class PrayerRoom {
 			  }
 			| undefined;
 		if (!rig) return;
-		const t = THREE.MathUtils.clamp(blend, 0, 1);
+		const t = clamp01(blend);
 		const L = (a: number, b: number) => a + (b - a) * t;
 
 		// Root pitch: sit upright → body over the mat (doggy)

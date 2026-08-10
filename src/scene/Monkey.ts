@@ -6,6 +6,7 @@ import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { ctx2d } from '#/util/dom';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { clamp, clamp01, lerp } from '#/util/math';
 import { at, pick } from '#/util/rand';
 
 const GRAVITY = 18;
@@ -21,6 +22,17 @@ const PLAYER_RANGE = 13;
 
 /** Gebedsruimte — default target when you're a coward. Aimed at torso height. */
 const PRAYER_POS = new THREE.Vector3(PRAYER_ROOM_SPEC.center.x, 1.35, PRAYER_ROOM_SPEC.center.z);
+
+// ── dung textures ────────────────────────────────────────
+/** Ground splat blob: how squashed an ellipse is against its own radius. */
+const SPLAT_SQUASH_BASE = 0.55;
+const SPLAT_SQUASH_SPREAD = 0.5;
+/** Same squash for the goo on your face, which sits a touch rounder. */
+const GOO_SQUASH_BASE = 0.6;
+const GOO_SQUASH_SPREAD = 0.5;
+/** A vertical drip, in fractions of its own length: centre of the ellipse, then its radius. */
+const DRIP_MID = 0.4;
+const DRIP_RADIUS = 0.5;
 
 /** Palm-top perches around the atrium. */
 const PERCHES: [number, number, number][] = [
@@ -166,19 +178,19 @@ export class Monkey {
 			this.body.getWorldPosition(this.tmp);
 			const want = Math.atan2(look.x - this.tmp.x, look.z - this.tmp.z);
 			this.body.rotation.y = this.approachAngle(this.body.rotation.y, want, dt * 3);
-			this.head.rotation.x = THREE.MathUtils.lerp(this.head.rotation.x, -0.1, 0.1);
+			this.head.rotation.x = lerp(this.head.rotation.x, -0.1, 0.1);
 		}
 
 		// Wind up → release
 		if (this.windup > 0) {
 			this.windup -= dt;
-			this.armR.rotation.x = THREE.MathUtils.lerp(this.armR.rotation.x, -2.4, 0.25);
+			this.armR.rotation.x = lerp(this.armR.rotation.x, -2.4, 0.25);
 			if (this.windup <= 0) {
 				this.throwPoop();
 				this.windup = -1;
 			}
 		} else {
-			this.armR.rotation.x = THREE.MathUtils.lerp(this.armR.rotation.x, -0.15, 0.12);
+			this.armR.rotation.x = lerp(this.armR.rotation.x, -0.15, 0.12);
 			this.cooldown -= dt;
 			if (this.cooldown <= 0) {
 				// Hop to another palm now and then, for the drama
@@ -392,7 +404,15 @@ export class Monkey {
 			g.addColorStop(1, 'rgba(62,39,35,0)');
 			ctx.fillStyle = g;
 			ctx.beginPath();
-			ctx.ellipse(x, y, r, r * (0.55 + Math.random() * 0.5), Math.random() * Math.PI, 0, Math.PI * 2);
+			ctx.ellipse(
+				x,
+				y,
+				r,
+				r * (SPLAT_SQUASH_BASE + Math.random() * SPLAT_SQUASH_SPREAD),
+				Math.random() * Math.PI,
+				0,
+				Math.PI * 2,
+			);
 			ctx.fill();
 		}
 		// Speckles
@@ -439,7 +459,7 @@ export class Monkey {
 		for (const s of this.splats) {
 			s.life -= dt;
 			const mat = s.mesh.material as THREE.MeshBasicMaterial;
-			mat.opacity = Math.max(0, Math.min(0.92, s.life / 2.5));
+			mat.opacity = clamp(s.life / 2.5, 0, 0.92);
 		}
 		const dead = this.splats.filter((s) => s.life <= 0);
 		for (const d of dead) d.mesh.removeFromParent();
@@ -529,7 +549,7 @@ export class Monkey {
 			g.addColorStop(1, 'rgba(40,25,20,0)');
 			ctx.fillStyle = g;
 			ctx.beginPath();
-			ctx.ellipse(x, y, r, r * (0.6 + Math.random() * 0.5), Math.random(), 0, Math.PI * 2);
+			ctx.ellipse(x, y, r, r * (GOO_SQUASH_BASE + Math.random() * GOO_SQUASH_SPREAD), Math.random(), 0, Math.PI * 2);
 			ctx.fill();
 		}
 		// Vertical drips
@@ -542,7 +562,7 @@ export class Monkey {
 			g.addColorStop(1, 'rgba(62,39,35,0)');
 			ctx.fillStyle = g;
 			ctx.beginPath();
-			ctx.ellipse(x, y0 + len * 0.4, 8 + Math.random() * 10, len * 0.5, 0, 0, Math.PI * 2);
+			ctx.ellipse(x, y0 + len * DRIP_MID, 8 + Math.random() * 10, len * DRIP_RADIUS, 0, 0, Math.PI * 2);
 			ctx.fill();
 		}
 	}
@@ -552,14 +572,14 @@ export class Monkey {
 		if (this.yellFade > 0) this.yellFade -= dt;
 		if (this.faceSplat) {
 			const mat = this.faceSplat.material as THREE.MeshBasicMaterial;
-			mat.opacity = Math.max(0, Math.min(0.95, this.faceFade * 0.45));
+			mat.opacity = clamp(this.faceFade * 0.45, 0, 0.95);
 			this.faceSplat.visible = mat.opacity > 0.02;
 			// Slight drip drift
 			this.faceSplat.position.y = -0.04 - (3.2 - Math.max(0, this.faceFade)) * 0.015;
 		}
 		if (this.faceYell) {
 			const mat = this.faceYell.material as THREE.SpriteMaterial;
-			mat.opacity = Math.max(0, Math.min(1, this.yellFade));
+			mat.opacity = clamp01(this.yellFade);
 			this.faceYell.visible = mat.opacity > 0.05;
 			this.faceYell.position.y = 0.12 + Math.sin(performance.now() * 0.01) * 0.02;
 		}
@@ -569,7 +589,7 @@ export class Monkey {
 		let d = to - from;
 		while (d > Math.PI) d -= Math.PI * 2;
 		while (d < -Math.PI) d += Math.PI * 2;
-		return from + THREE.MathUtils.clamp(d, -step, step);
+		return from + clamp(d, -step, step);
 	}
 
 	private build(): void {

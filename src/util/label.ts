@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { half } from '#/util/math';
 import { ctx2d } from './dom';
 
 /**
@@ -64,6 +65,27 @@ export function labelTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
 	return tex;
 }
 
+// ── speech bubble: the tail hanging off the bottom edge, sideways as fractions of the canvas width ──
+const TAIL_LEFT = 0.45;
+const TAIL_TIP = 0.5;
+const TAIL_RIGHT = 0.55;
+/** Design pixels up from the bottom edge: where the tail leaves the bubble, and where its point sits. */
+const TAIL_BASE_UP = 14;
+const TAIL_TIP_UP = 2;
+
+/**
+ * Trace the tail of a speech bubble of `w` by `h` design units, closed and ready
+ * to fill and stroke. The caller sets its own colours, so the tail matches the
+ * bubble it hangs from.
+ */
+export function speechTail(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+	ctx.beginPath();
+	ctx.moveTo(w * TAIL_LEFT, h - TAIL_BASE_UP);
+	ctx.lineTo(w * TAIL_TIP, h - TAIL_TIP_UP);
+	ctx.lineTo(w * TAIL_RIGHT, h - TAIL_BASE_UP);
+	ctx.closePath();
+}
+
 export type FitOptions = {
 	/** Family stack only. The weight is separate: CSS wants it before the size. */
 	font?: string;
@@ -115,9 +137,9 @@ export function fitText(
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
 	const step = size * lineHeight;
-	const top = box.y + box.h / 2 - ((lines.length - 1) * step) / 2;
+	const top = box.y + half(box.h) - half((lines.length - 1) * step);
 	lines.forEach((line, i) => {
-		ctx.fillText(line, box.x + box.w / 2, top + i * step);
+		ctx.fillText(line, box.x + half(box.w), top + i * step);
 	});
 	return size;
 }

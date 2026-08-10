@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { GraphNode } from '#/data/graph';
 import { levelAt, levelY } from '#/data/levels';
 import { EYE } from '#/player/constants';
+import { clamp } from '#/util/math';
 import { at } from '#/util/rand';
 
 export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
@@ -91,7 +92,7 @@ export class Director {
 		const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.3);
 		const progress = { t: 0 };
 		const pathLen = curve.getLength();
-		const duration = Math.max(10, Math.min(28, pathLen * 0.22));
+		const duration = clamp(pathLen * 0.22, 10, 28);
 
 		const start = curve.getPointAt(0);
 		const startLook = curve.getPointAt(0.02);

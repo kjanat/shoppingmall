@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { lit } from '#/render/material';
 import { distanceToSegment2 } from '#/util/geometry2';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half, midpoint } from '#/util/math';
 import { at } from '#/util/rand';
 
 /**
@@ -22,6 +23,9 @@ const POND_R = 5;
 const RIM_R = 5.7;
 
 const TREES = 24;
+/** Boomgrootte: basis plus zoveel random erbovenop, zodat geen twee bomen even hoog zijn. */
+const BOOM_SCHAAL_BASIS = 0.85;
+const BOOM_SCHAAL_SPREIDING = 0.5;
 
 /**
  * Grindpad-waypoints (wereld-x/z). Komt binnen op de westrand, slingert met
@@ -100,8 +104,8 @@ export class CityPark {
 	private buildGround(): void {
 		const W = 512;
 		const H = 452; // ~vierkante texels bij 34×30 wereldmeter
-		const px = (x: number): number => ((x - (CX - PARK_W / 2)) / PARK_W) * W;
-		const py = (z: number): number => ((z - (CZ - PARK_D / 2)) / PARK_D) * H;
+		const px = (x: number): number => ((x - (CX - half(PARK_W))) / PARK_W) * W;
+		const py = (z: number): number => ((z - (CZ - half(PARK_D))) / PARK_D) * H;
 		const { canvas: c, ctx } = labelCanvas(W, H);
 		ctx.fillStyle = '#47793d';
 		ctx.fillRect(0, 0, W, H);
@@ -123,8 +127,8 @@ export class CityPark {
 			for (let i = 1; i < PATH.length - 1; i++) {
 				const here = at(PATH, i);
 				const next = at(PATH, i + 1);
-				const mx = (px(here[0]) + px(next[0])) / 2;
-				const my = (py(here[1]) + py(next[1])) / 2;
+				const mx = midpoint(px(here[0]), px(next[0]));
+				const my = midpoint(py(here[1]), py(next[1]));
 				ctx.quadraticCurveTo(px(here[0]), py(here[1]), mx, my);
 			}
 			const last = at(PATH, PATH.length - 1);
@@ -196,11 +200,11 @@ export class CityPark {
 		let placed = 0;
 		let guard = 0;
 		while (placed < TREES && guard++ < 600) {
-			const x = CX - PARK_W / 2 + 1.7 + this.rnd() * (PARK_W - 3.4);
-			const z = CZ - PARK_D / 2 + 1.7 + this.rnd() * (PARK_D - 3.4);
+			const x = CX - half(PARK_W) + 1.7 + this.rnd() * (PARK_W - 3.4);
+			const z = CZ - half(PARK_D) + 1.7 + this.rnd() * (PARK_D - 3.4);
 			if (Math.hypot(x - CX, z - CZ) < RIM_R + 1.8) continue; // geen wilg in het water
 			if (distToPath(x, z) < 2.6) continue; // en geen eik op het grind
-			const s = 0.85 + this.rnd() * 0.5;
+			const s = BOOM_SCHAAL_BASIS + this.rnd() * BOOM_SCHAAL_SPREIDING;
 			dummy.position.set(x, GROUND_Y, z);
 			dummy.scale.set(s, s, s);
 			dummy.updateMatrix();

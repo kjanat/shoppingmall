@@ -15,7 +15,7 @@
  * MallBuilder) wordt uit de bron gelezen in plaats van hier overgeschreven:
  * een tweede kopie van een getal is nou juist het probleem.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { assertValidVerticalConnectorRegistry } from '#/data/connectors';
 import type { GraphNode } from '#/data/graph';
 import { NODES } from '#/data/graph';
@@ -47,7 +47,7 @@ import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
 import { PLAYER_RADIUS } from '#/player/constants';
 import { CITY_GROUND_Y, CITY_KAVELS, GARAGE_PLAN, THEATRE_PLAN, TOWER_SPECS } from '#/scene/city/cityPlan';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
-import { half, midpoint } from '#/util/math';
+import { half, midpoint, span } from '#/util/math';
 import { stubDocument } from './stub-dom.ts';
 
 assertCanonicalLevelRegistry();
@@ -130,10 +130,10 @@ function methodeBody(tekst: string, naam: string): string {
 
 /**
  * Elke aanroep waarvan `patroon` de naam vangt en op de openingshaak eindigt,
- * met zijn argumenten op het bovenste haakjesniveau.
+ * met zijn argumenten op het bovenste haakjesniveau en de index van de naam.
  */
-function aanroepArgumenten(tekst: string, patroon: RegExp): { naam: string; args: string[] }[] {
-	const uit: { naam: string; args: string[] }[] = [];
+function aanroepArgumenten(tekst: string, patroon: RegExp): { naam: string; args: string[]; index: number }[] {
+	const uit: { naam: string; args: string[]; index: number }[] = [];
 	for (const treffer of tekst.matchAll(patroon)) {
 		const naam = treffer[1];
 		if (naam === undefined) continue;
@@ -156,7 +156,7 @@ function aanroepArgumenten(tekst: string, patroon: RegExp): { naam: string; args
 			arg += teken;
 		}
 		args.push(arg.trim());
-		uit.push({ naam, args });
+		uit.push({ naam, args, index: treffer.index });
 	}
 	return uit;
 }
@@ -333,7 +333,7 @@ function controleVloergat(): void {
 			continue;
 		}
 		const midX = midpoint(ramp.minX, ramp.maxX);
-		const rampExtentX = half(ramp.maxX - ramp.minX);
+		const rampExtentX = half(span(ramp.minX, ramp.maxX));
 		if (!bijna(connector.x, midX, 1e-3)) {
 			fout('vloergat', `${connector.id}.x ${nr(connector.x)} ligt niet op het midden van zijn ramp (${nr(midX)})`);
 		}
@@ -358,7 +358,7 @@ function controleVloergat(): void {
 		if (openingExtentX + 1e-3 < rampExtentX) {
 			fout(
 				'vloergat',
-				`${connector.id} opening width ${nr(connector.opening.size.width)} is smaller than the ramp width (${nr(ramp.maxX - ramp.minX)}): het vakwerk prikt door de plaat`,
+				`${connector.id} opening width ${nr(connector.opening.size.width)} is smaller than the ramp width (${nr(span(ramp.minX, ramp.maxX))}): het vakwerk prikt door de plaat`,
 			);
 		}
 		const snelheid = 'carrySpeed' in connector.collision ? connector.collision.carrySpeed : undefined;
@@ -827,7 +827,7 @@ const GESCHREVEN_FEATURES = [
 function heeftOmvang(entity: MallWorldEntity): boolean {
 	return entity.volumes.some((volume) => {
 		const b = geometryBounds(volume.geometry);
-		return b.maxX - b.minX > EPS && b.maxZ - b.minZ > EPS && b.maxY - b.minY > EPS;
+		return span(b.minX, b.maxX) > EPS && span(b.minZ, b.maxZ) > EPS && span(b.minY, b.maxY) > EPS;
 	});
 }
 
@@ -1158,19 +1158,19 @@ function autoVlak(spot: { x: number; z: number; yaw: number }, body: { width: nu
 }
 
 function controleParkeerplekken(): void {
-	const halveKolom = half(PARKING_DECK_SPEC.pillar.width);
 	const autos: [string, Vlak][] = [
 		...PARKED_CAR_SPOTS.map((spot, index): [string, Vlak] => [`decorauto ${index + 1}`, autoVlak(spot, PARKED_CAR_SPEC.body)]),
 		...RENTAL_CAR_SPOTS.map((spot): [string, Vlak] => [spot.name, autoVlak(spot, RENTAL_CAR_SPEC.body)]),
 	];
 	for (const [naam, vlak] of autos) {
 		for (const [index, kolom] of parkingPillarCenters().entries()) {
-			const kolomVlak: Vlak = {
-				minX: kolom.x - halveKolom,
-				maxX: kolom.x + halveKolom,
-				minZ: kolom.z - halveKolom,
-				maxZ: kolom.z + halveKolom,
-			};
+			const kolomVlak: Vlak = planBounds({
+				kind: 'rectangle',
+				center: kolom,
+				width: PARKING_DECK_SPEC.pillar.width,
+				depth: PARKING_DECK_SPEC.pillar.width,
+				yaw: 0,
+			});
 			if (!opKavel(vlak, kolomVlak)) continue;
 			fout('parkeerplekken', `${naam} staat in kolom ${index} op (${nr(kolom.x)}, ${nr(kolom.z)})`);
 		}
@@ -1270,7 +1270,7 @@ function controleStad(): void {
 		if (Math.hypot(los.x - t.x, los.z - t.z) <= EPS) {
 			fout('stad', `toren ${i} op (${nr(t.x)}, ${nr(t.z)}) heeft geen collision — je loopt er dwars doorheen`);
 		}
-		const vlak: Vlak = { minX: t.x - half(t.w), maxX: t.x + half(t.w), minZ: t.z - half(t.d), maxZ: t.z + half(t.d) };
+		const vlak: Vlak = planBounds({ kind: 'rectangle', center: { x: t.x, z: t.z }, width: t.w, depth: t.d, yaw: 0 });
 		for (const [naam, kavel] of Object.entries(CITY_KAVELS)) {
 			if (opKavel(vlak, kavel)) fout('stad', `toren ${i} staat op het ${naam}-kavel`);
 		}
@@ -1367,6 +1367,283 @@ function controleStad(): void {
 	}
 }
 
+// ── 16. de gedeelde rekenhulpen ────────────────────────────────────────────
+// Een tweede kopie van een maat is waar dit script om begonnen is, en een
+// tweede kopie van `half` heet `x / 2`. Die groeit even hard terug. util/math
+// en util/geometry2 stonden er al terwijl het halve project er nog langsrekende:
+// zelf door twee delen, klemmen met een geneste Math.max/Math.min, of
+// THREE.MathUtils aanroepen naast de eigen clamp en lerp. Vandaar deze greep
+// door de bron, in dezelfde vorm als de PointLight-greep in check-lights.
+//
+// Delen door twee wordt overal afgekeurd, want dat is altijd halveren. Alleen
+// `Math.PI / 2` blijft staan, want dat is een kwartslag, en dat is de enige
+// vorm die deze controle om zijn bouw vrijstelt. Vermenigvuldigen met 0.5 krijgt
+// die vrijstelling niet: `Math.PI * 0.5` is door de hele boom omgeschreven naar
+// `Math.PI / 2`, dus elke `* 0.5` in code is een treffer.
+//
+// De maatnamen-heuristiek die hier stond keek naar de linkerkant en meldde
+// alleen een halvering van w, len, breedte of straal. Die 0.5 is door de hele
+// scene juist een sterkte (demping, amplitude, spreiding, mengfactor), en dat
+// is precies wat de linkerkant nooit verraadt, dus liep het merendeel er langs.
+// Ze staan nu als benoemde constanten bovenin hun eigen bestand.
+//
+// Commentaar en string- en templateliterals worden geblankt voor het zoeken,
+// zodat proza over π/2 en de meldingen hieronder zelf niet meetellen. De
+// expressies in `${...}` blijven wél staan, want dat is code. Regexliterals
+// worden niet geblankt; dat deze controle groen is bewijst dat er geen in de
+// boom staat die hem raakt. Een quote binnen een regexklasse (`['"]`) opent voor
+// deze scanner wel een string, en verbergt dan de tekens tot de volgende quote.
+// Dat kan een treffer wegpoetsen, nooit er een verzinnen.
+
+const REKEN_EIGENAAR = 'src/util/math.ts';
+
+/** Bestanden die geen enkele hulpfunctie kúnnen importeren. */
+const REKEN_VRIJE_BESTANDEN: { pad: string; reden: string }[] = [
+	{
+		pad: 'scripts/perf/probe.ts',
+		reden:
+			'installProbe wordt gestringificeerd en met addScriptToEvaluateOnNewDocument in de pagina gezet, waar geen import bestaat',
+	},
+];
+
+/**
+ * Plekken waar de vorm klopt maar de betekenis niet. Elke regel hier is één
+ * beoordeling van één plek. Staat het fragment niet meer in zijn bestand, dan
+ * meldt de controle dat de uitzondering weg kan.
+ */
+const REKEN_UITZONDERINGEN: { pad: string; fragment: string; reden: string }[] = [
+	{ pad: 'src/scene/Americans.ts', fragment: 'Math.floor(id / 2)', reden: 'koppelt een id aan een index, geen maat' },
+	{
+		pad: 'src/scene/Americans.ts',
+		fragment: 'Math.min(lead.pathI, Math.max(0, lead.path.length - 1))',
+		reden: 'de binnenste max rekent de bovengrens uit, hij klemt de waarde niet',
+	},
+	{
+		pad: 'src/audio/DJPlayer.ts',
+		fragment: 'Math.min(seekTo, Math.max(0, this.audio.duration - 0.5))',
+		reden: 'de binnenste max vloert de duur, de buitenste min begrenst een andere waarde',
+	},
+	{ pad: 'src/scene/PoolPeople.ts', fragment: 'RECLINE / 2', reden: 'halveert een hoek; half() gaat over een maat' },
+	{ pad: 'src/scene/PrayerRoom.ts', fragment: '(phrase - 6) / 2', reden: 'schaalt een venster van twee tellen naar 0..1' },
+	{ pad: 'src/scene/PrayerRoom.ts', fragment: '(phrase - 14) / 2', reden: 'hetzelfde venster, tweede zin' },
+	{ pad: 'src/scene/RoofIsland.ts', fragment: 'Math.abs(sum) / 2', reden: 'de constante van de schoenveterformule zelf' },
+	{
+		pad: 'src/scene/Walkways.ts',
+		fragment: 'tex.repeat.set(1, len / 2)',
+		reden: 'een tegelaantal over een tegel van twee meter',
+	},
+];
+
+/** Delen door twee is altijd halveren; alleen `Math.PI / 2` is een kwartslag en geen maat. */
+const DEEL_DOOR_TWEE = /(?<!\\)\/\s*2(?![\w.])/g;
+const KWARTSLAG = /Math\s*\.\s*PI\s*$/;
+/** Elke losse 0.5 als factor, wat er ook links van staat. */
+const MAAL_HALF = /\*\s*0\.5(?![\w.])/g;
+const MATHUTILS = /\bMathUtils\s*\./g;
+const KLEM_AANROEP = /\b(Math\s*\.\s*(?:max|min))\s*\(/g;
+const KLEM_BINNEN_MIN = /^Math\s*\.\s*min\s*\(/;
+const KLEM_BINNEN_MAX = /^Math\s*\.\s*max\s*\(/;
+
+type Rekentreffer = { index: number; melding: string };
+
+/** Elk .ts-bestand onder `map`, als pad vanaf de repowortel. */
+function rekenBestanden(map: string): string[] {
+	const uit: string[] = [];
+	for (const item of readdirSync(new URL(`../${map}/`, import.meta.url), { withFileTypes: true })) {
+		const pad = `${map}/${item.name}`;
+		if (item.isDirectory()) uit.push(...rekenBestanden(pad));
+		else if (item.name.endsWith('.ts')) uit.push(pad);
+	}
+	return uit;
+}
+
+/**
+ * Een literal vanaf zijn openingsquote blanken; geeft de index ná de sluitquote
+ * terug. Een `${` in een template springt terug naar code, want daar staat de
+ * rekenkunde die deze controle juist moet zien.
+ */
+function blankLiteral(tekst: string, uit: string[], start: number, quote: string): number {
+	uit[start] = ' ';
+	let i = start + 1;
+	while (i < tekst.length) {
+		const teken = tekst[i];
+		if (teken === '\\') {
+			blankBereik(tekst, uit, i, i + 2);
+			i += 2;
+			continue;
+		}
+		if (teken === quote) {
+			uit[i] = ' ';
+			return i + 1;
+		}
+		if (quote === '`' && tekst.startsWith('${', i)) {
+			blankBereik(tekst, uit, i, i + 2);
+			i = codeInTemplate(tekst, uit, i + 2);
+			continue;
+		}
+		blankBereik(tekst, uit, i, i + 1);
+		i++;
+	}
+	return i;
+}
+
+function blankBereik(tekst: string, uit: string[], van: number, tot: number): void {
+	for (let i = van; i < tot && i < uit.length; i++) {
+		if (tekst[i] !== '\n') uit[i] = ' ';
+	}
+}
+
+/** De expressie in `${...}` intact laten en de sluitaccolade teruggeven. */
+function codeInTemplate(tekst: string, uit: string[], start: number): number {
+	let diepte = 1;
+	let i = start;
+	while (i < tekst.length) {
+		const teken = tekst[i];
+		if (teken === "'" || teken === '"' || teken === '`') {
+			i = blankLiteral(tekst, uit, i, teken);
+			continue;
+		}
+		if (teken === '{') diepte++;
+		else if (teken === '}') {
+			diepte--;
+			if (diepte === 0) {
+				uit[i] = ' ';
+				return i + 1;
+			}
+		}
+		i++;
+	}
+	return i;
+}
+
+/** Dezelfde tekst, even lang en met dezelfde regelovergangen, maar zonder commentaar en literals. */
+function zonderTekst(tekst: string): string {
+	// split('') en niet [...tekst]: de spread telt codepoints, en één emoji in een
+	// string verschuift dan elke index erna ten opzichte van de regexpositie.
+	const uit = tekst.split('');
+	let i = 0;
+	while (i < tekst.length) {
+		if (tekst.startsWith('//', i)) {
+			const eind = tekst.indexOf('\n', i);
+			const tot = eind < 0 ? tekst.length : eind;
+			blankBereik(tekst, uit, i, tot);
+			i = tot;
+			continue;
+		}
+		if (tekst.startsWith('/*', i)) {
+			const eind = tekst.indexOf('*/', i + 2);
+			const tot = eind < 0 ? tekst.length : eind + 2;
+			blankBereik(tekst, uit, i, tot);
+			i = tot;
+			continue;
+		}
+		const teken = tekst[i];
+		if (teken === "'" || teken === '"' || teken === '`') {
+			i = blankLiteral(tekst, uit, i, teken);
+			continue;
+		}
+		i++;
+	}
+	return uit.join('');
+}
+
+/** Of het hele argument één aanroep is, en niet een aanroep binnen een som of een deling. */
+function isHeleAanroep(arg: string): boolean {
+	const open = arg.indexOf('(');
+	if (open < 0) return false;
+	let diepte = 0;
+	for (let i = open; i < arg.length; i++) {
+		if (arg[i] === '(') diepte++;
+		else if (arg[i] === ')') {
+			diepte--;
+			if (diepte === 0) return i === arg.length - 1;
+		}
+	}
+	return false;
+}
+
+function rekentreffers(code: string): Rekentreffer[] {
+	const uit: Rekentreffer[] = [];
+
+	for (const treffer of code.matchAll(DEEL_DOOR_TWEE)) {
+		if (KWARTSLAG.test(code.slice(0, treffer.index))) continue;
+		uit.push({ index: treffer.index, melding: 'deelt zelf door twee. Gebruik half() uit util/math' });
+	}
+
+	for (const treffer of code.matchAll(MAAL_HALF)) {
+		uit.push({
+			index: treffer.index,
+			melding:
+				'vermenigvuldigt met een losse 0.5. Een kwartslag schrijf je `Math.PI / 2`, een maat halveer je met half() uit util/math, en een afstelfactor wordt een benoemde constante bovenin het bestand',
+		});
+	}
+
+	for (const treffer of code.matchAll(MATHUTILS)) {
+		uit.push({
+			index: treffer.index,
+			melding:
+				'roept MathUtils aan. clamp en lerp staan in util/math met dezelfde argumentvolgorde; heb je damp of mapLinear nodig, zet die er dan bij of vraag een uitzondering aan in REKEN_UITZONDERINGEN',
+		});
+	}
+
+	for (const aanroep of aanroepArgumenten(code, KLEM_AANROEP)) {
+		if (aanroep.args.length !== 2) continue;
+		const binnen = aanroep.naam.includes('max') ? KLEM_BINNEN_MIN : KLEM_BINNEN_MAX;
+		if (!aanroep.args.some((arg) => binnen.test(arg) && isHeleAanroep(arg))) continue;
+		uit.push({
+			index: aanroep.index,
+			melding: 'klemt met een geneste Math.max/Math.min. Gebruik clamp() of clamp01() uit util/math',
+		});
+	}
+
+	return uit;
+}
+
+/**
+ * De greep zelf. Draait over src/ én scripts/, want beide partities rekenden
+ * langs dezelfde hulpen heen.
+ */
+function controleRekenhulpen(): void {
+	const gebruikt = new Set<string>();
+	const bestanden = [...rekenBestanden('src'), ...rekenBestanden('scripts')];
+	let bijEigenaar = 0;
+
+	for (const vrij of REKEN_VRIJE_BESTANDEN) {
+		if (!bestanden.includes(vrij.pad)) fout('rekenhulpen', `vrijgesteld bestand ${vrij.pad} bestaat niet meer`);
+	}
+
+	for (const pad of bestanden) {
+		if (REKEN_VRIJE_BESTANDEN.some((v) => v.pad === pad)) continue;
+		const code = zonderTekst(readFileSync(new URL(`../${pad}`, import.meta.url), 'utf8'));
+		const treffers = rekentreffers(code);
+		if (pad === REKEN_EIGENAAR) {
+			bijEigenaar = treffers.length;
+			continue;
+		}
+		const regels = code.split('\n');
+		for (const treffer of treffers) {
+			const regelnr = code.slice(0, treffer.index).split('\n').length;
+			const regel = regels[regelnr - 1] ?? '';
+			const vrijstelling = REKEN_UITZONDERINGEN.find((u) => u.pad === pad && regel.includes(u.fragment));
+			if (vrijstelling) {
+				gebruikt.add(`${vrijstelling.pad}|${vrijstelling.fragment}`);
+				continue;
+			}
+			fout('rekenhulpen', `${pad}:${regelnr} ${treffer.melding} — \`${regel.trim()}\``);
+		}
+	}
+
+	for (const uitzondering of REKEN_UITZONDERINGEN) {
+		if (!gebruikt.has(`${uitzondering.pad}|${uitzondering.fragment}`)) {
+			fout('rekenhulpen', `de uitzondering voor \`${uitzondering.fragment}\` in ${uitzondering.pad} raakt niets meer en kan weg`);
+		}
+	}
+
+	if (bijEigenaar === 0) {
+		fout('rekenhulpen', `${REKEN_EIGENAAR} bevat geen enkele halvering of klem meer. Zijn de hulpen hernoemd of verhuisd?`);
+	}
+}
+
 // ── uitvoeren ──────────────────────────────────────────────────────────────
 
 const controles: { naam: string; draai: () => void | Promise<void> }[] = [
@@ -1391,6 +1668,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'kioskcoordinaten', draai: controleKioskCoordinaten },
 	{ naam: 'kaartdekken', draai: controleKaartdekken },
 	{ naam: 'stad', draai: controleStad },
+	{ naam: 'rekenhulpen', draai: controleRekenhulpen },
 ];
 
 for (const c of controles) {

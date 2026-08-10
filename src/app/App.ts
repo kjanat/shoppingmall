@@ -77,7 +77,7 @@ import { PeopleDashboard } from '#/ui/PeopleDashboard';
 import type { PerfOverlay } from '#/ui/PerfOverlay';
 import { SettingsPanel } from '#/ui/SettingsPanel';
 import { setLabelAnisotropy } from '#/util/label';
-import { half } from '#/util/math';
+import { half, lerp } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { cullByLevel } from '#/util/visibility';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
@@ -2147,7 +2147,7 @@ export class App {
 				while (dy > Math.PI) dy -= Math.PI * 2;
 				while (dy < -Math.PI) dy += Math.PI * 2;
 				this.camera.rotation.y += dy * Math.min(1, dt * 10);
-				this.camera.rotation.x = THREE.MathUtils.lerp(this.camera.rotation.x, -0.05, 0.15);
+				this.camera.rotation.x = lerp(this.camera.rotation.x, -0.05, 0.15);
 				this.camera.rotation.z = 0;
 			}
 		} else if (this.freeMove && this.player.enabled) {

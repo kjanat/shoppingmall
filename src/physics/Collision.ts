@@ -29,7 +29,8 @@ import {
 	SLIDE_PLATFORM,
 	SLIDE_PLATFORM_TOP_Y,
 } from '#/scene/RoofIsland';
-import { clamp, clamp01, half, midpoint } from '#/util/math';
+import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
+import { clamp, half, midpoint } from '#/util/math';
 
 export { ESCALATOR_SPEED } from '#/data/world';
 
@@ -110,16 +111,21 @@ type PathRamp = Readonly<{
 	label: string;
 }>;
 
+/**
+ * Onder deze loop is een helling geen helling meer en levert hij geen vloer op.
+ * `pointInSegmentStrip2` weigert alleen een strip van precies nul lang en
+ * `segmentParameter2` deelt door het kwadraat van de loop, dat onder ~1.5e-162 m
+ * naar nul onderloopt: dan komt er t = 0 uit en krijgt elk punt in de strip de
+ * beginhoogte in plaats van niets.
+ */
+const MIN_RAMP_RUN = 1e-6;
+
 function pathRampSurface(ramp: PathRamp, x: number, z: number, margin = 0): number | null {
-	const dx = ramp.end.x - ramp.start.x;
-	const dz = ramp.end.z - ramp.start.z;
-	const run = Math.hypot(dx, dz);
-	if (run <= 1e-6) return null;
-	const along = ((x - ramp.start.x) * dx + (z - ramp.start.z) * dz) / run;
-	const across = ((x - ramp.start.x) * -dz + (z - ramp.start.z) * dx) / run;
-	if (along < -margin || along > run + margin || Math.abs(across) > ramp.width / 2 + margin) return null;
-	const t = clamp01(along / run);
-	return ramp.start.y + (ramp.end.y - ramp.start.y) * t;
+	const { start, end } = ramp;
+	if (Math.hypot(end.x - start.x, end.z - start.z) <= MIN_RAMP_RUN) return null;
+	if (!pointInSegmentStrip2(x, z, start.x, start.z, end.x, end.z, ramp.width, margin)) return null;
+	const t = segmentParameter2(x, z, start.x, start.z, end.x, end.z);
+	return start.y + (end.y - start.y) * t;
 }
 
 function connectorRamp(connector: VerticalConnector): Ramp {
@@ -737,7 +743,7 @@ export class CollisionWorld {
 		const inGarageExit =
 			y < 0.8 &&
 			px <= Math.max(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x) + 1.5 &&
-			Math.abs(pz - PARKING_EXIT_RAMP.start.z) <= PARKING_EXIT_RAMP.width / 2 + 1;
+			Math.abs(pz - PARKING_EXIT_RAMP.start.z) <= half(PARKING_EXIT_RAMP.width) + 1;
 		const city = this.boundsMode === 'city' || inGarageExit;
 		const unbounded = city || outside;
 		for (let iter = 0; iter < iterations; iter++) {

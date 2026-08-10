@@ -3,6 +3,7 @@ import { lit } from '#/render/material';
 import type { Rand, TowerSpec } from '#/scene/city/cityPlan';
 import { mulberry32, planTowers, TOWER_SEED } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 import { pickWith } from '#/util/rand';
 
 /**
@@ -15,6 +16,18 @@ import { pickWith } from '#/util/rand';
  * Pi-budget: één InstancedMesh voor alle torens (per-instance nachttint),
  * twee InstancedMeshes voor dakrommel, drie knipperbolletjes. Geen lampen.
  */
+
+// ── AC-bakken op het dak: hoogte is basis plus random, de draai staat er scheef op ──
+const AC_HOOGTE_BASIS = 0.5;
+const AC_HOOGTE_SPREIDING = 0.5;
+/** Volle breedte van de scheefstand rond de torenhoek, in radialen. */
+const AC_DRAAI_SPREIDING = 0.5;
+
+// ── gevelraam binnen zijn celletje, als deel van de celmaat ──
+const RAAM_MARGE_X = 0.22;
+const RAAM_MARGE_Y = 0.24;
+const RAAM_BREEDTE = 0.56;
+const RAAM_HOOGTE = 0.5;
 
 interface Beacon {
 	mat: THREE.MeshBasicMaterial;
@@ -121,8 +134,8 @@ export class CityBuildings {
 		const boxes: Blob[] = [];
 
 		for (const s of specs) {
-			const mx = s.w * 0.5 - 1.4;
-			const mz = s.d * 0.5 - 1.4;
+			const mx = half(s.w) - 1.4;
+			const mz = half(s.d) - 1.4;
 			if (mx <= 0 || mz <= 0) continue;
 			const cos = Math.cos(s.rot);
 			const sin = Math.sin(s.rot);
@@ -141,9 +154,9 @@ export class CityBuildings {
 					y: s.h,
 					z,
 					sx: 0.9 + rand() * 1.1,
-					sy: 0.5 + rand() * 0.5,
+					sy: AC_HOOGTE_BASIS + rand() * AC_HOOGTE_SPREIDING,
 					sz: 0.9 + rand() * 1.1,
-					rot: s.rot + (rand() - 0.5) * 0.5,
+					rot: s.rot + (rand() - 0.5) * AC_DRAAI_SPREIDING,
 				});
 			}
 			if (rand() < 0.33) {
@@ -226,7 +239,7 @@ export class CityBuildings {
 					ctx.fillStyle = '#181d2c'; // donker raam, nét lichter dan de gevel
 				}
 				ctx.globalAlpha = 0.72 + rand() * 0.28;
-				ctx.fillRect(col * cw + cw * 0.22, r * ch + ch * 0.24, cw * 0.56, ch * 0.5);
+				ctx.fillRect(col * cw + cw * RAAM_MARGE_X, r * ch + ch * RAAM_MARGE_Y, cw * RAAM_BREEDTE, ch * RAAM_HOOGTE);
 			}
 		}
 		ctx.globalAlpha = 1;

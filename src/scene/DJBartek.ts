@@ -5,6 +5,11 @@ import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { tagLevelCulled } from '#/util/visibility';
 
+// ── booth ────────────────────────────────────────────────
+/** Decks rock slowly under his hands, well below the beat the rest bobs to. */
+const DECK_SPIN_TEMPO = 0.5;
+const DECK_SPIN_AMP = 0.05;
+
 /**
  * DJ Bartek — booth at the west stair gap (st0).
  * Walk up, E to talk, request plaatjes.
@@ -112,7 +117,7 @@ export class DJBartek {
 			const phase = p.userData['phase'] ?? 0;
 			p.position.y = baseY + Math.sin(t * (musicOn ? 8 : 2) + phase) * 0.04 * pulse;
 		}
-		this.decks.rotation.y = Math.sin(t * 0.5) * 0.05;
+		this.decks.rotation.y = Math.sin(t * DECK_SPIN_TEMPO) * DECK_SPIN_AMP;
 		this.glow.intensity = 3 + Math.sin(t * (musicOn ? 10 : 2)) * 1.5 * pulse;
 		this.nameSprite.material.rotation = Math.sin(t * 1.5) * 0.02;
 
@@ -330,7 +335,7 @@ export class DJBartek {
 
 		// Cap
 		const cap = new THREE.Mesh(
-			new THREE.SphereGeometry(0.24, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
+			new THREE.SphereGeometry(0.24, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2),
 			this.track(lit({ color: 0x0f172a })),
 		);
 		cap.position.set(0, 1.9, 0);

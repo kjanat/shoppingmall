@@ -7,6 +7,15 @@ import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half } from '#/util/math';
 
+// ── loot ─────────────────────────────────────────────────
+/** Floor mound: coins lie this high, scatter this much, and flatten toward the rim. */
+const MOUND_Y = 0.18;
+const MOUND_Y_SPREAD = 0.45;
+const MOUND_TAPER = 0.5;
+/** Chains hang anywhere in this band above the floor. */
+const CHAIN_Y = 0.25;
+const CHAIN_Y_SPREAD = 0.5;
+
 /**
  * Baard-dief hideout — rocky west-wall cave stuffed with juwelen & goud.
  * (Pirate loot vibes, not a stereotype.) Thief path ends here after a heist.
@@ -276,7 +285,11 @@ export class BeardCave {
 			);
 			const a = Math.random() * Math.PI * 2;
 			const r = Math.random() * 0.95;
-			coin.position.set(-1.6 + Math.cos(a) * r * 0.7, 0.18 + Math.random() * 0.45 * (1 - r * 0.5), -0.9 + Math.sin(a) * r);
+			coin.position.set(
+				-1.6 + Math.cos(a) * r * 0.7,
+				MOUND_Y + Math.random() * MOUND_Y_SPREAD * (1 - r * MOUND_TAPER),
+				-0.9 + Math.sin(a) * r,
+			);
 			coin.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.6;
 			coin.rotation.z = Math.random() * Math.PI;
 			this.lootGroup.add(coin);
@@ -314,7 +327,11 @@ export class BeardCave {
 		// Gold chains (torus loops)
 		for (let i = 0; i < 6; i++) {
 			const chain = new THREE.Mesh(new THREE.TorusGeometry(0.14 + Math.random() * 0.06, 0.022, 6, 14), i % 2 ? gold : silver);
-			chain.position.set(-1.2 + (Math.random() - 0.5) * 1.2, 0.25 + Math.random() * 0.5, (Math.random() - 0.5) * 2.2);
+			chain.position.set(
+				-1.2 + (Math.random() - 0.5) * 1.2,
+				CHAIN_Y + Math.random() * CHAIN_Y_SPREAD,
+				(Math.random() - 0.5) * 2.2,
+			);
 			chain.rotation.set(Math.random(), Math.random(), Math.random());
 			this.lootGroup.add(chain);
 		}

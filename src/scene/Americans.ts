@@ -12,6 +12,7 @@ import type { SimPersona } from '#/sim/SimChat';
 import { fetchSimChat } from '#/sim/SimChat';
 
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { clamp, clamp01, half, lerp } from '#/util/math';
 import { at, pick, pickWith } from '#/util/rand';
 import { isOnViewerLevel, tagLevelCulled } from '#/util/visibility';
 
@@ -229,6 +230,41 @@ const SIM_COMFORT_DISTANCE = 2.05;
 const SIM_AVOIDANCE_HORIZON = 1.25;
 const SIM_MAX_LATERAL_SPEED = 1.2;
 
+// ── build ───────────────────────────────────────────────────
+/** Step length: pageant girls walk one fixed catwalk stride, everyone else rolls theirs. */
+const STRIDE_MISS = 1.05;
+const STRIDE_BASE = 0.85;
+const STRIDE_SPREAD = 0.5;
+/** Belly height above the waist, as a fraction of the belly radius. */
+const BELLY_RISE_MISS = 0.5;
+const BELLY_RISE = 0.45;
+/** Bag hangs this far out (× belly radius) at this height (× torso height). */
+const BAG_OUT = 1.25;
+const BAG_RISE = 0.5;
+/** Leg parts as fractions of legLen: capsule lengths, and drops below their own joint. */
+const LEG_THIGH_LEN = 0.42;
+const LEG_THIGH_Y = 0.28;
+const LEG_KNEE_Y = 0.5;
+const LEG_SHIN_LEN = 0.35;
+const LEG_SHIN_Y = 0.2;
+const LEG_FOOT_Y = 0.42;
+const LEG_SOLE_Y = 0.47;
+
+// ── animation ───────────────────────────────────────────────
+/** Dance arms: held overhead, swinging this far either side. */
+const DANCE_ARM_LIFT = -1.2;
+const DANCE_ARM_SWING = 0.5;
+/** Standing still still breathes: sway at half the walk phase, barely a centimetre. */
+const IDLE_BOB_TEMPO = 0.5;
+const IDLE_BOB_AMP = 0.012;
+/** Foot roll: toe up in front, toe down behind, the down half scaled by stomp. */
+const TOE_HEEL = 0.5;
+const TOE_OFF = 0.3;
+const TOE_STOMP_BASE = 0.7;
+const TOE_STOMP_SPREAD = 0.3;
+/** Particle clouds (bubbles, farts) fade this much opacity per second of life left. */
+const CLOUD_FADE = 0.5;
+
 const GIBBER = [
 	'Komunicare… humanos!',
 	'Komunis… squeak squeak',
@@ -341,7 +377,7 @@ export class Americans {
 	/** Viewer controls guest unhappiness (RCT style) */
 	nudgeAllMood(delta: number): void {
 		for (const s of this.sims) {
-			s.f.unhappiness = Math.max(0, Math.min(100, s.f.unhappiness + delta));
+			s.f.unhappiness = clamp(s.f.unhappiness + delta, 0, 100);
 			this.paintLabel(s);
 			this.applyFaceMood(s);
 		}
@@ -843,8 +879,8 @@ export class Americans {
 		sim.body.rotation.z = sway * 0.25;
 		sim.body.rotation.x = Math.sin(sim.phase * 1.5) * 0.12;
 		// Arms up dance
-		sim.armL.rotation.x = -1.2 + Math.sin(sim.phase * 2) * 0.5;
-		sim.armR.rotation.x = -1.2 + Math.cos(sim.phase * 2) * 0.5;
+		sim.armL.rotation.x = DANCE_ARM_LIFT + Math.sin(sim.phase * 2) * DANCE_ARM_SWING;
+		sim.armR.rotation.x = DANCE_ARM_LIFT + Math.cos(sim.phase * 2) * DANCE_ARM_SWING;
 		sim.armL.rotation.z = 0.8 + Math.sin(sim.phase) * 0.3;
 		sim.armR.rotation.z = -0.8 - Math.cos(sim.phase) * 0.3;
 		// Legs step
@@ -873,7 +909,7 @@ export class Americans {
 			}
 			pos.needsUpdate = true;
 			const mat = c.mesh.material as THREE.PointsMaterial;
-			mat.opacity = Math.max(0, c.life * 0.5);
+			mat.opacity = Math.max(0, c.life * CLOUD_FADE);
 			if (c.life <= 0) {
 				this.group.remove(c.mesh);
 				c.mesh.geometry.dispose();
@@ -903,7 +939,7 @@ export class Americans {
 				const rvz = b.velocity.z - a.velocity.z;
 				const relativeSpeedSq = rvx * rvx + rvz * rvz;
 				const closestTime =
-					relativeSpeedSq > 1e-5 ? THREE.MathUtils.clamp(-(rx * rvx + rz * rvz) / relativeSpeedSq, 0, SIM_AVOIDANCE_HORIZON) : 0;
+					relativeSpeedSq > 1e-5 ? clamp(-(rx * rvx + rz * rvz) / relativeSpeedSq, 0, SIM_AVOIDANCE_HORIZON) : 0;
 				const closestX = rx + rvx * closestTime;
 				const closestZ = rz + rvz * closestTime;
 				const currentDistance = Math.hypot(rx, rz);
@@ -935,7 +971,7 @@ export class Americans {
 				const side = (a.f.id * 31 + b.f.id * 17) % 2 === 0 ? 1 : -1;
 				const lateralX = (-forwardZ / forwardLength) * side;
 				const lateralZ = (forwardX / forwardLength) * side;
-				const urgency = THREE.MathUtils.clamp(1 - Math.min(currentDistance, predictedDistance) / comfortDistance, 0, 1);
+				const urgency = clamp01(1 - Math.min(currentDistance, predictedDistance) / comfortDistance);
 				const speed = 0.35 + urgency * 0.85;
 				a.avoidance.x += lateralX * speed;
 				a.avoidance.z += lateralZ * speed;
@@ -1024,7 +1060,7 @@ export class Americans {
 			name: isBrad ? 'Brad Miller' : isMiss ? at(MISS_NAMES, missIdx) : `${pickWith(FIRST, rng)} ${pickWith(LAST, rng)}`,
 			thicc,
 			speed: isBrad ? 1.35 : isMiss ? 1.1 : 0.7 + rng() * 1.0,
-			stride: isMiss ? 1.05 : 0.85 + rng() * 0.5,
+			stride: isMiss ? STRIDE_MISS : STRIDE_BASE + rng() * STRIDE_SPREAD,
 			stomp: isMiss ? 0.35 : 0.6 + rng() * 0.9,
 			restless: 0.25 + rng() * 0.7,
 			windowShop: isMiss ? 0.8 : rng() * 0.65,
@@ -1074,10 +1110,10 @@ export class Americans {
 		if (isMiss) {
 			// tight waist
 			belly.scale.set(0.72, 1.0, 0.62);
-			belly.position.set(0, torsoY + bellyR * 0.5, 0.02);
+			belly.position.set(0, torsoY + bellyR * BELLY_RISE_MISS, 0.02);
 		} else {
 			belly.scale.set(1.2 + thicc * 0.1, 0.9, 1.1);
-			belly.position.set(0, torsoY + bellyR * 0.45, 0.08 + thicc * 0.05);
+			belly.position.set(0, torsoY + bellyR * BELLY_RISE, 0.08 + thicc * 0.05);
 		}
 		body.add(belly);
 
@@ -1117,7 +1153,7 @@ export class Americans {
 			const pivot = new THREE.Group();
 			pivot.position.set(side * bellyR * 1.05, torsoY + bellyR * 1.15, 0);
 			const limb = new THREE.Mesh(armGeo, this.mat(f.shirt));
-			limb.position.y = -(armLen / 2 + 0.09);
+			limb.position.y = -(half(armLen) + 0.09);
 			pivot.add(limb);
 			const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), this.mat(f.skin, 0.8));
 			hand.position.y = -(armLen + 0.13);
@@ -1214,7 +1250,7 @@ export class Americans {
 			body.add(sash);
 		} else if (f.hasCap) {
 			const col = f.isBrad ? 0x00a651 : 0x1a5276;
-			const cap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), this.mat(col));
+			const cap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), this.mat(col));
 			cap.position.set(0, headY + 0.05, 0);
 			body.add(cap);
 			const brim = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.22), this.mat(col));
@@ -1232,7 +1268,7 @@ export class Americans {
 
 		if (f.bag && !f.isMiss) {
 			const bag = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.12), this.mat(f.isBrad ? 0xe30613 : 0x333333));
-			bag.position.set(bellyR * 1.25, torsoY * 0.5, 0.15);
+			bag.position.set(bellyR * BAG_OUT, torsoY * BAG_RISE, 0.15);
 			body.add(bag);
 		}
 
@@ -1353,24 +1389,24 @@ export class Americans {
 		const hip = new THREE.Group();
 		hip.position.set(0, legLen, 0);
 
-		const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, legLen * 0.42, 3, 6), this.mat(pants));
-		thigh.position.y = -legLen * 0.28;
+		const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, legLen * LEG_THIGH_LEN, 3, 6), this.mat(pants));
+		thigh.position.y = -legLen * LEG_THIGH_Y;
 		hip.add(thigh);
 
 		const knee = new THREE.Group();
-		knee.position.y = -legLen * 0.5;
+		knee.position.y = -legLen * LEG_KNEE_Y;
 
-		const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, legLen * 0.35, 3, 6), this.mat(pants));
-		shin.position.y = -legLen * 0.2;
+		const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, legLen * LEG_SHIN_LEN, 3, 6), this.mat(pants));
+		shin.position.y = -legLen * LEG_SHIN_Y;
 		knee.add(shin);
 
 		// BIG visible foot (pootje)
 		const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.34), this.mat(0xf5f5f5, 0.65));
-		foot.position.set(0, -legLen * 0.42, 0.1);
+		foot.position.set(0, -legLen * LEG_FOOT_Y, 0.1);
 		knee.add(foot);
 
 		const sole = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.04, 0.36), this.mat(0x1a1a1a));
-		sole.position.set(0, -legLen * 0.47, 0.1);
+		sole.position.set(0, -legLen * LEG_SOLE_Y, 0.1);
 		knee.add(sole);
 
 		hip.add(knee);
@@ -1597,7 +1633,7 @@ export class Americans {
 		sim.pos.z += sim.velocity.z * travelTime;
 		// Climb only on escalator/stairs; otherwise hard floor snap
 		if (Math.abs(target.y - sim.pos.y) > 0.5) {
-			sim.pos.y = THREE.MathUtils.lerp(sim.pos.y, target.y, Math.min(1, dt * 2.5));
+			sim.pos.y = lerp(sim.pos.y, target.y, Math.min(1, dt * 2.5));
 		}
 
 		// Floor snap — feet stay on slab (no through-floor / floating)
@@ -1642,8 +1678,8 @@ export class Americans {
 				// Soft pull toward parallel lane next to partner lead path
 				if (f.id > f.partnerId) {
 					const ideal = partner.pos.clone().add(side);
-					sim.pos.x = THREE.MathUtils.lerp(sim.pos.x, ideal.x, 0.12);
-					sim.pos.z = THREE.MathUtils.lerp(sim.pos.z, ideal.z, 0.12);
+					sim.pos.x = lerp(sim.pos.x, ideal.x, 0.12);
+					sim.pos.z = lerp(sim.pos.z, ideal.z, 0.12);
 					const fix = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius);
 					sim.pos.x = fix.x;
 					sim.pos.z = fix.z;
@@ -1691,15 +1727,15 @@ export class Americans {
 		const f = sim.f;
 		if (speed < 0.05) {
 			// idle settle
-			sim.legL.hip.rotation.x = THREE.MathUtils.lerp(sim.legL.hip.rotation.x, 0.08, dt * 6);
-			sim.legR.hip.rotation.x = THREE.MathUtils.lerp(sim.legR.hip.rotation.x, -0.08, dt * 6);
-			sim.legL.knee.rotation.x = THREE.MathUtils.lerp(sim.legL.knee.rotation.x, 0.1, dt * 6);
-			sim.legR.knee.rotation.x = THREE.MathUtils.lerp(sim.legR.knee.rotation.x, 0.1, dt * 6);
-			sim.legL.foot.rotation.x = THREE.MathUtils.lerp(sim.legL.foot.rotation.x, 0, dt * 6);
-			sim.legR.foot.rotation.x = THREE.MathUtils.lerp(sim.legR.foot.rotation.x, 0, dt * 6);
-			sim.armL.rotation.x = THREE.MathUtils.lerp(sim.armL.rotation.x, 0, dt * 5);
-			sim.armR.rotation.x = THREE.MathUtils.lerp(sim.armR.rotation.x, 0, dt * 5);
-			sim.body.position.y = Math.sin(sim.phase * 0.5) * 0.012;
+			sim.legL.hip.rotation.x = lerp(sim.legL.hip.rotation.x, 0.08, dt * 6);
+			sim.legR.hip.rotation.x = lerp(sim.legR.hip.rotation.x, -0.08, dt * 6);
+			sim.legL.knee.rotation.x = lerp(sim.legL.knee.rotation.x, 0.1, dt * 6);
+			sim.legR.knee.rotation.x = lerp(sim.legR.knee.rotation.x, 0.1, dt * 6);
+			sim.legL.foot.rotation.x = lerp(sim.legL.foot.rotation.x, 0, dt * 6);
+			sim.legR.foot.rotation.x = lerp(sim.legR.foot.rotation.x, 0, dt * 6);
+			sim.armL.rotation.x = lerp(sim.armL.rotation.x, 0, dt * 5);
+			sim.armR.rotation.x = lerp(sim.armR.rotation.x, 0, dt * 5);
+			sim.body.position.y = Math.sin(sim.phase * IDLE_BOB_TEMPO) * IDLE_BOB_AMP;
 			return;
 		}
 
@@ -1720,7 +1756,7 @@ export class Americans {
 		sim.legR.knee.rotation.x = Math.max(0, R) * 1.15 + 0.1;
 
 		// Toe up in front (heel strike), toe down behind (toe-off)
-		const toe = (l: number) => (l < 0 ? l * 0.5 : l * 0.3 * (0.7 + 0.3 * f.stomp));
+		const toe = (l: number) => (l < 0 ? l * TOE_HEEL : l * TOE_OFF * (TOE_STOMP_BASE + TOE_STOMP_SPREAD * f.stomp));
 		sim.legL.foot.rotation.x = toe(L);
 		sim.legR.foot.rotation.x = toe(R);
 
@@ -2024,7 +2060,7 @@ export class Americans {
 			}
 			pos.needsUpdate = true;
 			const mat = c.mesh.material as THREE.PointsMaterial;
-			mat.opacity = Math.max(0, c.life * 0.5);
+			mat.opacity = Math.max(0, c.life * CLOUD_FADE);
 			if (c.life <= 0) {
 				this.group.remove(c.mesh);
 				c.mesh.geometry.dispose();

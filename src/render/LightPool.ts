@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clamp } from '#/util/math';
 
 /**
  * How many real point lights the whole session ever has.
@@ -176,7 +177,7 @@ export class LightPool {
 	/** Once per frame, after the scene's world matrices are up to date. */
 	update(camera: THREE.Camera): void {
 		const now = performance.now() / 1000;
-		const dt = this.lastTime === 0 ? 1 / 60 : Math.min(MAX_DT, Math.max(0, now - this.lastTime));
+		const dt = this.lastTime === 0 ? 1 / 60 : clamp(now - this.lastTime, 0, MAX_DT);
 		this.lastTime = now;
 
 		const eye = camera.position;

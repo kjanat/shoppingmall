@@ -4,6 +4,7 @@ import { TIKI_BAR_SPEC } from '#/data/world';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 import { at } from '#/util/rand';
 import { inPool, POOL_CENTER, POOL_WATER_Y, rimDistance } from './RoofIsland';
 
@@ -86,8 +87,8 @@ const LOUNGER = {
 } as const;
 const LOUNGER_Z = -9.8;
 
-const SEAT_TOP = LOUNGER.seatY + LOUNGER.seatH / 2;
-const TOWEL_Y = SEAT_TOP + LOUNGER.towelH / 2;
+const SEAT_TOP = LOUNGER.seatY + half(LOUNGER.seatH);
+const TOWEL_Y = SEAT_TOP + half(LOUNGER.towelH);
 /** Waar een lijf op landt: de handdoek, niet het frame. */
 const REST_Y = SEAT_TOP + LOUNGER.towelH;
 /** Hoek van de leuning t.o.v. verticaal: de romp krijgt precies deze hoek. */
@@ -96,8 +97,8 @@ const BACK_C = Math.cos(LOUNGER.backTilt);
 const BACK_S = Math.sin(LOUNGER.backTilt);
 // Voorvlak van de leuning als lijn in yz: normaal (BACK_C, BACK_S) door het
 // onderste punt. Afstand van een punt tot dat vlak = hoeveel het vrij zit.
-const BACK_FOOT_Y = LOUNGER.backY - (LOUNGER.backLen / 2) * BACK_S + (LOUNGER.backH / 2) * BACK_C;
-const BACK_FOOT_Z = LOUNGER.backZ + (LOUNGER.backLen / 2) * BACK_C + (LOUNGER.backH / 2) * BACK_S;
+const BACK_FOOT_Y = LOUNGER.backY - half(LOUNGER.backLen) * BACK_S + half(LOUNGER.backH) * BACK_C;
+const BACK_FOOT_Z = LOUNGER.backZ + half(LOUNGER.backLen) * BACK_C + half(LOUNGER.backH) * BACK_S;
 
 // Rigmaten, gedeeld door de bouwer en de pose-wiskunde.
 const HIP_Y = 0.9;
@@ -109,7 +110,7 @@ const THIGH_LEN = 0.47; // heup → knie
 const CALF_R = 0.068;
 const CALF_MID = 0.16; // knie → midden kuit
 const CALF_CYL = 0.28; // recht stuk van de kuitcapsule
-const CALF_LOW = CALF_MID + CALF_CYL / 2; // knie → onderste kuitbol
+const CALF_LOW = CALF_MID + half(CALF_CYL); // knie → onderste kuitbol
 const CALF_LEN = 0.38; // knie → enkel
 const FOOT_H = 0.05;
 const FOOT_LEN = 0.22;
@@ -156,7 +157,7 @@ function loungeLeg(lift: number): { thigh: number; knee: number; foot: number } 
 	const bend = Math.asin((kneeY - SEAT_TOP - CLEAR - CALF_R) / CALF_LOW);
 	// En kantel de voet tot de hiel de handdoek raakt; tenen dus omhoog.
 	const footY = kneeY - CALF_LEN * Math.sin(bend) + FOOT_FWD * Math.cos(bend);
-	const sole = Math.hypot(FOOT_H / 2, FOOT_LEN / 2);
+	const sole = Math.hypot(half(FOOT_H), half(FOOT_LEN));
 	const toe = Math.asin((footY - REST_Y) / sole) - Math.atan2(FOOT_H, FOOT_LEN);
 	return { thigh: -(Math.PI / 2 + lift), knee: lift + bend, foot: Math.PI / 2 - bend - toe };
 }
@@ -657,7 +658,7 @@ export class PoolPeople {
 
 		// De rij begint een schouderbreedte oost van de counter. Op een los
 		// ingetikte -12,9 stond man één tot zijn middel in het barmeubel.
-		const counterEastX = TIKI_BAR_SPEC.center.x + TIKI_BAR_SPEC.counter.offsetX + TIKI_BAR_SPEC.counter.width / 2;
+		const counterEastX = TIKI_BAR_SPEC.center.x + TIKI_BAR_SPEC.counter.offsetX + half(TIKI_BAR_SPEC.counter.width);
 
 		skins.forEach((skin, i) => {
 			const rig = this.buildMan(skin, polo, 0x1c2a4a);

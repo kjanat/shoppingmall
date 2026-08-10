@@ -4,6 +4,7 @@
  * at the booth position (headphones: DJ is "over there").
  */
 
+import { clamp, clamp01 } from '#/util/math';
 import type { SpatialElement } from './SpatialAudio';
 import { spatial } from './SpatialAudio';
 
@@ -129,7 +130,7 @@ export class DJPlayer {
 		if (!stored) return false;
 		// Map back to full playlist index
 		const fullIdx = this.playlist.findIndex((t) => t.file === stored.file);
-		this.setVolume(Math.max(0.05, Math.min(1, p.volume ?? 0.55)));
+		this.setVolume(clamp(p.volume ?? 0.55, 0.05, 1));
 		await this.playIndex(fullIdx >= 0 ? fullIdx : 0, p.time ?? 0, p.playing !== false);
 		return true;
 	}
@@ -222,7 +223,7 @@ export class DJPlayer {
 	private distanceGain = 1;
 
 	setVolume(v: number): void {
-		this.baseVolume = Math.max(0, Math.min(1, v));
+		this.baseVolume = clamp01(v);
 		this.applyVolume();
 		this.checkpoint();
 	}
@@ -234,7 +235,7 @@ export class DJPlayer {
 	 * so UI distance still feels right if pose updates lag a frame.
 	 */
 	setDistanceGain(g: number): void {
-		this.distanceGain = Math.max(0.02, Math.min(1, g));
+		this.distanceGain = clamp(g, 0.02, 1);
 		this.applyVolume();
 	}
 
@@ -244,7 +245,7 @@ export class DJPlayer {
 			this.spatialEl.setBaseVolume(this.baseVolume * this.distanceGain);
 			this.audio.volume = 1;
 		} else {
-			this.audio.volume = Math.max(0, Math.min(1, this.baseVolume * this.distanceGain));
+			this.audio.volume = clamp01(this.baseVolume * this.distanceGain);
 		}
 	}
 

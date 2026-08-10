@@ -234,7 +234,7 @@ export class Helipad {
 			),
 		);
 		pad.position.copy(this.padCenter);
-		pad.position.y = DECK_TOP + HELIPAD_PAD_SPEC.height / 2 - 0.01;
+		pad.position.y = DECK_TOP + half(HELIPAD_PAD_SPEC.height) - 0.01;
 		pad.receiveShadow = true;
 		this.group.add(pad);
 

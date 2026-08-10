@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CATWALK_DECK, CATWALK_SPEC, catwalkSeatRows } from '#/data/world';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 import { at } from '#/util/rand';
 
 /**
@@ -16,6 +17,22 @@ const DECK_CENTER_Z = CATWALK_DECK.centerZ;
 
 const WALK_SPEED = 1.15;
 const POSE_TIME = 2.6;
+
+/** The spot never sits still: it drifts across the runway at this rate, this far. */
+const SPOT_SWEEP_TEMPO = 0.6;
+const SPOT_SWEEP = 0.5;
+/** Shoulders counter the hips, arms counter the legs, both at half the throw. */
+const BODY_SWAY_SHARE = 0.5;
+const ARM_SWING_SHARE = 0.5;
+/** Head turns once per two steps, barely. */
+const HEAD_TURN_TEMPO = 0.5;
+const HEAD_TURN_AMP = 0.12;
+/** The pose: a quarter turn out, then a longer turn back over the shoulder. */
+const POSE_TURN = 0.5;
+const POSE_LOOK_BACK = 1.1;
+/** Camera flashes pop this far off the runway, either side. */
+const FLASH_DIST = 2.1;
+const FLASH_DIST_SPREAD = 0.5;
 
 type Phase = 'wait' | 'out' | 'pose' | 'back';
 
@@ -142,7 +159,7 @@ export class Catwalk {
 		// Spotlight rides the girl who is currently working
 		const active = this.models.find((m) => m.phase !== 'wait');
 		if (active) {
-			this.spotTarget.position.set(RUNWAY_X + Math.sin(t * 0.6) * 0.5, PODIUM_Y + 0.9, active.z);
+			this.spotTarget.position.set(RUNWAY_X + Math.sin(t * SPOT_SWEEP_TEMPO) * SPOT_SWEEP, PODIUM_Y + 0.9, active.z);
 		}
 
 		const posing = active?.phase === 'pose';
@@ -274,15 +291,15 @@ export class Catwalk {
 
 		m.hips.rotation.z = Math.sin(p) * m.sway;
 		m.hips.rotation.y = Math.sin(p) * 0.12;
-		m.body.rotation.z = -Math.sin(p) * m.sway * 0.5;
+		m.body.rotation.z = -Math.sin(p) * m.sway * BODY_SWAY_SHARE;
 		m.body.position.y = 1.0 + Math.abs(Math.sin(p)) * 0.02;
 
-		m.armL.rotation.x = -swing * 0.5;
-		m.armR.rotation.x = swing * 0.5;
+		m.armL.rotation.x = -swing * ARM_SWING_SHARE;
+		m.armR.rotation.x = swing * ARM_SWING_SHARE;
 		m.armL.rotation.z = 0.22 + Math.sin(p) * 0.1;
 		m.armR.rotation.z = -0.22 + Math.sin(p) * 0.1;
 
-		m.head.rotation.y = Math.sin(p * 0.5) * 0.12;
+		m.head.rotation.y = Math.sin(p * HEAD_TURN_TEMPO) * HEAD_TURN_AMP;
 		m.hair.rotation.z = -Math.sin(p) * 0.14;
 
 		m.root.position.set(RUNWAY_X, PODIUM_Y, m.z);
@@ -293,7 +310,7 @@ export class Catwalk {
 		const turn = Math.min(1, t / 0.7);
 		const back = t > POSE_TIME * 0.6 ? Math.min(1, (t - POSE_TIME * 0.6) / 0.6) : 0;
 		m.root.position.set(RUNWAY_X, PODIUM_Y, m.z);
-		m.root.rotation.y = turn * 0.5 - back * 1.1;
+		m.root.rotation.y = turn * POSE_TURN - back * POSE_LOOK_BACK;
 
 		m.legL.rotation.x = 0.08;
 		m.legR.rotation.x = -0.12;
@@ -492,7 +509,7 @@ export class Catwalk {
 
 	private buildRunway(): void {
 		const deck = new THREE.Mesh(new THREE.BoxGeometry(HALF_W * 2, PODIUM_Y, DECK_LENGTH), this.mat(0xf7f5f2, 0.25, 0.15));
-		deck.position.set(RUNWAY_X, PODIUM_Y / 2, DECK_CENTER_Z);
+		deck.position.set(RUNWAY_X, half(PODIUM_Y), DECK_CENTER_Z);
 		deck.receiveShadow = true;
 		this.group.add(deck);
 
@@ -508,7 +525,7 @@ export class Catwalk {
 			new THREE.CylinderGeometry(CATWALK_DECK.noseRadius, CATWALK_DECK.noseRadius, PODIUM_Y, 20),
 			this.mat(0xf7f5f2, 0.25, 0.15),
 		);
-		tip.position.set(RUNWAY_X, PODIUM_Y / 2, CATWALK_DECK.noseCenterZ);
+		tip.position.set(RUNWAY_X, half(PODIUM_Y), CATWALK_DECK.noseCenterZ);
 		this.group.add(tip);
 	}
 
@@ -553,7 +570,7 @@ export class Catwalk {
 		const frame = this.mat(0x14141a, 0.7);
 		const { backdrop } = CATWALK_SPEC;
 		const wall = new THREE.Mesh(new THREE.BoxGeometry(backdrop.width, backdrop.height, backdrop.thickness), frame);
-		wall.position.set(RUNWAY_X, backdrop.height / 2, START_Z - backdrop.offset);
+		wall.position.set(RUNWAY_X, half(backdrop.height), START_Z - backdrop.offset);
 		this.group.add(wall);
 
 		// Backdrop banner
@@ -615,7 +632,7 @@ export class Catwalk {
 				),
 			);
 			mesh.position.set(
-				RUNWAY_X + side * (2.1 + Math.random() * 0.5),
+				RUNWAY_X + side * (FLASH_DIST + Math.random() * FLASH_DIST_SPREAD),
 				1.1 + Math.random() * 0.4,
 				TIP_Z - 1 + (Math.random() - 0.5) * 3,
 			);

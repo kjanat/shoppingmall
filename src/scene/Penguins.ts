@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { clamp } from '#/util/math';
 import { pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -41,6 +42,11 @@ const NAMES = [
 ];
 
 const CHIRPS = ['Noot noot!', '🐟?', 'Waddle waddle', 'Cold in the mall?', 'Where ice?', 'Honk', '🐧', 'Fish please'];
+
+// ── waddle ───────────────────────────────────────────────
+/** Body rock: half the waddle rate, so it reads as a lean and not a shiver. */
+const BODY_ROCK_TEMPO = 0.5;
+const BODY_ROCK_AMP = 0.06;
 
 /**
  * Colony of low-poly penguins waddling the mall floor —
@@ -114,7 +120,7 @@ export class Penguins {
 					p.wingL.rotation.z = 0.5 + flap;
 					p.wingR.rotation.z = -0.5 - flap;
 					// Body rock
-					p.body.rotation.x = Math.sin(p.waddle * 0.5) * 0.06;
+					p.body.rotation.x = Math.sin(p.waddle * BODY_ROCK_TEMPO) * BODY_ROCK_AMP;
 				}
 			}
 
@@ -153,8 +159,8 @@ export class Penguins {
 			p.tz = -16 + Math.random() * 14;
 		}
 		// Clamp mall-ish
-		p.tx = THREE.MathUtils.clamp(p.tx, -32, 32);
-		p.tz = THREE.MathUtils.clamp(p.tz, -20, 20);
+		p.tx = clamp(p.tx, -32, 32);
+		p.tz = clamp(p.tz, -20, 20);
 	}
 
 	private say(p: Penguin, text: string): void {

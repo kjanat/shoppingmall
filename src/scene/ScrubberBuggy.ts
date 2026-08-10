@@ -3,6 +3,7 @@ import type { CollisionWorld } from '#/physics/Collision';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { clamp, half } from '#/util/math';
 
 /** Arcade drive input from the player */
 export type DriveInput = {
@@ -138,7 +139,7 @@ export class ScrubberBuggy {
 		}
 
 		// Steer more when moving; allow pivot crawl
-		const steerAuth = Math.max(0.35, Math.min(1, Math.abs(this.speed) / 4));
+		const steerAuth = clamp(Math.abs(this.speed) / 4, 0.35, 1);
 		if (Math.abs(steer) > 0.05) {
 			const dir = this.speed >= -0.15 ? 1 : -1; // reverse steering when reversing hard
 			this.yaw += steer * TURN_RATE * steerAuth * dir * dt * (boost ? 1.15 : 1);
@@ -172,7 +173,7 @@ export class ScrubberBuggy {
 		if (this.brush) this.brush.rotation.y += dt * (6 + Math.abs(this.speed) * 1.2);
 		if (this.wetSign) {
 			this.wetSign.position.y = 0.35 + Math.sin(performance.now() * 0.01) * 0.03;
-			this.wetSign.rotation.z = THREE.MathUtils.clamp(this.speed * 0.01, -0.15, 0.15);
+			this.wetSign.rotation.z = clamp(this.speed * 0.01, -0.15, 0.15);
 		}
 
 		// Camera seat + slight look lean
@@ -368,7 +369,7 @@ export class ScrubberBuggy {
 		ctx.textBaseline = 'middle';
 		const lines = text.split('\n');
 		lines.forEach((line, i) => {
-			ctx.fillText(line, w / 2, h / 2 + (i - (lines.length - 1) / 2) * (h * 0.32));
+			ctx.fillText(line, half(w), half(h) + (i - half(lines.length - 1)) * (h * 0.32));
 		});
 		const tex = labelTexture(c);
 		return tex;

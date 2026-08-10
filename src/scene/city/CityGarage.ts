@@ -4,7 +4,7 @@ import { lit } from '#/render/material';
 import type { Rand } from '#/scene/city/cityPlan';
 import { GARAGE_PLAN, mulberry32 } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { half, midpoint, span } from '#/util/math';
+import { half, inverseLerpClamped, midpoint, span } from '#/util/math';
 import { at, pickWith } from '#/util/rand';
 
 /**
@@ -108,7 +108,7 @@ export class CityGarage {
 		// Geklemde sinus: de slagboom hangt even boven, hangt even beneden, en
 		// beweegt daartussen alsof hij ergens over nadenkt. De ease loopt op dt
 		// zodat de bedenktijd niet meeschaalt met de framerate van de Pi.
-		const doel = THREE.MathUtils.clamp(Math.sin(t * 0.35) * 1.8, -1, 1) * 0.5 + 0.5;
+		const doel = inverseLerpClamped(-1, 1, Math.sin(t * 0.35) * 1.8);
 		this.boomOpen += (doel - this.boomOpen) * Math.min(1, dt * 1.6);
 		this.boomPivot.rotation.x = -1.25 * this.boomOpen;
 	}
@@ -160,7 +160,7 @@ export class CityGarage {
 		const stripMat = this.track(new THREE.MeshBasicMaterial({ color: 0xbcd6e4, toneMapped: false }));
 		const strips: Placement[] = [];
 		for (let i = 1; i <= DECKS; i++) {
-			const y = i * FLOOR_H - SLAB_T / 2 - 0.05;
+			const y = i * FLOOR_H - half(SLAB_T) - 0.05;
 			for (const z of [50.5, 59.5]) strips.push(P(CX, y, z, 21, 0.08, 0.24));
 		}
 		this.fill(this.unitBox, stripMat, strips, 'garage_tl');

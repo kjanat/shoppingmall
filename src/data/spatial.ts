@@ -369,8 +369,8 @@ export function geometryBounds(geometry: SpatialGeometry): Bounds3 {
 	const run = Math.hypot(deltaX, deltaZ);
 	const perpendicularX = run <= EPSILON ? 1 : -deltaZ / run;
 	const perpendicularZ = run <= EPSILON ? 0 : deltaX / run;
-	const extendX = (Math.abs(perpendicularX) * geometry.width) / 2;
-	const extendZ = (Math.abs(perpendicularZ) * geometry.width) / 2;
+	const extendX = half(Math.abs(perpendicularX) * geometry.width);
+	const extendZ = half(Math.abs(perpendicularZ) * geometry.width);
 	return {
 		minX: Math.min(geometry.start.x, geometry.end.x) - extendX,
 		maxX: Math.max(geometry.start.x, geometry.end.x) + extendX,

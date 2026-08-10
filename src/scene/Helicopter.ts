@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { clamp, lerp } from '#/util/math';
 import { ROOF_Y } from './Helipad';
 
 type HeliState = 'parked' | 'spinup' | 'takeoff' | 'cruise' | 'approach' | 'land' | 'spindown';
@@ -10,6 +11,10 @@ const CRUISE_Y = ROOF_Y + 9;
 const CRUISE_R = 34;
 const CRUISE_SPEED = 0.35; // rad/s ≈ 12 m/s over de cirkel
 const LAPS = 2;
+/** Geparkeerd tikken de rotors nog wat na: doelsnelheid, plus hoe snel hij daarheen kruipt vanaf stilstand en vanaf het uitdraaien. */
+const PARKED_ROTOR = 0.8;
+const PARKED_ROTOR_RATE = 0.5;
+const SPINDOWN_RATE = 0.7;
 
 /**
  * De helikopter die bij de helipad hoort. Volautomatische cyclus:
@@ -94,10 +99,10 @@ export class Helicopter {
 
 		const fwdSpeed = vx * Math.cos(yaw) - vz * Math.sin(yaw);
 		// Neus omlaag bij vooruit, banken met de bocht — traag gedempt, sim-feel
-		const wantPitch = THREE.MathUtils.clamp(-fwdSpeed * 0.022, -0.32, 0.18);
-		const wantBank = THREE.MathUtils.clamp(-yawRate * 0.28, -0.42, 0.42);
-		this.body.rotation.z = THREE.MathUtils.lerp(this.body.rotation.z, wantPitch, Math.min(1, dt * 2.4));
-		this.body.rotation.x = THREE.MathUtils.lerp(this.body.rotation.x, wantBank, Math.min(1, dt * 2.4));
+		const wantPitch = clamp(-fwdSpeed * 0.022, -0.32, 0.18);
+		const wantBank = clamp(-yawRate * 0.28, -0.42, 0.42);
+		this.body.rotation.z = lerp(this.body.rotation.z, wantPitch, Math.min(1, dt * 2.4));
+		this.body.rotation.x = lerp(this.body.rotation.x, wantBank, Math.min(1, dt * 2.4));
 		this.body.rotation.y = yaw;
 
 		// camera zit in het cockpitglas: 1.0 naar voren, 0.85 boven de romp-origin
@@ -133,18 +138,18 @@ export class Helicopter {
 
 		switch (this.state) {
 			case 'parked':
-				this.rotorSpeed = THREE.MathUtils.lerp(this.rotorSpeed, 0.8, dt * 0.5);
+				this.rotorSpeed = lerp(this.rotorSpeed, PARKED_ROTOR, dt * PARKED_ROTOR_RATE);
 				if (this.stateT > 18) this.next('spinup');
 				break;
 
 			case 'spinup':
-				this.rotorSpeed = THREE.MathUtils.lerp(this.rotorSpeed, 28, dt * 1.2);
+				this.rotorSpeed = lerp(this.rotorSpeed, 28, dt * 1.2);
 				if (this.stateT > 3.2) this.next('takeoff');
 				break;
 
 			case 'takeoff': {
 				this.rotorSpeed = 30;
-				this.pos.y = THREE.MathUtils.lerp(this.pos.y, CRUISE_Y, dt * 0.9);
+				this.pos.y = lerp(this.pos.y, CRUISE_Y, dt * 0.9);
 				// zachte drift richting de cruisecirkel
 				if (CRUISE_Y - this.pos.y < 0.6) {
 					this.cruiseA = Math.atan2(this.pos.z, this.pos.x);
@@ -156,13 +161,13 @@ export class Helicopter {
 			case 'cruise': {
 				this.rotorSpeed = 26;
 				this.cruiseA += CRUISE_SPEED * dt;
-				const r = THREE.MathUtils.lerp(Math.hypot(this.pos.x, this.pos.z), CRUISE_R, dt * 0.8);
+				const r = lerp(Math.hypot(this.pos.x, this.pos.z), CRUISE_R, dt * 0.8);
 				this.pos.x = Math.cos(this.cruiseA) * r;
 				this.pos.z = Math.sin(this.cruiseA) * r;
 				this.pos.y = CRUISE_Y + Math.sin(this.stateT * 0.7) * 0.6;
 				// neus in de vliegrichting, banking in de bocht
 				this.body.rotation.y = -this.cruiseA - Math.PI / 2;
-				this.body.rotation.z = THREE.MathUtils.lerp(this.body.rotation.z, -0.16, dt * 2);
+				this.body.rotation.z = lerp(this.body.rotation.z, -0.16, dt * 2);
 				if (this.stateT > (LAPS * Math.PI * 2) / CRUISE_SPEED) this.next('approach');
 				break;
 			}
@@ -170,10 +175,10 @@ export class Helicopter {
 			case 'approach': {
 				this.rotorSpeed = 24;
 				// glijvlucht terug naar boven het pad
-				this.pos.x = THREE.MathUtils.lerp(this.pos.x, this.pad.x, dt * 0.8);
-				this.pos.z = THREE.MathUtils.lerp(this.pos.z, this.pad.z, dt * 0.8);
-				this.pos.y = THREE.MathUtils.lerp(this.pos.y, this.pad.y + 5, dt * 0.7);
-				this.body.rotation.z = THREE.MathUtils.lerp(this.body.rotation.z, 0, dt * 2);
+				this.pos.x = lerp(this.pos.x, this.pad.x, dt * 0.8);
+				this.pos.z = lerp(this.pos.z, this.pad.z, dt * 0.8);
+				this.pos.y = lerp(this.pos.y, this.pad.y + 5, dt * 0.7);
+				this.body.rotation.z = lerp(this.body.rotation.z, 0, dt * 2);
 				const dx = this.pos.x - this.pad.x;
 				const dz = this.pos.z - this.pad.z;
 				if (dx * dx + dz * dz < 0.3) this.next('land');
@@ -182,7 +187,7 @@ export class Helicopter {
 
 			case 'land':
 				this.rotorSpeed = 18;
-				this.pos.y = THREE.MathUtils.lerp(this.pos.y, this.pad.y, dt * 0.8);
+				this.pos.y = lerp(this.pos.y, this.pad.y, dt * 0.8);
 				if (this.pos.y - this.pad.y < 0.05) {
 					this.pos.y = this.pad.y;
 					this.next('spindown');
@@ -190,8 +195,8 @@ export class Helicopter {
 				break;
 
 			case 'spindown':
-				this.rotorSpeed = THREE.MathUtils.lerp(this.rotorSpeed, 0.8, dt * 0.7);
-				this.body.rotation.y = THREE.MathUtils.lerp(this.body.rotation.y, 0, dt);
+				this.rotorSpeed = lerp(this.rotorSpeed, PARKED_ROTOR, dt * SPINDOWN_RATE);
+				this.body.rotation.y = lerp(this.body.rotation.y, 0, dt);
 				if (this.stateT > 6) this.next('parked');
 				break;
 		}

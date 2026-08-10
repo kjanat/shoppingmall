@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
+import { half } from '#/util/math';
 import { at } from '#/util/rand';
 
 /**
@@ -23,6 +24,9 @@ const MALL_Z = 30;
 // ── wolken ───────────────────────────────────────────────
 const N_CLUSTERS = 12;
 const PUFFS = 3;
+/** Breedte en diepte van één puff, als deel van zijn eigen grootte: basis plus random erbovenop. */
+const PUFF_BREEDTE_BASIS = 0.8;
+const PUFF_BREEDTE_SPREIDING = 0.5;
 const KLEUR_HELDER = new THREE.Color(0xf4f6f8);
 const KLEUR_STORM = new THREE.Color(0x3d434c);
 
@@ -91,9 +95,9 @@ export class CitySky {
 				const puff = new THREE.Mesh(puffGeo, this.cloudMat);
 				const s = 3.2 + Math.random() * 2.6;
 				puff.scale.set(
-					s * (0.8 + Math.random() * 0.5),
+					s * (PUFF_BREEDTE_BASIS + Math.random() * PUFF_BREEDTE_SPREIDING),
 					s * 0.42, // plat, zoals een wolk met ambitie maar zonder budget
-					s * (0.8 + Math.random() * 0.5),
+					s * (PUFF_BREEDTE_BASIS + Math.random() * PUFF_BREEDTE_SPREIDING),
 				);
 				puff.position.set((j - 1) * (2.6 + Math.random() * 1.6), (Math.random() - 0.5) * 1.4, (Math.random() - 0.5) * 3);
 				cluster.add(puff);
@@ -127,7 +131,7 @@ export class CitySky {
 		this.regenAttr.setUsage(THREE.DynamicDrawUsage);
 		regenGeo.setAttribute('position', this.regenAttr);
 		// Vaste boundingSphere, anders gaat three per frame zitten rekenen.
-		regenGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, REGEN_TOP / 2, 0), 150);
+		regenGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, half(REGEN_TOP), 0), 150);
 		this.geometries.push(regenGeo);
 		this.regenMat = this.track(
 			new THREE.PointsMaterial({

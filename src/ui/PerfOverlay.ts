@@ -1,5 +1,6 @@
 import { booleanUrlPref, clearUrlPref } from '#/render/urlPrefs';
 import { ctx2d, qs } from '#/util/dom';
+import { clamp } from '#/util/math';
 
 const OPEN_KEY = 'mallsim.perfhud.v1';
 /** Frames kept for the percentiles. ~5 s at 60 fps, much longer when it hurts. */
@@ -332,7 +333,7 @@ export class PerfOverlay {
 			const age = bars - 1 - i;
 			const index = (this.cursor - 1 - age + HISTORY * 2) % HISTORY;
 			const ms = this.frames[index] ?? 0;
-			const h = Math.max(1, Math.min(GRAPH_H, (ms / GRAPH_MAX_MS) * GRAPH_H));
+			const h = clamp((ms / GRAPH_MAX_MS) * GRAPH_H, 1, GRAPH_H);
 			ctx.fillStyle = ms <= VSYNC_MS * 1.2 ? '#22c55e' : ms <= 33 ? '#f59e0b' : '#ef4444';
 			ctx.fillRect(i, GRAPH_H - h, 1, h);
 		}

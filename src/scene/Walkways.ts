@@ -1,16 +1,14 @@
 import * as THREE from 'three';
+import type { Bounds2 } from '#/data/spatial';
+import { planBounds, rectanglePlan } from '#/data/spatial';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 
-type Belt = {
+type Belt = Bounds2 & {
 	mat: LitMaterial;
 	speed: number;
-	/** World-space footprint + drift for conveyance */
-	minX: number;
-	maxX: number;
-	minZ: number;
-	maxZ: number;
 	y: number;
 	/** m/s along world X (both belts run east-west) */
 	driftX: number;
@@ -18,6 +16,8 @@ type Belt = {
 
 /** How fast a belt carries whoever stands on it (m/s). */
 const CONVEY_SPEED = 1.6;
+/** Overhang each side of the deck that still carries a body. */
+const BELT_EDGE_MARGIN = 0.1;
 
 /**
  * Minimal loopbanden — brother was right, too many was ugly.
@@ -103,7 +103,7 @@ export class MovingWalkways {
 				roughness: 0.3,
 			}),
 		);
-		for (const sx of [-w / 2 - 0.06, w / 2 + 0.06]) {
+		for (const sx of [-half(w) - 0.06, half(w) + 0.06]) {
 			const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.85, len), frameMat);
 			rail.position.set(sx, 0.48, 0);
 			g.add(rail);
@@ -112,13 +112,14 @@ export class MovingWalkways {
 		this.group.add(g);
 		// rotY ±π/2 turns local Z into world ∓X; scroll direction follows the sign
 		const dir = opts.rotY > 0 ? 1 : -1;
+		const footprint = rectanglePlan({
+			center: { x: opts.x, z: opts.z },
+			size: { width: len, depth: w + BELT_EDGE_MARGIN * 2 },
+		});
 		this.belts.push({
 			mat: beltMat,
 			speed: 0.35,
-			minX: opts.x - len / 2,
-			maxX: opts.x + len / 2,
-			minZ: opts.z - w / 2 - 0.1,
-			maxZ: opts.z + w / 2 + 0.1,
+			...planBounds(footprint),
 			y: opts.y,
 			driftX: dir * CONVEY_SPEED,
 		});

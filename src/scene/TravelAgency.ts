@@ -7,6 +7,16 @@ import { labelCanvas, labelTexture } from '#/util/label';
 import { half } from '#/util/math';
 import { tagLevelCulled } from '#/util/visibility';
 
+// ── desk ─────────────────────────────────────────────────
+/** The agent turns slowly on his stool, this far either side of facing you. */
+const SWAY_TEMPO = 0.5;
+const SWAY_AMP = 0.08;
+
+// ── brochure palm ────────────────────────────────────────
+/** Five fronds fanned out of the trunk: first angle, then the step between them. */
+const FROND_START = -1.2;
+const FROND_STEP = 0.5;
+
 /**
  * Shady travel desk next to Beard-man's Cave (juwelen lair).
  * Sells "private island" packages to Little Saint James — dark mall satire,
@@ -73,7 +83,7 @@ export class TravelAgency {
 		// Agent slight sway
 		if (this.agentRoot) {
 			this.agentRoot.position.y = Math.sin(this.t * 1.4) * 0.02;
-			this.agentRoot.rotation.y = Math.sin(this.t * 0.5) * 0.08 + Math.PI / 2;
+			this.agentRoot.rotation.y = Math.sin(this.t * SWAY_TEMPO) * SWAY_AMP + Math.PI / 2;
 		}
 		this.bob.forEach((o, i) => {
 			const phase = o.userData['phase'] ?? i;
@@ -209,7 +219,7 @@ export class TravelAgency {
 		const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 12), skin);
 		head.position.y = 1.65;
 		g.add(head);
-		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
+		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), hairM);
 		hair.position.set(0, 1.72, -0.02);
 		g.add(hair);
 
@@ -316,7 +326,7 @@ export class TravelAgency {
 		ctx.stroke();
 		ctx.fillStyle = '#43a047';
 		for (let i = 0; i < 5; i++) {
-			const a = -1.2 + i * 0.5;
+			const a = FROND_START + i * FROND_STEP;
 			ctx.beginPath();
 			ctx.ellipse(310 + Math.cos(a) * 40, 155 + Math.sin(a) * 10, 35, 10, a, 0, Math.PI * 2);
 			ctx.fill();
@@ -510,7 +520,7 @@ export class TravelAgency {
 		ctx.font = `bold ${Math.floor(h * 0.42)}px system-ui`;
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText(text, w / 2, h / 2);
+		ctx.fillText(text, half(w), half(h));
 		const tex = labelTexture(c);
 		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}

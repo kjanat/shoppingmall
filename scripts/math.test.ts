@@ -9,6 +9,8 @@ describe('shared calculations', () => {
 		assert.equal(midpoint(-6, 14), 4);
 		assert.equal(span(-6, 14), 20);
 		assert.equal(lerp(-6, 14, 0.25), -1);
+		assert.equal(lerp(0.1, 0.3, 0), 0.1);
+		assert.equal(lerp(0.1, 0.3, 1), 0.3);
 		assert.equal(clamp(8, -2, 5), 5);
 		assert.equal(clamp01(-0.1), 0);
 		assert.equal(inverseLerpClamped(10, 20, 15), 0.5);

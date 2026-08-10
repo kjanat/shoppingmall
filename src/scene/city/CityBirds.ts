@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clamp } from '#/util/math';
 
 /**
  * Veertien vogels boven mall en stad (y 18..34). Elke vogel is twee
@@ -14,6 +15,13 @@ const N_BOVEN_MALL = 5;
 const WERELD_X = 95;
 const WERELD_Z = 75;
 const TWEE_PI = Math.PI * 2;
+
+// ── spreiding per vogel: een basis plus zoveel random erbovenop ──
+const SCHAAL_BASIS = 0.85;
+const SCHAAL_SPREIDING = 0.5;
+/** Hoe ver een vogel op en neer dobbert rond zijn eigen hoogte, in meters. */
+const BOB_AMP_BASIS = 0.4;
+const BOB_AMP_SPREIDING = 0.5;
 
 export class CityBirds {
 	readonly group = new THREE.Group();
@@ -92,20 +100,20 @@ export class CityBirds {
 			rechts.frustumCulled = false;
 			links.frustumCulled = false;
 			vogel.add(rechts, links);
-			vogel.scale.setScalar(0.85 + Math.random() * 0.5);
+			vogel.scale.setScalar(SCHAAL_BASIS + Math.random() * SCHAAL_SPREIDING);
 			this.vogels.push({
 				mesh: vogel,
 				vleugelL: links,
 				vleugelR: rechts,
-				cx: THREE.MathUtils.clamp(cx, -maxX, maxX),
+				cx: clamp(cx, -maxX, maxX),
 				cy: 19 + Math.random() * 13,
-				cz: THREE.MathUtils.clamp(cz, -maxZ, maxZ),
+				cz: clamp(cz, -maxZ, maxZ),
 				straal,
 				hoek: Math.random() * TWEE_PI,
 				omega: (0.1 + Math.random() * 0.14) * (Math.random() < 0.5 ? -1 : 1),
 				flapFreq: 4 + Math.random() * 3,
 				flapFase: Math.random() * TWEE_PI,
-				bobAmp: 0.4 + Math.random() * 0.5,
+				bobAmp: BOB_AMP_BASIS + Math.random() * BOB_AMP_SPREIDING,
 				bobFreq: 0.25 + Math.random() * 0.3,
 				bankFreq: 0.15 + Math.random() * 0.2,
 				bankFase: Math.random() * TWEE_PI,

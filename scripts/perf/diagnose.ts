@@ -20,6 +20,7 @@
  *         bun run diagnose --sweep
  */
 import { argv } from 'node:process';
+import { midpoint } from '#/util/math';
 import type { FrameAccount } from './harness.ts';
 import { bar, frameAccount, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
@@ -253,8 +254,8 @@ try {
 			note('  The cause is unknown. The fill/fixed split is not reported because the balanced control failed.');
 		}
 		for (const warning of sweepWarnings) note(`Sweep sample: ${warning}`);
-		const largeGpu = (main.gpuMsPerFrame + control.gpuMsPerFrame) / 2;
-		const smallGpu = (smallFirst.gpuMsPerFrame + smallSecond.gpuMsPerFrame) / 2;
+		const largeGpu = midpoint(main.gpuMsPerFrame, control.gpuMsPerFrame);
+		const smallGpu = midpoint(smallFirst.gpuMsPerFrame, smallSecond.gpuMsPerFrame);
 		const smallMpix = smallEnv.megapixels;
 		const span = env.megapixels - smallMpix;
 		if (span > 0.01 && largeDrift <= DRIFT_TOLERANCE && smallDrift <= DRIFT_TOLERANCE && sweepWarnings.length === 0) {
