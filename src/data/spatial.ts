@@ -87,11 +87,31 @@ export type SpatialRole =
 	| 'support'
 	| 'opening-clearance'
 	| 'connector-clearance'
+	| 'storefront-clearance'
 	| 'decorative-covering'
 	| 'trigger'
 	| 'fluid';
 
 export type PlacementClass = 'structure' | 'fixture' | 'furnishing' | 'clutter' | 'covering' | 'connector';
+
+/**
+ * How deep this volume may sink into geometry it is allowed to touch.
+ *
+ * `allowsOverlapFrom` only names placement classes, so it cannot tell a shop
+ * standing against the perimeter wall from a shop poking 0.4 m out through the
+ * facade. Both are a fixture meeting a structure. Depth is what separates them,
+ * and it is declared by the volume doing the cutting: a cave carved into the west
+ * wall says so, and every other volume stays at zero and therefore cannot drift
+ * through a wall unnoticed.
+ */
+export type Penetration = Readonly<{
+	/** Metres of allowed intrusion. Zero still lets two faces rest against each other. */
+	depth: number;
+	/** Placement classes this volume may cut into, up to `depth`. */
+	into: readonly PlacementClass[];
+}>;
+
+export const NO_PENETRATION: Penetration = { depth: 0, into: [] };
 
 export type SpatialVolume = Readonly<{
 	id: string;
@@ -99,6 +119,8 @@ export type SpatialVolume = Readonly<{
 	geometry: SpatialGeometry;
 	/** A solid with this false is visual geometry and does not block bodies. */
 	blocksMovement: boolean;
+	/** Declared intrusion into other geometry; absent means none is permitted. */
+	penetration?: Penetration;
 	/** Visual and physical obstruction are separate. Opaque visual geometry can block a route without a collider. */
 	clearance:
 		| Readonly<{ kind: 'clear' }>
@@ -253,15 +275,23 @@ export type SpatialProblem = Readonly<{
 		| 'broken-connection'
 		| 'blocked-clearance'
 		| 'unsupported-placement'
+		| 'uncontained-volume'
+		| 'coplanar-surface'
 		| 'invalid-interaction';
 	message: string;
 	entities: readonly string[];
 }>;
 
+/** Marks the volume whose plan every other volume of the same entity has to stay inside. */
+export const PLAN_ENVELOPE_TAG = 'plan-envelope';
+
 export type Bounds2 = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
 export type Bounds3 = Bounds2 & Readonly<{ minY: number; maxY: number }>;
 
 const EPSILON = 1e-6;
+
+/** Two horizontal faces within this distance share a depth value, and the winner moves with the camera. */
+const COPLANAR_TOLERANCE = 1e-3;
 
 function finite(values: readonly number[]): boolean {
 	return values.every(Number.isFinite);
@@ -362,7 +392,7 @@ function boundsOverlap(a: Bounds3, b: Bounds3): boolean {
 	);
 }
 
-function pointInPlan(shape: PlanShape, x: number, z: number): boolean {
+export function pointInPlan(shape: PlanShape, x: number, z: number): boolean {
 	if (shape.kind === 'circle') return Math.hypot(x - shape.center.x, z - shape.center.z) <= shape.radius + EPSILON;
 	if (shape.kind === 'rectangle') {
 		const dx = x - shape.center.x;
@@ -555,6 +585,46 @@ function boundedByItsShape(geometry: SpatialGeometry): boolean {
 }
 
 /**
+ * Horizontal intrusion of one volume into another: the smaller of the two axis
+ * overlaps, which is how far past the shared face the geometry reaches. Faces that
+ * merely rest against each other give zero.
+ */
+function intrusionDepth(a: SpatialGeometry, b: SpatialGeometry): number {
+	const boundsA = geometryBounds(a);
+	const boundsB = geometryBounds(b);
+	const x = Math.min(boundsA.maxX, boundsB.maxX) - Math.max(boundsA.minX, boundsB.minX);
+	const y = Math.min(boundsA.maxY, boundsB.maxY) - Math.max(boundsA.minY, boundsB.minY);
+	const z = Math.min(boundsA.maxZ, boundsB.maxZ) - Math.max(boundsA.minZ, boundsB.minZ);
+	if (x <= EPSILON || y <= EPSILON || z <= EPSILON) return 0;
+	return Math.min(x, z);
+}
+
+/**
+ * Whether `volume` declared the intrusion it is making into `target`. Only volumes
+ * whose bounds are their shape are measured: a flight's box is far wider than the
+ * flight, so its overlap figure means nothing.
+ */
+function declaredIntrusion(volume: SpatialVolume, target: WorldEntity, depth: number): boolean {
+	const permit = volume.penetration ?? NO_PENETRATION;
+	return permit.into.includes(target.placement.class) && depth <= permit.depth + EPSILON;
+}
+
+/**
+ * Two solids may share a face, and `allowsOverlapFrom` says which classes may do
+ * so. It cannot say how far, so a shop resting against the perimeter wall and a
+ * shop standing 0.4 m outside the facade were the same thing to it. KRUIDVAT was
+ * visibly through the north wall on the floor plan while this validator passed.
+ */
+function undeclaredIntrusion(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, volumeB: SpatialVolume): number {
+	if (!boundedByItsShape(volumeA.geometry) || !boundedByItsShape(volumeB.geometry)) return 0;
+	if (!volumeA.blocksMovement || !volumeB.blocksMovement) return 0;
+	const depth = intrusionDepth(volumeA.geometry, volumeB.geometry);
+	if (depth <= EPSILON) return 0;
+	if (declaredIntrusion(volumeA, b, depth) || declaredIntrusion(volumeB, a, depth)) return 0;
+	return depth;
+}
+
+/**
  * A surface you are meant to walk on cannot pass through something that stops bodies:
  * the far end of it is unreachable. Neither of the rules above sees this. The physical
  * overlap rule needs `blocksMovement` on both sides and a deck blocks nothing itself,
@@ -566,6 +636,72 @@ function obstructedSurface(a: SpatialVolume, b: SpatialVolume): boolean {
 	if (!walkable) return false;
 	const obstacle = walkable === a ? b : a;
 	return obstacle.blocksMovement;
+}
+
+function passageClearance(volume: SpatialVolume): boolean {
+	return volume.role === 'opening-clearance' || volume.role === 'connector-clearance';
+}
+
+/** Declared free space: it reaches past the geometry it belongs to, which is its whole point. */
+function clearanceRole(volume: SpatialVolume): boolean {
+	return passageClearance(volume) || volume.role === 'storefront-clearance';
+}
+
+/**
+ * What ruins the floor in front of a shopfront. A collider is one way; the Fashion Week
+ * backdrop is 5.4 m of opaque geometry with `blocksMovement` false, and every placement
+ * rule in this file needs that flag on both sides, so nothing looked at it.
+ */
+function blocksFrontage(volume: SpatialVolume): boolean {
+	return volume.clearance.kind === 'fixed-obstruction' || volume.role === 'solid';
+}
+
+/** Metres by which `volume` reaches past `envelope` in plan, and zero or less when it fits. */
+function planOvershoot(envelope: Bounds3, volume: Bounds3): number {
+	return Math.max(
+		envelope.minX - volume.minX,
+		volume.maxX - envelope.maxX,
+		envelope.minZ - volume.minZ,
+		volume.maxZ - envelope.maxZ,
+	);
+}
+
+const VISIBLE_SURFACE_ROLES: readonly SpatialRole[] = ['solid', 'walkable', 'support', 'decorative-covering'];
+
+/**
+ * Both volumes present a top face at the same height. Only shapes that are their own
+ * bounds are measured, since a flight's box ends at the deck it arrives on while the
+ * flight itself is a slope. Resting a bottom on a top is the support relation and a
+ * different question.
+ */
+function coplanarTops(a: SpatialVolume, b: SpatialVolume): boolean {
+	if (!boundedByItsShape(a.geometry) || !boundedByItsShape(b.geometry)) return false;
+	if (!VISIBLE_SURFACE_ROLES.includes(a.role) || !VISIBLE_SURFACE_ROLES.includes(b.role)) return false;
+	return Math.abs(geometryBounds(a.geometry).maxY - geometryBounds(b.geometry).maxY) <= COPLANAR_TOLERANCE;
+}
+
+/** Solid to the eye, whether or not it stops a body. */
+const OPAQUE_ROLES: readonly SpatialRole[] = ['solid', 'walkable', 'support'];
+
+/**
+ * Clutter is put down on the world; it cannot stand inside the building. Both the
+ * physical-overlap rule and the intrusion rule need `blocksMovement` on both sides,
+ * and a decorative car has it off, so two of them sat 0.35 m inside a concrete
+ * pillar with every check green. Paint may run under a pillar, which is why only
+ * opaque roles count.
+ */
+function clutterInStructure(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, volumeB: SpatialVolume): boolean {
+	if (!boundedByItsShape(volumeA.geometry) || !boundedByItsShape(volumeB.geometry)) return false;
+	const clutter = a.placement.class === 'clutter' ? volumeA : b.placement.class === 'clutter' ? volumeB : null;
+	const structure = a.placement.class === 'structure' ? volumeA : b.placement.class === 'structure' ? volumeB : null;
+	if (!clutter || !structure) return false;
+	return OPAQUE_ROLES.includes(clutter.role) && OPAQUE_ROLES.includes(structure.role);
+}
+
+/** An authored interpenetration: the wall caps run over the side walls and say so. */
+function authoredJoin(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, volumeB: SpatialVolume): boolean {
+	const depth = intrusionDepth(volumeA.geometry, volumeB.geometry);
+	return declaredIntrusion(volumeA, b, depth) || declaredIntrusion(volumeB, a, depth);
 }
 
 export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialProblem[] {
@@ -687,9 +823,28 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 			if (!b) continue;
 			for (const volumeA of a.volumes) {
 				for (const volumeB of b.volumes) {
+					if (
+						coplanarTops(volumeA, volumeB) &&
+						horizontalOverlap(volumeA.geometry, volumeB.geometry) &&
+						!authoredJoin(a, volumeA, b, volumeB)
+					) {
+						problems.push({
+							code: 'coplanar-surface',
+							message: `${a.id}.${volumeA.id} and ${b.id}.${volumeB.id} both end at y ${geometryBounds(
+								volumeA.geometry,
+							).maxY.toFixed(3)} and overlap in plan`,
+							entities: [a.id, b.id],
+						});
+					}
 					if (!geometriesOverlap(volumeA.geometry, volumeB.geometry)) continue;
-					const clearanceA = volumeA.role === 'opening-clearance' || volumeA.role === 'connector-clearance';
-					const clearanceB = volumeB.role === 'opening-clearance' || volumeB.role === 'connector-clearance';
+					const clearanceA = passageClearance(volumeA);
+					const clearanceB = passageClearance(volumeB);
+					const frontage =
+						volumeA.role === 'storefront-clearance'
+							? { entity: a, volume: volumeA, obstacle: { entity: b, volume: volumeB } }
+							: volumeB.role === 'storefront-clearance'
+								? { entity: b, volume: volumeB, obstacle: { entity: a, volume: volumeA } }
+								: null;
 					if (
 						(clearanceA && volumeB.clearance.kind === 'fixed-obstruction') ||
 						(clearanceB && volumeA.clearance.kind === 'fixed-obstruction')
@@ -699,10 +854,22 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 							message: `${a.id}.${volumeA.id} intersects ${b.id}.${volumeB.id}`,
 							entities: [a.id, b.id],
 						});
+					} else if (frontage && blocksFrontage(frontage.obstacle.volume)) {
+						problems.push({
+							code: 'blocked-clearance',
+							message: `${frontage.obstacle.entity.id}.${frontage.obstacle.volume.id} stands in the frontage of ${frontage.entity.id}`,
+							entities: [a.id, b.id],
+						});
 					} else if (!overlapAllowed(a, volumeA, b, volumeB) && volumeA.blocksMovement && volumeB.blocksMovement) {
 						problems.push({
 							code: 'unsupported-placement',
 							message: `${a.id}.${volumeA.id} physically overlaps ${b.id}.${volumeB.id}`,
+							entities: [a.id, b.id],
+						});
+					} else if (clutterInStructure(a, volumeA, b, volumeB) && !authoredJoin(a, volumeA, b, volumeB)) {
+						problems.push({
+							code: 'unsupported-placement',
+							message: `${a.id}.${volumeA.id} and ${b.id}.${volumeB.id} interpenetrate, and clutter cannot stand inside the structure`,
 							entities: [a.id, b.id],
 						});
 					} else if (obstructedSurface(volumeA, volumeB)) {
@@ -713,8 +880,38 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 							message: `${surface.entity.id}.${surface.volume.id} runs through ${obstacle.entity.id}.${obstacle.volume.id}`,
 							entities: [a.id, b.id],
 						});
+					} else {
+						const depth = undeclaredIntrusion(a, volumeA, b, volumeB);
+						if (depth > 0) {
+							problems.push({
+								code: 'unsupported-placement',
+								message: `${a.id}.${volumeA.id} and ${b.id}.${volumeB.id} overlap ${depth.toFixed(3)} m, and neither declares a penetration`,
+								entities: [a.id, b.id],
+							});
+						}
 					}
 				}
+			}
+		}
+	}
+
+	for (const entity of entities) {
+		const envelopes = entity.volumes.filter((volume) => volume.tags.includes(PLAN_ENVELOPE_TAG));
+		if (envelopes.length === 0) continue;
+		for (const volume of entity.volumes) {
+			if (envelopes.includes(volume) || clearanceRole(volume)) continue;
+			const bounds = geometryBounds(volume.geometry);
+			let nearest: Readonly<{ id: string; overshoot: number }> | null = null;
+			for (const envelope of envelopes) {
+				const overshoot = planOvershoot(geometryBounds(envelope.geometry), bounds);
+				if (!nearest || overshoot < nearest.overshoot) nearest = { id: envelope.id, overshoot };
+			}
+			if (nearest && nearest.overshoot > EPSILON) {
+				problems.push({
+					code: 'uncontained-volume',
+					message: `${entity.id}.${volume.id} reaches ${nearest.overshoot.toFixed(3)} m outside ${entity.id}.${nearest.id}`,
+					entities: [entity.id],
+				});
 			}
 		}
 	}

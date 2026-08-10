@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { levelY } from '#/data/levels';
 import {
 	HELIPAD_DECK_PLAN,
+	HELIPAD_DECK_THICKNESS,
+	HELIPAD_DECK_TOP_Y,
 	HELIPAD_HATCH_FRAME_RAILS,
 	HELIPAD_HATCH_FRAME_SPEC,
 	HELIPAD_PAD_SPEC,
@@ -15,10 +17,10 @@ import { addXZPlanHole, xzPlanShape } from '#/render/xzShape';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half, midpoint } from '#/util/math';
 
-/** Roof Y — top of mall ceiling slab (see MallBuilder ceil y) */
-// Ceiling slab tops out at 13.75 (y 13.5 + 0.25 extrude) — the deck used to sit
-// AT 13.4…13.575, i.e. embedded inside the slab.
+/** Roof Y — top of the mall roof slab. */
 export const ROOF_Y = levelY('roof');
+/** Everything on the helipad stands on the deck, which is a few cm proud of that slab. */
+const DECK_TOP = HELIPAD_DECK_TOP_Y;
 
 /**
  * Secret service stairs (V1 → dak) + helicopter landing pad on the roof.
@@ -26,7 +28,7 @@ export const ROOF_Y = levelY('roof');
  */
 export class Helipad {
 	readonly group = new THREE.Group();
-	readonly padCenter = new THREE.Vector3(HELIPAD_PAD_SPEC.center.x, ROOF_Y, HELIPAD_PAD_SPEC.center.z);
+	readonly padCenter = new THREE.Vector3(HELIPAD_PAD_SPEC.center.x, DECK_TOP, HELIPAD_PAD_SPEC.center.z);
 	private materials: THREE.Material[] = [];
 	private pool: LightPool;
 
@@ -173,7 +175,7 @@ export class Helipad {
 				width: rail.size.width,
 				height: frameHeight,
 				depth: rail.size.depth,
-				position: { x: rail.center.x, y: y1 + half(frameHeight), z: rail.center.z },
+				position: { x: rail.center.x, y: DECK_TOP + half(frameHeight), z: rail.center.z },
 			});
 		}
 
@@ -190,7 +192,7 @@ export class Helipad {
 		const deckShape = xzPlanShape(HELIPAD_DECK_PLAN);
 		addXZPlanHole(deckShape, SECRET_STAIRS_OPENING_PLAN);
 		const deckGeo = new THREE.ExtrudeGeometry(deckShape, {
-			depth: 0.35,
+			depth: HELIPAD_DECK_THICKNESS,
 			bevelEnabled: false,
 		});
 		deckGeo.rotateX(-Math.PI / 2);
@@ -204,7 +206,7 @@ export class Helipad {
 				}),
 			),
 		);
-		deck.position.y = ROOF_Y - 0.35;
+		deck.position.y = DECK_TOP - HELIPAD_DECK_THICKNESS;
 		deck.receiveShadow = true;
 		this.group.add(deck);
 
@@ -212,7 +214,7 @@ export class Helipad {
 		const wallM = this.track(lit({ color: 0x546e7a, metalness: 0.4, roughness: 0.5 }));
 		const wall = (w: number, d: number, x: number, z: number) => {
 			const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, d), wallM);
-			m.position.set(x, ROOF_Y + 0.5, z);
+			m.position.set(x, DECK_TOP + 0.5, z);
 			this.group.add(m);
 		};
 		wall(24, 0.2, 20, 22.8);
@@ -232,7 +234,7 @@ export class Helipad {
 			),
 		);
 		pad.position.copy(this.padCenter);
-		pad.position.y = ROOF_Y + HELIPAD_PAD_SPEC.height / 2 - 0.01;
+		pad.position.y = DECK_TOP + HELIPAD_PAD_SPEC.height / 2 - 0.01;
 		pad.receiveShadow = true;
 		this.group.add(pad);
 
@@ -248,7 +250,7 @@ export class Helipad {
 			),
 		);
 		ring.rotation.x = -Math.PI / 2;
-		ring.position.set(this.padCenter.x, ROOF_Y + 0.12, this.padCenter.z);
+		ring.position.set(this.padCenter.x, DECK_TOP + 0.12, this.padCenter.z);
 		this.group.add(ring);
 
 		// Big H
@@ -256,9 +258,9 @@ export class Helipad {
 		const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 3.2), hMat);
 		const h2 = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 3.2), hMat);
 		const h3 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.06, 0.45), hMat);
-		h1.position.set(this.padCenter.x - 1.0, ROOF_Y + 0.14, this.padCenter.z);
-		h2.position.set(this.padCenter.x + 1.0, ROOF_Y + 0.14, this.padCenter.z);
-		h3.position.set(this.padCenter.x, ROOF_Y + 0.14, this.padCenter.z);
+		h1.position.set(this.padCenter.x - 1.0, DECK_TOP + 0.14, this.padCenter.z);
+		h2.position.set(this.padCenter.x + 1.0, DECK_TOP + 0.14, this.padCenter.z);
+		h3.position.set(this.padCenter.x, DECK_TOP + 0.14, this.padCenter.z);
 		this.group.add(h1, h2, h3);
 
 		// Windsock pole
@@ -266,7 +268,7 @@ export class Helipad {
 			new THREE.CylinderGeometry(0.05, 0.05, 3.2, 8),
 			this.track(lit({ color: 0x90a4ae, metalness: 0.7 })),
 		);
-		pole.position.set(this.padCenter.x + 6.5, ROOF_Y + 1.6, this.padCenter.z + 4);
+		pole.position.set(this.padCenter.x + 6.5, DECK_TOP + 1.6, this.padCenter.z + 4);
 		this.group.add(pole);
 		const sock = new THREE.Mesh(
 			new THREE.ConeGeometry(0.35, 1.4, 8, 1, true),
@@ -279,7 +281,7 @@ export class Helipad {
 			),
 		);
 		sock.rotation.z = Math.PI / 2;
-		sock.position.set(this.padCenter.x + 7.2, ROOF_Y + 3.0, this.padCenter.z + 4);
+		sock.position.set(this.padCenter.x + 7.2, DECK_TOP + 3.0, this.padCenter.z + 4);
 		this.group.add(sock);
 	}
 
@@ -289,7 +291,7 @@ export class Helipad {
 		for (let i = 0; i < 8; i++) {
 			const a = (i / 8) * Math.PI * 2;
 			const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), lit);
-			bulb.position.set(this.padCenter.x + Math.cos(a) * 5.3, ROOF_Y + 0.2, this.padCenter.z + Math.sin(a) * 5.3);
+			bulb.position.set(this.padCenter.x + Math.cos(a) * 5.3, DECK_TOP + 0.2, this.padCenter.z + Math.sin(a) * 5.3);
 			this.group.add(bulb);
 		}
 		this.pool.register({
@@ -297,7 +299,7 @@ export class Helipad {
 			intensity: 14,
 			distance: 30,
 			decay: 1.8,
-			position: new THREE.Vector3(this.padCenter.x, ROOF_Y + 4, this.padCenter.z),
+			position: new THREE.Vector3(this.padCenter.x, DECK_TOP + 4, this.padCenter.z),
 		});
 	}
 
@@ -320,7 +322,7 @@ export class Helipad {
 		// het als spook-signage boven verdieping 1
 		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
 		sp.scale.set(6, 1.5, 1);
-		sp.position.set(this.padCenter.x, ROOF_Y + 3.2, this.padCenter.z);
+		sp.position.set(this.padCenter.x, DECK_TOP + 3.2, this.padCenter.z);
 		this.group.add(sp);
 
 		// Point south toward glass elevator + green call pedestals
@@ -349,7 +351,7 @@ export class Helipad {
 			),
 		);
 		// South edge of helipad deck → follow yellow path to green call knobs
-		liftSign.position.set(18, ROOF_Y + 2.2, 8.5);
+		liftSign.position.set(18, DECK_TOP + 2.2, 8.5);
 		this.group.add(liftSign);
 	}
 }

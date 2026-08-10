@@ -12,8 +12,8 @@ import {
 	MALL_SLAB_SPECS,
 	MALL_WALL_SPECS,
 	SHOP_HEIGHT,
-	SHOP_ROOM_DEPTH_FACTOR,
 	STAIR_CONNECTORS,
+	shopRoomDepth,
 } from '#/data/world';
 import { lit } from '#/render/material';
 import { addBoxMesh, addPlaneMesh } from '#/render/meshFactory';
@@ -1075,7 +1075,7 @@ export class MallBuilder {
 	}
 
 	private buildStorePod(store: StoreDef): THREE.Group {
-		const { id, x, z, level: storeLevel, rotation, width, depth, color, accent, hero, name } = store;
+		const { id, x, z, level: storeLevel, rotation, width, color, accent, hero, name } = store;
 		const g = new THREE.Group();
 		g.name = `store_${id}`;
 		g.position.set(x, levelY(storeLevel), z);
@@ -1097,7 +1097,7 @@ export class MallBuilder {
 		 * Thin walls ONLY on back + left + right — NOTHING in the middle.
 		 */
 		const wallT = 0.18;
-		const roomDepth = depth * SHOP_ROOM_DEPTH_FACTOR;
+		const roomDepth = shopRoomDepth(store);
 		const backZ = -roomDepth;
 
 		// Floor of shop (visible mat)

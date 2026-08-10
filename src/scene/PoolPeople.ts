@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
+import { TIKI_BAR_SPEC } from '#/data/world';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
@@ -15,6 +16,8 @@ const SWIM_CLEAR_RING = 0.62;
 /** Hoe diep de dames op de badrand zitten, en hoe dicht op de rand ze mogen. */
 const RIM_SINK = 0.85;
 const RIM_CLEAR = 0.2;
+/** Schouderruimte tussen de bar-counter en de eerste man van de crew. */
+const CREW_CLEAR = 0.45;
 
 /**
  * Trekt een plek naar het water toe tot er `clear` meter waterlijn omheen zit.
@@ -652,9 +655,13 @@ export class PoolPeople {
 		const gold = this.mat(0xd4af37, 0.25, 0.9);
 		const skins = [0xe8bd97, 0x8d5524, 0xd9a377, 0x5c3a21];
 
+		// De rij begint een schouderbreedte oost van de counter. Op een los
+		// ingetikte -12,9 stond man één tot zijn middel in het barmeubel.
+		const counterEastX = TIKI_BAR_SPEC.center.x + TIKI_BAR_SPEC.counter.offsetX + TIKI_BAR_SPEC.counter.width / 2;
+
 		skins.forEach((skin, i) => {
 			const rig = this.buildMan(skin, polo, 0x1c2a4a);
-			rig.root.position.set(-12.9 + i * 1.4, DECK_Y, 15.2);
+			rig.root.position.set(counterEastX + CREW_CLEAR + i * 1.4, DECK_Y, 15.2);
 			rig.root.rotation.y = (i - 1.5) * 0.12; // losjes naar de bar gedraaid
 
 			// Polokraagje plus ketting — het uniform van de vereniging.

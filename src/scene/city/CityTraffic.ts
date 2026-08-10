@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { lit } from '#/render/material';
 import { LANE_X, LANE_Z } from '#/scene/city/CityRoads';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half } from '#/util/math';
 import { at } from '#/util/rand';
 
 /**
@@ -68,6 +69,32 @@ const LIGHT_SEE = 15; // vanaf hier "ziet" de bestuurder het rode licht
 const BRAKE = 9; // m/s² — stevig, maar niemand morst koffie
 const ACCEL = 4; // m/s² — optrekken alsof de benzine gratis is
 
+/** Carrosserie. De remafstand en de botsstraal hangen eraan, dus staat hij hier. */
+const BODY_L = 4.2;
+const BODY_W = 1.85;
+
+/**
+ * Hoe ver naast de strookmiddellijn een bestuurder je als obstakel ziet: wat de
+ * auto veegt plus een schouder. Niet de hele wegbreedte — remmen zodra je de
+ * goot aanraakt maakt een aanrijding onmogelijk, en op de berm hoor je veilig
+ * te zijn.
+ */
+const ROAD_REACH = half(BODY_W) + 0.8;
+/** Hoger dan dit en je staat op iets, niet op het asfalt. */
+const ROAD_HEAD = 1.6;
+/** Botsstraal rond het hart van de auto. */
+const HIT_R = half(BODY_L) - 0.1;
+/** Onder deze snelheid tikt hij je alleen aan. */
+const HIT_V = 2.5;
+/** Zo lang blijft één aanrijding staan, anders lanceert de colonne je vier keer. */
+const HIT_COOLDOWN = 1.5;
+/** Extra vaart bovenop die van de auto, en hoe hoog je gaat. */
+const HIT_PUSH = 3;
+const HIT_LIFT = 5.5;
+
+/** Iets op de rijbaan waar de auto's rekening mee houden. Voeten, niet ogen. */
+export type RoadObstacle = { x: number; y: number; z: number };
+
 export class CityTraffic {
 	readonly group = new THREE.Group();
 
@@ -76,6 +103,9 @@ export class CityTraffic {
 	private textures: THREE.Texture[] = [];
 
 	private readonly getPhase: () => string;
+	private getObstacle: (() => RoadObstacle | null) | null = null;
+	private onHit: ((vx: number, vz: number, vy: number) => void) | null = null;
+	private hitCooldown = 0;
 	/**
 	 * Eén record per auto in plaats van vier arrays op dezelfde index — die
 	 * konden uit de pas lopen en dwongen bij elke lookup een bounds-check af.
@@ -95,7 +125,7 @@ export class CityTraffic {
 		this.group.name = 'city_traffic';
 
 		// ── gedeelde onderdelen: één setje geometrie voor het hele wagenpark ──
-		const bodyGeo = new THREE.BoxGeometry(4.2, 0.75, 1.85);
+		const bodyGeo = new THREE.BoxGeometry(BODY_L, 0.75, BODY_W);
 		const cabinGeo = new THREE.BoxGeometry(2.1, 0.6, 1.6);
 		const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10);
 		wheelGeo.rotateX(Math.PI / 2); // as opzij, zoals wielen dat graag hebben
@@ -162,8 +192,22 @@ export class CityTraffic {
 		}
 	}
 
+	/** Wie er op de ringweg kan staan (de speler te voet). Geef `null` als hij binnen zit. */
+	setObstacleProvider(fn: () => RoadObstacle | null): void {
+		this.getObstacle = fn;
+	}
+
+	/** Wat er gebeurt als remmen niet meer helpt: een zet langs de rijrichting. */
+	setHitHandler(fn: (vx: number, vz: number, vy: number) => void): void {
+		this.onHit = fn;
+	}
+
 	update(dt: number, _t: number): void {
 		const phase = this.getPhase();
+		this.hitCooldown = Math.max(0, this.hitCooldown - dt);
+		// Eén projectie per frame in plaats van één per auto: de ring verandert niet.
+		const obstacle = this.getObstacle?.() ?? null;
+		const obstacleS = obstacle === null ? null : this.ringDistance(obstacle);
 		this.cars.forEach((car, i) => {
 			// Voorligger zoeken: kleinste positieve afstand vooruit op de ring.
 			// O(n²) over 20 auto's — de Pi haalt z'n schouders op.
@@ -174,6 +218,16 @@ export class CityTraffic {
 				if (d <= 0) d += PERIM;
 				if (d < gap) gap = d;
 			}
+			// Een voetganger op de rijstrook remt net zo hard als blik, maar telt
+			// niet mee in de harde clamp hieronder: die zet de auto onvoorwaardelijk
+			// stil en dan is aanrijden onmogelijk. Zo beslist de remweg het —
+			// ruim op tijd gezien staat hij vóór je, te laat gezien niet.
+			let sight = gap;
+			if (obstacleS !== null) {
+				let d = obstacleS - car.s;
+				if (d <= 0) d += PERIM;
+				if (d < sight) sight = d;
+			}
 
 			const k = this.edgeOf(car.s);
 			const edge = at(EDGES, k);
@@ -181,7 +235,7 @@ export class CityTraffic {
 			const blocked = phase !== edge.phase;
 
 			// Remmen voor blik of voor rood, anders rustig terug naar kruissnelheid.
-			const mustBrake = gap < GAP_BRAKE || (blocked && distCorner < LIGHT_SEE);
+			const mustBrake = sight < GAP_BRAKE || (blocked && distCorner < LIGHT_SEE);
 			car.v = mustBrake ? Math.max(0, car.v - BRAKE * dt) : Math.min(car.vmax, car.v + ACCEL * dt);
 
 			// Harde clampen: nooit door de voorligger heen, nooit de hoek op bij rood.
@@ -195,6 +249,15 @@ export class CityTraffic {
 
 			car.s = (car.s + move) % PERIM;
 			this.place(i);
+
+			// Wie te laat geremd heeft rijdt er gewoon doorheen; dan is het raak.
+			if (obstacle === null || this.hitCooldown > 0 || car.v < HIT_V) return;
+			const dx = obstacle.x - car.mesh.position.x;
+			const dz = obstacle.z - car.mesh.position.z;
+			if (dx * dx + dz * dz > HIT_R * HIT_R) return;
+			this.hitCooldown = HIT_COOLDOWN;
+			const push = car.v + HIT_PUSH;
+			this.onHit?.(edge.dx * push, edge.dz * push, HIT_LIFT);
 		});
 	}
 
@@ -205,6 +268,26 @@ export class CityTraffic {
 	}
 
 	// ── intern ─────────────────────────────────────────────
+
+	/**
+	 * Boogafstand van een punt dat op de ring staat, of null als het ernaast of
+	 * erboven ligt. Bij de hoeken passen twee randen; de dichtstbijzijnde wint.
+	 */
+	private ringDistance(p: RoadObstacle): number | null {
+		if (Math.abs(p.y) > ROAD_HEAD) return null;
+		let best: number | null = null;
+		let bestLat = ROAD_REACH;
+		for (let k = 0; k < EDGES.length; k++) {
+			const edge = at(EDGES, k);
+			const u = (p.x - edge.ox) * edge.dx + (p.z - edge.oz) * edge.dz;
+			if (u < 0 || u > edge.len) continue;
+			const lat = Math.abs((p.x - edge.ox) * -edge.dz + (p.z - edge.oz) * edge.dx);
+			if (lat >= bestLat) continue;
+			bestLat = lat;
+			best = at(EDGE_START, k) + u;
+		}
+		return best;
+	}
 
 	/** Op welke rand boogafstand s ligt. Vier vergelijkingen, geen wiskunde. */
 	private edgeOf(s: number): number {

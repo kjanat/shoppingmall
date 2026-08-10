@@ -5,10 +5,10 @@ import { labelCanvas, labelTexture } from '#/util/label';
 import { at } from '#/util/rand';
 
 /**
- * Prairie Lakes Fashion Week: a runway in front of Douglas on the ground floor.
+ * Prairie Lakes Fashion Week: a runway beside Douglas on the ground floor.
  *
- * Sits at x=-28, z=-4…12 — deliberately clear of every wayfinding edge, so the
- * shopper crowd never tries to path through the show.
+ * Sits at x=-28, z=-3.7…8.6 — deliberately clear of every wayfinding edge, so
+ * the shopper crowd never tries to path through the show.
  */
 const { runwayX: RUNWAY_X, startZ: START_Z, tipZ: TIP_Z, podiumY: PODIUM_Y, halfWidth: HALF_W } = CATWALK_SPEC;
 const DECK_LENGTH = CATWALK_DECK.length;

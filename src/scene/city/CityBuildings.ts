@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { lit } from '#/render/material';
+import type { Rand, TowerSpec } from '#/scene/city/cityPlan';
+import { mulberry32, planTowers, TOWER_SEED } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { pickWith } from '#/util/rand';
 
@@ -13,28 +15,6 @@ import { pickWith } from '#/util/rand';
  * Pi-budget: één InstancedMesh voor alle torens (per-instance nachttint),
  * twee InstancedMeshes voor dakrommel, drie knipperbolletjes. Geen lampen.
  */
-
-/** Deterministische RNG (mulberry32) — de stad hoort er elke reload hetzelfde bij te staan. */
-function mulberry32(seed: number): () => number {
-	let a = seed >>> 0;
-	return () => {
-		a = (a + 0x6d2b79f5) | 0;
-		let t = Math.imul(a ^ (a >>> 15), 1 | a);
-		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-	};
-}
-
-type Rand = () => number;
-
-interface TowerSpec {
-	x: number;
-	z: number;
-	w: number;
-	d: number;
-	h: number;
-	rot: number;
-}
 
 interface Beacon {
 	mat: THREE.MeshBasicMaterial;
@@ -62,8 +42,8 @@ export class CityBuildings {
 		this.unitBox.translate(0, 0.5, 0);
 		this.geometries.push(this.unitBox);
 
-		const rand = mulberry32(0x404);
-		const towers = this.planTowers(rand);
+		const rand = mulberry32(TOWER_SEED);
+		const towers = planTowers(rand);
 		this.buildTowers(towers, rand);
 		this.buildRoofDetails(towers, rand);
 		this.buildBeacons(towers);
@@ -88,56 +68,8 @@ export class CityBuildings {
 		this.group.clear();
 	}
 
-	/**
-	 * ~30 torens in vier banden om de ringweg: |x| 58..90 of |z| 44..72,
-	 * netjes binnen de wereldgrens (|x| ≤ 95, |z| ≤ 75), ook mét halve breedte.
-	 */
-	private planTowers(rand: Rand): TowerSpec[] {
-		const specs: TowerSpec[] = [];
-		const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
-		const bands: [number, () => [number, number]][] = [
-			[8, () => [lerp(-85, 85, rand()), -lerp(46, 67, rand())]], // noord
-			[8, () => [lerp(-85, 85, rand()), lerp(46, 67, rand())]], // zuid
-			[7, () => [lerp(60, 87, rand()), lerp(-64, 64, rand())]], // oost
-			[7, () => [-lerp(60, 87, rand()), lerp(-64, 64, rand())]], // west
-		];
-		// Kavels van theater, garage en park — daar bouwt niemand overheen.
-		// "Building's in the way" was letterlijk waar: torens verzwolgen de marquee.
-		const reserved: [number, number, number, number][] = [
-			[52, 90, -70, -40], // PRAIRIE THEATRE (NO)
-			[52, 90, 40, 72], // parkeergarage (ZO)
-			[-94, -52, -74, -36], // stadspark (NW)
-		];
-		const opKavel = (x: number, z: number, w: number, d: number) =>
-			reserved.some(([x0, x1, z0, z1]) => x + w * 0.5 > x0 && x - w * 0.5 < x1 && z + d * 0.5 > z0 && z - d * 0.5 < z1);
-
-		for (const [count, pick] of bands) {
-			for (let i = 0; i < count; i++) {
-				for (let attempt = 0; attempt < 8; attempt++) {
-					const [x, z] = pick();
-					const w = lerp(6, 13, rand());
-					const d = lerp(6, 13, rand());
-					// Meest middelhoog, ~1 op 5 een uitschieter richting 46.
-					const h = rand() < 0.22 ? 30 + 16 * rand() : 10 + 20 * rand();
-					// Niet op elkaars tenen (de hoeken van de banden overlappen),
-					// en niet op een gereserveerd kavel
-					const vrij =
-						!opKavel(x, z, w, d) &&
-						specs.every((s) => Math.abs(s.x - x) > (s.w + w) * 0.5 + 1.5 || Math.abs(s.z - z) > (s.d + d) * 0.5 + 1.5);
-					if (vrij) {
-						// Ietsje scheef van het grid — net genoeg om te verontrusten
-						specs.push({ x, z, w, d, h, rot: (rand() - 0.5) * 0.12 });
-						break;
-					}
-					// Na 8 pogingen dan maar geen toren; een gat in de skyline is ook moody.
-				}
-			}
-		}
-		return specs;
-	}
-
 	/** Eén InstancedMesh, per-instance nachttint, gedeelde raam-textuur die 's avonds gloeit. */
-	private buildTowers(specs: TowerSpec[], rand: Rand): void {
+	private buildTowers(specs: readonly TowerSpec[], rand: Rand): void {
 		const tex = this.makeWindowTexture(rand);
 		const facade = lit({
 			color: 0xffffff,
@@ -175,7 +107,7 @@ export class CityBuildings {
 	}
 
 	/** Dakrommel: watertorens (cilinders) + AC-bakken/antennes (geschaalde kubusjes), dun gestrooid. */
-	private buildRoofDetails(specs: TowerSpec[], rand: Rand): void {
+	private buildRoofDetails(specs: readonly TowerSpec[], rand: Rand): void {
 		interface Blob {
 			x: number;
 			y: number;
@@ -247,7 +179,7 @@ export class CityBuildings {
 	}
 
 	/** Rood knipperlicht op de 3 hoogste torens — pure emissive, geen lamp. */
-	private buildBeacons(specs: TowerSpec[]): void {
+	private buildBeacons(specs: readonly TowerSpec[]): void {
 		const bulbGeo = new THREE.SphereGeometry(0.5, 10, 8);
 		const mastGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 6);
 		this.geometries.push(bulbGeo, mastGeo);

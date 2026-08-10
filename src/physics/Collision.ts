@@ -13,6 +13,15 @@ import {
 	VERTICAL_CONNECTORS,
 } from '#/data/world';
 import {
+	CITY_BOUNDS,
+	CITY_GROUND_Y,
+	GARAGE_PLAN,
+	THEATRE_PLAN,
+	TOWER_SPECS,
+	theatreTreadY,
+	theatreTreadZ,
+} from '#/scene/city/cityPlan';
+import {
 	POOL_FLOOR_Y,
 	POOL_WATER_Y,
 	poolFloorY,
@@ -35,6 +44,26 @@ export type AABB = {
 	label?: string;
 	/** Climbers (the player) walk ON this instead of into it — see `ramps`. */
 	climbable?: boolean;
+	/** Stands outside the mall; only tested for agents that are allowed out there. */
+	outdoor?: boolean;
+};
+
+type BoxOptions = {
+	minY?: number;
+	maxY?: number;
+	label?: string;
+	climbable?: boolean;
+	outdoor?: boolean;
+};
+
+/** A flat walkable rectangle in the city, above street level. */
+export type CitySurface = {
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+	y: number;
+	label: string;
 };
 
 /** A walkable incline running along Z (escalator / stairs). */
@@ -123,6 +152,15 @@ export const WALK_STEP = 0.5;
 
 /** Hoeveel de kerbdoos onder het loopvlak van een platform stopt, zodat je erop kunt staan. */
 const KERB_LIP = 0.04;
+
+/**
+ * Waar de buitenschil ophoudt. Onder het dakdek houdt hij je binnen, erboven
+ * niet: over de dakrand stappen is de sprong naar de stad, en dat is het punt.
+ */
+const SHELL_TOP_Y = ROOF_H - 0.35;
+
+/** Dikte van een kerbdoos rond een stadsdek. */
+const KERB_T = 0.25;
 
 /**
  * Tredesnelheid van de roltrap langs de helling (m/s). Staat hier omdat de
@@ -227,19 +265,20 @@ export class CollisionWorld {
 		},
 	];
 
+	/**
+	 * Loopvlakken buiten de mall die hoger liggen dan de straat. Alles wat er
+	 * niet in staat is straatniveau; er is buiten geen verdieping om op te vallen.
+	 */
+	readonly citySurfaces: CitySurface[] = [];
+
 	/** Atrium hole in the floor-1 slab — jump the balustrade and you drop through. */
 
 	constructor() {
 		this.buildMall();
+		this.buildCity();
 	}
 
-	private add(
-		minX: number,
-		maxX: number,
-		minZ: number,
-		maxZ: number,
-		opts?: { minY?: number; maxY?: number; label?: string; climbable?: boolean },
-	): void {
+	private add(minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions): void {
 		this.boxes.push({
 			minX,
 			maxX,
@@ -249,17 +288,12 @@ export class CollisionWorld {
 			maxY: opts?.maxY,
 			label: opts?.label,
 			climbable: opts?.climbable,
+			outdoor: opts?.outdoor,
 		});
 	}
 
 	/** Runtime colliders (WC walls, props added after construct) */
-	addBox(
-		minX: number,
-		maxX: number,
-		minZ: number,
-		maxZ: number,
-		opts?: { minY?: number; maxY?: number; label?: string; climbable?: boolean },
-	): void {
+	addBox(minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions): void {
 		this.add(minX, maxX, minZ, maxZ, opts);
 	}
 
@@ -271,16 +305,31 @@ export class CollisionWorld {
 		// West wall has a basement-height opening for the authored parking ramp.
 		// A single floor-agnostic AABB here made the rendered exit impassable.
 		const exitExtentZ = half(PARKING_EXIT_RAMP.width) + 0.5;
-		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, -mallEdgeZ - wallT, -exitExtentZ, { label: 'wall_w_north' });
-		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, exitExtentZ, mallEdgeZ + wallT, { label: 'wall_w_south' });
+		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, -mallEdgeZ - wallT, -exitExtentZ, {
+			maxY: SHELL_TOP_Y,
+			label: 'wall_w_north',
+		});
+		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, exitExtentZ, mallEdgeZ + wallT, {
+			maxY: SHELL_TOP_Y,
+			label: 'wall_w_south',
+		});
 		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, -exitExtentZ, exitExtentZ, {
 			minY: -0.5,
-			maxY: ROOF_H + 2,
+			maxY: SHELL_TOP_Y,
 			label: 'wall_w_above_exit',
 		});
-		this.add(mallEdgeX - 0.2, mallEdgeX + wallT, -mallEdgeZ - wallT, mallEdgeZ + wallT, { label: 'wall_e' });
-		this.add(-mallEdgeX - wallT, mallEdgeX + wallT, -mallEdgeZ - wallT, -mallEdgeZ + 0.2, { label: 'wall_n' });
-		this.add(-mallEdgeX - wallT, mallEdgeX + wallT, mallEdgeZ - 0.2, mallEdgeZ + wallT, { label: 'wall_s' });
+		this.add(mallEdgeX - 0.2, mallEdgeX + wallT, -mallEdgeZ - wallT, mallEdgeZ + wallT, {
+			maxY: SHELL_TOP_Y,
+			label: 'wall_e',
+		});
+		this.add(-mallEdgeX - wallT, mallEdgeX + wallT, -mallEdgeZ - wallT, -mallEdgeZ + 0.2, {
+			maxY: SHELL_TOP_Y,
+			label: 'wall_n',
+		});
+		this.add(-mallEdgeX - wallT, mallEdgeX + wallT, mallEdgeZ - 0.2, mallEdgeZ + wallT, {
+			maxY: SHELL_TOP_Y,
+			label: 'wall_s',
+		});
 
 		// Store: thin BACK wall only — open interior for stock + shopkeeper
 		for (const s of STORES) {
@@ -361,6 +410,104 @@ export class CollisionWorld {
 		}
 	}
 
+	/**
+	 * De stad buiten de mall. De torens komen uit dezelfde `planTowers` die
+	 * CityBuildings tekent, het theater en de garage uit dezelfde plannen die hun
+	 * bouwers gebruiken: een tweede lijst coördinaten hier is een blok dat naast
+	 * zijn gevel staat.
+	 */
+	private buildCity(): void {
+		TOWER_SPECS.forEach((t, i) => {
+			// De draai is klein maar niet nul; de omhullende dekt hem, dus je stapt
+			// nooit in een hoek die er wel staat.
+			const cos = Math.abs(Math.cos(t.rot));
+			const sin = Math.abs(Math.sin(t.rot));
+			const ex = half(t.w * cos + t.d * sin);
+			const ez = half(t.w * sin + t.d * cos);
+			this.add(t.x - ex, t.x + ex, t.z - ez, t.z + ez, {
+				minY: -0.5,
+				maxY: t.h,
+				label: `city_tower_${i}`,
+				outdoor: true,
+			});
+		});
+
+		const zaal = THEATRE_PLAN.hall;
+		this.add(zaal.minX, zaal.maxX, zaal.minZ, zaal.maxZ, {
+			minY: -0.5,
+			maxY: THEATRE_PLAN.hallHeight,
+			label: 'city_theatre_hall',
+			outdoor: true,
+		});
+
+		// Podium en treden zijn loopvlakken; de kerbdozen eromheen dwingen je de
+		// trap op in plaats van tegen de zijkant omhoog.
+		const dek = THEATRE_PLAN.podium;
+		const trap = THEATRE_PLAN.stair;
+		const dekTop = THEATRE_PLAN.podiumY - KERB_LIP;
+		const trapTop = theatreTreadY(0) - KERB_LIP;
+		this.citySurfaces.push({ ...dek, y: THEATRE_PLAN.podiumY, label: 'theatre_podium' });
+		this.add(dek.minX, dek.minX + KERB_T, dek.minZ, dek.maxZ, { maxY: dekTop, label: 'theatre_kerb_w', outdoor: true });
+		this.add(dek.maxX - KERB_T, dek.maxX, dek.minZ, dek.maxZ, { maxY: dekTop, label: 'theatre_kerb_e', outdoor: true });
+		this.add(dek.minX, trap.minX, dek.maxZ - KERB_T, dek.maxZ, { maxY: dekTop, label: 'theatre_kerb_sw', outdoor: true });
+		this.add(trap.maxX, dek.maxX, dek.maxZ - KERB_T, dek.maxZ, { maxY: dekTop, label: 'theatre_kerb_se', outdoor: true });
+
+		const trapEindZ = trap.zTop + trap.treads * trap.tread;
+		this.add(trap.minX - KERB_T, trap.minX, trap.zTop, trapEindZ, { maxY: trapTop, label: 'theatre_stair_w', outdoor: true });
+		this.add(trap.maxX, trap.maxX + KERB_T, trap.zTop, trapEindZ, { maxY: trapTop, label: 'theatre_stair_e', outdoor: true });
+		for (let i = 0; i < trap.treads; i++) {
+			const { minZ, maxZ } = theatreTreadZ(i);
+			this.citySurfaces.push({ minX: trap.minX, maxX: trap.maxX, minZ, maxZ, y: theatreTreadY(i), label: `theatre_tread_${i}` });
+		}
+
+		const zuilen = THEATRE_PLAN.columns;
+		for (let i = 0; i < zuilen.count; i++) {
+			const x = zuilen.x0 + i * zuilen.pitch;
+			this.add(x - zuilen.radius, x + zuilen.radius, zuilen.z - zuilen.radius, zuilen.z + zuilen.radius, {
+				minY: zuilen.bottomY - 0.5,
+				maxY: zuilen.topY,
+				label: `city_theatre_column_${i}`,
+				outdoor: true,
+			});
+		}
+
+		// De garage staat op poten: het maaiveld-dek is open, dus dat loop je op.
+		// Alleen de kolommen houden je tegen.
+		const garage = GARAGE_PLAN.footprint;
+		this.citySurfaces.push({ ...garage, y: GARAGE_PLAN.groundDeckY, label: 'garage_deck' });
+		const kolom = half(GARAGE_PLAN.columnSize);
+		for (const x of GARAGE_PLAN.columnX) {
+			for (const z of GARAGE_PLAN.columnZ) {
+				this.add(x - kolom, x + kolom, z - kolom, z + kolom, {
+					minY: -0.5,
+					maxY: GARAGE_PLAN.columnTopY,
+					label: 'city_garage_column',
+					outdoor: true,
+				});
+			}
+		}
+	}
+
+	/** Binnen de voetafdruk liggen de mall-platen; erbuiten alleen de stad. */
+	insideMallPlan(x: number, z: number): boolean {
+		return Math.abs(x) <= half(MALL_FOOTPRINT.width) && Math.abs(z) <= half(MALL_FOOTPRINT.depth);
+	}
+
+	/**
+	 * Het loopvlak buiten de mall. Straatniveau, tenzij er een stadsdek onder je
+	 * voeten ligt waar je ook echt bij kunt: staan op straat naast het theater
+	 * tilt je niet ineens anderhalve meter op het podium.
+	 */
+	cityGroundAt(x: number, z: number, currentY: number, step = WALK_STEP): number {
+		let best = CITY_GROUND_Y;
+		for (const s of this.citySurfaces) {
+			if (s.y <= best) continue;
+			if (x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
+			if (currentY >= s.y - step) best = s.y;
+		}
+		return best;
+	}
+
 	/** True where this platform's top face is really floor, rounded nose included. */
 	platformCovers(platform: Platform, x: number, z: number): boolean {
 		if (x < platform.minX || x > platform.maxX || z < platform.minZ || z > platform.maxZ) return false;
@@ -403,6 +550,10 @@ export class CollisionWorld {
 				if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) return p.y;
 			}
 		}
+		// Buiten de voetafdruk ligt er op hoogte geen plaat: daar is alleen de stad.
+		// Onder straatniveau blijft de oude afhandeling gelden, want daar ligt de
+		// uitritgeul en niet de stad.
+		if (y > CITY_GROUND_Y - 0.6 && !this.insideMallPlan(x, z)) return this.cityGroundAt(x, z, y);
 		if (y >= 10) return ROOF_H;
 		if (y < -2) return BASEMENT_H;
 		return y < 3.2 ? 0 : FLOOR_H;
@@ -456,6 +607,12 @@ export class CollisionWorld {
 				return p.y;
 			}
 		}
+
+		// Buiten de voetafdruk houdt de mall op. Geen dakplaat veertig meter naast
+		// het gebouw, geen verdiepingsvloer: stap je over de dakrand, dan is er tot
+		// de straat niets meer om op te staan. Onder straatniveau geldt dit niet,
+		// daar loopt de uitritgeul naar de garage.
+		if (currentY > CITY_GROUND_Y - 0.6 && !this.insideMallPlan(x, z)) return this.cityGroundAt(x, z, currentY, step);
 
 		// Over the atrium hole there is no slab at any height below the roof: the
 		// balustrade-jump drops through, and the drone can descend back in through
@@ -547,7 +704,10 @@ export class CollisionWorld {
 
 	/**
 	 * 'mall' = clamp to mall footprint (default, sims + walkers).
-	 * 'city' = full outdoor world (±95 / ±75) for cars / fly-out.
+	 * 'city' = full outdoor world for cars / fly-out.
+	 *
+	 * Dit veld geldt voor iedereen die de wereld deelt. Voor één agent buiten de
+	 * klem zetten is `resolveCircle(..., outside)`.
 	 */
 	boundsMode: 'mall' | 'city' = 'mall';
 
@@ -555,6 +715,12 @@ export class CollisionWorld {
 	 * Resolve a circle (radius r) at (x,z) with optional y for floor-filtered boxes.
 	 * Returns corrected position. Multi-pass for corners.
 	 * `climb` skips the escalator/stairs volumes — the player walks up those.
+	 *
+	 * `outside` is de speler-vrijstelling, en staat los van `boundsMode`: die is
+	 * een veld op de gedeelde wereld, dus zodra hij op 'city' staat mag élke sim
+	 * de mall uitlopen. Wie hem per aanroep meegeeft ruilt alleen de
+	 * voetafdruk-klem in voor de wereldrand; de muren houden hem nog steeds
+	 * tegen, en het atriumgat schopt hem er nog steeds uit.
 	 */
 	resolveCircle(
 		x: number,
@@ -564,6 +730,7 @@ export class CollisionWorld {
 		iterations = 3,
 		climb = false,
 		airborne = false,
+		outside = false,
 	): { x: number; z: number } {
 		let px = x;
 		let pz = z;
@@ -572,8 +739,10 @@ export class CollisionWorld {
 			px <= Math.max(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x) + 1.5 &&
 			Math.abs(pz - PARKING_EXIT_RAMP.start.z) <= PARKING_EXIT_RAMP.width / 2 + 1;
 		const city = this.boundsMode === 'city' || inGarageExit;
+		const unbounded = city || outside;
 		for (let iter = 0; iter < iterations; iter++) {
 			for (const b of this.boxes) {
+				if (b.outdoor && !unbounded) continue;
 				if (climb && b.climbable) continue;
 				// Mid-jump the void barrier doesn't exist — that's how you clear
 				// the balustrade. Gravity takes it from there.
@@ -613,10 +782,10 @@ export class CollisionWorld {
 			}
 		}
 
-		if (city) {
+		if (unbounded) {
 			// Full outdoor city world
-			px = clamp(px, -95, 95);
-			pz = clamp(pz, -75, 75);
+			px = clamp(px, CITY_BOUNDS.minX, CITY_BOUNDS.maxX);
+			pz = clamp(pz, CITY_BOUNDS.minZ, CITY_BOUNDS.maxZ);
 		} else {
 			// Keep inside mall footprint with margin
 			const m = 1.2;

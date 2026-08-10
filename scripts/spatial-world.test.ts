@@ -6,7 +6,7 @@ import { CONNECTOR_LIMITS, VerticalConnectorRegistrySchema, validateEscalatorSpe
 import { LEVEL_LIMITS, LevelRegistrySchema } from '#/data/levelSchema';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt } from '#/data/levels';
 import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
-import { receiverAccepts, validateSpatialWorld } from '#/data/spatial';
+import { PLAN_ENVELOPE_TAG, receiverAccepts, validateSpatialWorld } from '#/data/spatial';
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
 import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATORS, VERTICAL_CONNECTORS, WORLD_ENTITIES } from '#/data/world';
 import { segmentParameter2 } from '#/util/geometry2';
@@ -73,6 +73,10 @@ function prism(
 		allowsOverlapFrom: role === 'decorative-covering' ? ['clutter'] : [],
 		tags: [role],
 	};
+}
+
+function envelope(volume: SpatialVolume): SpatialVolume {
+	return { ...volume, tags: [...volume.tags, PLAN_ENVELOPE_TAG] };
 }
 
 const OPEN_STAIR: SpatialVolume = {
@@ -277,6 +281,96 @@ describe('authoritative spatial world', () => {
 		assert.deepEqual(validateSpatialWorld(WORLD_ENTITIES), []);
 	});
 
+	test('a solid sunk into another solid is rejected until the intruder declares that depth', () => {
+		const touching: readonly SpatialVolume['allowsOverlapFrom'][number][] = ['structure', 'fixture'];
+		const floor = entity('floor', 'structure', [prism('surface', 'support', 0, 0, 20, 20, -0.3, 0, false, true)]);
+		const wall = entity('perimeter', 'structure', [
+			{ ...prism('wall', 'solid', 0, -5, 20, 0.4, 0, 4, true, true), allowsOverlapFrom: touching },
+		]);
+		const shell = { ...prism('shell', 'solid', 0, -3.5, 6, 3.4, 0, 3, true, true), allowsOverlapFrom: touching };
+		const room = entity('room', 'fixture', [shell]);
+
+		assert.deepEqual(validateSpatialWorld([floor, wall, room]), [
+			{
+				code: 'unsupported-placement',
+				message: 'perimeter.wall and room.shell overlap 0.400 m, and neither declares a penetration',
+				entities: ['perimeter', 'room'],
+			},
+		]);
+
+		const wrongClass = entity('room', 'fixture', [{ ...shell, penetration: { depth: 0.4, into: ['furnishing'] } }]);
+		assert.equal(validateSpatialWorld([floor, wall, wrongClass]).length, 1);
+
+		const tooShallow = entity('room', 'fixture', [{ ...shell, penetration: { depth: 0.2, into: ['structure'] } }]);
+		assert.equal(validateSpatialWorld([floor, wall, tooShallow]).length, 1);
+
+		const declared = entity('room', 'fixture', [{ ...shell, penetration: { depth: 0.4, into: ['structure'] } }]);
+		assert.deepEqual(validateSpatialWorld([floor, wall, declared]), []);
+	});
+
+	test('a storefront frontage rejects a collider and a solid without one alike', () => {
+		const floor = entity('mall-floor', 'structure', [prism('surface', 'support', 0, 0, 40, 40, -0.3, 0, false, true)]);
+		const shop = entity('shop', 'fixture', [
+			envelope(prism('room-shell', 'solid', 0, -3, 8, 5, 0, 4.2, true, true)),
+			prism('frontage', 'storefront-clearance', 0, 0.75, 8, 1.5, 0, 2.2, false, false),
+		]);
+		const mat = entity('floor-mat', 'covering', [prism('fabric', 'decorative-covering', 0, 0.5, 3, 1, 0, 0.02, false, false)]);
+		assert.deepEqual(validateSpatialWorld([floor, shop, mat]), []);
+
+		const backdrop = entity('runway', 'fixture', [prism('backdrop', 'solid', 0, 0.5, 5.4, 0.18, 0, 4.2, false, false)]);
+		assert.deepEqual(validateSpatialWorld([floor, shop, backdrop]), [
+			{ code: 'blocked-clearance', message: 'runway.backdrop stands in the frontage of shop', entities: ['shop', 'runway'] },
+		]);
+
+		const pillar = entity('column', 'structure', [prism('shaft', 'solid', 0, 0.5, 0.7, 0.7, 0, 4, true, true)]);
+		assert.deepEqual(validateSpatialWorld([floor, shop, pillar]), [
+			{ code: 'blocked-clearance', message: 'column.shaft stands in the frontage of shop', entities: ['shop', 'column'] },
+		]);
+	});
+
+	test('an entity declares one plan envelope and every other volume of it stays inside', () => {
+		const floor = entity('mall-floor', 'structure', [prism('surface', 'support', 0, 0, 40, 40, -0.3, 0, false, true)]);
+		const shell = envelope(prism('room-shell', 'solid', 0, 0, 8, 6, 0, 3, true, true));
+		const contained = entity('kiosk', 'fixture', [
+			shell,
+			prism('desk', 'solid', 1, 0, 2, 1, 0, 0.9, true, true),
+			prism('frontage', 'storefront-clearance', 0, 3.75, 8, 1.5, 0, 2.2, false, false),
+		]);
+		assert.deepEqual(validateSpatialWorld([floor, contained]), []);
+
+		const spilling = entity('kiosk', 'fixture', [shell, prism('desk', 'solid', 3.6, 0, 2, 1, 0, 0.9, true, true)]);
+		assert.deepEqual(validateSpatialWorld([floor, spilling]), [
+			{ code: 'uncontained-volume', message: 'kiosk.desk reaches 0.600 m outside kiosk.room-shell', entities: ['kiosk'] },
+		]);
+	});
+
+	test('two visible tops at one height over shared ground are rejected unless the join is declared', () => {
+		const slab = entity('roof-slab', 'structure', [prism('slab', 'support', 0, 0, 20, 20, 3.5, 4, false, true)]);
+		const deck = entity('helipad', 'structure', [prism('deck', 'support', 5, 0, 8, 8, 3.6, 4, false, true)]);
+		assert.deepEqual(validateSpatialWorld([slab, deck]), [
+			{
+				code: 'coplanar-surface',
+				message: 'roof-slab.slab and helipad.deck both end at y 4.000 and overlap in plan',
+				entities: ['roof-slab', 'helipad'],
+			},
+		]);
+
+		const lifted = entity('helipad', 'structure', [prism('deck', 'support', 5, 0, 8, 8, 3.6, 4.05, false, true)]);
+		assert.deepEqual(validateSpatialWorld([slab, lifted]), []);
+
+		const cap: SpatialVolume = {
+			...prism('cap', 'solid', 0, 0, 4, 0.4, 0, 3, true, true),
+			penetration: { depth: 0.2, into: ['structure'] },
+			allowsOverlapFrom: ['structure'],
+		};
+		const side: SpatialVolume = {
+			...prism('side', 'solid', 1.9, 1, 0.4, 2, 0, 3, true, true),
+			allowsOverlapFrom: ['structure'],
+		};
+		const corner = [entity('wall-cap', 'structure', [cap]), entity('wall-side', 'structure', [side])];
+		assert.deepEqual(validateSpatialWorld(corner), []);
+	});
+
 	test('a walkable deck laid across a wall is rejected even where neither corner sits inside the other', () => {
 		const floor = entity('deck-floor', 'structure', [prism('slab', 'support', 0, 0, 40, 40, -0.3, 0, false, true)]);
 		const runway = entity('runway', 'fixture', [prism('deck', 'walkable', 0, 0, 2.7, 16, 0, 0.34, false, false)]);
@@ -409,5 +503,24 @@ describe('authoritative spatial world', () => {
 			},
 		]);
 		assert.deepEqual(validateSpatialWorld([floor, carpet, wrapper, coke]), []);
+	});
+
+	test('clutter without a collider is still rejected inside the structure, and paint under it is not', () => {
+		const deck = entity('deck', 'structure', [prism('surface', 'support', 0, 0, 40, 40, -0.3, 0, false, true)]);
+		const shell = entity('shell', 'structure', [prism('pillar', 'solid', 0, 0, 0.7, 0.7, 0, 4.4, true, true)]);
+		const car = entity('cars', 'clutter', [prism('car', 'solid', 0, 2, 1.9, 4, 0, 1.1, false, false)]);
+		assert.deepEqual(validateSpatialWorld([deck, shell, car]), [
+			{
+				code: 'unsupported-placement',
+				message: 'shell.pillar and cars.car interpenetrate, and clutter cannot stand inside the structure',
+				entities: ['shell', 'cars'],
+			},
+		]);
+
+		const paint = entity('bays', 'clutter', [prism('stall', 'decorative-covering', 0, 2, 2.4, 4.8, 0, 0.14, false, false)]);
+		assert.deepEqual(validateSpatialWorld([deck, shell, paint]), []);
+
+		const parked = entity('cars', 'clutter', [prism('car', 'solid', 0, 2.4, 1.9, 4, 0, 1.1, false, false)]);
+		assert.deepEqual(validateSpatialWorld([deck, shell, parked]), []);
 	});
 });

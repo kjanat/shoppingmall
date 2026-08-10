@@ -4,13 +4,13 @@ import { getInventory } from '#/data/inventory';
 import { ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { LEVELS, LEVELS_BOTTOM_UP, level, levelAt, levelY } from '#/data/levels';
-import type { MapPresentation, PlanShape, SpatialGeometry, Vec2 } from '#/data/spatial';
-import { geometryBounds, planBounds } from '#/data/spatial';
+import type { Bounds2, MapPresentation, PlanShape, SpatialGeometry, Vec2 } from '#/data/spatial';
+import { geometryBounds, planBounds, pointInPlan } from '#/data/spatial';
 import type { StoreCategory, StoreDef } from '#/data/stores';
 import { CATEGORY_LABELS, getKruidvat, requireStore, STORES } from '#/data/stores';
 import type { MallWorldEntity } from '#/data/world';
 import { HELIPAD_PAD_SPEC, WORLD_ENTITIES } from '#/data/world';
-import { POOL_POLYGON, ROOF_ISLAND_PAD, SLIDE_PLATFORM } from '#/scene/RoofIsland';
+import { POOL_POLYGON, SLIDE_PLATFORM } from '#/scene/RoofIsland';
 import { qs } from '#/util/dom';
 import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
@@ -52,7 +52,6 @@ type LayerStyle = Readonly<{
 	stroke: string;
 	lineWidth: number;
 	dash: number;
-	glyph: string;
 	labelColor: string | null;
 }>;
 
@@ -62,7 +61,6 @@ const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
 		stroke: 'rgba(148,163,184,0.6)',
 		lineWidth: 2,
 		dash: 0,
-		glyph: '',
 		labelColor: 'rgba(148,163,184,0.85)',
 	},
 	opening: {
@@ -70,7 +68,6 @@ const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
 		stroke: 'rgba(248,113,113,0.7)',
 		lineWidth: 1.5,
 		dash: 3.6,
-		glyph: '',
 		labelColor: null,
 	},
 	shop: {
@@ -78,7 +75,6 @@ const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
 		stroke: 'rgba(226,232,240,0.45)',
 		lineWidth: 1.4,
 		dash: 0,
-		glyph: '',
 		labelColor: 'rgba(241,245,249,0.92)',
 	},
 	circulation: {
@@ -86,7 +82,6 @@ const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
 		stroke: '#fbbf24',
 		lineWidth: 1.4,
 		dash: 0,
-		glyph: '⇅',
 		labelColor: '#fbbf24',
 	},
 	parking: {
@@ -94,7 +89,6 @@ const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
 		stroke: 'rgba(255,193,7,0.5)',
 		lineWidth: 1.4,
 		dash: 0,
-		glyph: '',
 		labelColor: '#ffc107',
 	},
 	fixture: {
@@ -102,7 +96,6 @@ const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
 		stroke: 'rgba(240,171,252,0.75)',
 		lineWidth: 1.4,
 		dash: 0,
-		glyph: '',
 		labelColor: '#f0abfc',
 	},
 	clutter: {
@@ -110,7 +103,6 @@ const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
 		stroke: 'rgba(148,163,184,0.3)',
 		lineWidth: 1,
 		dash: 0,
-		glyph: '',
 		labelColor: null,
 	},
 };
@@ -118,6 +110,9 @@ const LAYER_STYLES: Readonly<Record<MapLayer, LayerStyle>> = {
 const HERO_FILL = 'rgba(0,166,81,0.55)';
 const HERO_STROKE = '#00e676';
 const HERO_LABEL = '#5eead4';
+
+/** De kaartachtergrond. Ook de rand om elk label, zodat lijnen eronderdoor lopen. */
+const MAP_BACKDROP = '#0a1020';
 
 /**
  * A plan is a horizontal cut through the deck, so geometry that only starts
@@ -128,10 +123,19 @@ const PLAN_CUT_HEIGHT = 1.2;
 type MapFeature = Readonly<{
 	layer: MapLayer;
 	label: string;
+	glyph: string;
 	hero: boolean;
 	priority: number;
 	shapes: readonly PlanShape[];
 	anchor: Vec2;
+	/** Het hele grondvlak in meters: waar de vorm ophoudt, en dus waaronder een label mag uitwijken. */
+	bounds: Bounds2;
+	/**
+	 * De vorm waarin het label past: die waar het ankerpunt in ligt. Op `bounds`
+	 * gemeten kreeg CATWALK de 5,4 m van zijn achterwand als breedte en lag het
+	 * daarna dwars over de parkeeruitrit, terwijl het dek zelf 2,7 m is.
+	 */
+	labelBounds: Bounds2;
 }>;
 
 function oneLine(text: string): string {
@@ -159,7 +163,7 @@ function planKey(shape: PlanShape): string {
 	return `r ${shape.center.x} ${shape.center.z} ${shape.width} ${shape.depth} ${shape.yaw}`;
 }
 
-function featureAnchor(shapes: readonly PlanShape[]): Vec2 {
+function featureBounds(shapes: readonly PlanShape[]): Bounds2 {
 	let minX = Number.POSITIVE_INFINITY;
 	let maxX = Number.NEGATIVE_INFINITY;
 	let minZ = Number.POSITIVE_INFINITY;
@@ -171,7 +175,16 @@ function featureAnchor(shapes: readonly PlanShape[]): Vec2 {
 		minZ = Math.min(minZ, bounds.minZ);
 		maxZ = Math.max(maxZ, bounds.maxZ);
 	}
-	return { x: midpoint(minX, maxX), z: midpoint(minZ, maxZ) };
+	return { minX, maxX, minZ, maxZ };
+}
+
+/**
+ * Alleen een trap of roltrap verdient het ⇅-teken. De lift en de parkeerhelling
+ * zitten in dezelfde laag en kregen het er gratis bij: een autohelling met een
+ * roltrapicoon erop.
+ */
+function featureGlyph(entity: MallWorldEntity): string {
+	return entity.ports.some((port) => port.kind === 'escalator' || port.kind === 'stairs') ? '⇅' : '';
 }
 
 /** An opening is a hole in the slab of the highest deck it reaches, and nowhere else. */
@@ -185,6 +198,8 @@ function planShapes(entity: MallWorldEntity, levelId: LevelId): readonly PlanSha
 	const shapes: PlanShape[] = [];
 	const seen = new Set<string>();
 	for (const volume of entity.volumes) {
+		// De pui-vrijloop is gereserveerde vloer, geen ruimte: getekend groeit elke winkel 1.5 m het gangpad in.
+		if (volume.role === 'storefront-clearance') continue;
 		if (geometryBounds(volume.geometry).minY > cut) continue;
 		const plan = volumePlan(volume.geometry);
 		const key = planKey(plan);
@@ -193,6 +208,24 @@ function planShapes(entity: MallWorldEntity, levelId: LevelId): readonly PlanSha
 		shapes.push(plan);
 	}
 	return shapes;
+}
+
+function boundsArea(bounds: Bounds2): number {
+	return span(bounds.minX, bounds.maxX) * span(bounds.minZ, bounds.maxZ);
+}
+
+/**
+ * De ruimste vorm waar het ankerpunt in ligt. Ligt het in geen enkele vorm, zoals
+ * bij een glijbaan die een krul is en geen midden heeft, dan geldt het grondvlak.
+ */
+function labelShapeBounds(shapes: readonly PlanShape[], anchor: Vec2, fallback: Bounds2): Bounds2 {
+	let best: Bounds2 | null = null;
+	for (const shape of shapes) {
+		if (!pointInPlan(shape, anchor.x, anchor.z)) continue;
+		const bounds = planBounds(shape);
+		if (!best || boundsArea(bounds) > boundsArea(best)) best = bounds;
+	}
+	return best ?? fallback;
 }
 
 /** The map's only source of rooms: every entity the world schema marks visible. */
@@ -204,13 +237,18 @@ function buildFeatures(): Map<LevelId, MapFeature[]> {
 		for (const levelId of planLevels(entity)) {
 			const shapes = planShapes(entity, levelId);
 			if (shapes.length === 0) continue;
+			const bounds = featureBounds(shapes);
+			const anchor: Vec2 = { x: midpoint(bounds.minX, bounds.maxX), z: midpoint(bounds.minZ, bounds.maxZ) };
 			byLevel.get(levelId)?.push({
 				layer: entity.map.layer,
 				label: oneLine(entity.map.label ?? ''),
+				glyph: featureGlyph(entity),
 				hero: store?.hero === true,
 				priority: entity.map.priority,
 				shapes,
-				anchor: featureAnchor(shapes),
+				anchor,
+				bounds,
+				labelBounds: labelShapeBounds(shapes, anchor, bounds),
 			});
 		}
 	}
@@ -219,6 +257,37 @@ function buildFeatures(): Map<LevelId, MapFeature[]> {
 }
 
 const FEATURES_BY_LEVEL = buildFeatures();
+
+/**
+ * Waar de plattegrond op past. De parkeeruitrit loopt tien meter voorbij de
+ * gevel, en op een kader van alleen de footprint werd hij door de rand
+ * afgesneden. Eén kader voor alle dekken, anders krimpt het gebouw zodra je
+ * van verdieping wisselt.
+ */
+const PLAN_FRAME = ((): Bounds2 => {
+	const frame = {
+		minX: -half(MALL_FOOTPRINT.width),
+		maxX: half(MALL_FOOTPRINT.width),
+		minZ: -half(MALL_FOOTPRINT.depth),
+		maxZ: half(MALL_FOOTPRINT.depth),
+	};
+	for (const features of FEATURES_BY_LEVEL.values()) {
+		for (const feature of features) {
+			frame.minX = Math.min(frame.minX, feature.bounds.minX);
+			frame.maxX = Math.max(frame.maxX, feature.bounds.maxX);
+			frame.minZ = Math.min(frame.minZ, feature.bounds.minZ);
+			frame.maxZ = Math.max(frame.maxZ, feature.bounds.maxZ);
+		}
+	}
+	return frame;
+})();
+
+/** Lucht rond het kader, zodat een randlabel niet tegen de canvasrand plakt. */
+const PLAN_MARGIN = 10;
+
+const PLAN_FRAME_WIDTH = span(PLAN_FRAME.minX, PLAN_FRAME.maxX) + PLAN_MARGIN;
+const PLAN_FRAME_DEPTH = span(PLAN_FRAME.minZ, PLAN_FRAME.maxZ) + PLAN_MARGIN;
+const PLAN_FRAME_CENTER: Vec2 = { x: midpoint(PLAN_FRAME.minX, PLAN_FRAME.maxX), z: midpoint(PLAN_FRAME.minZ, PLAN_FRAME.maxZ) };
 
 /** Named features, most important first, so a crowded corner keeps the label that matters. */
 const LABELS_BY_LEVEL = new Map<LevelId, MapFeature[]>(
@@ -272,12 +341,268 @@ function tracePlan(ctx: CanvasRenderingContext2D, shape: PlanShape): void {
 
 type ScreenPoint = Readonly<{ x: number; y: number }>;
 
-/** Screen-space spacing a label needs before it is dropped as unreadable. */
-const BIG_LABEL_GAP = 22;
-const MINI_LABEL_GAP = 14;
+/** Wereld → scherm voor één canvas. De HUD-schotel draait met de speler mee, de grote plattegrond staat noord-boven. */
+type Project = (x: number, z: number) => ScreenPoint;
 
-function tooClose(placed: readonly ScreenPoint[], x: number, y: number, gap: number): boolean {
-	return placed.some((point) => Math.abs(point.x - x) < gap && Math.abs(point.y - y) < gap);
+/**
+ * Hoeveel breedte een label op dit punt heeft, of null als het punt buiten het
+ * tekenvlak valt. De schotel knipt op een cirkel, en wat over die rand hing werd
+ * door de clip doormidden gehakt: STARBUCKS kwam er als ARBUCK uit.
+ */
+type LabelRoom = (point: ScreenPoint) => number | null;
+
+/** De grote plattegrond is rechthoekig en knipt geen enkel label af. */
+const UNCLIPPED: LabelRoom = () => Number.POSITIVE_INFINITY;
+
+/**
+ * Vrije schermruimte rondom een label. Dit was een afstand tussen middelpunten,
+ * die twee labels van tachtig pixels breed naast elkaar goedkeurde zolang hun
+ * middens ver genoeg uit elkaar lagen: ISLAND HOP TRAVEL en WUDU · ABLUTIE
+ * stonden dwars door elkaar heen. Nu is het de marge om het hele tekstvak.
+ */
+const BIG_LABEL_GAP = 5;
+const MINI_LABEL_GAP = 3;
+
+const LABEL_SIZE_MAX = 11;
+/** Onder deze maat is monospace op een donkere kaart niet meer te lezen. */
+const LABEL_SIZE_MIN = 9;
+/** Hoe ver onder een bezette plek zijn label gaat hangen. */
+const BELOW_LABEL_OFFSET = 9;
+/** Rand in de achtergrondkleur onder de letters, zodat vloerlijnen ze niet doorsnijden. */
+const LABEL_HALO_WIDTH = 3;
+/** Regelafstand als factor van de tekstmaat. */
+const LABEL_LINE_HEIGHT = 1.15;
+/** Meer dan drie regels is geen label meer maar een alinea. */
+const LABEL_MAX_LINES = 3;
+/** Rand van de schotel die voor een label niet meetelt. */
+const MINI_LABEL_INSET = 8;
+const ELLIPSIS = '…';
+/** Eén letter en drie puntjes is geen naam meer; dan liever niets. */
+const ELLIPSIS_STEM_MIN = 3;
+
+function labelFont(weight: number, size: number): string {
+	return `${weight} ${size}px ui-monospace, monospace`;
+}
+
+/**
+ * `text` afgekapt tot het gemeten binnen `maxWidth` past, of null als er geen
+ * leesbare stam overblijft. Meet met de font die al op `ctx` staat.
+ */
+function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string | null {
+	if (ctx.measureText(text).width <= maxWidth) return text;
+	for (let length = text.length - 1; length >= ELLIPSIS_STEM_MIN; length--) {
+		const cut = `${text.slice(0, length).trimEnd()}${ELLIPSIS}`;
+		if (ctx.measureText(cut).width <= maxWidth) return cut;
+	}
+	return null;
+}
+
+type ScreenBox = Readonly<{ minX: number; maxX: number; minY: number; maxY: number }>;
+
+function boxesOverlap(a: ScreenBox, b: ScreenBox, gap: number): boolean {
+	return a.minX - gap < b.maxX && a.maxX + gap > b.minX && a.minY - gap < b.maxY && a.maxY + gap > b.minY;
+}
+
+/** Het grondvlak in schermruimte. Op de meedraaiende schotel ligt minZ niet boven, dus alle vier de hoeken tellen mee. */
+function projectBounds(bounds: Bounds2, project: Project): ScreenBox {
+	let minX = Number.POSITIVE_INFINITY;
+	let maxX = Number.NEGATIVE_INFINITY;
+	let minY = Number.POSITIVE_INFINITY;
+	let maxY = Number.NEGATIVE_INFINITY;
+	for (const x of [bounds.minX, bounds.maxX]) {
+		for (const z of [bounds.minZ, bounds.maxZ]) {
+			const point = project(x, z);
+			minX = Math.min(minX, point.x);
+			maxX = Math.max(maxX, point.x);
+			minY = Math.min(minY, point.y);
+			maxY = Math.max(maxY, point.y);
+		}
+	}
+	return { minX, maxX, minY, maxY };
+}
+
+/**
+ * De horizontale ruimte binnen de schotel op de hoogte van dit punt, of null als
+ * het punt voorbij de straal ligt.
+ */
+function dishRoom(point: ScreenPoint, cx: number, cy: number, radius: number): number | null {
+	const dy = point.y - cy;
+	if (Math.abs(dy) >= radius) return null;
+	const chord = Math.sqrt(radius * radius - dy * dy);
+	const room = Math.min(point.x - (cx - chord), cx + chord - point.x);
+	return room > 0 ? room * 2 : null;
+}
+
+/** Een gemeten label: de regels zoals ze getekend worden, plus wat ze innemen. */
+type FittedLabel = Readonly<{ lines: readonly string[]; size: number; width: number; height: number; whole: boolean }>;
+
+/** Woorden over regels verdelen, elke regel zo vol als `budget` toelaat. Meet met de font die op `ctx` staat. */
+function wrapWords(ctx: CanvasRenderingContext2D, words: readonly string[], budget: number): string[] {
+	const lines: string[] = [];
+	let current = '';
+	for (const word of words) {
+		const candidate = current === '' ? word : `${current} ${word}`;
+		if (current !== '' && ctx.measureText(candidate).width > budget) {
+			lines.push(current);
+			current = word;
+		} else {
+			current = candidate;
+		}
+	}
+	if (current !== '') lines.push(current);
+	return lines;
+}
+
+/**
+ * De grootste maat waarop `text` binnen `budget` bij `height` past, desnoods over
+ * meer regels, en anders de kleinste maat met de naam afgekapt. `whole` zegt of
+ * de naam er nog helemaal staat. Zonder regelafbreking werd ISLAND HOP TRAVEL in
+ * zijn eigen vier meter brede winkel `ISLAN…`, terwijl het over drie regels past.
+ */
+function fitLabel(
+	ctx: CanvasRenderingContext2D,
+	text: string,
+	weight: number,
+	budget: number,
+	height: number,
+	maxLines: number,
+): FittedLabel | null {
+	const words = text.split(' ');
+	for (let size = LABEL_SIZE_MAX; size >= LABEL_SIZE_MIN; size -= 0.5) {
+		ctx.font = labelFont(weight, size);
+		const lines = wrapWords(ctx, words, budget);
+		if (lines.length > maxLines) continue;
+		const block = lines.length * size * LABEL_LINE_HEIGHT;
+		if (block > height) continue;
+		const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
+		if (width > budget) continue;
+		return { lines, size, width, height: block, whole: true };
+	}
+	ctx.font = labelFont(weight, LABEL_SIZE_MIN);
+	const cut = ellipsize(ctx, text, budget);
+	if (cut === null) return null;
+	return {
+		lines: [cut],
+		size: LABEL_SIZE_MIN,
+		width: ctx.measureText(cut).width,
+		height: LABEL_SIZE_MIN * LABEL_LINE_HEIGHT,
+		whole: cut === text,
+	};
+}
+
+function labelBox(point: ScreenPoint, width: number, height: number): ScreenBox {
+	return { minX: point.x - half(width), maxX: point.x + half(width), minY: point.y - half(height), maxY: point.y + half(height) };
+}
+
+function drawLabel(
+	ctx: CanvasRenderingContext2D,
+	label: FittedLabel,
+	point: ScreenPoint,
+	vertical: boolean,
+	weight: number,
+	color: string,
+): void {
+	ctx.save();
+	ctx.translate(point.x, point.y);
+	if (vertical) ctx.rotate(-Math.PI / 2);
+	ctx.font = labelFont(weight, label.size);
+	const step = label.size * LABEL_LINE_HEIGHT;
+	label.lines.forEach((line, index) => {
+		const y = (index - (label.lines.length - 1) / 2) * step;
+		// De rand eerst: de kaart tekent zijn vloerlijnen onder het label door, en
+		// TOILETTEN werd door negen hokjesomtrekken doorsneden.
+		ctx.lineWidth = LABEL_HALO_WIDTH;
+		ctx.lineJoin = 'round';
+		ctx.strokeStyle = MAP_BACKDROP;
+		ctx.strokeText(line, 0, y);
+		ctx.fillStyle = color;
+		ctx.fillText(line, 0, y);
+	});
+	ctx.restore();
+}
+
+/**
+ * De labels van één dek, met dezelfde regels op beide kaarten: elk label wordt
+ * gemeten tegen de vorm waar het bij hoort, staat rechtop of overlangs al naar
+ * gelang waar zijn naam heel blijft, wijkt uit als de plek bezet is, en draagt
+ * het teken uit zijn entiteit. De schotel tekende hiervoor `label.slice(0, 8)`
+ * met het teken van de laag, en gaf zo de liftschacht en de parkeerhelling een
+ * roltrappijl.
+ *
+ * Een label blijft binnen zijn eigen vorm. Uitwijkende labels deden dat niet:
+ * ze kregen een vaste maat en de volle breedte van het tekenvlak, en zo hing
+ * BEARD-MAN'S CAVE bijna zes meter buiten de westgevel in de lege achtergrond.
+ */
+function paintLabels(ctx: CanvasRenderingContext2D, lvl: LevelId, project: Project, gap: number, room: LabelRoom): void {
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'middle';
+	const placed: ScreenBox[] = [];
+	for (const feature of labelsOn(lvl)) {
+		const style = LAYER_STYLES[feature.layer];
+		if (style.labelColor === null) continue;
+		const text = feature.glyph === '' ? feature.label : `${feature.glyph} ${feature.label}`;
+		const weight = feature.hero ? 700 : 600;
+		const box = projectBounds(feature.bounds, project);
+		const shape = projectBounds(feature.labelBounds, project);
+		const shapeAcross = span(shape.minX, shape.maxX);
+		const shapeAlong = span(shape.minY, shape.maxY);
+		const anchor = project(feature.anchor.x, feature.anchor.z);
+		const oneLine = LABEL_SIZE_MAX * LABEL_LINE_HEIGHT;
+		// Wijk uit voordat je opgeeft: een trapschacht naast een winkel liet
+		// anders de winkelnaam verdwijnen in plaats van hem te verschuiven. Eerst
+		// de hele naam in de vorm, dan een afgekapte regel in de vorm, dan eronder
+		// of erboven. Als laatste het hele grondvlak, want op de parkeervloer staat
+		// precies op het ankerpunt een kolom van 0,7 m waar geen letter in past,
+		// terwijl de naam van het dek bij het dek hoort en niet bij die kolom.
+		const spots: readonly { point: ScreenPoint; across: number; along: number; upright: boolean; maxLines: number }[] = [
+			{ point: anchor, across: shapeAcross, along: shapeAlong, upright: true, maxLines: LABEL_MAX_LINES },
+			{ point: anchor, across: shapeAcross, along: shapeAlong, upright: true, maxLines: 1 },
+			{
+				point: { x: anchor.x, y: box.maxY + BELOW_LABEL_OFFSET },
+				across: shapeAcross,
+				along: oneLine,
+				upright: false,
+				maxLines: 1,
+			},
+			{
+				point: { x: anchor.x, y: box.minY - BELOW_LABEL_OFFSET },
+				across: shapeAcross,
+				along: oneLine,
+				upright: false,
+				maxLines: 1,
+			},
+			{
+				point: anchor,
+				across: span(box.minX, box.maxX),
+				along: span(box.minY, box.maxY),
+				upright: true,
+				maxLines: LABEL_MAX_LINES,
+			},
+		];
+		for (const spot of spots) {
+			const { point, across, along, maxLines } = spot;
+			const available = room(point);
+			if (available === null) continue;
+			const budget = Math.min(across, available);
+			const flat = fitLabel(ctx, text, weight, budget, along, maxLines);
+			// Een smalle, diepe vorm draagt zijn naam overlangs: het catwalkdek is
+			// 2,7 m breed en tien meter lang. Alleen als de naam daar wél heel past.
+			const upright =
+				spot.upright && along > across && flat?.whole !== true ? fitLabel(ctx, text, weight, along, across, 1) : null;
+			const vertical = upright?.whole === true;
+			const label = vertical ? upright : flat;
+			if (label === null) continue;
+			if (vertical) {
+				const ends = [point.y - half(label.width), point.y + half(label.width)];
+				if (ends.some((y) => (room({ x: point.x, y }) ?? 0) < label.height)) continue;
+			}
+			const bounds = vertical ? labelBox(point, label.height, label.width) : labelBox(point, label.width, label.height);
+			if (placed.some((taken) => boxesOverlap(taken, bounds, gap))) continue;
+			placed.push(bounds);
+			drawLabel(ctx, label, point, vertical, weight, feature.hero ? HERO_LABEL : style.labelColor);
+			break;
+		}
+	}
 }
 
 function isTypingTarget(t: EventTarget | null): boolean {
@@ -742,14 +1067,14 @@ export class KioskOverlay {
 	}
 
 	/** World → minimap screen (heading up, player centred). */
-	private project(x: number, z: number, cx: number, cy: number, scale: number) {
+	private project(x: number, z: number, cx: number, cy: number, scale: number): ScreenPoint {
 		const dx = x - this.map.x;
 		const dz = z - this.map.z;
 		const c = Math.cos(this.map.yaw);
 		const s = Math.sin(this.map.yaw);
 		return {
-			sx: cx + (dx * c - dz * s) * scale,
-			sy: cy + (dx * s + dz * c) * scale,
+			x: cx + (dx * c - dz * s) * scale,
+			y: cy + (dx * s + dz * c) * scale,
 		};
 	}
 
@@ -767,7 +1092,7 @@ export class KioskOverlay {
 		ctx.save();
 		ctx.beginPath();
 		ctx.arc(cx, cy, r, 0, Math.PI * 2);
-		ctx.fillStyle = '#0a1020';
+		ctx.fillStyle = MAP_BACKDROP;
 		ctx.fill();
 		ctx.clip();
 
@@ -780,28 +1105,14 @@ export class KioskOverlay {
 		this.paintWorld(ctx, lvl, scale);
 		ctx.restore();
 
-		// Upright labels for whatever is close by
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		const reach = (r - 8) / scale;
-		const placed: ScreenPoint[] = [];
-		for (const feature of labelsOn(lvl)) {
-			const style = LAYER_STYLES[feature.layer];
-			if (style.labelColor === null) continue;
-			if (Math.abs(feature.anchor.x - this.map.x) > reach || Math.abs(feature.anchor.z - this.map.z) > reach) continue;
-			const { sx, sy } = this.project(feature.anchor.x, feature.anchor.z, cx, cy, scale);
-			if (tooClose(placed, sx, sy, MINI_LABEL_GAP)) continue;
-			placed.push({ x: sx, y: sy });
-			if (style.glyph === '') {
-				ctx.font = '600 8px ui-monospace, monospace';
-				ctx.fillStyle = feature.hero ? HERO_LABEL : style.labelColor;
-				ctx.fillText(feature.label.slice(0, 8), sx, sy);
-			} else {
-				ctx.font = '700 11px ui-monospace, monospace';
-				ctx.fillStyle = style.stroke;
-				ctx.fillText(style.glyph, sx, sy);
-			}
-		}
+		// Upright labels for whatever is close by, under the plan's own rules
+		paintLabels(
+			ctx,
+			lvl,
+			(x, z) => this.project(x, z, cx, cy, scale),
+			MINI_LABEL_GAP,
+			(point) => dishRoom(point, cx, cy, r - MINI_LABEL_INSET),
+		);
 
 		// View cone — screen space, always pointing up
 		const cone = 44;
@@ -860,14 +1171,6 @@ export class KioskOverlay {
 	 * komen uit `WORLD_ENTITIES`.
 	 */
 	private paintRoofLayer(ctx: CanvasRenderingContext2D, px: number): void {
-		ctx.fillStyle = 'rgba(214,196,150,0.6)'; // zand
-		ctx.fillRect(
-			ROOF_ISLAND_PAD.minX,
-			ROOF_ISLAND_PAD.minZ,
-			span(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX),
-			span(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ),
-		);
-
 		// Atrium-skylight (open — hier vlieg je doorheen)
 		ctx.fillStyle = 'rgba(56,120,190,0.4)';
 		ctx.fillRect(-half(ATRIUM_VOID.width), -half(ATRIUM_VOID.depth), ATRIUM_VOID.width, ATRIUM_VOID.depth);
@@ -982,51 +1285,38 @@ export class KioskOverlay {
 
 	/** North-up labels for the big plan, in screen space so text stays crisp. */
 	private paintBigLabels(ctx: CanvasRenderingContext2D, cssW: number, cssH: number, scale: number, lvl: LevelId): void {
-		const sx = (x: number) => cssW / 2 + x * scale;
-		const sy = (z: number) => cssH / 2 + z * scale;
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-
-		const placed: ScreenPoint[] = [];
-		for (const feature of labelsOn(lvl)) {
-			const style = LAYER_STYLES[feature.layer];
-			if (style.labelColor === null) continue;
-			const x = sx(feature.anchor.x);
-			const y = sy(feature.anchor.z);
-			if (tooClose(placed, x, y, BIG_LABEL_GAP)) continue;
-			placed.push({ x, y });
-			ctx.fillStyle = feature.hero ? HERO_LABEL : style.labelColor;
-			ctx.font = `${feature.hero ? 700 : 600} 11px ui-monospace, monospace`;
-			ctx.fillText(style.glyph === '' ? feature.label : `${style.glyph} ${feature.label}`, x, y);
-		}
+		const sx = (x: number) => cssW / 2 + (x - PLAN_FRAME_CENTER.x) * scale;
+		const sy = (z: number) => cssH / 2 + (z - PLAN_FRAME_CENTER.z) * scale;
+		paintLabels(ctx, lvl, (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED);
 
 		ctx.fillStyle = 'rgba(148,163,184,0.8)';
 		ctx.font = '600 10px ui-monospace, monospace';
-		ctx.fillText('N ↑', cssW / 2, sy(-half(MALL_FOOTPRINT.depth)) - 12);
+		ctx.fillText('N ↑', sx(PLAN_FRAME_CENTER.x), sy(-half(MALL_FOOTPRINT.depth)) - 12);
 	}
 
 	private paintBigMap(): void {
 		const host = this.elBigCanvas.parentElement;
 		const cssW = Math.max(320, (host?.clientWidth ?? 820) - 36);
-		const cssH = cssW * ((MALL_FOOTPRINT.depth + 12) / (MALL_FOOTPRINT.width + 12));
+		const cssH = cssW * (PLAN_FRAME_DEPTH / PLAN_FRAME_WIDTH);
 		const ctx = this.prep(this.elBigCanvas, cssW, cssH);
 		if (!ctx) return;
 
-		ctx.fillStyle = '#0a1020';
+		ctx.fillStyle = MAP_BACKDROP;
 		ctx.fillRect(0, 0, cssW, cssH);
 
-		const scale = Math.min(cssW / (MALL_FOOTPRINT.width + 12), cssH / (MALL_FOOTPRINT.depth + 12));
+		const scale = Math.min(cssW / PLAN_FRAME_WIDTH, cssH / PLAN_FRAME_DEPTH);
 		ctx.save();
 		ctx.translate(cssW / 2, cssH / 2);
 		ctx.scale(scale, scale);
+		ctx.translate(-PLAN_FRAME_CENTER.x, -PLAN_FRAME_CENTER.z);
 		this.paintWorld(ctx, this.bigLevel, scale);
 		ctx.restore();
 		this.paintBigLabels(ctx, cssW, cssH, scale, this.bigLevel);
 
 		// You are here — only on the deck you're standing on
 		if (this.bigLevel === this.map.level) {
-			const sx = cssW / 2 + this.map.x * scale;
-			const sy = cssH / 2 + this.map.z * scale;
+			const sx = cssW / 2 + (this.map.x - PLAN_FRAME_CENTER.x) * scale;
+			const sy = cssH / 2 + (this.map.z - PLAN_FRAME_CENTER.z) * scale;
 			this.drawArrow(ctx, sx, sy, -this.map.yaw, 9);
 		} else {
 			ctx.fillStyle = 'rgba(226,232,240,0.75)';

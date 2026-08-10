@@ -2,12 +2,16 @@ import * as THREE from 'three';
 import { levelY } from '#/data/levels';
 import {
 	ELEVATOR_SPEC,
+	PARKED_CAR_SPEC,
+	PARKED_CAR_SPOTS,
+	PARKING_BAY_SPEC,
 	PARKING_CEILING_SPEC,
 	PARKING_DECK_SPEC,
 	PARKING_EXIT_RAMP,
 	PARKING_SLAB_SPEC,
 	PARKING_WALL_PANELS,
 	parkingPillarCenters,
+	parkingStalls,
 } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
@@ -150,27 +154,23 @@ export class ParkingGarage {
 	private buildBays(): void {
 		const line = this.track(new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
 		const yellow = this.track(new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }));
+		const { stall, paintY, number, aisle } = PARKING_BAY_SPEC;
 		// Rows of parking bays N and S of center drive aisle
-		for (const rowZ of [-14, 14] as const) {
-			for (let i = -5; i <= 5; i++) {
-				const x = i * 5.2;
-				// bay outline
-				const bay = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 4.8), line);
-				bay.rotation.x = -Math.PI / 2;
-				bay.position.set(x, 0.14, rowZ);
-				this.group.add(bay);
-				// number
-				const num = this.makeTextPlane(`${rowZ < 0 ? 'A' : 'B'}${i + 6}`, 0.8, 0.35);
-				num.rotation.x = -Math.PI / 2;
-				num.position.set(x, 0.15, rowZ + (rowZ < 0 ? 1.8 : -1.8));
-				this.group.add(num);
-			}
+		for (const { id, center } of parkingStalls()) {
+			const bay = new THREE.Mesh(new THREE.PlaneGeometry(stall.width, stall.depth), line);
+			bay.rotation.x = -Math.PI / 2;
+			bay.position.set(center.x, paintY, center.z);
+			this.group.add(bay);
+			const num = this.makeTextPlane(id, number.width, number.height);
+			num.rotation.x = -Math.PI / 2;
+			num.position.set(center.x, paintY + 0.01, center.z + (center.z < 0 ? number.offsetZ : -number.offsetZ));
+			this.group.add(num);
 		}
 		// Center drive arrows
-		for (let i = -4; i <= 4; i++) {
-			const arrow = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.4), yellow);
+		for (let i = -aisle.arrows; i <= aisle.arrows; i++) {
+			const arrow = new THREE.Mesh(new THREE.PlaneGeometry(aisle.width, aisle.depth), yellow);
 			arrow.rotation.x = -Math.PI / 2;
-			arrow.position.set(i * 6, 0.14, 0);
+			arrow.position.set(i * aisle.spacing, paintY, 0);
 			this.group.add(arrow);
 		}
 	}
@@ -179,18 +179,9 @@ export class ParkingGarage {
 		// Decorative parked cars only — player rentals live in DriveableCars
 		// (avoid overlapping the E-rent spots at ±15.6/-14, 5.2/-14, etc.)
 		const colors = [0x212121, 0xf5f5f5, 0xff8f00, 0x455a64, 0x5d4037];
-		const spots = [
-			{ x: -5.2, z: -14, yaw: 0.3 },
-			{ x: 0, z: -14, yaw: 0 },
-			{ x: 10.4, z: -14, yaw: 0.15 },
-			{ x: 20.8, z: -14, yaw: 0 },
-			{ x: 10.4, z: 14, yaw: Math.PI },
-			{ x: 0, z: 14, yaw: Math.PI },
-			{ x: -20.8, z: 14, yaw: Math.PI - 0.05 },
-		];
-		spots.forEach(({ x, z, yaw }, i) => {
+		PARKED_CAR_SPOTS.forEach(({ x, z, yaw }, i) => {
 			const car = this.makeCar(at(colors, i));
-			car.position.set(x, 0.12, z);
+			car.position.set(x, PARKED_CAR_SPEC.standY, z);
 			car.rotation.y = yaw;
 			this.group.add(car);
 		});
@@ -198,6 +189,7 @@ export class ParkingGarage {
 
 	private makeCar(color: number): THREE.Group {
 		const g = new THREE.Group();
+		const { body: bodySpec, cabin: cabinSpec, wheel } = PARKED_CAR_SPEC;
 		const bodyM = this.track(lit({ color, roughness: 0.45, metalness: 0.35 }));
 		const dark = this.track(lit({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
 		const glass = this.track(
@@ -208,22 +200,22 @@ export class ParkingGarage {
 				roughness: 0.15,
 			}),
 		);
-		const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.45, 4.0), bodyM);
-		body.position.y = 0.45;
+		const body = new THREE.Mesh(new THREE.BoxGeometry(bodySpec.width, bodySpec.height, bodySpec.length), bodyM);
+		body.position.y = bodySpec.centerY;
 		g.add(body);
-		const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.4, 2.0), glass);
-		cabin.position.set(0, 0.85, -0.15);
+		const cabin = new THREE.Mesh(new THREE.BoxGeometry(cabinSpec.width, cabinSpec.height, cabinSpec.length), glass);
+		cabin.position.set(0, cabinSpec.centerY, cabinSpec.offsetZ);
 		g.add(cabin);
 		// wheels
-		for (const wheel of [
-			{ x: -0.85, z: 1.2 },
-			{ x: 0.85, z: 1.2 },
-			{ x: -0.85, z: -1.2 },
-			{ x: 0.85, z: -1.2 },
-		]) {
-			const w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.22, 10), dark);
+		for (const [sx, sz] of [
+			[-1, 1],
+			[1, 1],
+			[-1, -1],
+			[1, -1],
+		] as const) {
+			const w = new THREE.Mesh(new THREE.CylinderGeometry(wheel.radius, wheel.radius, wheel.width, 10), dark);
 			w.rotation.z = Math.PI / 2;
-			w.position.set(wheel.x, 0.28, wheel.z);
+			w.position.set(sx * wheel.offsetX, wheel.radius, sz * wheel.offsetZ);
 			g.add(w);
 		}
 		return g;

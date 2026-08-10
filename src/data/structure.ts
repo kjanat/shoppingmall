@@ -37,6 +37,9 @@ export type BoxStructureSpec = Readonly<{
 	size: Readonly<{ width: number; height: number; depth: number }>;
 }>;
 
+/** A perimeter wall box, still carrying the side it closes so callers can read its inner face. */
+export type CardinalBoxStructureSpec = BoxStructureSpec & Readonly<{ id: CardinalSide }>;
+
 export type RectangularPerimeterSpec = Readonly<{
 	footprint: Readonly<{ width: number; depth: number }>;
 	vertical: Readonly<{ min: number; max: number }>;
@@ -87,7 +90,7 @@ export function rectangularPerimeterWalls({
 	vertical,
 	thickness,
 	capOverlap = 0,
-}: RectangularPerimeterSpec): readonly BoxStructureSpec[] {
+}: RectangularPerimeterSpec): readonly CardinalBoxStructureSpec[] {
 	const y = midpoint(vertical.min, vertical.max);
 	const height = span(vertical.min, vertical.max);
 	return cardinalWallPanels({

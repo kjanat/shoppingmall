@@ -5,7 +5,8 @@ import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
 import { WALK_STEP } from '#/physics/Collision';
 import { EYE, PLAYER_RADIUS } from '#/player/constants';
-import { half } from '#/util/math';
+import { CITY_BOUNDS, CITY_GROUND_Y } from '#/scene/city/cityPlan';
+import { clamp, half } from '#/util/math';
 
 export { EYE } from '#/player/constants';
 
@@ -191,6 +192,28 @@ export class PlayerControls {
 	}
 
 	/**
+	 * Mag de speler de voetafdruk van de mall uit? Boven straatniveau wel: daar
+	 * houden de gevels hem tegen en is de dakrand een sprong naar de stad. Eronder
+	 * niet — daar ligt alleen de parkeergarage, en die heeft geen buitenwereld.
+	 * De uitrit zelf valt onder de eigen vrijstelling in `resolveCircle`.
+	 */
+	get unclamped(): boolean {
+		return this.feetY > CITY_GROUND_Y - 0.5;
+	}
+
+	/**
+	 * Aanrijding: de auto zet je in beweging en de zwaartekracht doet de rest.
+	 * Geen schade-systeem — je vliegt, je landt, je staat weer op.
+	 */
+	launch(vx: number, vz: number, vy: number): void {
+		if (this.flying || this.driving || this.elevFloorY !== null) return;
+		this.vel.x = vx;
+		this.vel.z = vz;
+		this.vy = vy;
+		this.grounded = false;
+	}
+
+	/**
 	 * Glass elevator ride mode. While set, gravity + groundHeightAt are ignored
 	 * so the cabin can carry you between floors without stuttering.
 	 * Pass `null` to disembark.
@@ -220,7 +243,16 @@ export class PlayerControls {
 	/** External displacement (moving walkway) — applied through collision. */
 	nudge(dx: number, dz: number): void {
 		const p = this.cam.position;
-		const solved = this.world.resolveCircle(p.x + dx, p.z + dz, this.feetY, PLAYER_RADIUS, 2, true, !this.grounded);
+		const solved = this.world.resolveCircle(
+			p.x + dx,
+			p.z + dz,
+			this.feetY,
+			PLAYER_RADIUS,
+			2,
+			true,
+			!this.grounded,
+			this.unclamped,
+		);
 		p.x = solved.x;
 		p.z = solved.z;
 	}
@@ -418,6 +450,7 @@ export class PlayerControls {
 			3,
 			true,
 			!this.grounded && this.elevFloorY === null,
+			this.unclamped,
 		);
 		// Bleed off speed we lost to a wall so you slide instead of juddering
 		if (dt > 0) {
@@ -651,10 +684,10 @@ export class PlayerControls {
 		const aboveMall = this.feetY > 14.2;
 		if (aboveMall) {
 			// Vrije stadslucht — geen mall-collision, wel de wereldrand
-			p.x = THREE.MathUtils.clamp(wantX, -95, 95);
-			p.z = THREE.MathUtils.clamp(wantZ, -75, 75);
+			p.x = clamp(wantX, CITY_BOUNDS.minX, CITY_BOUNDS.maxX);
+			p.z = clamp(wantZ, CITY_BOUNDS.minZ, CITY_BOUNDS.maxZ);
 		} else {
-			const solved = this.world.resolveCircle(wantX, wantZ, this.feetY, 0.7, 3, true, true);
+			const solved = this.world.resolveCircle(wantX, wantZ, this.feetY, 0.7, 3, true, true, true);
 			p.x = solved.x;
 			p.z = solved.z;
 		}
@@ -665,13 +698,10 @@ export class PlayerControls {
 		const insideMall = Math.abs(p.x) < half(MALL_SHELL.width) && Math.abs(p.z) < half(MALL_SHELL.depth);
 		const overVoid = Math.abs(p.x) < 7.4 && Math.abs(p.z) < 5.4;
 		const ceiling = insideMall && !overVoid && this.feetY < 13.4 ? 12.6 : 55;
-		let floor = 0.45;
-		if (insideMall) {
-			const g = this.world.groundHeightAt(p.x, p.z, this.feetY, 2.5);
-			// Boven het dakbad is de waterspiegel de bodem: de badbodem ligt onder de
-			// dekplaat, dus daarop klemmen zet de drone middenin het dakbeton.
-			floor = g + this.world.waterDepthAt(p.x, p.z, g) + 0.45;
-		}
+		const g = this.world.groundHeightAt(p.x, p.z, this.feetY, 2.5);
+		// Boven het dakbad is de waterspiegel de bodem: de badbodem ligt onder de
+		// dekplaat, dus daarop klemmen zet de drone middenin het dakbeton.
+		const floor = g + this.world.waterDepthAt(p.x, p.z, g) + 0.45;
 		this.feetY = THREE.MathUtils.clamp(this.feetY, floor, ceiling);
 
 		p.y = this.feetY + 0.55; // ooghoogte in het stoeltje

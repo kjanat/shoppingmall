@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { level, levelAt } from '#/data/levels';
+import type { RentalCarSpot } from '#/data/world';
+import { RENTAL_CAR_SPEC, RENTAL_CAR_SPOTS } from '#/data/world';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -27,15 +29,6 @@ const BRAKE = 22;
 const FRICTION = 5;
 const TURN_RATE = 1.85;
 
-/** Spots in garage local space (group at y=GARAGE_Y) → world */
-const SPOTS: { x: number; z: number; yaw: number; color: number; name: string }[] = [
-	{ x: -15.6, z: -14, yaw: 0, color: 0xc62828, name: 'RODE HATCH' },
-	{ x: -10.4, z: -14, yaw: 0.05, color: 0x1565c0, name: 'BLAUWE SEDAN' },
-	{ x: 5.2, z: -14, yaw: -0.08, color: 0xffc107, name: 'TAXI #88' },
-	{ x: 15.6, z: 14, yaw: Math.PI, color: 0x2e7d32, name: 'GROENE SUV' },
-	{ x: -5.2, z: 14, yaw: Math.PI + 0.1, color: 0x6a1b9a, name: 'PAARSE COUPE' },
-];
-
 /**
  * Player-driveable cars parked in P1. Hop in with E, race the garage,
  * take the west exit ramp into the outdoor city ring.
@@ -56,7 +49,7 @@ export class DriveableCars {
 		this.world = world;
 		this.group.name = 'driveableCars';
 		// World-space group (not parented under parking) so we can leave the garage
-		for (const s of SPOTS) {
+		for (const s of RENTAL_CAR_SPOTS) {
 			this.cars.push(this.spawn(s));
 		}
 	}
@@ -232,7 +225,7 @@ export class DriveableCars {
 		return fallback;
 	}
 
-	private spawn(s: { x: number; z: number; yaw: number; color: number; name: string }): CarSlot {
+	private spawn(s: RentalCarSpot): CarSlot {
 		const mesh = this.makeCar(s.color);
 		const park = new THREE.Vector3(s.x, GARAGE_Y + 0.12, s.z);
 		mesh.position.copy(park);
@@ -306,8 +299,9 @@ export class DriveableCars {
 				roughness: 0.15,
 			}),
 		);
-		const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 4.2), bodyM);
-		body.position.y = 0.5;
+		const { body: bodySpec } = RENTAL_CAR_SPEC;
+		const body = new THREE.Mesh(new THREE.BoxGeometry(bodySpec.width, bodySpec.height, bodySpec.length), bodyM);
+		body.position.y = bodySpec.centerY;
 		g.add(body);
 		const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.45, 2.1), glass);
 		cabin.position.set(0, 0.95, -0.2);

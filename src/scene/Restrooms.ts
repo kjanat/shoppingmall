@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
-import { RESTROOMS_DIVIDER, RESTROOMS_SPEC } from '#/data/world';
+import { RESTROOMS_DIVIDER, RESTROOMS_INTERIOR, RESTROOMS_SHELL, RESTROOMS_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
@@ -26,9 +26,9 @@ export class Restrooms {
 		this.group.name = 'restrooms';
 		this.group.position.copy(this.pos);
 		this.buildShell();
-		this.buildMens(-2.0);
-		this.buildWomens(2.0);
-		this.buildWudu(-0.1);
+		this.buildMens(-RESTROOMS_INTERIOR.roomOffsetX);
+		this.buildWomens(RESTROOMS_INTERIOR.roomOffsetX);
+		this.buildWudu();
 		this.buildCorridorSigns();
 	}
 
@@ -36,9 +36,8 @@ export class Restrooms {
 	getColliders(): { minX: number; maxX: number; minZ: number; maxZ: number; label: string }[] {
 		const cx = this.pos.x;
 		const cz = this.pos.z;
-		const { shell, wallThickness, wallInset } = RESTROOMS_SPEC;
-		const sideX = half(shell.width) - wallInset;
-		const frontZ = half(shell.depth) - wallInset;
+		const { shell, wallThickness } = RESTROOMS_SPEC;
+		const { sideX, frontZ } = RESTROOMS_SHELL;
 		const shellX = half(shell.width);
 		const shellZ = half(shell.depth);
 		const halfWall = half(wallThickness);
@@ -67,9 +66,8 @@ export class Restrooms {
 	}
 
 	private buildShell(): void {
-		const { shell, floorThickness, wallHeight, wallThickness, wallInset, fascia, divider } = RESTROOMS_SPEC;
-		const sideX = half(shell.width) - wallInset;
-		const frontZ = half(shell.depth) - wallInset;
+		const { shell, floorThickness, wallHeight, wallThickness, fascia, divider } = RESTROOMS_SPEC;
+		const { sideX, frontZ, fasciaZ } = RESTROOMS_SHELL;
 
 		const floor = new THREE.Mesh(new THREE.BoxGeometry(shell.width, floorThickness, shell.depth), this.tileMat(0xd5d0c8));
 		floor.position.y = half(floorThickness);
@@ -94,7 +92,7 @@ export class Restrooms {
 
 		// front open with partial fascia
 		const header = new THREE.Mesh(new THREE.BoxGeometry(shell.width, fascia.height, fascia.thickness), wall);
-		header.position.set(0, wallHeight - half(fascia.height), frontZ);
+		header.position.set(0, wallHeight - half(fascia.height), fasciaZ);
 		this.group.add(header);
 
 		// ceiling strip lights
@@ -109,18 +107,22 @@ export class Restrooms {
 
 	/** Local-X offset for men's room (negative = left) */
 	private buildMens(ox: number): void {
+		const { zone: zoneSpec, urinalWall, urinals, mensStall, mensBasin } = RESTROOMS_INTERIOR;
 		const g = new THREE.Group();
 		g.position.x = ox;
 		this.group.add(g);
 
 		// floor zone color
-		const zone = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.02, 5.6), this.tileMat(0xc5d5e8));
-		zone.position.set(0, 0.09, 0);
+		const zone = new THREE.Mesh(
+			new THREE.BoxGeometry(zoneSpec.width, zoneSpec.thickness, zoneSpec.depth),
+			this.tileMat(0xc5d5e8),
+		);
+		zone.position.set(0, zoneSpec.centerY, 0);
 		g.add(zone);
 
 		// urinal wall + 3 urinals
 		const splash = new THREE.Mesh(
-			new THREE.BoxGeometry(3.2, 1.4, 0.08),
+			new THREE.BoxGeometry(urinalWall.width, urinalWall.height, urinalWall.thickness),
 			this.track(
 				lit({
 					color: 0xb0bec5,
@@ -129,47 +131,51 @@ export class Restrooms {
 				}),
 			),
 		);
-		splash.position.set(0, 0.9, -2.6);
+		splash.position.set(0, urinalWall.centerY, urinalWall.offsetZ);
 		g.add(splash);
 
-		for (let i = 0; i < 3; i++) {
-			g.add(this.makeUrinal(-1.1 + i * 1.1, -2.45));
+		for (let i = 0; i < urinals.count; i++) {
+			g.add(this.makeUrinal((i - half(urinals.count - 1)) * urinals.spacing, urinals.offsetZ));
 		}
 
 		// dividers between urinals
 		const divMat = this.track(lit({ color: 0x90a4ae, metalness: 0.2, roughness: 0.5 }));
-		for (const dx of [-0.55, 0.55]) {
+		for (const dx of [-half(urinals.spacing), half(urinals.spacing)]) {
 			const d = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, 0.45), divMat);
 			d.position.set(dx, 0.85, -2.35);
 			g.add(d);
 		}
 
 		// one sit toilet stall
-		g.add(this.makeStall(1.15, 1.1, 0x90caf9));
+		g.add(this.makeStall(mensStall.offsetX, mensStall.offsetZ, 0x90caf9));
 
 		// sink
-		g.add(this.makeSink(-1.2, 2.2));
+		g.add(this.makeSink(mensBasin.offsetX, mensBasin.offsetZ));
 
 		// sign
 		g.add(this.makeDoorSign(-0.1, 3.0, 'HEREN', '♂ urinoirs + hokje', '#1565c0'));
 	}
 
 	private buildWomens(ox: number): void {
+		const { zone: zoneSpec, womensStall, womensBasin } = RESTROOMS_INTERIOR;
 		const g = new THREE.Group();
 		g.position.x = ox;
 		this.group.add(g);
 
-		const zone = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.02, 5.6), this.tileMat(0xf0d0d8));
-		zone.position.set(0, 0.09, 0);
+		const zone = new THREE.Mesh(
+			new THREE.BoxGeometry(zoneSpec.width, zoneSpec.thickness, zoneSpec.depth),
+			this.tileMat(0xf0d0d8),
+		);
+		zone.position.set(0, zoneSpec.centerY, 0);
 		g.add(zone);
 
 		// two stalls
-		g.add(this.makeStall(-1.0, 0.2, 0xf48fb1));
-		g.add(this.makeStall(1.0, 0.2, 0xf48fb1));
+		g.add(this.makeStall(-womensStall.offsetX, womensStall.offsetZ, 0xf48fb1));
+		g.add(this.makeStall(womensStall.offsetX, womensStall.offsetZ, 0xf48fb1));
 
 		// sinks
-		g.add(this.makeSink(-1.0, 2.3));
-		g.add(this.makeSink(1.0, 2.3));
+		g.add(this.makeSink(-womensBasin.offsetX, womensBasin.offsetZ));
+		g.add(this.makeSink(womensBasin.offsetX, womensBasin.offsetZ));
 
 		// mirror strip
 		const mirror = new THREE.Mesh(
@@ -189,19 +195,23 @@ export class Restrooms {
 	}
 
 	/** Ablution / wudu taps — between prayer and toilets, not inside prayer mats */
-	private buildWudu(ox: number): void {
+	private buildWudu(): void {
+		const { offsetX, offsetZ, bench: benchSpec, basin: basinSpec } = RESTROOMS_INTERIOR.wudu;
 		const g = new THREE.Group();
 		// sits slightly toward corridor front of WC block, center
-		g.position.set(ox, 0, 3.6);
+		g.position.set(offsetX, 0, offsetZ);
 		this.group.add(g);
 
-		const bench = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.35, 0.7), this.track(lit({ color: 0x5d4037, roughness: 0.8 })));
-		bench.position.y = 0.2;
+		const bench = new THREE.Mesh(
+			new THREE.BoxGeometry(benchSpec.width, benchSpec.height, benchSpec.depth),
+			this.track(lit({ color: 0x5d4037, roughness: 0.8 })),
+		);
+		bench.position.y = benchSpec.centerY;
 		g.add(bench);
 
 		// low foot-wash basin
 		const basin = new THREE.Mesh(
-			new THREE.BoxGeometry(2.2, 0.18, 0.55),
+			new THREE.BoxGeometry(basinSpec.width, basinSpec.height, basinSpec.depth),
 			this.track(
 				lit({
 					color: 0x78909c,
@@ -210,7 +220,7 @@ export class Restrooms {
 				}),
 			),
 		);
-		basin.position.set(0, 0.42, 0);
+		basin.position.set(0, basinSpec.centerY, 0);
 		g.add(basin);
 
 		const water = new THREE.Mesh(

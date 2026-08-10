@@ -36,6 +36,7 @@ import { CityPark } from '#/scene/city/CityPark';
 import { CityRoads } from '#/scene/city/CityRoads';
 import { CitySky } from '#/scene/city/CitySky';
 import { CityTheatre } from '#/scene/city/CityTheatre';
+import type { RoadObstacle } from '#/scene/city/CityTraffic';
 import { CityTraffic } from '#/scene/city/CityTraffic';
 import { DiscoParty } from '#/scene/Disco';
 import { BARTEK_LINES, DJBartek } from '#/scene/DJBartek';
@@ -401,6 +402,14 @@ export class App {
 		this.alienProbe.bind(this.atmosphere.americans);
 		// Sims ride the loopband too
 		this.atmosphere.americans.setBeltProvider((x, y, z) => this.walkways.beltVelocityAt(x, y, z));
+
+		// Ringweg: de auto's remmen voor je zodra je op de strook staat, en lanceren
+		// je als hun remweg daar niet meer voor toereikend was.
+		this.cityTraffic.setObstacleProvider(() => this.walkerOnRoad());
+		this.cityTraffic.setHitHandler((vx, vz, vy) => {
+			this.player.launch(vx, vz, vy);
+			this.ui.setStatus('🚗💥 AANGEREDEN — de ringweg is geen zebrapad');
+		});
 
 		// Luchtvloot: heli op het dak (cyclus), drone bij de fontein (instappen!)
 		this.heli = new Helicopter(this.helipad.padCenter);
@@ -1954,6 +1963,16 @@ export class App {
 		return false;
 	}
 
+	/**
+	 * De speler zoals het ringwegverkeer hem ziet: alleen te voet. In een auto,
+	 * in de drone of in een sim is hij geen voetganger en remt er niemand voor.
+	 */
+	private walkerOnRoad(): RoadObstacle | null {
+		if (!this.freeMove || !this.player.enabled) return null;
+		if (this.possessId !== null || this.player.flying || this.player.driving) return null;
+		return { x: this.camera.position.x, y: this.player.feetHeight, z: this.camera.position.z };
+	}
+
 	private pushPlayerFromSims(minDist: number): void {
 		const cam = this.camera.position;
 		const playerFloor = levelY(levelAt(cam.y));
@@ -1974,7 +1993,16 @@ export class App {
 		}
 		// Pass airborne so we don't void-eject mid-balcony-jump
 		const airborne = !this.player.isGrounded;
-		const r = this.world.resolveCircle(cam.x, cam.z, this.player.feetHeight, PLAYER_RADIUS, 3, true, airborne);
+		const r = this.world.resolveCircle(
+			cam.x,
+			cam.z,
+			this.player.feetHeight,
+			PLAYER_RADIUS,
+			3,
+			true,
+			airborne,
+			this.player.unclamped,
+		);
 		cam.x = r.x;
 		cam.z = r.z;
 	}

@@ -2,10 +2,12 @@ import { STANDING_PEDESTRIAN } from '#/data/character';
 import type { EscalatorSpec, OpeningDef, StairSpec, VerticalConnector } from '#/data/connectors';
 import { ATRIUM_VOID, MALL_FOOTPRINT, PARKING_FOOTPRINT } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
-import { LEVELS, level, levelY } from '#/data/levels';
+import { LEVELS, levelY } from '#/data/levels';
 import type {
+	Bounds2,
 	InteractionEmitter,
 	InteractionReceiver,
+	Penetration,
 	PlacementClass,
 	PlanShape,
 	SpatialRole,
@@ -14,7 +16,8 @@ import type {
 	Vec3,
 	WorldEntity,
 } from '#/data/spatial';
-import { geometryBounds, planBounds, rectanglePlan } from '#/data/spatial';
+import { geometryBounds, PLAN_ENVELOPE_TAG, planBounds, rectanglePlan } from '#/data/spatial';
+import type { StoreDef } from '#/data/stores';
 import { requireStore, shopStores } from '#/data/stores';
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
 import { unreachable } from '#/util/invariant';
@@ -25,6 +28,8 @@ export type WorldCategory = 'floor' | 'ceiling' | 'wall' | 'opening' | 'shop' | 
 export const ESCALATOR_SPEED = 0.5;
 export const SHOP_HEIGHT = 4.2;
 export const SHOP_ROOM_DEPTH_FACTOR = 0.92;
+/** Floor a shopfront keeps for itself, so a shopper can stand at the window and step in. */
+export const STOREFRONT_CLEARANCE_DEPTH = 1.5;
 export const ELEVATOR_SPEC = {
 	center: { x: 16, z: -8 },
 	cabin: {
@@ -465,7 +470,7 @@ function clearancePrism(
 	plan: PlanShape,
 	minY: number,
 	maxY: number,
-	role: 'opening-clearance' | 'connector-clearance',
+	role: 'opening-clearance' | 'connector-clearance' | 'storefront-clearance',
 ): SpatialVolume {
 	return {
 		id,
@@ -476,6 +481,10 @@ function clearancePrism(
 		allowsOverlapFrom: ['connector'],
 		tags: [role],
 	};
+}
+
+function planEnvelope(volume: SpatialVolume): SpatialVolume {
+	return { ...volume, tags: [...volume.tags, PLAN_ENVELOPE_TAG] };
 }
 
 function structurePlacement(): MallWorldEntity['placement'] {
@@ -536,6 +545,14 @@ export const HELIPAD_DECK_PLAN = {
 	],
 } satisfies PlanShape;
 export const HELIPAD_DECK_BOUNDS = planBounds(HELIPAD_DECK_PLAN);
+/**
+ * De dekplaat ligt óp de dakplaat. Als dikke plaat mét zijn bovenkant op
+ * levelY('roof') lag hij in het dak en flikkerde hij over de hele 24×16 m.
+ * Het loopvlak blijft levelY('roof'): het dak heeft één hoogte en check-world
+ * eist dat de uiteinden van elke vlucht daarop uitkomen.
+ */
+export const HELIPAD_DECK_THICKNESS = 0.05;
+export const HELIPAD_DECK_TOP_Y = levelY('roof') + HELIPAD_DECK_THICKNESS;
 export const HELIPAD_PAD_SPEC = {
 	center: { x: 22, z: 16 },
 	topRadius: 5.5,
@@ -620,11 +637,10 @@ function slabEntity(spec: StructuralSlabSpec): MallWorldEntity {
 		mechanisms: NO_MECHANISMS,
 		receiver: STATIC_RECEIVER,
 		emitters: NO_EMITTERS,
-		map: map(
-			spec.category === 'parking' ? 'parking' : 'structure',
-			level(spec.level).code,
-			spec.category === 'parking' ? 40 : 50,
-		),
+		// Geen kaartlabel: een vloerplaat beslaat het hele dek, dus zijn label landt
+		// midden op de kaart. Op het dak was dat het atriumgat, met het woord DAK in
+		// een gat waar juist geen dak zit.
+		map: map(spec.category === 'parking' ? 'parking' : 'structure', undefined, spec.category === 'parking' ? 40 : 50),
 		tags: ['slab', 'walkable', 'structural', ...(spec.category === 'parking' ? ['parking'] : [])],
 	};
 }
@@ -645,13 +661,54 @@ export const MALL_WALL_SPECS = rectangularPerimeterWalls({
 	capOverlap: 0.5,
 });
 
+/**
+ * De vier wandkasten delen hun hoeken: de noord- en zuidkap lopen over het
+ * uiteinde van de zij-wanden heen, precies een halve wanddikte diep.
+ */
+const MALL_WALL_CORNER_JOIN: Penetration = { depth: half(MALL_WALL_THICKNESS), into: ['structure'] };
+
+/**
+ * The inner faces of the perimeter walls. A room may stand against one; it starts
+ * poking out through the facade once its geometry runs past one without saying so.
+ */
+function mallInteriorBounds(): Bounds2 {
+	let minX = Number.NEGATIVE_INFINITY;
+	let maxX = Number.POSITIVE_INFINITY;
+	let minZ = Number.NEGATIVE_INFINITY;
+	let maxZ = Number.POSITIVE_INFINITY;
+	for (const wall of MALL_WALL_SPECS) {
+		switch (wall.id) {
+			case 'west':
+				minX = Math.max(minX, wall.position.x + half(wall.size.width));
+				break;
+			case 'east':
+				maxX = Math.min(maxX, wall.position.x - half(wall.size.width));
+				break;
+			case 'north':
+				minZ = Math.max(minZ, wall.position.z + half(wall.size.depth));
+				break;
+			case 'south':
+				maxZ = Math.min(maxZ, wall.position.z - half(wall.size.depth));
+				break;
+		}
+	}
+	return { minX, maxX, minZ, maxZ };
+}
+
+const MALL_INTERIOR = mallInteriorBounds();
+
 const MALL_WALLS: readonly MallWorldEntity[] = MALL_WALL_SPECS.map(({ id, position, size }) => ({
 	id: `mall-wall-${id}`,
 	label: `${id} mall wall`,
 	category: 'wall',
 	levels: ['v0', 'v1'],
 	transform: { position, rotation: ZERO_ROTATION },
-	volumes: [solidPrism('wall', rectangle(position.x, position.z, size.width, size.depth), MALL_WALL_MIN_Y, MALL_WALL_MAX_Y)],
+	volumes: [
+		{
+			...solidPrism('wall', rectangle(position.x, position.z, size.width, size.depth), MALL_WALL_MIN_Y, MALL_WALL_MAX_Y),
+			penetration: MALL_WALL_CORNER_JOIN,
+		},
+	],
 	ports: NO_PORTS,
 	placement: structurePlacement(),
 	kinematics: { kind: 'static' },
@@ -675,9 +732,7 @@ export const HELIPAD_DECK: MallWorldEntity = {
 	category: 'helipad',
 	levels: ['roof'],
 	transform: { position: { x: 0, y: levelY('roof'), z: 0 }, rotation: ZERO_ROTATION },
-	volumes: [
-		solidPrism('deck', HELIPAD_DECK_PLAN, levelY('roof') - 0.35, levelY('roof'), [SECRET_STAIRS_OPENING_PLAN], 'support'),
-	],
+	volumes: [solidPrism('deck', HELIPAD_DECK_PLAN, levelY('roof'), HELIPAD_DECK_TOP_Y, [SECRET_STAIRS_OPENING_PLAN], 'support')],
 	ports: NO_PORTS,
 	placement: structurePlacement(),
 	kinematics: { kind: 'static' },
@@ -691,7 +746,7 @@ export const HELIPAD_DECK: MallWorldEntity = {
 export const HELIPAD_HATCH_FRAME_SPEC = { thickness: 0.12, height: 0.15 } as const;
 const HATCH_FRAME_THICKNESS = HELIPAD_HATCH_FRAME_SPEC.thickness;
 const HATCH_FRAME_HEIGHT = HELIPAD_HATCH_FRAME_SPEC.height;
-const HATCH_FRAME_Y = levelY('roof') + half(HATCH_FRAME_HEIGHT);
+const HATCH_FRAME_Y = HELIPAD_DECK_TOP_Y + half(HATCH_FRAME_HEIGHT);
 const HATCH_WIDTH = span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENING_BOUNDS.maxX);
 const HATCH_DEPTH = span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ);
 
@@ -715,7 +770,7 @@ export const HELIPAD_HATCH_FRAME: MallWorldEntity = {
 		rotation: ZERO_ROTATION,
 	},
 	volumes: HELIPAD_HATCH_FRAME_RAILS.map((rail) =>
-		solidPrism(rail.id, rectanglePlan(rail), levelY('roof'), levelY('roof') + HATCH_FRAME_HEIGHT),
+		solidPrism(rail.id, rectanglePlan(rail), HELIPAD_DECK_TOP_Y, HELIPAD_DECK_TOP_Y + HATCH_FRAME_HEIGHT),
 	),
 	ports: NO_PORTS,
 	placement: { class: 'fixture', requiresSupport: true, mayCover: [], mayBeCoveredBy: [] },
@@ -1052,38 +1107,79 @@ export const OPENING_ENTITIES: readonly MallWorldEntity[] = [
 	),
 ];
 
-const SPATIAL_SHOPS: readonly MallWorldEntity[] = shopStores().map((store) => ({
-	id: `shop-${store.id}`,
-	label: store.name,
-	category: 'shop',
-	levels: [store.level],
-	transform: {
-		position: { x: store.x, y: levelY(store.level), z: store.z },
-		rotation: { yaw: store.rotation, pitch: 0, roll: 0 },
-	},
-	volumes: [
-		solidPrism(
-			'room-shell',
-			rectangle(
-				store.x - Math.sin(store.rotation) * store.depth * SHOP_ROOM_DEPTH_FACTOR * 0.5,
-				store.z - Math.cos(store.rotation) * store.depth * SHOP_ROOM_DEPTH_FACTOR * 0.5,
-				store.width,
-				store.depth * SHOP_ROOM_DEPTH_FACTOR,
-				store.rotation,
+/** How far a point may travel along a direction before it leaves the mall interior. */
+function runToMallInterior(x: number, z: number, dirX: number, dirZ: number): number {
+	const limits: number[] = [];
+	if (dirX > 0) limits.push((MALL_INTERIOR.maxX - x) / dirX);
+	if (dirX < 0) limits.push((MALL_INTERIOR.minX - x) / dirX);
+	if (dirZ > 0) limits.push((MALL_INTERIOR.maxZ - z) / dirZ);
+	if (dirZ < 0) limits.push((MALL_INTERIOR.minZ - z) / dirZ);
+	return limits.length === 0 ? Number.POSITIVE_INFINITY : Math.min(...limits);
+}
+
+/**
+ * De winkelruimte groeit vanaf de pui naar achteren. KRUIDVAT's 7 m eindigde
+ * 0.24 m buiten de noordgevel, dus de achterwand stopt bij de binnenkant van de
+ * perimetermuur. De mesh in MallBuilder en het volume hieronder lezen dit samen.
+ */
+export function shopRoomDepth(store: StoreDef): number {
+	const authored = store.depth * SHOP_ROOM_DEPTH_FACTOR;
+	const run = runToMallInterior(store.x, store.z, -Math.sin(store.rotation), -Math.cos(store.rotation));
+	return Math.min(authored, run);
+}
+
+function shopEntity(store: StoreDef): MallWorldEntity {
+	const roomDepth = shopRoomDepth(store);
+	return {
+		id: `shop-${store.id}`,
+		label: store.name,
+		category: 'shop',
+		levels: [store.level],
+		transform: {
+			position: { x: store.x, y: levelY(store.level), z: store.z },
+			rotation: { yaw: store.rotation, pitch: 0, roll: 0 },
+		},
+		volumes: [
+			planEnvelope(
+				solidPrism(
+					'room-shell',
+					rectangle(
+						store.x - Math.sin(store.rotation) * half(roomDepth),
+						store.z - Math.cos(store.rotation) * half(roomDepth),
+						store.width,
+						roomDepth,
+						store.rotation,
+					),
+					levelY(store.level),
+					levelY(store.level) + SHOP_HEIGHT,
+				),
 			),
-			levelY(store.level),
-			levelY(store.level) + SHOP_HEIGHT,
-		),
-	],
-	ports: NO_PORTS,
-	placement: { class: 'fixture', requiresSupport: true, mayCover: [], mayBeCoveredBy: ['clutter'] },
-	kinematics: { kind: 'static' },
-	mechanisms: NO_MECHANISMS,
-	receiver: STATIC_RECEIVER,
-	emitters: NO_EMITTERS,
-	map: map('shop', store.name, 60),
-	tags: ['shop', store.category, 'static'],
-}));
+			clearancePrism(
+				'frontage',
+				rectangle(
+					store.x + Math.sin(store.rotation) * half(STOREFRONT_CLEARANCE_DEPTH),
+					store.z + Math.cos(store.rotation) * half(STOREFRONT_CLEARANCE_DEPTH),
+					store.width,
+					STOREFRONT_CLEARANCE_DEPTH,
+					store.rotation,
+				),
+				levelY(store.level),
+				levelY(store.level) + STANDING_PEDESTRIAN.requiredHeadroom,
+				'storefront-clearance',
+			),
+		],
+		ports: NO_PORTS,
+		placement: { class: 'fixture', requiresSupport: true, mayCover: [], mayBeCoveredBy: ['clutter'] },
+		kinematics: { kind: 'static' },
+		mechanisms: NO_MECHANISMS,
+		receiver: STATIC_RECEIVER,
+		emitters: NO_EMITTERS,
+		map: map('shop', store.name, 60),
+		tags: ['shop', store.category, 'static'],
+	};
+}
+
+const SPATIAL_SHOPS: readonly MallWorldEntity[] = shopStores().map(shopEntity);
 
 // ── authored rooms, props and the parking deck ─────────────────────────────
 // Each spec is read by its scene builder as well as by the entity below it.
@@ -1099,6 +1195,7 @@ const protestStore = requireStore('protest');
 
 const V0_Y = levelY('v0');
 const V1_Y = levelY('v1');
+const ROOF_Y = levelY('roof');
 
 type RoomEntitySpec = Readonly<{
 	id: string;
@@ -1131,10 +1228,15 @@ function roomEntity(spec: RoomEntitySpec): MallWorldEntity {
 	};
 }
 
+/**
+ * De hele installatie past tussen de winkelpui van Douglas (tot z −4) en de
+ * toiletblok-wand (vanaf z 8.85). Elk backdrop dat op de hartlijn x −28 staat is
+ * breder dan die 0,5 m tot de Douglas-frontage, dus de vrije ruimte is z, niet x.
+ */
 export const CATWALK_SPEC = {
 	runwayX: -28,
-	startZ: -3.5,
-	tipZ: 5.5,
+	startZ: -2,
+	tipZ: 6,
 	podiumY: 0.34,
 	halfWidth: 1.35,
 	/** Extra deck length beyond the walked span, split over both ends. */
@@ -1217,8 +1319,21 @@ export const RESTROOMS_SPEC = {
 	divider: { thickness: 0.3, backGap: 0.4, frontGap: 0.6 },
 } as const;
 
-const RESTROOMS_SIDE_X = half(RESTROOMS_SPEC.shell.width) - RESTROOMS_SPEC.wallInset;
-const RESTROOMS_FRONT_Z = half(RESTROOMS_SPEC.shell.depth) - RESTROOMS_SPEC.wallInset;
+/**
+ * De inzet gold voor de hartlijn en niet voor het wandvlak, dus stak elke wand
+ * een halve dikte voorbij de tegelplaat waar hij uit gemeten is.
+ */
+function restroomsWallCenter(halfSpan: number, thickness: number): number {
+	return halfSpan - RESTROOMS_SPEC.wallInset - half(thickness);
+}
+
+/** Wandharten van de schil: mesh, collider en volume lezen dezelfde drie. */
+export const RESTROOMS_SHELL = {
+	sideX: restroomsWallCenter(half(RESTROOMS_SPEC.shell.width), RESTROOMS_SPEC.wallThickness),
+	frontZ: restroomsWallCenter(half(RESTROOMS_SPEC.shell.depth), RESTROOMS_SPEC.wallThickness),
+	fasciaZ: restroomsWallCenter(half(RESTROOMS_SPEC.shell.depth), RESTROOMS_SPEC.fascia.thickness),
+} as const;
+
 const RESTROOMS_WALL_TOP = V0_Y + RESTROOMS_SPEC.wallHeight;
 const RESTROOMS_HALF_DEPTH = half(RESTROOMS_SPEC.shell.depth);
 
@@ -1234,6 +1349,112 @@ export const RESTROOMS_DIVIDER = {
 	thickness: RESTROOMS_SPEC.divider.thickness,
 } as const;
 
+/**
+ * Wat er ín het blok staat. De hokjes, de urinoirwand en de wastafels bestonden
+ * alleen als meubels in Restrooms.ts, dus tekende de plattegrond een lege doos
+ * van acht bij zes meter met een streep in het midden.
+ */
+export const RESTROOMS_INTERIOR = {
+	/** Heren links van de scheidingswand, dames rechts. */
+	roomOffsetX: 2,
+	zone: { width: 3.6, depth: 5.6, thickness: 0.02, centerY: 0.09 },
+	urinalWall: { width: 3.2, height: 1.4, thickness: 0.08, centerY: 0.9, offsetZ: -2.6 },
+	urinals: { count: 3, spacing: 1.1, offsetZ: -2.45 },
+	stall: { width: 1.1, depth: 1.4, height: 2 },
+	mensStall: { offsetX: 1.15, offsetZ: 1.1 },
+	womensStall: { offsetX: 1, offsetZ: 0.2 },
+	basin: { width: 0.7, depth: 0.45, height: 0.98 },
+	mensBasin: { offsetX: -1.2, offsetZ: 2.2 },
+	womensBasin: { offsetX: 1, offsetZ: 2.3 },
+	/** De wudu-nis staat vóór de pui: naast de twee zones is geen meter over. */
+	wudu: {
+		offsetX: -0.1,
+		offsetZ: 3.6,
+		bench: { width: 2.4, depth: 0.7, height: 0.35, centerY: 0.2 },
+		basin: { width: 2.2, depth: 0.55, height: 0.18, centerY: 0.42 },
+	},
+} as const;
+
+function restroomsFitting(
+	id: string,
+	offset: Vec2,
+	width: number,
+	depth: number,
+	height: number,
+	role: SpatialRole = 'solid',
+): SpatialVolume {
+	return solidPrism(
+		id,
+		rectangle(RESTROOMS_SPEC.center.x + offset.x, RESTROOMS_SPEC.center.z + offset.z, width, depth),
+		V0_Y,
+		V0_Y + height,
+		[],
+		role,
+		false,
+	);
+}
+
+/** Het meubilair van beide toiletruimtes, uit dezelfde maten als de meshes. */
+function restroomsInteriorVolumes(): readonly SpatialVolume[] {
+	const interior = RESTROOMS_INTERIOR;
+	const { roomOffsetX, zone, urinalWall, stall, basin } = interior;
+	const zoneTop = zone.centerY + half(zone.thickness);
+	const urinalWallTop = urinalWall.centerY + half(urinalWall.height);
+	return [
+		restroomsFitting('zone-mens', { x: -roomOffsetX, z: 0 }, zone.width, zone.depth, zoneTop, 'decorative-covering'),
+		restroomsFitting('zone-womens', { x: roomOffsetX, z: 0 }, zone.width, zone.depth, zoneTop, 'decorative-covering'),
+		restroomsFitting(
+			'urinal-wall',
+			{ x: -roomOffsetX, z: urinalWall.offsetZ },
+			urinalWall.width,
+			urinalWall.thickness,
+			urinalWallTop,
+		),
+		restroomsFitting(
+			'stall-mens',
+			{ x: -roomOffsetX + interior.mensStall.offsetX, z: interior.mensStall.offsetZ },
+			stall.width,
+			stall.depth,
+			stall.height,
+		),
+		restroomsFitting(
+			'stall-womens-west',
+			{ x: roomOffsetX - interior.womensStall.offsetX, z: interior.womensStall.offsetZ },
+			stall.width,
+			stall.depth,
+			stall.height,
+		),
+		restroomsFitting(
+			'stall-womens-east',
+			{ x: roomOffsetX + interior.womensStall.offsetX, z: interior.womensStall.offsetZ },
+			stall.width,
+			stall.depth,
+			stall.height,
+		),
+		restroomsFitting(
+			'basin-mens',
+			{ x: -roomOffsetX + interior.mensBasin.offsetX, z: interior.mensBasin.offsetZ },
+			basin.width,
+			basin.depth,
+			basin.height,
+		),
+		restroomsFitting(
+			'basin-womens-west',
+			{ x: roomOffsetX - interior.womensBasin.offsetX, z: interior.womensBasin.offsetZ },
+			basin.width,
+			basin.depth,
+			basin.height,
+		),
+		restroomsFitting(
+			'basin-womens-east',
+			{ x: roomOffsetX + interior.womensBasin.offsetX, z: interior.womensBasin.offsetZ },
+			basin.width,
+			basin.depth,
+			basin.height,
+		),
+	];
+}
+
 export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 	id: 'restrooms',
 	label: 'Restroom block',
@@ -1242,19 +1463,21 @@ export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 	center: RESTROOMS_SPEC.center,
 	placementClass: 'fixture',
 	volumes: [
-		solidPrism(
-			'floor-tile',
-			rectangle(RESTROOMS_SPEC.center.x, RESTROOMS_SPEC.center.z, RESTROOMS_SPEC.shell.width, RESTROOMS_SPEC.shell.depth),
-			V0_Y,
-			V0_Y + RESTROOMS_SPEC.floorThickness,
-			[],
-			'decorative-covering',
+		planEnvelope(
+			solidPrism(
+				'floor-tile',
+				rectangle(RESTROOMS_SPEC.center.x, RESTROOMS_SPEC.center.z, RESTROOMS_SPEC.shell.width, RESTROOMS_SPEC.shell.depth),
+				V0_Y,
+				V0_Y + RESTROOMS_SPEC.floorThickness,
+				[],
+				'decorative-covering',
+			),
 		),
 		solidPrism(
 			'wall-north',
 			rectangle(
 				RESTROOMS_SPEC.center.x,
-				RESTROOMS_SPEC.center.z - RESTROOMS_FRONT_Z,
+				RESTROOMS_SPEC.center.z - RESTROOMS_SHELL.frontZ,
 				RESTROOMS_SPEC.shell.width,
 				RESTROOMS_SPEC.wallThickness,
 			),
@@ -1264,7 +1487,7 @@ export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 		solidPrism(
 			'wall-west',
 			rectangle(
-				RESTROOMS_SPEC.center.x - RESTROOMS_SIDE_X,
+				RESTROOMS_SPEC.center.x - RESTROOMS_SHELL.sideX,
 				RESTROOMS_SPEC.center.z,
 				RESTROOMS_SPEC.wallThickness,
 				RESTROOMS_SPEC.shell.depth,
@@ -1275,7 +1498,7 @@ export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 		solidPrism(
 			'wall-east',
 			rectangle(
-				RESTROOMS_SPEC.center.x + RESTROOMS_SIDE_X,
+				RESTROOMS_SPEC.center.x + RESTROOMS_SHELL.sideX,
 				RESTROOMS_SPEC.center.z,
 				RESTROOMS_SPEC.wallThickness,
 				RESTROOMS_SPEC.shell.depth,
@@ -1298,7 +1521,7 @@ export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 			'fascia',
 			rectangle(
 				RESTROOMS_SPEC.center.x,
-				RESTROOMS_SPEC.center.z + RESTROOMS_FRONT_Z,
+				RESTROOMS_SPEC.center.z + RESTROOMS_SHELL.fasciaZ,
 				RESTROOMS_SPEC.shell.width,
 				RESTROOMS_SPEC.fascia.thickness,
 			),
@@ -1308,19 +1531,64 @@ export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 			'solid',
 			false,
 		),
+		...restroomsInteriorVolumes(),
 	],
 	map: map('fixture', restroomsStore.name, 62),
 	tags: ['restrooms', restroomsStore.category, 'static'],
 });
+
+const WUDU_CENTER: Vec2 = {
+	x: RESTROOMS_SPEC.center.x + RESTROOMS_INTERIOR.wudu.offsetX,
+	z: RESTROOMS_SPEC.center.z + RESTROOMS_INTERIOR.wudu.offsetZ,
+};
+const WUDU_LABEL = 'WUDU · ABLUTIE';
+const WUDU_BASIN_Y = V0_Y + RESTROOMS_INTERIOR.wudu.basin.centerY;
+
+/** De voetwasnis tussen gebedsruimte en toiletten. Hij staat buiten de tegelplaat, dus buiten het toiletblok. */
+export const WUDU_ENTITY: MallWorldEntity = roomEntity({
+	id: 'wudu-niche',
+	label: 'Wudu niche',
+	category: 'facility',
+	level: 'v0',
+	center: WUDU_CENTER,
+	placementClass: 'furnishing',
+	volumes: [
+		planEnvelope(
+			solidPrism(
+				'bench',
+				rectangle(WUDU_CENTER.x, WUDU_CENTER.z, RESTROOMS_INTERIOR.wudu.bench.width, RESTROOMS_INTERIOR.wudu.bench.depth),
+				V0_Y,
+				V0_Y + RESTROOMS_INTERIOR.wudu.bench.centerY + half(RESTROOMS_INTERIOR.wudu.bench.height),
+				[],
+				'solid',
+				false,
+			),
+		),
+		solidPrism(
+			'basin',
+			rectangle(WUDU_CENTER.x, WUDU_CENTER.z, RESTROOMS_INTERIOR.wudu.basin.width, RESTROOMS_INTERIOR.wudu.basin.depth),
+			WUDU_BASIN_Y - half(RESTROOMS_INTERIOR.wudu.basin.height),
+			WUDU_BASIN_Y + half(RESTROOMS_INTERIOR.wudu.basin.height),
+			[],
+			'solid',
+			false,
+		),
+	],
+	map: map('fixture', WUDU_LABEL, 61),
+	tags: ['wudu', restroomsStore.category, 'static'],
+});
+
+const PRAYER_WALL_THICKNESS = 0.15;
 
 export const PRAYER_ROOM_SPEC = {
 	center: { x: prayerStore.x, z: prayerStore.z },
 	room: { width: prayerStore.width, depth: prayerStore.depth },
 	floorThickness: 0.08,
 	wallHeight: 3.2,
-	wallThickness: 0.15,
+	wallThickness: PRAYER_WALL_THICKNESS,
 	backWallOffset: 2,
-	sideWallOffset: 2.7,
+	/** Hartlijn, dus een halve dikte binnen de vloerrand: 2,7 zette het wandvlak 25 mm ernaast. */
+	sideWallOffset: half(prayerStore.width) - half(PRAYER_WALL_THICKNESS),
 	carpet: { width: 4.2, depth: 2.8, thickness: 0.03, centerY: 0.1, offsetZ: -0.2 },
 } as const;
 
@@ -1335,13 +1603,15 @@ export const PRAYER_ROOM_ENTITY: MallWorldEntity = roomEntity({
 	center: PRAYER_ROOM_SPEC.center,
 	placementClass: 'fixture',
 	volumes: [
-		solidPrism(
-			'floor',
-			rectangle(PRAYER_ROOM_SPEC.center.x, PRAYER_ROOM_SPEC.center.z, PRAYER_ROOM_SPEC.room.width, PRAYER_ROOM_SPEC.room.depth),
-			V0_Y,
-			V0_Y + PRAYER_ROOM_SPEC.floorThickness,
-			[],
-			'support',
+		planEnvelope(
+			solidPrism(
+				'floor',
+				rectangle(PRAYER_ROOM_SPEC.center.x, PRAYER_ROOM_SPEC.center.z, PRAYER_ROOM_SPEC.room.width, PRAYER_ROOM_SPEC.room.depth),
+				V0_Y,
+				V0_Y + PRAYER_ROOM_SPEC.floorThickness,
+				[],
+				'support',
+			),
 		),
 		solidPrism(
 			'wall-north',
@@ -1426,6 +1696,16 @@ function beardCaveSideWall(id: string, sign: number): SpatialVolume {
 	);
 }
 
+/**
+ * De grot is met opzet in de westmuur uitgehold, dus elk schilvolume verklaart
+ * hoe ver zijn eigen geometrie voorbij de binnenkant van die muur reikt.
+ */
+function recessedInWestWall(volume: SpatialVolume): SpatialVolume {
+	const depth = MALL_INTERIOR.minX - geometryBounds(volume.geometry).minX;
+	if (depth <= 0) return volume;
+	return { ...volume, penetration: { depth, into: ['structure'] } };
+}
+
 function beardCavePillar(id: string, sign: number): SpatialVolume {
 	const { pillar } = BEARD_CAVE_SPEC;
 	return uprightCylinder(
@@ -1479,7 +1759,7 @@ export const BEARD_CAVE_ENTITY: MallWorldEntity = roomEntity({
 		),
 		beardCavePillar('cave-pillar-north', -1),
 		beardCavePillar('cave-pillar-south', 1),
-	],
+	].map(recessedInWestWall),
 	map: map('fixture', beardCaveStore.name, 62),
 	tags: ['beard-cave', beardCaveStore.category, 'static'],
 });
@@ -1502,11 +1782,13 @@ export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 	center: ISLAND_HOP_SPEC.center,
 	placementClass: 'fixture',
 	volumes: [
-		solidPrism(
-			'room-shell',
-			rectangle(ISLAND_HOP_SPEC.center.x, ISLAND_HOP_SPEC.center.z, ISLAND_HOP_SPEC.slab.width, ISLAND_HOP_SPEC.slab.depth),
-			V0_Y,
-			V0_Y + ISLAND_HOP_SPEC.wallHeight,
+		planEnvelope(
+			solidPrism(
+				'room-shell',
+				rectangle(ISLAND_HOP_SPEC.center.x, ISLAND_HOP_SPEC.center.z, ISLAND_HOP_SPEC.slab.width, ISLAND_HOP_SPEC.slab.depth),
+				V0_Y,
+				V0_Y + ISLAND_HOP_SPEC.wallHeight,
+			),
 		),
 		solidPrism(
 			'desk',
@@ -1518,6 +1800,20 @@ export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 			),
 			V0_Y,
 			V0_Y + ISLAND_HOP_SPEC.desk.height,
+		),
+		// Deze winkel loopt niet via shopEntity, en dat was de enige plek waar een
+		// puiprisma ontstond: als enige van de negentien stond zijn pui open.
+		clearancePrism(
+			'frontage',
+			rectangle(
+				ISLAND_HOP_SPEC.center.x + half(ISLAND_HOP_SPEC.slab.width) + half(STOREFRONT_CLEARANCE_DEPTH),
+				ISLAND_HOP_SPEC.center.z,
+				STOREFRONT_CLEARANCE_DEPTH,
+				ISLAND_HOP_SPEC.slab.depth,
+			),
+			V0_Y,
+			V0_Y + STANDING_PEDESTRIAN.requiredHeadroom,
+			'storefront-clearance',
 		),
 	],
 	map: map('shop', islandHopStore.name, 60),
@@ -1777,6 +2073,377 @@ export const PARKING_CEILING_SPEC = {
 	topY: PARKING_CEILING_Y + half(PARKING_DECK_SPEC.ceiling.thickness),
 } as const;
 
+/** Zandplaat van het dakeiland. De dekmesh, de collider en de plattegrond lezen dezelfde randen. */
+export const ROOF_ISLAND_PAD = { minX: -32, maxX: -6, minZ: -20, maxZ: 20 } as const;
+
+/**
+ * De zandplaat is een deklaag óp de dakplaat. Als dikke plaat mét zijn bovenkant
+ * op levelY('roof') lag hij precies in het dak en flikkerde hij over 26×40 m.
+ */
+export const ROOF_ISLAND_DECK_THICKNESS = 0.04;
+const ROOF_ISLAND_SAND_TOP_Y = levelY('roof') + ROOF_ISLAND_DECK_THICKNESS;
+
+/**
+ * Het dakterras beslaat een derde van het dek en stond nergens in het model, dus
+ * de plattegrond tekende een naamloos vlak waar de speler niets van kon maken.
+ */
+const ROOF_TERRACE_PLAN = rectangle(
+	midpoint(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX),
+	midpoint(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ),
+	span(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX),
+	span(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ),
+);
+
+export const ROOF_TERRACE_ENTITY: MallWorldEntity = {
+	id: 'roof-terrace',
+	label: 'Roof island sun deck',
+	category: 'prop',
+	levels: ['roof'],
+	transform: {
+		position: { x: midpoint(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX), y: levelY('roof'), z: 0 },
+		rotation: ZERO_ROTATION,
+	},
+	volumes: [
+		{
+			id: 'sand',
+			role: 'decorative-covering',
+			geometry: {
+				kind: 'prism',
+				plan: ROOF_TERRACE_PLAN,
+				minY: levelY('roof'),
+				maxY: ROOF_ISLAND_SAND_TOP_Y,
+				holes: [],
+			},
+			blocksMovement: false,
+			clearance: { kind: 'clear' },
+			allowsOverlapFrom: ['structure', 'fixture', 'furnishing', 'clutter', 'covering', 'connector'],
+			tags: ['sand', 'terrace'],
+		},
+	],
+	ports: NO_PORTS,
+	placement: {
+		class: 'covering',
+		requiresSupport: false,
+		mayCover: ['walkable', 'support'],
+		mayBeCoveredBy: ['clutter', 'fixture'],
+	},
+	kinematics: { kind: 'static' },
+	mechanisms: NO_MECHANISMS,
+	receiver: STATIC_RECEIVER,
+	emitters: NO_EMITTERS,
+	map: map('fixture', 'DAKEILAND · ZWEMBAD', 66),
+	tags: ['roof-island', 'terrace', 'pool'],
+};
+
+/** Tikibar op het dek: de bar, de palen, de krukken en het rieten dak. */
+export const TIKI_BAR_SPEC = {
+	center: { x: -12.3, z: 14.5 },
+	post: { offset: 1.4, radius: 0.08, height: 3.2, centerY: 1.6 },
+	counter: { width: 1, depth: 3.2, height: 1.1, offsetX: -0.6 },
+	thatch: { radius: 2.7, height: 1.8, centerY: 4 },
+	stool: { topRadius: 0.24, bottomRadius: 0.2, height: 0.68, centerY: 0.34, offsetX: -1.7, z: [13.2, 14.5, 15.8] },
+	sign: { width: 2.4, height: 0.8, offsetX: -1.55, centerY: 2.6 },
+} as const;
+
+const TIKI_BAR_LABEL = 'TIKI BAR';
+
+function tikiPost(id: string, signX: number, signZ: number): SpatialVolume {
+	const { center, post } = TIKI_BAR_SPEC;
+	return uprightCylinder(
+		id,
+		{ x: center.x + signX * post.offset, y: ROOF_Y + post.centerY, z: center.z + signZ * post.offset },
+		post.radius,
+		post.height,
+		'solid',
+		false,
+	);
+}
+
+export const TIKI_BAR_ENTITY: MallWorldEntity = roomEntity({
+	id: 'tiki-bar',
+	label: 'Roof island tiki bar',
+	category: 'prop',
+	level: 'roof',
+	center: TIKI_BAR_SPEC.center,
+	placementClass: 'fixture',
+	volumes: [
+		planEnvelope(
+			uprightCylinder(
+				'thatch-roof',
+				{ x: TIKI_BAR_SPEC.center.x, y: ROOF_Y + TIKI_BAR_SPEC.thatch.centerY, z: TIKI_BAR_SPEC.center.z },
+				TIKI_BAR_SPEC.thatch.radius,
+				TIKI_BAR_SPEC.thatch.height,
+				'solid',
+				false,
+			),
+		),
+		solidPrism(
+			'counter',
+			rectangle(
+				TIKI_BAR_SPEC.center.x + TIKI_BAR_SPEC.counter.offsetX,
+				TIKI_BAR_SPEC.center.z,
+				TIKI_BAR_SPEC.counter.width,
+				TIKI_BAR_SPEC.counter.depth,
+			),
+			ROOF_Y,
+			ROOF_Y + TIKI_BAR_SPEC.counter.height,
+			[],
+			'solid',
+			false,
+		),
+		tikiPost('post-nw', -1, -1),
+		tikiPost('post-ne', 1, -1),
+		tikiPost('post-sw', -1, 1),
+		tikiPost('post-se', 1, 1),
+		...TIKI_BAR_SPEC.stool.z.map((z, index) =>
+			uprightCylinder(
+				`stool-${index + 1}`,
+				{ x: TIKI_BAR_SPEC.center.x + TIKI_BAR_SPEC.stool.offsetX, y: ROOF_Y + TIKI_BAR_SPEC.stool.centerY, z },
+				TIKI_BAR_SPEC.stool.topRadius,
+				TIKI_BAR_SPEC.stool.height,
+				'solid',
+				false,
+			),
+		),
+	],
+	map: map('fixture', TIKI_BAR_LABEL, 65),
+	tags: ['tiki-bar', 'roof-island', 'static'],
+});
+
+/** De reling langs de dakrand, met de entree aan de oostkant. */
+export const ROOF_RAILING_SPEC = {
+	height: 1.05,
+	barThickness: 0.07,
+	postRadius: 0.035,
+	postSpacing: 2,
+	/** Tussen deze twee z-waarden staat aan de oostrand geen reling: daar loop je het dek op. */
+	entranceHalfDepth: 2.5,
+} as const;
+
+export const ROOF_PALM_SPEC = { trunk: { topRadius: 0.09, bottomRadius: 0.17, height: 3.4 } } as const;
+
+export const ROOF_PALM_SPOTS = [
+	{ x: -30.2, z: -17.5, scale: 1.1 },
+	{ x: -8.5, z: -17, scale: 0.95 },
+	{ x: -30, z: 16.5, scale: 1.05 },
+	{ x: -8.6, z: 17.5, scale: 1 },
+	{ x: -30.5, z: -6, scale: 0.9 },
+	{ x: -9, z: 7, scale: 1.15 },
+	{ x: -15, z: -15, scale: 1 },
+	{ x: -25.5, z: 13, scale: 0.85 },
+] as const;
+
+export const ROOF_LOUNGER_SPEC = {
+	seat: { width: 0.7, depth: 1.8, thickness: 0.16, centerY: 0.18 },
+	back: { width: 0.7, depth: 0.8, thickness: 0.06, centerY: 0.42, offset: 0.75, tilt: -0.65 },
+	row: { x: -10.6, firstZ: -13.2, spacing: 2.4, count: 6, yaw: -Math.PI / 2 },
+} as const;
+
+export type RoofLounger = Readonly<{ x: number; z: number; yaw: number }>;
+
+/** Zes op een rij langs de oostrand, twee los bij het bad. Handdoeken en volumes lezen dezelfde plekken. */
+export const ROOF_LOUNGER_SPOTS: readonly RoofLounger[] = [
+	...Array.from({ length: ROOF_LOUNGER_SPEC.row.count }, (_, index) => ({
+		x: ROOF_LOUNGER_SPEC.row.x,
+		z: ROOF_LOUNGER_SPEC.row.firstZ + index * ROOF_LOUNGER_SPEC.row.spacing,
+		yaw: ROOF_LOUNGER_SPEC.row.yaw,
+	})),
+	{ x: -18, z: -5.5, yaw: 0.15 },
+	{ x: -15.5, z: -5, yaw: -0.1 },
+];
+
+const ROOF_FURNITURE_LABEL = 'LIGSTOELEN · PALMEN';
+
+function roofRailingBar(id: string, centerX: number, centerZ: number, width: number, depth: number): SpatialVolume {
+	return solidPrism(
+		id,
+		rectangle(centerX, centerZ, width, depth),
+		ROOF_Y,
+		ROOF_Y + ROOF_RAILING_SPEC.height + half(ROOF_RAILING_SPEC.barThickness),
+		[],
+		'solid',
+		false,
+	);
+}
+
+function roofRailingVolumes(): readonly SpatialVolume[] {
+	const { minX, maxX, minZ, maxZ } = ROOF_ISLAND_PAD;
+	const { barThickness, entranceHalfDepth } = ROOF_RAILING_SPEC;
+	const deckWidth = span(minX, maxX);
+	return [
+		roofRailingBar('railing-west', minX, midpoint(minZ, maxZ), barThickness, span(minZ, maxZ)),
+		roofRailingBar('railing-north', midpoint(minX, maxX), minZ, deckWidth, barThickness),
+		roofRailingBar('railing-south', midpoint(minX, maxX), maxZ, deckWidth, barThickness),
+		roofRailingBar('railing-east-north', maxX, midpoint(minZ, -entranceHalfDepth), barThickness, span(minZ, -entranceHalfDepth)),
+		roofRailingBar('railing-east-south', maxX, midpoint(entranceHalfDepth, maxZ), barThickness, span(entranceHalfDepth, maxZ)),
+	];
+}
+
+export const ROOF_FURNITURE_ENTITY: MallWorldEntity = roomEntity({
+	id: 'roof-furniture',
+	label: 'Roof island furniture',
+	category: 'prop',
+	level: 'roof',
+	center: {
+		x: midpoint(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX),
+		z: midpoint(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ),
+	},
+	placementClass: 'furnishing',
+	volumes: [
+		...roofRailingVolumes(),
+		...ROOF_LOUNGER_SPOTS.map((spot, index) =>
+			solidPrism(
+				`lounger-${index + 1}`,
+				rectangle(spot.x, spot.z, ROOF_LOUNGER_SPEC.seat.width, ROOF_LOUNGER_SPEC.seat.depth, spot.yaw),
+				ROOF_Y,
+				ROOF_Y + ROOF_LOUNGER_SPEC.back.centerY + half(ROOF_LOUNGER_SPEC.back.depth),
+				[],
+				'solid',
+				false,
+			),
+		),
+		...ROOF_PALM_SPOTS.map((spot, index) =>
+			uprightCylinder(
+				`palm-${index + 1}`,
+				{ x: spot.x, y: ROOF_Y + half(ROOF_PALM_SPEC.trunk.height * spot.scale), z: spot.z },
+				ROOF_PALM_SPEC.trunk.bottomRadius * spot.scale,
+				ROOF_PALM_SPEC.trunk.height * spot.scale,
+				'solid',
+				false,
+			),
+		),
+	],
+	map: map('clutter', ROOF_FURNITURE_LABEL, 58),
+	tags: ['roof-island', 'furniture', 'railing'],
+});
+
+/** Glijbaantoren: de plaat waar je bovenop staat. Mesh, collider, kaart en klim lezen deze. */
+export const SLIDE_PLATFORM = {
+	center: { x: -28.5, z: -10 },
+	size: 1.9,
+	thickness: 0.15,
+	standHeight: 4,
+} as const;
+
+/** Loopvlak van die plaat: bovenkant van de doos, niet het hart. */
+export const SLIDE_PLATFORM_TOP_Y = ROOF_Y + SLIDE_PLATFORM.standHeight + half(SLIDE_PLATFORM.thickness);
+
+/**
+ * De toren en de buis. De ladder is ruimer dan zijn sporten (arcade-klimmen) en
+ * alles is gemeten vanaf de plaat waar hij op uitkomt: los ingetikt liep hij ernaast.
+ */
+export const SLIDE_TOWER_SPEC = {
+	leg: { radius: 0.09, offset: 0.8 },
+	ladder: { halfWidth: 0.7, topInset: 0.05, run: 1.3, openBefore: 0.6, openAfter: 0.5, rungs: 8, rungThickness: 0.05 },
+	tube: {
+		radius: 0.5,
+		path: [
+			{ x: -27.7, y: ROOF_Y + 3.8, z: -10 },
+			{ x: -26.2, y: ROOF_Y + 3.1, z: -8.6 },
+			{ x: -24.4, y: ROOF_Y + 2.4, z: -7.8 },
+			{ x: -22.8, y: ROOF_Y + 1.7, z: -6 },
+			{ x: -22.6, y: ROOF_Y + 1, z: -3.6 },
+			{ x: -22.3, y: ROOF_Y + 0.2, z: 0.9 },
+		],
+	},
+} as const;
+
+const SLIDE_LADDER_TOP_Z = SLIDE_PLATFORM.center.z - half(SLIDE_PLATFORM.size) + SLIDE_TOWER_SPEC.ladder.topInset;
+
+/** Klimkoker van de ladder, zoals CollisionWorld hem als helling opneemt. */
+export const SLIDE_LADDER_CLIMB = {
+	minX: SLIDE_PLATFORM.center.x - SLIDE_TOWER_SPEC.ladder.halfWidth,
+	maxX: SLIDE_PLATFORM.center.x + SLIDE_TOWER_SPEC.ladder.halfWidth,
+	zTop: SLIDE_LADDER_TOP_Z,
+	zBottom: SLIDE_LADDER_TOP_Z - SLIDE_TOWER_SPEC.ladder.run,
+	openMinZ: SLIDE_LADDER_TOP_Z - SLIDE_TOWER_SPEC.ladder.openBefore,
+	openMaxZ: SLIDE_LADDER_TOP_Z + SLIDE_TOWER_SPEC.ladder.openAfter,
+} as const;
+
+const ROOF_SLIDE_LABEL = 'GLIJBAAN';
+const SLIDE_LADDER_X = midpoint(SLIDE_LADDER_CLIMB.minX, SLIDE_LADDER_CLIMB.maxX);
+
+function slideLeg(id: string, signX: number, signZ: number): SpatialVolume {
+	const { leg } = SLIDE_TOWER_SPEC;
+	return uprightCylinder(
+		id,
+		{
+			x: SLIDE_PLATFORM.center.x + signX * leg.offset,
+			y: ROOF_Y + half(SLIDE_PLATFORM.standHeight),
+			z: SLIDE_PLATFORM.center.z + signZ * leg.offset,
+		},
+		leg.radius,
+		SLIDE_PLATFORM.standHeight,
+		'solid',
+		false,
+	);
+}
+
+/** De buis als vluchten tussen de punten van de curve: één doos eromheen zou het halve dek beslaan. */
+function slideTubeVolumes(): readonly SpatialVolume[] {
+	const { tube } = SLIDE_TOWER_SPEC;
+	const volumes: SpatialVolume[] = [];
+	for (let index = 1; index < tube.path.length; index++) {
+		const start = tube.path[index - 1];
+		const end = tube.path[index];
+		if (!start || !end) continue;
+		volumes.push({
+			id: `tube-${index}`,
+			role: 'solid',
+			geometry: { kind: 'ramp', start, end, width: tube.radius * 2, thickness: tube.radius },
+			blocksMovement: false,
+			clearance: { kind: 'clear' },
+			allowsOverlapFrom: STRUCTURAL_OVERLAP,
+			tags: ['slide', 'authored-geometry'],
+		});
+	}
+	return volumes;
+}
+
+export const ROOF_SLIDE_ENTITY: MallWorldEntity = roomEntity({
+	id: 'roof-slide',
+	label: 'Roof island water slide',
+	category: 'prop',
+	level: 'roof',
+	center: SLIDE_PLATFORM.center,
+	placementClass: 'fixture',
+	volumes: [
+		slideLeg('leg-nw', -1, -1),
+		slideLeg('leg-ne', 1, -1),
+		slideLeg('leg-sw', -1, 1),
+		slideLeg('leg-se', 1, 1),
+		solidPrism(
+			'platform',
+			rectangle(SLIDE_PLATFORM.center.x, SLIDE_PLATFORM.center.z, SLIDE_PLATFORM.size, SLIDE_PLATFORM.size),
+			SLIDE_PLATFORM_TOP_Y - SLIDE_PLATFORM.thickness,
+			SLIDE_PLATFORM_TOP_Y,
+			[],
+			'walkable',
+			false,
+		),
+		{
+			id: 'ladder',
+			role: 'walkable',
+			geometry: {
+				kind: 'stair-flight',
+				start: { x: SLIDE_LADDER_X, y: ROOF_Y, z: SLIDE_LADDER_CLIMB.zBottom },
+				end: { x: SLIDE_LADDER_X, y: SLIDE_PLATFORM_TOP_Y, z: SLIDE_LADDER_CLIMB.zTop },
+				width: span(SLIDE_LADDER_CLIMB.minX, SLIDE_LADDER_CLIMB.maxX),
+				treadCount: SLIDE_TOWER_SPEC.ladder.rungs,
+				treadThickness: SLIDE_TOWER_SPEC.ladder.rungThickness,
+				underside: 'open',
+			},
+			blocksMovement: false,
+			clearance: { kind: 'clear' },
+			allowsOverlapFrom: STRUCTURAL_OVERLAP,
+			tags: ['ladder', 'travel-surface'],
+		},
+		...slideTubeVolumes(),
+	],
+	map: map('fixture', ROOF_SLIDE_LABEL, 67),
+	tags: ['roof-island', 'slide', 'static'],
+});
+
 export const PARKING_DECK_ENTITY: MallWorldEntity = roomEntity({
 	id: 'parking-deck',
 	label: 'Parking deck shell',
@@ -1785,12 +2452,14 @@ export const PARKING_DECK_ENTITY: MallWorldEntity = roomEntity({
 	center: { x: 0, z: 0 },
 	placementClass: 'structure',
 	volumes: [
-		solidPrism(
-			'ceiling',
-			PARKING_CEILING_SPEC.plan,
-			PARKING_CEILING_SPEC.topY - PARKING_CEILING_SPEC.thickness,
-			PARKING_CEILING_SPEC.topY,
-			PARKING_CEILING_SPEC.holes,
+		planEnvelope(
+			solidPrism(
+				'ceiling',
+				PARKING_CEILING_SPEC.plan,
+				PARKING_CEILING_SPEC.topY - PARKING_CEILING_SPEC.thickness,
+				PARKING_CEILING_SPEC.topY,
+				PARKING_CEILING_SPEC.holes,
+			),
 		),
 		...PARKING_WALL_PANELS.map((panel) =>
 			solidPrism(
@@ -1822,6 +2491,121 @@ export const PARKING_DECK_ENTITY: MallWorldEntity = roomEntity({
 	],
 	map: map('parking', parkingStore.name, 45),
 	tags: ['parking', 'shell', 'structural'],
+});
+
+/** De vakken naast het middenpad: de belijning, de nummers en de plattegrond lezen dezelfde rasterstap. */
+export const PARKING_BAY_SPEC = {
+	rowZ: [-14, 14],
+	columns: 5,
+	spacing: 5.2,
+	stall: { width: 2.4, depth: 4.8 },
+	paintY: 0.14,
+	number: { width: 0.8, height: 0.35, offsetZ: 1.8 },
+	aisle: { arrows: 4, spacing: 6, width: 1.2, depth: 0.4 },
+} as const;
+
+export type ParkingStall = Readonly<{ id: string; center: Vec2 }>;
+
+/** Rij A ten noorden van het middenpad, rij B ten zuiden; het nummer telt vanaf de westkant. */
+export function parkingStalls(): readonly ParkingStall[] {
+	const { rowZ, columns, spacing } = PARKING_BAY_SPEC;
+	const stalls: ParkingStall[] = [];
+	for (const z of rowZ) {
+		for (let column = -columns; column <= columns; column++) {
+			stalls.push({ id: `${z < 0 ? 'A' : 'B'}${column + columns + 1}`, center: { x: column * spacing, z } });
+		}
+	}
+	return stalls;
+}
+
+/** Decoratieve auto's. De huurauto's van de speler staan hieronder en houden hun eigen plekken vrij. */
+export const PARKED_CAR_SPEC = {
+	body: { width: 1.9, length: 4, height: 0.45, centerY: 0.45 },
+	cabin: { width: 1.7, length: 2, height: 0.4, centerY: 0.85, offsetZ: -0.15 },
+	wheel: { radius: 0.28, width: 0.22, offsetX: 0.85, offsetZ: 1.2 },
+	standY: 0.12,
+} as const;
+
+/** De huurauto's die de speler kan wegrijden, gebouwd door DriveableCars. */
+export const RENTAL_CAR_SPEC = {
+	body: { width: 1.9, length: 4.2, height: 0.5, centerY: 0.5 },
+} as const;
+
+export type ParkedCarSpot = Readonly<{ x: number; z: number; yaw: number }>;
+
+/**
+ * De vakkenrij loopt in stappen van 5,2 m en de kolommenrij in stappen van 8 m,
+ * dus het vak op x 0 en dat op x ±15,6 staan óm een kolom heen. Een auto daarin
+ * stond 0,35 m in het beton en geen enkele regel zag het: beide volumes hebben
+ * `blocksMovement: false`. De huurauto's staan in dezelfde vakken en liepen tegen
+ * dezelfde kolommen aan, dus staan hun plekken hier en niet in de scene-bouwer;
+ * `controleParkeerplekken` in check-world houdt beide lijsten vrij.
+ */
+export const PARKED_CAR_SPOTS: readonly ParkedCarSpot[] = [
+	{ x: -5.2, z: -14, yaw: 0.3 },
+	{ x: -20.8, z: -14, yaw: 0 },
+	{ x: 10.4, z: -14, yaw: 0.15 },
+	{ x: 20.8, z: -14, yaw: 0 },
+	{ x: 10.4, z: 14, yaw: Math.PI },
+	{ x: 5.2, z: 14, yaw: Math.PI },
+	{ x: -20.8, z: 14, yaw: Math.PI - 0.05 },
+];
+
+export type RentalCarSpot = ParkedCarSpot & Readonly<{ color: number; name: string }>;
+
+export const RENTAL_CAR_SPOTS: readonly RentalCarSpot[] = [
+	{ x: -26, z: -14, yaw: 0, color: 0xc62828, name: 'RODE HATCH' },
+	{ x: -10.4, z: -14, yaw: 0.05, color: 0x1565c0, name: 'BLAUWE SEDAN' },
+	{ x: 5.2, z: -14, yaw: -0.08, color: 0xffc107, name: 'TAXI #88' },
+	{ x: 20.8, z: 14, yaw: Math.PI, color: 0x2e7d32, name: 'GROENE SUV' },
+	{ x: -5.2, z: 14, yaw: Math.PI + 0.1, color: 0x6a1b9a, name: 'PAARSE COUPE' },
+];
+
+const PARKED_CAR_TOP_Y =
+	PARKING_DECK_Y + PARKED_CAR_SPEC.standY + PARKED_CAR_SPEC.cabin.centerY + half(PARKED_CAR_SPEC.cabin.height);
+
+export const PARKING_BAYS_ENTITY: MallWorldEntity = roomEntity({
+	id: 'parking-bays',
+	label: 'Parking bays',
+	category: 'parking',
+	level: 'p1',
+	center: { x: 0, z: 0 },
+	placementClass: 'clutter',
+	volumes: parkingStalls().map((stall) =>
+		solidPrism(
+			`stall-${stall.id}`,
+			rectangle(stall.center.x, stall.center.z, PARKING_BAY_SPEC.stall.width, PARKING_BAY_SPEC.stall.depth),
+			PARKING_DECK_Y,
+			PARKING_DECK_Y + PARKING_BAY_SPEC.paintY,
+			[],
+			'decorative-covering',
+			false,
+		),
+	),
+	map: map('clutter', 'PARKEERVAKKEN', 42),
+	tags: ['parking', 'bays', 'static'],
+});
+
+export const PARKED_CARS_ENTITY: MallWorldEntity = roomEntity({
+	id: 'parking-cars',
+	label: 'Parked cars',
+	category: 'parking',
+	level: 'p1',
+	center: { x: 0, z: 0 },
+	placementClass: 'clutter',
+	volumes: PARKED_CAR_SPOTS.map((spot, index) =>
+		solidPrism(
+			`car-${index + 1}`,
+			rectangle(spot.x, spot.z, PARKED_CAR_SPEC.body.width, PARKED_CAR_SPEC.body.length, spot.yaw),
+			PARKING_DECK_Y,
+			PARKED_CAR_TOP_Y,
+			[],
+			'solid',
+			false,
+		),
+	),
+	map: map('clutter', "GEPARKEERDE AUTO'S", 44),
+	tags: ['parking', 'cars', 'static'],
 });
 
 export type WorldCollider = Readonly<{
@@ -1863,6 +2647,7 @@ export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 	ISLAND_HOP_ENTITY,
 	CATWALK_ENTITY,
 	RESTROOMS_ENTITY,
+	WUDU_ENTITY,
 	PRAYER_ROOM_ENTITY,
 	BEARD_CAVE_ENTITY,
 	FOUNTAIN_ENTITY,
@@ -1871,6 +2656,12 @@ export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 	PROTEST_ENTITY,
 	SPACESHIP_ENTITY,
 	PARKING_DECK_ENTITY,
+	PARKING_BAYS_ENTITY,
+	PARKED_CARS_ENTITY,
+	ROOF_TERRACE_ENTITY,
+	TIKI_BAR_ENTITY,
+	ROOF_FURNITURE_ENTITY,
+	ROOF_SLIDE_ENTITY,
 ];
 
 /** Relational view of the authored world. Callers do not maintain parallel per-level feature lists. */

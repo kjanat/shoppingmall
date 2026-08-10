@@ -20,10 +20,10 @@ import { assertValidVerticalConnectorRegistry } from '#/data/connectors';
 import type { GraphNode } from '#/data/graph';
 import { NODES } from '#/data/graph';
 import { getInventory } from '#/data/inventory';
-import { ATRIUM_VOID } from '#/data/layout';
+import { ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { assertCanonicalLevelRegistry } from '#/data/levelSchema';
 import { LEVELS, levelY } from '#/data/levels';
-import { geometryBounds } from '#/data/spatial';
+import { geometryBounds, planBounds } from '#/data/spatial';
 import { STORES, shopStores } from '#/data/stores';
 import type { MallWorldEntity } from '#/data/world';
 import {
@@ -33,12 +33,19 @@ import {
 	entitiesOnLevel,
 	levelsContaining,
 	MALL_SLAB_SPECS,
+	PARKED_CAR_SPEC,
+	PARKED_CAR_SPOTS,
+	PARKING_DECK_SPEC,
 	PARKING_EXIT_RAMP,
+	parkingPillarCenters,
+	RENTAL_CAR_SPEC,
+	RENTAL_CAR_SPOTS,
 	VERTICAL_CONNECTORS,
 	WORLD_ENTITIES,
 } from '#/data/world';
 import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
 import { PLAYER_RADIUS } from '#/player/constants';
+import { CITY_GROUND_Y, CITY_KAVELS, GARAGE_PLAN, THEATRE_PLAN, TOWER_SPECS } from '#/scene/city/cityPlan';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
 import { half, midpoint } from '#/util/math';
 import { stubDocument } from './stub-dom.ts';
@@ -685,11 +692,37 @@ async function controleBadgasten(): Promise<void> {
 	const pp = bron('scene/PoolPeople.ts');
 
 	const rimClear = getal(pp, /const RIM_CLEAR = (-?[\d.]+);/, 'RIM_CLEAR');
+	const crewClear = getal(pp, /const CREW_CLEAR = (-?[\d.]+);/, 'CREW_CLEAR');
 	stubDocument();
 	const { PoolPeople } = await import('#/scene/PoolPeople');
+	const cast = new PoolPeople().group.children;
+
+	// Niemand van de cast staat in het barmeubel. Man één van de AL ZUT-crew
+	// stond op een los ingetikte -12,9 tot zijn middel in de counter, en de
+	// parasol heeft volgens zijn eigen comment hetzelfde eerder gedaan met het
+	// bord. De hele cast tegen de hele counter, dan maakt de volgende aanwas
+	// niet uit waar hij vandaan komt.
+	const counterVolume = ENTITEIT_PER_ID.get('tiki-bar')?.volumes.find((volume) => volume.id === 'counter');
+	if (!counterVolume) {
+		fout('badgasten', 'tiki-bar heeft geen counter-volume meer — hernoemd of weggevallen');
+		return;
+	}
+	const counter = geometryBounds(counterVolume.geometry);
+	for (const lid of cast) {
+		const { x, z } = lid.position;
+		if (
+			x > counter.minX - crewClear &&
+			x < counter.maxX + crewClear &&
+			z > counter.minZ - crewClear &&
+			z < counter.maxZ + crewClear
+		) {
+			fout('badgasten', `castlid op (${nr(x)}, ${nr(z)}) staat in of tegen de tiki-bar-counter`);
+		}
+	}
+
 	// In het water hangen is dieper dan alleen onder dekhoogte: de zonaanbidsters
 	// liggen ook onder dekhoogte, in hun stoel. Meet dus vanaf de waterlijn.
-	const badgasten = new PoolPeople().group.children.filter((o) => o.position.y < POOL_WATER_Y - 0.75);
+	const badgasten = cast.filter((o) => o.position.y < POOL_WATER_Y - 0.75);
 	// Vier zwemmers en twee randdames. Vindt hij er minder, dan zit de cast in
 	// een subgroep en controleert dit niets meer.
 	if (badgasten.length < 6) {
@@ -773,15 +806,22 @@ const ENTITEIT_PER_ID = new Map(WORLD_ENTITIES.map((entity) => [entity.id, entit
 const GESCHREVEN_FEATURES = [
 	'catwalk',
 	'restrooms',
+	'wudu-niche',
 	'prayer-room',
 	'beard-cave',
 	'shop-island_hop',
 	'parking-deck',
+	'parking-bays',
+	'parking-cars',
 	'atrium-fountain',
 	'info-kiosk',
 	'food-court',
 	'protest',
 	'spaceship',
+	'roof-terrace',
+	'tiki-bar',
+	'roof-furniture',
+	'roof-slide',
 ] as const;
 
 function heeftOmvang(entity: MallWorldEntity): boolean {
@@ -1020,6 +1060,123 @@ function controleKioskCoordinaten(): void {
 	}
 }
 
+// ── 13b. niets steekt door de buitengevel ──────────────────────────────────
+
+/**
+ * In de wanddikte zitten mag: een grot die in de westmuur is uitgehold hoort daar,
+ * en zo'n volume verklaart zijn diepte met `penetration`. Erbuiten uitkomen mag
+ * niet, en dat is wat hier gemeten wordt: de buitenste omhullende van de
+ * wall-entiteiten, en elk blokkerend volume dat er per zijde uit steekt. De vorige
+ * versie mat de overlap met de wand zelf en keurde daarmee juist het toegestane af.
+ */
+const GEVEL_MARGE = 0.02;
+/** De uitrit verlaat het gebouw met opzet en is de enige die dat mag. */
+const BUITEN_DE_GEVEL = 'parking-exit';
+
+function controleGevel(): void {
+	const wanden = WORLD_ENTITIES.filter((entity) => entity.category === 'wall');
+	if (wanden.length === 0) {
+		fout('gevel', 'geen enkele wall-entiteit in WORLD_ENTITIES — waar is de perimeter?');
+		return;
+	}
+	if (!WORLD_ENTITIES.some((entity) => entity.tags.includes(BUITEN_DE_GEVEL))) {
+		fout('gevel', `geen entiteit draagt de tag '${BUITEN_DE_GEVEL}' meer — de vrijstelling wijst nergens naar`);
+	}
+
+	const gevel: Vlak = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+	for (const wand of wanden) {
+		for (const volume of wand.volumes) {
+			const b = geometryBounds(volume.geometry);
+			gevel.minX = Math.min(gevel.minX, b.minX);
+			gevel.maxX = Math.max(gevel.maxX, b.maxX);
+			gevel.minZ = Math.min(gevel.minZ, b.minZ);
+			gevel.maxZ = Math.max(gevel.maxZ, b.maxZ);
+		}
+	}
+	if (!Number.isFinite(gevel.minX) || !Number.isFinite(gevel.minZ)) {
+		fout('gevel', 'de wall-entiteiten hebben geen enkel volume met omvang — er is geen gevel om aan te toetsen');
+		return;
+	}
+
+	for (const entity of WORLD_ENTITIES) {
+		if (entity.category === 'wall') continue;
+		if (entity.tags.includes(BUITEN_DE_GEVEL)) continue;
+		for (const volume of entity.volumes) {
+			if (!volume.blocksMovement) continue;
+			if (volume.tags.includes(BUITEN_DE_GEVEL)) continue;
+			const b = geometryBounds(volume.geometry);
+			for (const [zijde, uit] of [
+				['west', gevel.minX - b.minX],
+				['oost', b.maxX - gevel.maxX],
+				['noord', gevel.minZ - b.minZ],
+				['zuid', b.maxZ - gevel.maxZ],
+			] as const) {
+				if (uit <= GEVEL_MARGE) continue;
+				fout('gevel', `${entity.id}.${volume.id} steekt ${nr(uit)} m voorbij de ${zijde}gevel naar buiten`);
+			}
+		}
+	}
+}
+
+// ── 13c. elke winkel houdt zijn pui vrij ───────────────────────────────────
+
+/**
+ * De puiregel in `validateSpatialWorld` werkt alleen als er een puiprisma ís, en
+ * dat prisma ontstond op één plek: `shopEntity`. ISLAND HOP wordt via
+ * `roomEntity` gebouwd en had er daarom als enige van de negentien geen, dus
+ * mocht er ongemerkt van alles vóór zijn balie komen te staan.
+ */
+function controlePuien(): void {
+	const winkels = WORLD_ENTITIES.filter((entity) => entity.category === 'shop');
+	if (winkels.length === 0) {
+		fout('puien', 'geen enkele shop-entiteit in WORLD_ENTITIES');
+		return;
+	}
+	for (const winkel of winkels) {
+		if (!winkel.volumes.some((volume) => volume.role === 'storefront-clearance')) {
+			fout('puien', `${winkel.id} heeft geen storefront-clearance-volume, dus zijn pui wordt door niets bewaakt`);
+		}
+	}
+}
+
+// ── 13d. geen auto in een betonnen kolom ───────────────────────────────────
+
+/**
+ * De vakken staan om de acht meter een kolom in de weg, en een auto is
+ * zichtbare geometrie zonder collider: `blocksMovement` staat op beide uit, dus
+ * zag geen enkele plaatsingsregel dat er twee decor-auto's en twee huurauto's
+ * 0,35 m in het beton stonden.
+ */
+function autoVlak(spot: { x: number; z: number; yaw: number }, body: { width: number; length: number }): Vlak {
+	return planBounds({
+		kind: 'rectangle',
+		center: { x: spot.x, z: spot.z },
+		width: body.width,
+		depth: body.length,
+		yaw: spot.yaw,
+	});
+}
+
+function controleParkeerplekken(): void {
+	const halveKolom = half(PARKING_DECK_SPEC.pillar.width);
+	const autos: [string, Vlak][] = [
+		...PARKED_CAR_SPOTS.map((spot, index): [string, Vlak] => [`decorauto ${index + 1}`, autoVlak(spot, PARKED_CAR_SPEC.body)]),
+		...RENTAL_CAR_SPOTS.map((spot): [string, Vlak] => [spot.name, autoVlak(spot, RENTAL_CAR_SPEC.body)]),
+	];
+	for (const [naam, vlak] of autos) {
+		for (const [index, kolom] of parkingPillarCenters().entries()) {
+			const kolomVlak: Vlak = {
+				minX: kolom.x - halveKolom,
+				maxX: kolom.x + halveKolom,
+				minZ: kolom.z - halveKolom,
+				maxZ: kolom.z + halveKolom,
+			};
+			if (!opKavel(vlak, kolomVlak)) continue;
+			fout('parkeerplekken', `${naam} staat in kolom ${index} op (${nr(kolom.x)}, ${nr(kolom.z)})`);
+		}
+	}
+}
+
 // ── 14. elk dek staat op de plattegrond ────────────────────────────────────
 
 /**
@@ -1052,6 +1209,164 @@ function controleKaartdekken(): void {
 	}
 }
 
+// ── 15. de stad buiten de mall ─────────────────────────────────────────────
+
+function opKavel(r: Vlak, k: Vlak): boolean {
+	return r.maxX > k.minX && r.minX < k.maxX && r.maxZ > k.minZ && r.minZ < k.maxZ;
+}
+
+/**
+ * Van het dak de stad in, over de theatertrap, en via de uitrit weer naar de
+ * garage. Elke stap hier heeft een blokkade gehad: de voetafdruk-klem hield je
+ * op het dak, `groundHeightAt` gaf veertig meter naast het gebouw nog steeds
+ * DAK terug, en de buitenschil liep door tot boven het dek. De stad had
+ * bovendien helemaal geen collision: torens, theater en garage waren decor.
+ */
+function controleStad(): void {
+	const straal = PLAYER_RADIUS;
+	const randX = half(MALL_FOOTPRINT.width);
+	const randZ = half(MALL_FOOTPRINT.depth);
+
+	// De skyline hoort uit dezelfde plattegrond te komen als de collision;
+	// een eigen generator ernaast zet de torens naast hun doos.
+	const skyline = bron('scene/city/CityBuildings.ts');
+	eist(skyline, 'planTowers(rand)', 'de skyline uit de gedeelde stadsplattegrond');
+	if (/function mulberry32\(/.test(skyline)) {
+		fout('stad', 'CityBuildings heeft weer een eigen mulberry32 — dan lopen de getekende torens uit de pas met hun collision');
+	}
+
+	// Binnen de voetafdruk ligt op dakhoogte een plaat, erbuiten niets.
+	for (const [x, z] of [
+		[randX - 0.5, 0],
+		[-(randX - 0.5), 0],
+		[0, randZ - 0.5],
+		[0, -(randZ - 0.5)],
+	] as [number, number][]) {
+		const grond = wereld.groundHeightAt(x, z, DAK, WALK_STEP);
+		if (!bijna(grond, DAK)) fout('stad', `dakrand (${nr(x)}, ${nr(z)}): de vloer is ${nr(grond)} in plaats van ${nr(DAK)}`);
+	}
+	for (const [x, z] of [
+		[randX + 1.5, 0],
+		[-(randX + 1.5), 0],
+		[0, randZ + 1.5],
+		[0, -(randZ + 1.5)],
+	] as [number, number][]) {
+		const grond = wereld.groundHeightAt(x, z, DAK, WALK_STEP);
+		if (!bijna(grond, CITY_GROUND_Y)) {
+			fout(
+				'stad',
+				`naast het dak (${nr(x)}, ${nr(z)}): de wereld geeft ${nr(grond)} in plaats van straatniveau — je loopt op lucht`,
+			);
+		}
+		const los = wereld.resolveCircle(x, z, DAK, straal, 3, true, true, true);
+		if (Math.hypot(los.x - x, los.z - z) > EPS) {
+			fout('stad', `de buitenschil duwt je op dakhoogte terug bij (${nr(x)}, ${nr(z)}): over de dakrand stappen kan niet`);
+		}
+	}
+
+	// Elke toren staat er als collision, en geen enkele op een gereserveerd kavel.
+	TOWER_SPECS.forEach((t, i) => {
+		const los = wereld.resolveCircle(t.x, t.z, CITY_GROUND_Y + 1, straal, 3, true, false, true);
+		if (Math.hypot(los.x - t.x, los.z - t.z) <= EPS) {
+			fout('stad', `toren ${i} op (${nr(t.x)}, ${nr(t.z)}) heeft geen collision — je loopt er dwars doorheen`);
+		}
+		const vlak: Vlak = { minX: t.x - half(t.w), maxX: t.x + half(t.w), minZ: t.z - half(t.d), maxZ: t.z + half(t.d) };
+		for (const [naam, kavel] of Object.entries(CITY_KAVELS)) {
+			if (opKavel(vlak, kavel)) fout('stad', `toren ${i} staat op het ${naam}-kavel`);
+		}
+	});
+
+	// De gebouwen blijven binnen hun kavel; anders bouwt de skyline er alsnog overheen.
+	for (const [wat, vlak, naam] of [
+		['het zaalblok', THEATRE_PLAN.hall, 'theatre'],
+		['het theaterpodium', THEATRE_PLAN.podium, 'theatre'],
+		['de parkeergarage', GARAGE_PLAN.footprint, 'garage'],
+	] as [string, Vlak, keyof typeof CITY_KAVELS][]) {
+		const kavel = CITY_KAVELS[naam];
+		if (vlak.minX < kavel.minX || vlak.maxX > kavel.maxX || vlak.minZ < kavel.minZ || vlak.maxZ > kavel.maxZ) {
+			fout('stad', `${wat} ligt buiten het ${naam}-kavel`);
+		}
+	}
+
+	// Geen stadsdek binnen de mall: dat zou dwars door een verdiepingsvloer liggen.
+	for (const s of wereld.citySurfaces) {
+		for (const [x, z] of [
+			[s.minX, s.minZ],
+			[s.maxX, s.maxZ],
+		] as [number, number][]) {
+			if (wereld.insideMallPlan(x, z)) fout('stad', `stadsdek ${s.label} steekt met (${nr(x)}, ${nr(z)}) de mall in`);
+		}
+	}
+
+	// De theatertrap, tree voor tree zoals je hem oploopt.
+	const trap = THEATRE_PLAN.stair;
+	const trapX = midpoint(trap.minX, trap.maxX);
+	const zVanaf = trap.zTop + trap.treads * trap.tread + 0.5;
+	const zTot = THEATRE_PLAN.podium.maxZ - 1;
+	let trapY = CITY_GROUND_Y;
+	for (let z = zVanaf; z >= zTot; z -= 0.05) {
+		const grond = wereld.groundHeightAt(trapX, z, trapY, WALK_STEP);
+		if (grond - trapY > WALK_STEP) {
+			fout('stad', `theatertrap: op z ${nr(z)} is de volgende tree ${nr(grond - trapY)} m hoog, meer dan één stap`);
+			break;
+		}
+		const los = wereld.resolveCircle(trapX, z, grond, straal, 3, true, false, true);
+		if (Math.hypot(los.x - trapX, los.z - z) > 1e-4) {
+			fout('stad', `theatertrap: op z ${nr(z)} duwt collision je naar (${nr(los.x)}, ${nr(los.z)})`);
+			break;
+		}
+		trapY = grond;
+	}
+	if (!bijna(trapY, THEATRE_PLAN.podiumY, 1e-6)) {
+		fout('stad', `de theatertrap eindigt op ${nr(trapY)} in plaats van op het podium (${nr(THEATRE_PLAN.podiumY)})`);
+	}
+
+	// Het maaiveld-dek van de garage is open aan alle zijden: daar loop je zo op.
+	for (const [x, z] of [
+		[66, 51],
+		[76, 59],
+	] as [number, number][]) {
+		const grond = wereld.groundHeightAt(x, z, CITY_GROUND_Y, WALK_STEP);
+		if (!bijna(grond, GARAGE_PLAN.groundDeckY)) {
+			fout('stad', `garagedek (${nr(x)}, ${nr(z)}): de vloer is ${nr(grond)} in plaats van ${nr(GARAGE_PLAN.groundDeckY)}`);
+		}
+		const los = wereld.resolveCircle(x, z, grond, straal, 3, true, false, true);
+		if (Math.hypot(los.x - x, los.z - z) > EPS) fout('stad', `garagedek (${nr(x)}, ${nr(z)}): collision duwt je van het dek`);
+	}
+
+	// Vanaf de stoep de uitrit in. Geen stap groter dan WALK_STEP, en niets
+	// dat de doorgang dichtduwt — dit is de enige weg terug naar binnen.
+	let uitritY = CITY_GROUND_Y;
+	const uitritZ = PARKING_EXIT_RAMP.start.z;
+	for (let x = -52; x <= PARKING_EXIT_RAMP.start.x; x += 0.05) {
+		const grond = wereld.groundHeightAt(x, uitritZ, uitritY, WALK_STEP);
+		if (Math.abs(grond - uitritY) > WALK_STEP) {
+			fout('stad', `uitrit vanaf de straat: op x ${nr(x)} springt de vloer van ${nr(uitritY)} naar ${nr(grond)}`);
+			break;
+		}
+		const los = wereld.resolveCircle(x, uitritZ, grond, straal, 3, true, false, true);
+		if (Math.hypot(los.x - x, los.z - uitritZ) > 1e-4) {
+			fout('stad', `uitrit vanaf de straat: op x ${nr(x)} duwt collision je naar (${nr(los.x)}, ${nr(los.z)})`);
+			break;
+		}
+		uitritY = grond;
+	}
+	if (!bijna(uitritY, PARKING_EXIT_RAMP.start.y, 1e-3)) {
+		fout('stad', `de uitrit eindigt op ${nr(uitritY)} in plaats van op de parkeervloer (${nr(PARKING_EXIT_RAMP.start.y)})`);
+	}
+
+	// De vrijstelling is per aanroep. Zonder hem staat de sim nog steeds binnen
+	// de voetafdruk; ging hij via `boundsMode`, dan liep de hele mall naar buiten.
+	const sim = wereld.resolveCircle(51.5, 0, 0.5, 0.35, 3, false, false, false);
+	if (Math.abs(sim.x) > randX || Math.abs(sim.z) > randZ) {
+		fout('stad', `een sim zonder de outside-vlag komt tot (${nr(sim.x)}, ${nr(sim.z)}), buiten de voetafdruk`);
+	}
+	const speler = wereld.resolveCircle(51.5, 0, 0.5, straal, 3, true, false, true);
+	if (Math.hypot(speler.x - 51.5, speler.z) > EPS) {
+		fout('stad', `de speler wordt mét de outside-vlag alsnog naar (${nr(speler.x)}, ${nr(speler.z)}) geklemd`);
+	}
+}
+
 // ── uitvoeren ──────────────────────────────────────────────────────────────
 
 const controles: { naam: string; draai: () => void | Promise<void> }[] = [
@@ -1070,8 +1385,12 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'features', draai: controleFeatures },
 	{ naam: 'kamerwanden', draai: controleKamerwanden },
 	{ naam: 'bestemmingen', draai: controleBestemmingen },
+	{ naam: 'gevel', draai: controleGevel },
+	{ naam: 'puien', draai: controlePuien },
+	{ naam: 'parkeerplekken', draai: controleParkeerplekken },
 	{ naam: 'kioskcoordinaten', draai: controleKioskCoordinaten },
 	{ naam: 'kaartdekken', draai: controleKaartdekken },
+	{ naam: 'stad', draai: controleStad },
 ];
 
 for (const c of controles) {

@@ -1,5 +1,17 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
+import {
+	ROOF_ISLAND_DECK_THICKNESS,
+	ROOF_ISLAND_PAD,
+	ROOF_LOUNGER_SPEC,
+	ROOF_LOUNGER_SPOTS,
+	ROOF_PALM_SPEC,
+	ROOF_PALM_SPOTS,
+	ROOF_RAILING_SPEC,
+	SLIDE_PLATFORM,
+	SLIDE_TOWER_SPEC,
+	TIKI_BAR_SPEC,
+} from '#/data/world';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { distanceToSegment2 } from '#/util/geometry2';
@@ -9,37 +21,7 @@ import { at } from '#/util/rand';
 
 const DECK_Y = levelY('roof');
 
-/** Zandplaat van het eiland. De dekmesh, de collider en de plattegrond lezen dezelfde randen. */
-export const ROOF_ISLAND_PAD = { minX: -32, maxX: -6, minZ: -20, maxZ: 20 } as const;
-
-/** Glijbaantoren: de plaat waar je bovenop staat. Mesh, collider en kaart hangen eraan. */
-export const SLIDE_PLATFORM = {
-	center: { x: -28.5, z: -10 },
-	size: 1.9,
-	thickness: 0.15,
-	standHeight: 4,
-} as const;
-
-/** Loopvlak van die plaat: bovenkant van de doos, niet het hart. */
-export const SLIDE_PLATFORM_TOP_Y = DECK_Y + SLIDE_PLATFORM.standHeight + half(SLIDE_PLATFORM.thickness);
-
-/**
- * De ladder aan de zuidkant, ruimer dan zijn sporten: arcade-klimmen. Alles gemeten
- * vanaf de plaat waar hij op uitkomt, want los ingetikt liep hij ernaast.
- */
-const SLIDE_LADDER = { halfWidth: 0.7, topInset: 0.05, run: 1.3, openBefore: 0.6, openAfter: 0.5 } as const;
-
-const SLIDE_LADDER_TOP_Z = SLIDE_PLATFORM.center.z - half(SLIDE_PLATFORM.size) + SLIDE_LADDER.topInset;
-
-/** Klimkoker van de ladder, zoals CollisionWorld hem als helling opneemt. */
-export const SLIDE_LADDER_CLIMB = {
-	minX: SLIDE_PLATFORM.center.x - SLIDE_LADDER.halfWidth,
-	maxX: SLIDE_PLATFORM.center.x + SLIDE_LADDER.halfWidth,
-	zTop: SLIDE_LADDER_TOP_Z,
-	zBottom: SLIDE_LADDER_TOP_Z - SLIDE_LADDER.run,
-	openMinZ: SLIDE_LADDER_TOP_Z - SLIDE_LADDER.openBefore,
-	openMaxZ: SLIDE_LADDER_TOP_Z + SLIDE_LADDER.openAfter,
-} as const;
+export { ROOF_ISLAND_PAD, SLIDE_LADDER_CLIMB, SLIDE_PLATFORM, SLIDE_PLATFORM_TOP_Y } from '#/data/world';
 
 /** Waterspiegel-centrum in wereldcoördinaten. PoolPeople zet er zwemmers op. */
 export const POOL_CENTER = { x: -20, z: 2 } as const;
@@ -267,15 +249,14 @@ export class RoofIsland {
 		return tex;
 	}
 
-	/** Zandkleurige dekplaat, top op DECK_Y. */
+	/** Zandlaag óp de dakplaat. Met zijn top op DECK_Y lag hij in het dak en flikkerde hij over 26×40 m. */
 	private buildDeck(): void {
 		const { minX, maxX, minZ, maxZ } = ROOF_ISLAND_PAD;
-		const thickness = 0.35;
 		const deck = new THREE.Mesh(
-			this.geo(new THREE.BoxGeometry(span(minX, maxX), thickness, span(minZ, maxZ))),
+			this.geo(new THREE.BoxGeometry(span(minX, maxX), ROOF_ISLAND_DECK_THICKNESS, span(minZ, maxZ))),
 			this.track(lit({ color: 0xe6cf9c, roughness: 0.95 })),
 		);
-		deck.position.set(midpoint(minX, maxX), DECK_Y - half(thickness), midpoint(minZ, maxZ));
+		deck.position.set(midpoint(minX, maxX), DECK_Y + half(ROOF_ISLAND_DECK_THICKNESS), midpoint(minZ, maxZ));
 		deck.receiveShadow = true;
 		this.group.add(deck);
 	}
@@ -347,15 +328,16 @@ export class RoofIsland {
 		const railInset = 0.05;
 
 		// Torenpoten + platform
-		const legGeo = this.geo(new THREE.CylinderGeometry(0.09, 0.09, standHeight, 8));
-		for (const [dx, dz] of [
-			[-0.8, -0.8],
-			[0.8, -0.8],
-			[-0.8, 0.8],
-			[0.8, 0.8],
+		const { leg: legSpec, ladder, tube: tubeSpec } = SLIDE_TOWER_SPEC;
+		const legGeo = this.geo(new THREE.CylinderGeometry(legSpec.radius, legSpec.radius, standHeight, 8));
+		for (const [sx, sz] of [
+			[-1, -1],
+			[1, -1],
+			[-1, 1],
+			[1, 1],
 		] as const) {
 			const leg = new THREE.Mesh(legGeo, steel);
-			leg.position.set(center.x + dx, DECK_Y + half(standHeight), center.z + dz);
+			leg.position.set(center.x + sx * legSpec.offset, DECK_Y + half(standHeight), center.z + sz * legSpec.offset);
 			g.add(leg);
 		}
 		const platform = new THREE.Mesh(
@@ -385,8 +367,8 @@ export class RoofIsland {
 
 		// Ladder aan de zuidkant
 		const ladderZ = center.z - half(size) - 0.03;
-		const rungGeo = this.geo(new THREE.BoxGeometry(0.5, 0.05, 0.05));
-		for (let i = 0; i < 8; i++) {
+		const rungGeo = this.geo(new THREE.BoxGeometry(0.5, ladder.rungThickness, ladder.rungThickness));
+		for (let i = 0; i < ladder.rungs; i++) {
 			const rung = new THREE.Mesh(rungGeo, steel);
 			rung.position.set(center.x, DECK_Y + 0.5 + i * 0.48, ladderZ);
 			g.add(rung);
@@ -399,17 +381,10 @@ export class RoofIsland {
 		}
 
 		// De buis: CatmullRom-krul van platform naar het diepe
-		const curve = new THREE.CatmullRomCurve3([
-			new THREE.Vector3(-27.7, DECK_Y + 3.8, -10),
-			new THREE.Vector3(-26.2, DECK_Y + 3.1, -8.6),
-			new THREE.Vector3(-24.4, DECK_Y + 2.4, -7.8),
-			new THREE.Vector3(-22.8, DECK_Y + 1.7, -6.0),
-			new THREE.Vector3(-22.6, DECK_Y + 1.0, -3.6),
-			new THREE.Vector3(-22.3, DECK_Y + 0.2, 0.9),
-		]);
+		const curve = new THREE.CatmullRomCurve3(tubeSpec.path.map((p) => new THREE.Vector3(p.x, p.y, p.z)));
 		this.slideCurve = curve;
 		const tube = new THREE.Mesh(
-			this.geo(new THREE.TubeGeometry(curve, 48, 0.5, 10, false)),
+			this.geo(new THREE.TubeGeometry(curve, 48, tubeSpec.radius, 10, false)),
 			this.track(lit({ color: 0xffca28, roughness: 0.35, side: THREE.DoubleSide })),
 		);
 		g.add(tube);
@@ -436,45 +411,46 @@ export class RoofIsland {
 	private buildTikiBar(): void {
 		const g = new THREE.Group();
 		g.name = 'tiki_bar';
-		const cx = -12.3;
-		const cz = 14.5;
+		const { center, post, counter: counterSpec, thatch: thatchSpec, stool, sign: signSpec } = TIKI_BAR_SPEC;
+		const cx = center.x;
+		const cz = center.z;
 
 		const bamboo = this.track(lit({ color: 0x9a7b4f, roughness: 0.9 }));
-		const poleGeo = this.geo(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 7));
-		for (const [dx, dz] of [
-			[-1.4, -1.4],
-			[1.4, -1.4],
-			[-1.4, 1.4],
-			[1.4, 1.4],
+		const poleGeo = this.geo(new THREE.CylinderGeometry(post.radius, post.radius, post.height, 7));
+		for (const [sx, sz] of [
+			[-1, -1],
+			[1, -1],
+			[-1, 1],
+			[1, 1],
 		] as const) {
 			const pole = new THREE.Mesh(poleGeo, bamboo);
-			pole.position.set(cx + dx, DECK_Y + 1.6, cz + dz);
+			pole.position.set(cx + sx * post.offset, DECK_Y + post.centerY, cz + sz * post.offset);
 			g.add(pole);
 		}
 
 		// Bar zelf: één plank, oneindige dorst
 		const counter = new THREE.Mesh(
-			this.geo(new THREE.BoxGeometry(1.0, 1.1, 3.2)),
+			this.geo(new THREE.BoxGeometry(counterSpec.width, counterSpec.height, counterSpec.depth)),
 			this.track(lit({ color: 0x6d4c41, roughness: 0.8 })),
 		);
-		counter.position.set(cx - 0.6, DECK_Y + 0.55, cz);
+		counter.position.set(cx + counterSpec.offsetX, DECK_Y + half(counterSpec.height), cz);
 		g.add(counter);
 
 		// Rieten kegeldakje
 		const thatch = new THREE.Mesh(
-			this.geo(new THREE.ConeGeometry(2.7, 1.8, 9)),
+			this.geo(new THREE.ConeGeometry(thatchSpec.radius, thatchSpec.height, 9)),
 			this.track(lit({ color: 0xb8935a, roughness: 1 })),
 		);
-		thatch.position.set(cx, DECK_Y + 4.0, cz);
+		thatch.position.set(cx, DECK_Y + thatchSpec.centerY, cz);
 		g.add(thatch);
 
 		// Krukken (instanced — drie krukken is ook een rij)
-		const stoolGeo = this.geo(new THREE.CylinderGeometry(0.24, 0.2, 0.68, 8));
+		const stoolGeo = this.geo(new THREE.CylinderGeometry(stool.topRadius, stool.bottomRadius, stool.height, 8));
 		const stoolMat = this.track(lit({ color: 0x8d6e63, roughness: 0.85 }));
-		const stools = new THREE.InstancedMesh(stoolGeo, stoolMat, 3);
+		const stools = new THREE.InstancedMesh(stoolGeo, stoolMat, stool.z.length);
 		const d = new THREE.Object3D();
-		[13.2, 14.5, 15.8].forEach((z, i) => {
-			d.position.set(cx - 1.7, DECK_Y + 0.34, z);
+		stool.z.forEach((z, i) => {
+			d.position.set(cx + stool.offsetX, DECK_Y + stool.centerY, z);
 			d.rotation.set(0, 0, 0);
 			d.updateMatrix();
 			stools.setMatrixAt(i, d.matrix);
@@ -501,10 +477,10 @@ export class RoofIsland {
 			128,
 		);
 		const sign = new THREE.Mesh(
-			this.geo(new THREE.PlaneGeometry(2.4, 0.8)),
+			this.geo(new THREE.PlaneGeometry(signSpec.width, signSpec.height)),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide })),
 		);
-		sign.position.set(cx - 1.55, DECK_Y + 2.6, cz);
+		sign.position.set(cx + signSpec.offsetX, DECK_Y + signSpec.centerY, cz);
 		sign.rotation.y = -Math.PI / 2;
 		g.add(sign);
 
@@ -513,25 +489,16 @@ export class RoofIsland {
 
 	/** 8 palmen, alles instanced: stammen, bladeren, kokosnoten. */
 	private buildPalms(): void {
-		const spots: [number, number, number][] = [
-			// x, z, schaal
-			[-30.2, -17.5, 1.1],
-			[-8.5, -17, 0.95],
-			[-30, 16.5, 1.05],
-			[-8.6, 17.5, 1.0],
-			[-30.5, -6, 0.9],
-			[-9, 7, 1.15],
-			[-15, -15, 1.0],
-			[-25.5, 13, 0.85],
-		];
+		const spots = ROOF_PALM_SPOTS;
+		const { trunk } = ROOF_PALM_SPEC;
 		const d = new THREE.Object3D();
 
 		// Stammen (origin aan de voet)
-		const trunkGeo = this.geo(new THREE.CylinderGeometry(0.09, 0.17, 3.4, 7));
-		trunkGeo.translate(0, 1.7, 0);
+		const trunkGeo = this.geo(new THREE.CylinderGeometry(trunk.topRadius, trunk.bottomRadius, trunk.height, 7));
+		trunkGeo.translate(0, half(trunk.height), 0);
 		const trunkMat = this.track(lit({ color: 0x8b6914, roughness: 0.9 }));
 		const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
-		spots.forEach(([x, z, s], i) => {
+		spots.forEach(({ x, z, scale: s }, i) => {
 			d.position.set(x, DECK_Y, z);
 			d.rotation.set(0, i * 1.3, 0);
 			d.scale.setScalar(s);
@@ -549,10 +516,10 @@ export class RoofIsland {
 		const fronds = new THREE.InstancedMesh(frondGeo, frondMat, spots.length * perPalm);
 		const greens = [0x1b7a3d, 0x2d8a4e, 0x3d9b55, 0x228b22];
 		const col = new THREE.Color();
-		spots.forEach(([x, z, s], i) => {
+		spots.forEach(({ x, z, scale: s }, i) => {
 			for (let j = 0; j < perPalm; j++) {
 				const a = (j / perPalm) * Math.PI * 2 + i * 0.7;
-				d.position.set(x, DECK_Y + 3.4 * s, z);
+				d.position.set(x, DECK_Y + trunk.height * s, z);
 				d.rotation.set(0, 0, 0);
 				d.rotation.order = 'YXZ';
 				d.rotation.y = a;
@@ -571,7 +538,7 @@ export class RoofIsland {
 		const cocoGeo = this.geo(new THREE.SphereGeometry(0.11, 6, 6));
 		const cocoMat = this.track(lit({ color: 0x5c4033, roughness: 0.9 }));
 		const cocos = new THREE.InstancedMesh(cocoGeo, cocoMat, spots.length * 2);
-		spots.forEach(([x, z, s], i) => {
+		spots.forEach(({ x, z, scale: s }, i) => {
 			for (let j = 0; j < 2; j++) {
 				const a = i * 2.1 + j * Math.PI;
 				d.position.set(x + Math.cos(a) * 0.18, DECK_Y + 3.3 * s, z + Math.sin(a) * 0.18);
@@ -585,24 +552,16 @@ export class RoofIsland {
 		this.group.add(cocos);
 	}
 
-	private loungerSpots(): [number, number, number][] {
-		// x, z, yaw — zes op een rij aan de oostkant, twee losse bij het bad
-		const rows: [number, number, number][] = [];
-		for (let i = 0; i < 6; i++) rows.push([-10.6, -13.2 + i * 2.4, -Math.PI / 2]);
-		rows.push([-18, -5.5, 0.15]);
-		rows.push([-15.5, -5.0, -0.1]);
-		return rows;
-	}
-
 	private buildLoungers(): void {
-		const spots = this.loungerSpots();
+		const spots = ROOF_LOUNGER_SPOTS;
+		const { seat, back } = ROOF_LOUNGER_SPEC;
 		const d = new THREE.Object3D();
 		const plastic = this.track(lit({ color: 0xf1f8f4, roughness: 0.7 }));
 
-		const baseGeo = this.geo(new THREE.BoxGeometry(0.7, 0.16, 1.8));
+		const baseGeo = this.geo(new THREE.BoxGeometry(seat.width, seat.thickness, seat.depth));
 		const bases = new THREE.InstancedMesh(baseGeo, plastic, spots.length);
-		spots.forEach(([x, z, yaw], i) => {
-			d.position.set(x, DECK_Y + 0.18, z);
+		spots.forEach(({ x, z, yaw }, i) => {
+			d.position.set(x, DECK_Y + seat.centerY, z);
 			d.rotation.set(0, yaw, 0);
 			d.updateMatrix();
 			bases.setMatrixAt(i, d.matrix);
@@ -611,14 +570,14 @@ export class RoofIsland {
 		this.group.add(bases);
 
 		// Rugleuning: aan het hoofdeinde, schuin omhoog (siësta-stand)
-		const backGeo = this.geo(new THREE.BoxGeometry(0.7, 0.06, 0.8));
+		const backGeo = this.geo(new THREE.BoxGeometry(back.width, back.thickness, back.depth));
 		const backs = new THREE.InstancedMesh(backGeo, plastic, spots.length);
-		spots.forEach(([x, z, yaw], i) => {
-			d.position.set(x - 0.75 * Math.sin(yaw), DECK_Y + 0.42, z - 0.75 * Math.cos(yaw));
+		spots.forEach(({ x, z, yaw }, i) => {
+			d.position.set(x - back.offset * Math.sin(yaw), DECK_Y + back.centerY, z - back.offset * Math.cos(yaw));
 			d.rotation.set(0, 0, 0);
 			d.rotation.order = 'YXZ';
 			d.rotation.y = yaw;
-			d.rotation.x = -0.65;
+			d.rotation.x = back.tilt;
 			d.updateMatrix();
 			backs.setMatrixAt(i, d.matrix);
 		});
@@ -661,7 +620,7 @@ export class RoofIsland {
 
 	private buildTowels(): void {
 		// Handdoeken: 5 op de ligstoelen, 3 op het dek (territorium gemarkeerd)
-		const loungers = this.loungerSpots();
+		const loungers = ROOF_LOUNGER_SPOTS;
 		const onLoungers = [0, 2, 4, 6, 7];
 		const onDeck: [number, number, number][] = [
 			[-17, -8, 0.4],
@@ -677,7 +636,7 @@ export class RoofIsland {
 		const col = new THREE.Color();
 		let idx = 0;
 		for (const li of onLoungers) {
-			const [x, z, yaw] = at(loungers, li);
+			const { x, z, yaw } = at(loungers, li);
 			d.position.set(x, DECK_Y + 0.3, z);
 			d.rotation.set(0, yaw, 0);
 			d.updateMatrix();
@@ -788,24 +747,25 @@ export class RoofIsland {
 		}
 	}
 
-	/** Railing rondom, met een opening aan de oostkant (z -2.5..2.5) als entree. */
+	/** Railing rondom, met een opening aan de oostkant als entree. */
 	private buildRailing(): void {
 		const { minX, maxX, minZ, maxZ } = this.roofPad;
+		const { height, barThickness, postRadius, postSpacing, entranceHalfDepth } = ROOF_RAILING_SPEC;
 		const metal = this.track(lit({ color: 0xeceff1, metalness: 0.55, roughness: 0.4 }));
 
 		// Paaltjes instanced langs de omtrek
 		const positions: [number, number][] = [];
-		for (let z = minZ; z <= maxZ; z += 2) positions.push([minX, z]);
-		for (let x = minX + 2; x <= maxX; x += 2) {
+		for (let z = minZ; z <= maxZ; z += postSpacing) positions.push([minX, z]);
+		for (let x = minX + postSpacing; x <= maxX; x += postSpacing) {
 			positions.push([x, minZ]);
 			positions.push([x, maxZ]);
 		}
-		for (let z = minZ + 2; z < maxZ; z += 2) {
-			if (z > -2.5 && z < 2.5) continue; // entree
+		for (let z = minZ + postSpacing; z < maxZ; z += postSpacing) {
+			if (z > -entranceHalfDepth && z < entranceHalfDepth) continue; // entree
 			positions.push([maxX, z]);
 		}
-		const postGeo = this.geo(new THREE.CylinderGeometry(0.035, 0.035, 1.05, 6));
-		postGeo.translate(0, 0.525, 0);
+		const postGeo = this.geo(new THREE.CylinderGeometry(postRadius, postRadius, height, 6));
+		postGeo.translate(0, half(height), 0);
 		const posts = new THREE.InstancedMesh(postGeo, metal, positions.length);
 		const d = new THREE.Object3D();
 		positions.forEach(([x, z], i) => {
@@ -818,17 +778,17 @@ export class RoofIsland {
 		this.group.add(posts);
 
 		// Bovenregel: vijf balken (oostkant in twee stukken vanwege de entree)
-		const railY = DECK_Y + 1.05;
+		const railY = DECK_Y + height;
 		const bar = (w: number, dep: number, x: number, z: number): void => {
-			const m = new THREE.Mesh(this.geo(new THREE.BoxGeometry(w, 0.07, dep)), metal);
+			const m = new THREE.Mesh(this.geo(new THREE.BoxGeometry(w, barThickness, dep)), metal);
 			m.position.set(x, railY, z);
 			this.group.add(m);
 		};
-		bar(0.07, span(minZ, maxZ), minX, 0);
-		bar(span(minX, maxX), 0.07, midpoint(minX, maxX), minZ);
-		bar(span(minX, maxX), 0.07, midpoint(minX, maxX), maxZ);
-		bar(0.07, span(minZ, -2.5), maxX, midpoint(minZ, -2.5));
-		bar(0.07, span(2.5, maxZ), maxX, midpoint(2.5, maxZ));
+		bar(barThickness, span(minZ, maxZ), minX, midpoint(minZ, maxZ));
+		bar(span(minX, maxX), barThickness, midpoint(minX, maxX), minZ);
+		bar(span(minX, maxX), barThickness, midpoint(minX, maxX), maxZ);
+		bar(barThickness, span(minZ, -entranceHalfDepth), maxX, midpoint(minZ, -entranceHalfDepth));
+		bar(barThickness, span(entranceHalfDepth, maxZ), maxX, midpoint(entranceHalfDepth, maxZ));
 	}
 
 	private buildSign(): void {

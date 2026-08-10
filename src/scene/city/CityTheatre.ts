@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { lit } from '#/render/material';
+import { THEATRE_PLAN, theatreTreadY, theatreTreadZ } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { half, midpoint, span } from '#/util/math';
 
 /**
  * PRAIRIE THEATRE — monumentaal cultuurpaleis op het NO-blok (x 56..88, z -68..-44).
@@ -110,17 +112,47 @@ export class CityTheatre {
 		const deur = lit({ color: 0x2a211b, roughness: 0.7, metalness: 0.15 });
 		this.materials.push(steen, donker, deur);
 
-		// Zaalblok: x 58..86, z -66..-52, 13 hoog. Ramen heeft een theater niet nodig.
-		this.box(steen, 28, 13, 14, 72, 6.5, -59);
+		// Zaalblok. Ramen heeft een theater niet nodig.
+		const zaal = THEATRE_PLAN.hall;
+		const zaalH = THEATRE_PLAN.hallHeight;
+		this.box(
+			steen,
+			span(zaal.minX, zaal.maxX),
+			zaalH,
+			span(zaal.minZ, zaal.maxZ),
+			midpoint(zaal.minX, zaal.maxX),
+			half(zaalH),
+			midpoint(zaal.minZ, zaal.maxZ),
+		);
 		this.box(steen, 29.5, 0.9, 15.5, 72, 13.45, -59); // kroonlijst
 		this.box(steen, 12, 2.4, 9, 72, 14.9, -59.5); // attiek — voor de toneeltoren-suggestie
 
 		// Podium (het buiten-soort) met brede trap naar de stoep.
-		const podium = this.box(donker, 30, 1.5, 5, 72, 0.75, -49.5);
+		const dek = THEATRE_PLAN.podium;
+		const dekY = THEATRE_PLAN.podiumY;
+		const podium = this.box(
+			donker,
+			span(dek.minX, dek.maxX),
+			dekY,
+			span(dek.minZ, dek.maxZ),
+			midpoint(dek.minX, dek.maxX),
+			half(dekY),
+			midpoint(dek.minZ, dek.maxZ),
+		);
 		podium.receiveShadow = true;
-		for (let i = 0; i < 4; i++) {
-			const top = 1.2 - 0.3 * i;
-			const tree = this.box(donker, 20, top, 0.6, 72, top * 0.5, -46.7 + 0.6 * i);
+		const trap = THEATRE_PLAN.stair;
+		for (let i = 0; i < trap.treads; i++) {
+			const top = theatreTreadY(i);
+			const { minZ, maxZ } = theatreTreadZ(i);
+			const tree = this.box(
+				donker,
+				span(trap.minX, trap.maxX),
+				top,
+				span(minZ, maxZ),
+				midpoint(trap.minX, trap.maxX),
+				half(top),
+				midpoint(minZ, maxZ),
+			);
 			tree.receiveShadow = true;
 		}
 
@@ -135,26 +167,27 @@ export class CityTheatre {
 		const steen = lit({ color: 0xd8cfba, roughness: 0.85, metalness: 0.02 });
 		this.materials.push(steen);
 
-		const zuilGeo = new THREE.CylinderGeometry(0.55, 0.6, 8.1, 10);
+		const rij = THEATRE_PLAN.columns;
+		const zuilGeo = new THREE.CylinderGeometry(0.55, rij.radius, span(rij.bottomY, rij.topY), 10);
 		this.geometries.push(zuilGeo);
-		const zuilen = new THREE.InstancedMesh(zuilGeo, steen, 8);
+		const zuilen = new THREE.InstancedMesh(zuilGeo, steen, rij.count);
 		zuilen.name = 'theatre_zuilen';
-		const blokjes = new THREE.InstancedMesh(this.unitBox, steen, 16);
+		const blokjes = new THREE.InstancedMesh(this.unitBox, steen, rij.count * 2);
 		blokjes.name = 'theatre_kapitelen';
 
-		for (let i = 0; i < 8; i++) {
-			const x = 61.5 + i * 3;
+		for (let i = 0; i < rij.count; i++) {
+			const x = rij.x0 + i * rij.pitch;
 			this.dummy.rotation.set(0, 0, 0);
-			this.dummy.position.set(x, 5.55, -50.6);
+			this.dummy.position.set(x, midpoint(rij.bottomY, rij.topY), rij.z);
 			this.dummy.scale.set(1, 1, 1);
 			this.dummy.updateMatrix();
 			zuilen.setMatrixAt(i, this.dummy.matrix);
 			// Basement op het podium, kapiteel onder het hoofdgestel.
-			this.dummy.position.set(x, 1.72, -50.6);
+			this.dummy.position.set(x, 1.72, rij.z);
 			this.dummy.scale.set(1.5, 0.45, 1.5);
 			this.dummy.updateMatrix();
 			blokjes.setMatrixAt(i * 2, this.dummy.matrix);
-			this.dummy.position.set(x, 9.8, -50.6);
+			this.dummy.position.set(x, 9.8, rij.z);
 			this.dummy.scale.set(1.5, 0.4, 1.5);
 			this.dummy.updateMatrix();
 			blokjes.setMatrixAt(i * 2 + 1, this.dummy.matrix);

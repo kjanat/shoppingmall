@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
+import type { Rand } from '#/scene/city/cityPlan';
+import { GARAGE_PLAN, mulberry32 } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { midpoint, span } from '#/util/math';
+import { half, midpoint, span } from '#/util/math';
 import { at, pickWith } from '#/util/rand';
 
 /**
@@ -20,41 +22,26 @@ import { at, pickWith } from '#/util/rand';
  * Geen lampen — de tl-balken zijn MeshBasicMaterial en doen alsof.
  */
 
-/** Deterministische RNG (mulberry32) — de garage staat er elke reload exact zo bij. */
-function mulberry32(seed: number): () => number {
-	let a = seed >>> 0;
-	return () => {
-		a = (a + 0x6d2b79f5) | 0;
-		let t = Math.imul(a ^ (a >>> 15), 1 | a);
-		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-	};
-}
-
-type Rand = () => number;
-
 // ── voetafdruk van het hoofdgebouw; de oostelijke strook (x 83..86) is voor de spiraal ──
-const X0 = 58;
-const X1 = 83;
-const Z0 = 46;
-const Z1 = 64;
+const { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 } = GARAGE_PLAN.footprint;
 const CX = midpoint(X0, X1); // 70.5
 const CZ = midpoint(Z0, Z1); // 55
 const W = span(X0, X1); // 25
 const D = span(Z0, Z1); // 18
 
-const FLOOR_H = 3.2;
-const SLAB_T = 0.35;
+const FLOOR_H = GARAGE_PLAN.floorHeight;
+const SLAB_T = GARAGE_PLAN.slabThickness;
 /** Parkeerdekken 0..3; de plaat op 4·FLOOR_H is het dak (leeg — VOL is een gemoedstoestand). */
-const DECKS = 4;
+const DECKS = GARAGE_PLAN.decks;
+const GROND_DEK_Y = GARAGE_PLAN.groundDeckY;
 
 /** Bovenkant van dek i — de begane grond is een dunnere plaat op het parkeerterrein. */
-const deckTop = (i: number): number => (i === 0 ? 0.2 : i * FLOOR_H + SLAB_T / 2);
+const deckTop = (i: number): number => (i === 0 ? GROND_DEK_Y : i * FLOOR_H + half(SLAB_T));
 
 // Kolommen op de gaten tússen de parkeervakken, zodat niemand instanced blik
 // door instanced beton hoeft te zien steken.
-const COL_X = [59, 62.8, 71.2, 79.6, 82.4];
-const COL_Z = [46.8, 55, 63.2];
+const COL_X = GARAGE_PLAN.columnX;
+const COL_Z = GARAGE_PLAN.columnZ;
 
 // Parkeervakken: 8 sloten per rij, twee rijen per dek, neus naar de wand of
 // naar het gangpad — de bewoners zijn het onderling nooit eens geworden.
@@ -139,7 +126,7 @@ export class CityGarage {
 	/** Dekken, kolommen, borstweringen en tl-balken — het betonnen casco. */
 	private buildStructure(): void {
 		// Vijf platen: dunne vloerplaat op maaiveld + vier dekken (waarvan één dak).
-		const slabs: Placement[] = [P(CX, 0.1, CZ, W, 0.2, D)];
+		const slabs: Placement[] = [P(CX, half(GROND_DEK_Y), CZ, W, GROND_DEK_Y, D)];
 		for (let i = 1; i <= DECKS; i++) slabs.push(P(CX, i * FLOOR_H, CZ, W, SLAB_T, D));
 		const slabMesh = this.fill(this.unitBox, this.beton, slabs, 'garage_dekken');
 		slabMesh.receiveShadow = true;
@@ -147,8 +134,12 @@ export class CityGarage {
 		// Kolommen in één stuk van vloer tot dak; ze prikken onzichtbaar door de
 		// platen heen, net als bij echte systeembouw.
 		const cols: Placement[] = [];
+		const kolomHoogte = span(GROND_DEK_Y, GARAGE_PLAN.columnTopY);
+		const kolomMidden = midpoint(GROND_DEK_Y, GARAGE_PLAN.columnTopY);
 		for (const x of COL_X) {
-			for (const z of COL_Z) cols.push(P(x, 6.5, z, 0.45, 12.6, 0.45));
+			for (const z of COL_Z) {
+				cols.push(P(x, kolomMidden, z, GARAGE_PLAN.columnSize, kolomHoogte, GARAGE_PLAN.columnSize));
+			}
 		}
 		this.fill(this.unitBox, this.betonDonker, cols, 'garage_kolommen');
 
