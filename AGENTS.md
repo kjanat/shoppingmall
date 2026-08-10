@@ -7,19 +7,19 @@ small `/api` for the DJ booth and the voices.
 
 Bun, not npm. There is no Vite in this project.
 
-| Command            | What it does                                                                       |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| `runner install`   | installs deps for current toolchain                                                |
-| `run dev`          | `bun --hot server/main.ts` on port 5174 (`PORT` overrides)                         |
-| `run build`        | typecheck → world + light checks → `build.ts` → `dist/static` + `dist/mall` binary |
-| `run build:static` | same, Pages target (no `/api`)                                                     |
-| `run typecheck`    | `tsc --noEmit`                                                                     |
-| `run lint`         | `biome check` (`bun run fmt` to fix + dprint)                                      |
-| `run check`        | world, light, and profiler-route invariants; no browser needed                     |
-| `run diagnose`     | what a frame is made of (see Performance)                                          |
-| `run bench`        | frame-time benchmark with drift detection                                          |
-| `run profile`      | traverse the named mall route and compare every segment                            |
-| `run live`         | rebuild + swap the Docker container (compose, behind traefik)                      |
+| Command            | What it does                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| `runner install`   | installs deps for current toolchain                                                 |
+| `run dev`          | `bun --hot server/main.ts` on port 5174 (`PORT` overrides)                          |
+| `run build`        | typecheck → world + light checks → `build.ts` → `dist/static` + `dist/mall` binary  |
+| `run build:static` | same, Pages target (no `/api`)                                                      |
+| `run typecheck`    | `tsc --noEmit`                                                                      |
+| `run lint`         | `biome check` (`bun run fmt` to fix + dprint)                                       |
+| `run check`        | world, spatial, math, light, prop, and profiler-route invariants; no browser needed |
+| `run diagnose`     | what a frame is made of (see Performance)                                           |
+| `run bench`        | frame-time benchmark with drift detection                                           |
+| `run profile`      | traverse the named mall route and compare every segment                             |
+| `run live`         | rebuild + swap the Docker container (compose, behind traefik)                       |
 
 Flags pass through the task runner: `bun run bench --samples 8` works.
 
@@ -92,13 +92,77 @@ option behind a switch, ship it, say "I built all three, try them". Do not pick 
 
 ## World invariants
 
-[check-world](scripts/check-world.ts), [check-lights](scripts/check-lights.ts), and the profiler-route tests run on every build (headless, with the canvas and audio stubs from
+[check-world](scripts/check-world.ts), [check-lights](scripts/check-lights.ts), [check-props](scripts/check-props.ts), and the profiler-route tests run on every build (headless, with the canvas and audio stubs from
 [stub-dom](scripts/stub-dom.ts)). check-world boots the collision world and the two shop builders and asserts things like: ramps line
 up with the floor holes cut for them, the ladder is actually climbable step by step, swimmers are inside the waterline,
 every shop has inventory. check-lights boots every light-owning feature against one `LightPool` and asserts the scene
 holds exactly `LIGHT_POOL_SLOTS` real `PointLight`s, including while the disco and the alien probe toggle, and greps
-`src/` so a `new PointLight` (or a named `PointLight` import) anywhere outside the pool fails the build. If you move
-geometry or add a light and a check fails, the world is wrong. The check is right.
+`src/` so a `new PointLight` (or a named `PointLight` import) anywhere outside the pool fails the build. check-props
+boots the statically placed casts (PoolPeople, TravelAgency, DJBartek) and asserts none of them stands inside a
+`blocksMovement` volume it does not own; the AL ZUT figure waist-deep in the tiki-bar counter is the bug it exists for.
+If you move geometry or add a light and a check fails, the world is wrong. The check is right.
+
+`zonegraaf`, `zonecull` and `zichtlijn` guard the zone graph, the culler built on it, and the sight lines it shares
+with the guards. The first asserts every zone is reachable through portals, that every entity declaring free space or
+glass either joins two zones or carries `NOT_A_PORTAL_TAG`, and that a tag on something which does join two zones fails
+the way an unused permit does; it also names the three cases the whole scheme rests on, the two-storey entrance glazing
+reaching the street from both shop decks, the atrium running as one shaft from V0 to the skylight, and the exit ramp
+opening the street onto P1 and onto nothing else, because on V0 that same coarse clearance box crosses a wall that is
+shut.
+
+`zonecull` runs the culler itself against a camera at four poses. With the building behind you no deck is visible and a
+sphere in the middle of V0 is rejected; facing the doors V0 is visible and a sphere just inside them is kept; standing
+deep on V0 with the entrance behind you the street is not visible, which is the arm that catches an aperture behind the
+camera degenerating into the whole frustum; and whatever you look at, your own zone is never culled. It also asserts
+that every world volume belonging to exactly one zone fits inside the box `seesZone` tests that zone with, so a box
+drawn too tight cannot quietly freeze a deck you are standing on.
+
+`zichtlijn` walks the sight lines. Three open-point rays: through the closed west facade, which must not get through;
+through the doorway in that same facade, which must; and across the atrium at balcony height, which must, because the
+barrier there is a box for walking bodies and reading it as a wall puts a wall through the middle of the building.
+Three more for what an open-point ray cannot see. It marches 400 bullets at the fastest muzzle speed and the slowest
+frame into the west facade, where every step ends inside the masonry and none may come out the far side; it stands an
+eye inside that same wall, which must still see out; and it drops a round through the V1 slab, which must stop on the
+concrete and must not stop over the atrium void. Any collider that stops sight and is also `climbable` fails on sight.
+
+The city is walked the same way. `stad` climbs the garage spiral and now steps off each landing onto the deck beside it:
+the parapet ring used to run unbroken along that seam, so the climb ended at a one-metre wall and only a jump finished
+it. Each landing cuts its own doorway out of that ring ([cityPlan](src/scene/city/cityPlan.ts) `deckDoorways`), widened
+to `GARAGE_PLAN.parapet.doorway` where the shared edge is shorter than a body, and guards its own frontage where no deck
+or ramp run carries it.
+
+Three controls guard the main entrance, because a portal is one set of numbers cutting the wall spec, the collision
+boxes and the entity volumes at once. `ingang` walks a pedestrian in off the street at x −50 through the doors to the
+atrium in 5 cm steps, and walks two more the other way through the glass beside them, which must not get through. It
+then checks what the walk cannot see, against the one outdoor viewpoint the project ships
+([routes](scripts/perf/routes.ts) `v0-entrance-street`): the lettering sits above the sightline over the canopy's front
+lip and in front of the facade seam behind it, each flag mast stands on ground at deck height and clear of the open exit
+trench, and every canopy downlight sits in a bay between two ribs rather than inside one. `daklus` closes the loop the
+roof jump opens: roof edge, over the side, street level below, and back in through the entrance to the atrium.
+`gevel` reads a declared `protrusion` next to the `penetration` it already read: geometry that belongs outside the
+facade, such as the canopy columns on the pavement and the exit ramp and its trench reaching 9.5 m past the west wall,
+says so and by how many metres, and a declaration that reaches past nothing fails the build the way an unused exemption
+row does. There is no entity-level exemption left. `validateSpatialWorld` reports the mirror case as
+`unused-penetration`: a volume that declares metres into another placement class and then cuts into nothing.
+
+`wegen` reads the ring road's two lanes out of [cityPlan](src/scene/city/cityPlan.ts) and asserts they run in opposite
+directions, that each edge's lane centre lies to the right of the roadway centreline (which is what keeping right on a
+ring means), that `rotY` reproduces the heading, and that the corner tiles still exist. `kaartlabels` plans the labels
+of every deck with the same code the kiosk draws with and fails on a name that fits nowhere, plus one viewpoint case:
+the minimap must name the entrance in full from the pavement in front of it. Both read the plan through
+`deckLabelPlan` / `minimapLabelPlan`, measured with [stub-dom](scripts/stub-dom.ts)'s text metric, which is wider per
+glyph than a real monospace at the sizes the map uses, so what fits there fits in the browser.
+
+Three of check-world's controls are source greps rather than world queries, and they share one loop over `src/` and
+`scripts/` with comments, strings, templates and regexes blanked out. `rekenhulpen` fails a build that divides by two,
+multiplies by a loose `0.5`, calls `MathUtils`, or clamps with a nested `Math.max`/`Math.min` instead of using
+[math](src/util/math.ts). `kopieen` fails a build that defines a second copy of anything [src/util](src/util) already
+exports, reading those names out of the source so a helper added tomorrow guards itself from its first line; it also
+catches the three shapes that carry no name once written out, the jitter `(r - 0.5) * spread`, the plusMinus
+`(r * 2 - 1) * extent`, and the ease factor `Math.min(1, rate * dt)`. `zoneklokken` runs over `src/` alone and fails a
+visibility question whose whole argument is a text literal, which after blanking is a call with empty parentheses:
+that is a simulation clock keyed to a deck somebody typed instead of to where its actors are standing. All three carry
+a table of per-site exemptions where a row that no longer matches anything is itself a build failure.
 
 ## Performance
 
@@ -168,8 +232,67 @@ snapshot, and until it exists every number above is the *old* build:
    0.5, driven by an EMA of the *unclamped* rAF interval; down after 0.5 s above 24 ms, up after 2 s under measured
    vsync × 1.12, 1 s cooldown. The canvas CSS (100%) upscales the smaller buffer.
 
-Still true: no LOD, no zone/portal culling, `cullByLevel` only hides label sprites, and standing in the garage still
-renders the roof when it is on-screen.
+5. **Zone and portal culling shipped** ([zones](src/data/zones.ts), [ZoneCuller](src/render/ZoneCuller.ts),
+   [ZoneVisibility](src/render/ZoneVisibility.ts)). Five zones: `stad`, `p1`, `mall-v0`, `mall-v1`, `roof`. A portal is
+   any entity owning an `opening-clearance` or `connector-clearance` volume, or one tagged `GLASS_TAG`, so the graph is
+   derived from the world model instead of listed a second time. A neighbouring zone is drawn only through the camera
+   frustum clipped to the interface between the two zones, which is the hole in the slab or the line of the facade and
+   never the whole corridor: as the whole clearance volume, the exit ramp was a 16 m tunnel and the lift a 22 m shaft,
+   and from close up such a cone covers half the screen and culls nothing. Toggle it with `mallsim.zonecull.v1`, the
+   settings panel, `?zonecull=0`, or `run diagnose --zone-cull off`.
+
+   Three things it has to get right, each of which was wrong once and each of which
+   [check-world](scripts/check-world.ts)'s `zonecull` control now asserts.
+
+   - **An aperture behind the camera is not an aperture.** The screen rect comes from the twelve edges of the
+     aperture box, each clipped at the near plane, never from its corners: a corner behind you has no NDC. Reading
+     one corner's negative `w` as "the camera is inside the opening" and falling back to the whole camera frustum
+     made every facade hand out a full cone from any outdoor heading, so nothing culled and `seesZone` answered yes
+     for all five zones everywhere.
+   - **A facade face is only an aperture where the shell is actually open.** `facadeOpeningWithin` in
+     [world](src/data/world.ts) subtracts the perimeter wall panels, the same way `slabOpeningWithin` subtracts a
+     deck. Without it the exit ramp's clearance box, one coarse prism from x −46 to −30, cut a 13 m² phantom window
+     into V0 at the point where `wall_w_above_exit` stands, and the street drew half the interior through it.
+   - **The band a zone occupies is `levelAt`'s band.** `zoneBand` derived its own from the deck heights and landed
+     `DECK_SLACK` too high, so every slab's thickness fell outside the zone that same slab is assigned to. The
+     facade aperture uses a second, deck-to-deck band on purpose: below the shell's foot there is no shell to have a
+     hole in, and a 20 cm sliver of `DECK_SLACK` under it read as a window.
+
+   Measured with `run diagnose:headless` (SwiftShader, 800×450, simulation frozen), A-B-A, on the build whose
+   `dist/static` bundle hashes to `49e3ff1af167585bc5b55a66d6562bfc92ae1da83f1b2ef2497851cbc2e5b583` (working tree
+   over `a3917b1a`; `build.ts` is reproducible, so that hash names the artefact these numbers came out of). Only the
+   counts are comparable, never the milliseconds: this is a CPU rasterizer.
+
+   | point                | draw calls off → on → off | triangles off → on → off    | shadow pass draws |
+   | -------------------- | ------------------------- | --------------------------- | ----------------- |
+   | `v0-entrance-street` | 795 → 273 → 795           | 394 853 → 242 737 → 394 841 | 19 → 7 → 19       |
+   | `v0-center`          | 433 → 362 → 433           | 247 425 → 236 475 → 247 425 | 19 → 16 → 19      |
+   | `roof-middle`        | 521 → 237 → 521           | 367 983 → 270 757 → 368 007 | 19 → 7 → 19       |
+
+   From the pavement `keptThroughCone` is 168 of 895 accept calls, against 446 before the three fixes above, and
+   `keptInOwnZone` is 115 either way. **The residual is cone width, not the own-zone shortcut.** `accepts` returns
+   true on the viewer's own zone bit without a sphere test, and that was named as the reason the street would not
+   collapse; the split above says otherwise, because the 115 did not move while the total fell by two thirds. What
+   the 115 are is still unmeasured: a static batch is celled by `levelAt(y):x/32:z/32`, so a cell straddling the
+   facade line carries `stad` and interior geometry at once, and nothing yet attributes them per cell.
+   **What the shadow pair does and does not say.** Hiding is `layers.mask = 0` on a loose object and
+   `visible = false` on a batch, and both take it out of every camera, the shadow camera included, so casters follow
+   the cull by construction. The seven survivors from the street were not attributed per owner, so the pair is
+   evidence that fewer things cast, not proof that none of them is interior. What carries "no interior shadows
+   outside" is the `zonecull` control: from the pavement with the building behind you it asserts that a sphere in
+   the middle of V0 is rejected, and from the pavement facing the doors that one just inside them is kept.
+
+6. **Simulation follows the same relation, from where its actors are.** Anything in a zone with no portal cone on
+   screen ticks at `UNSEEN_TICK_SECONDS` ([ZoneLod](src/app/ZoneLod.ts)) rather than per frame, carrying its owed
+   time so the thief, the guards and the city keep the same clock in fewer portions. Which zone a system is in is
+   derived from its own bodies (`seesWhere`, `seesCast`) and never written down at the call site: eleven clocks each
+   restated a deck, nothing compared that against where the actors stood, and Wei riding an escalator or a branch
+   car parked on P1 kept being gated on a deck it had left. `zoneklokken` in [check-world](scripts/check-world.ts)
+   fails a build where a visibility question's whole argument is a text literal. The city block reads
+   `CITY_TRAFFIC_ZONES`, which [cityPlan](src/scene/city/cityPlan.ts) derives from the ring lanes and
+   `EXIT_BRANCH_ROUTE`, so it covers `p1` as well as `stad`.
+
+Still true: no distance LOD, and `cullByLevel` still only hides label sprites.
 
 ### Traps
 
@@ -197,6 +320,7 @@ run build          # required first: the scripts serve dist/static
 run diagnose       # GPU, shaders, light counts, per-pass GPU time
 run diagnose --sweep                 # + solves `fixed ms + ms/Mpix` with an A-B-A control
 run diagnose --url https://kruidvat.kajkowalski.nl/   # measure the deployed build
+run diagnose --point v0-entrance-street --zone-cull off   # the other half of the zone-cull A-B-A
 run bench --save before
 run bench --compare before
 run profile --save before            # two identical laps, segment hotspots + drift
@@ -279,8 +403,8 @@ Written down because each one cost real time and produced a confident wrong answ
 [LightPool](src/render/LightPool.ts). The problem was never only that 72 point lights are expensive per fragment; the *count* is
 baked into the program cache key, so it could not vary at runtime without relinking every material. That fact blocked
 zone culling, interior culling and any "lights off in rooms you cannot see" scheme. It no longer does: the count is
-`LIGHT_POOL_SLOTS` (8) for the whole session, `check:lights` enforces it, and any future zone-culling can now hide
-whole rooms without a doorway stutter.
+`LIGHT_POOL_SLOTS` (16) for the whole session, `check:lights` enforces it, and the zone culling above hides whole
+rooms without a doorway stutter.
 
 What the plan called judgement calls, and how they were decided:
 
@@ -293,7 +417,7 @@ What the plan called judgement calls, and how they were decided:
   saucer, buggy, guns, per-shop groups). `pool.update(camera)` runs after `sceneBatcher.update()` because that is what
   refreshes the world matrices. That ordering is load-bearing.
 - **Migration landed in one commit** instead of incrementally: all 85 former `PointLight`s across 16 scene files.
-- **An unused slot is still not free.** The unrolled loop runs per fragment regardless of intensity. 8 is a choice,
+- **An unused slot is still not free.** The unrolled loop runs per fragment regardless of intensity. 16 is a choice,
   not a law; from the far west end only 2 slots have anything in range, so there is room to size down if the look
   tolerates it.
 

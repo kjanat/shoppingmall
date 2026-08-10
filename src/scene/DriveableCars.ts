@@ -101,9 +101,15 @@ export class DriveableCars {
 		return Math.hypot(player.x - c.park.x, player.z - c.park.z);
 	}
 
+	/**
+	 * Rijden is camera-vooruit: −(sin, cos), zoals Controls rekent en zoals de
+	 * buggy al gerepareerd is. Met +(sin, cos) keek je uit de achterruit. De
+	 * mesh-neus is lokaal +z, dus de carrosserie draait π ten opzichte van de
+	 * rij-yaw; board() en release() rekenen op die grens om.
+	 */
 	getSeatPosition(): THREE.Vector3 {
-		const fx = Math.sin(this.yaw);
-		const fz = Math.cos(this.yaw);
+		const fx = -Math.sin(this.yaw);
+		const fz = -Math.cos(this.yaw);
 		return new THREE.Vector3(this.pos.x - fx * 0.15, this.pos.y + 1.15, this.pos.z - fz * 0.15);
 	}
 
@@ -114,7 +120,7 @@ export class DriveableCars {
 		c.active = true;
 		this.ridden = true;
 		this.pos.copy(c.mesh.position);
-		this.yaw = c.mesh.rotation.y;
+		this.yaw = c.mesh.rotation.y - Math.PI;
 		this.speed = 0;
 		this.wheels = c.wheels;
 		this.world.boundsMode = 'city';
@@ -131,13 +137,13 @@ export class DriveableCars {
 		if (c) {
 			c.active = false;
 			c.park.copy(this.pos);
-			c.yaw = this.yaw;
+			c.yaw = this.yaw + Math.PI;
 			c.mesh.position.copy(this.pos);
-			c.mesh.rotation.y = this.yaw;
+			c.mesh.rotation.y = this.yaw + Math.PI;
 			this.paintLabel(c, `${c.name} · E`, '#0d47a1');
 		}
-		const leftX = Math.cos(this.yaw);
-		const leftZ = -Math.sin(this.yaw);
+		const leftX = -Math.cos(this.yaw);
+		const leftZ = Math.sin(this.yaw);
 		const exit = new THREE.Vector3(this.pos.x + leftX * 2.2, this.pos.y, this.pos.z + leftZ * 2.2);
 		const gY = this.world.groundHeightAt(exit.x, exit.z, this.pos.y + 0.5, 3);
 		exit.y = gY;
@@ -177,8 +183,8 @@ export class DriveableCars {
 			this.yaw += steer * TURN_RATE * steerAuth * dir * dt;
 		}
 
-		const fx = Math.sin(this.yaw);
-		const fz = Math.cos(this.yaw);
+		const fx = -Math.sin(this.yaw);
+		const fz = -Math.cos(this.yaw);
 		let nx = this.pos.x + fx * this.speed * dt;
 		let nz = this.pos.z + fz * this.speed * dt;
 
@@ -196,9 +202,9 @@ export class DriveableCars {
 		this.pos.set(nx, gy, nz);
 		const mesh = this.active.mesh;
 		mesh.position.copy(this.pos);
-		mesh.rotation.y = this.yaw;
-		// Slight body roll
-		mesh.rotation.z = clamp(-steer * Math.abs(this.speed) * 0.012, -0.12, 0.12);
+		mesh.rotation.y = this.yaw + Math.PI;
+		// Slight body roll — teken mee met de π-flip, anders helt hij de bocht in
+		mesh.rotation.z = clamp(steer * Math.abs(this.speed) * 0.012, -0.12, 0.12);
 
 		const spin = this.speed * dt * 1.4;
 		for (const w of this.wheels) w.rotation.x += spin;

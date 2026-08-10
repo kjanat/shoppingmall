@@ -34,6 +34,10 @@ export const NODES = [
 	{ id: 'f0_se', x: 14, y: 0.15, z: 10 },
 	{ id: 'f0_nw', x: -14, y: 0.15, z: -10 },
 	{ id: 'f0_ne', x: 14, y: 0.15, z: -10 },
+	// Hoofdingang: van de stoep door de schuifdeuren de westelijke strook in.
+	// Straat en V0 liggen allebei op y 0, dus dit is één vlakke tak.
+	{ id: 'entrance_street', x: -43, y: 0.15, z: 6, label: 'Hoofdingang · straat' },
+	{ id: 'entrance_hall', x: -33, y: 0.15, z: 6, label: 'Hoofdingang' },
 	// Far west corridor (utilities strip)
 	{ id: 'f0_ww', x: -26, y: 0.15, z: 0, label: 'West corridor' },
 	{ id: 'f0_wsw', x: -26, y: 0.15, z: 12 },
@@ -53,7 +57,9 @@ export const NODES = [
 	{ id: 's_saucy', x: 26, y: 0.15, z: -10, label: 'Saucy' },
 
 	// Floor 0 utilities (match scene meshes)
-	{ id: 'u_toilets', x: -28, y: 0.15, z: 12, label: 'Toiletten' },
+	// Het aanlooppunt ligt vóór de opening op het noorden, op de hal van de
+	// hoofdingang. Het stond op (−28, 12), binnen de oostmuur van het blok.
+	{ id: 'u_toilets', x: -30, y: 0.15, z: 7.5, label: 'Toiletten' },
 	{ id: 'u_prayer', x: -28, y: 0.15, z: -18, label: 'Gebedsruimte' },
 	{ id: 'u_beardcave', x: -31, y: 0.15, z: 18, label: "Beard-man's Cave" },
 	{ id: 's_islandhop', x: -28, y: 0.15, z: 17, label: 'Island Hop Travel' },
@@ -118,6 +124,11 @@ export const EDGES: GraphEdge[] = [
 	{ from: 'f0_e', to: 'f0_ne' },
 	{ from: 'f0_sw', to: 'f0_se' },
 	{ from: 'f0_nw', to: 'f0_ne' },
+	// Hoofdingang → westelijke strook. De hal komt niet rechtstreeks op f0_wsw uit:
+	// die lijn loopt dwars door het toiletblok.
+	{ from: 'entrance_street', to: 'entrance_hall' },
+	{ from: 'entrance_hall', to: 'f0_ww' },
+
 	// West utility strip
 	{ from: 'f0_w', to: 'f0_ww' },
 	{ from: 'f0_sw', to: 'f0_wsw' },
@@ -143,11 +154,11 @@ export const EDGES: GraphEdge[] = [
 	// Utilities west (clear chain)
 	{ from: 'f0_wnw', to: 'u_prayer' },
 	{ from: 's_zara', to: 'u_prayer' },
-	{ from: 'f0_wsw', to: 'u_toilets' },
-	{ from: 'u_toilets', to: 's_islandhop' },
+	// De wc's gaan sinds de draaiing van het blok via de hal open. Alles wat er
+	// vanuit het zuiden op uitkwam liep dwars door de schil: f0_wsw en Starbucks
+	// door de oostmuur, ISLAND HOP en de grot door de dichte achterwand.
+	{ from: 'entrance_hall', to: 'u_toilets' },
 	{ from: 's_islandhop', to: 'u_beardcave' },
-	{ from: 'u_toilets', to: 'u_beardcave' },
-	{ from: 's_starbucks', to: 'u_toilets' },
 	{ from: 'f0_wsw', to: 's_islandhop' },
 
 	// Protest (east atrium ground)

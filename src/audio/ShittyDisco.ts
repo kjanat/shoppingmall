@@ -1,3 +1,5 @@
+import { plusMinus } from '#/util/rand';
+
 /**
  * Hardcore mall set + alpine JODEL energy.
  * boom-bam-bam-boom, then yodel leaps: hi-ho-la-hi-ho
@@ -206,7 +208,7 @@ export class ShittyDiscoMusic {
 		const bufferSize = Math.floor(ctx.sampleRate * dur);
 		const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
 		const data = buffer.getChannelData(0);
-		for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+		for (let i = 0; i < bufferSize; i++) data[i] = plusMinus(1);
 		const noise = ctx.createBufferSource();
 		noise.buffer = buffer;
 		const g = ctx.createGain();

@@ -2,14 +2,14 @@ import * as THREE from 'three';
 import { levelAt } from '#/data/levels';
 import { PRAYER_ROOM_SPEC } from '#/data/world';
 import type { CollisionWorld } from '#/physics/Collision';
+import { GRAVITY } from '#/player/constants';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { ctx2d } from '#/util/dom';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { clamp, clamp01, lerp } from '#/util/math';
-import { at, pick } from '#/util/rand';
+import { clamp, clamp01, lerp, shortestAngle } from '#/util/math';
+import { at, jitter, pick } from '#/util/rand';
 
-const GRAVITY = 18;
 /** seconds of flight the monkey aims for — a proper lob, not a bullet */
 const FLIGHT = 1.05;
 const THROW_MIN = 5;
@@ -270,8 +270,8 @@ export class Monkey {
 		// Default: fling dung at the gebedsruimte
 		this.pendingAtPrayer = true;
 		this.pendingTarget.copy(PRAYER_POS);
-		this.pendingTarget.x += (Math.random() - 0.5) * 2.4;
-		this.pendingTarget.z += (Math.random() - 0.5) * 1.8;
+		this.pendingTarget.x += jitter(2.4);
+		this.pendingTarget.z += jitter(1.8);
 		this.pendingTarget.y = 0.9 + Math.random() * 1.4;
 		return true;
 	}
@@ -312,8 +312,8 @@ export class Monkey {
 		const vel = target.clone().sub(origin).divideScalar(flight);
 		vel.y += 0.5 * GRAVITY * flight;
 		// A monkey is not a sniper
-		vel.x += (Math.random() - 0.5) * 0.9;
-		vel.z += (Math.random() - 0.5) * 0.9;
+		vel.x += jitter(0.9);
+		vel.z += jitter(0.9);
 
 		const mesh = this.makePoopMesh();
 		mesh.position.copy(origin);
@@ -586,10 +586,7 @@ export class Monkey {
 	}
 
 	private approachAngle(from: number, to: number, step: number): number {
-		let d = to - from;
-		while (d > Math.PI) d -= Math.PI * 2;
-		while (d < -Math.PI) d += Math.PI * 2;
-		return from + clamp(d, -step, step);
+		return from + clamp(shortestAngle(from, to), -step, step);
 	}
 
 	private build(): void {

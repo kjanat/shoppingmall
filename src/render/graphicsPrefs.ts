@@ -14,6 +14,7 @@ const SHINE_KEY = 'mallsim.shine.v1';
 const LAMPS_KEY = 'mallsim.lamps.v1';
 const FILL_KEY = 'mallsim.fill.v1';
 export const BATCH_KEY = 'mallsim.batch.v1';
+export const ZONE_CULL_KEY = 'mallsim.zonecull.v1';
 
 export type BatchMode = 'global' | 'spatial' | 'spatial-dynamic' | 'spatial-sort';
 export const BATCH_CHOICES: readonly BatchMode[] = ['global', 'spatial', 'spatial-dynamic', 'spatial-sort'];
@@ -71,6 +72,32 @@ export function batchMode(): BatchMode {
 		return isBatchMode(value) ? value : 'spatial';
 	} catch {
 		return 'spatial';
+	}
+}
+
+/**
+ * Zone- en portaalculling. Standaard aan.
+ *
+ * Als schakelaar en niet als vaste keuze, want dit is de enige manier om er een
+ * A-B-A tegenaan te leggen: één build, één machine, en de cull het enige verschil.
+ * Zonder die schakelaar moet een vorige build teruggezet worden en dan meet je
+ * ook alle andere verschillen mee.
+ */
+export function zoneCullOn(): boolean {
+	const override = booleanUrlPref('zonecull');
+	if (override !== undefined) return override;
+	try {
+		return localStorage.getItem(ZONE_CULL_KEY) !== '0';
+	} catch {
+		return true;
+	}
+}
+
+export function writeZoneCull(on: boolean): void {
+	try {
+		localStorage.setItem(ZONE_CULL_KEY, on ? '1' : '0');
+	} catch {
+		/* private mode */
 	}
 }
 

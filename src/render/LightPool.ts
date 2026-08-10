@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp } from '#/util/math';
+import { clamp, easeFactor } from '#/util/math';
 
 /**
  * How many real point lights the whole session ever has.
@@ -240,7 +240,7 @@ export class LightPool {
 			if (light && !h.snap) light.intensity = 0;
 		}
 
-		const step = Math.min(1, dt * FADE_RATE);
+		const step = easeFactor(FADE_RATE, dt);
 		for (let i = 0; i < this.lights.length; i++) {
 			const light = this.lights[i];
 			if (!light) continue;

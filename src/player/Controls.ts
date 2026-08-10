@@ -4,20 +4,22 @@ import type { LevelId } from '#/data/levels';
 import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
 import { WALK_STEP } from '#/physics/Collision';
-import { EYE, PLAYER_RADIUS } from '#/player/constants';
+import { AIR_STEP, EYE, GRAVITY, JUMP_V, PLAYER_RADIUS, RUN_SPEED, WALK_SPEED } from '#/player/constants';
 import { CITY_BOUNDS, CITY_GROUND_Y } from '#/scene/city/cityPlan';
-import { clamp, half, lerp } from '#/util/math';
+import { isTypingTarget } from '#/util/dom';
+import { clamp, ease, half } from '#/util/math';
 
 export { EYE } from '#/player/constants';
 
-const WALK = 4.4;
-const RUN = 8.4;
 const ACCEL = 46;
 const FRICTION = 26;
 const AIR_ACCEL = 9;
-const GRAVITY = 24;
-/** High enough to clear the floor-1 balustrade into the atrium void */
-const JUMP_V = 7.4;
+/**
+ * Extra vaart vooruit op het moment van afzetten (m/s). Rennend springen komt
+ * daarmee op 5,3 m/s en over de 0,61 s dat de sprong duurt op 3,2 m grond: een
+ * verspringende amateur haalt dat, een staande sprong nooit.
+ */
+const JUMP_LUNGE = 0.8;
 /** Waterdiepte waarbij je maximaal geremd bent: borstdiep. */
 const WADE_DEEP = 1.15;
 /** Wat er van je loopsnelheid over is als je tot je borst in het water staat. */
@@ -54,13 +56,6 @@ export const DEFAULT_SETTINGS: ControlSettings = {
 	sensitivity: 1,
 	invertY: false,
 };
-
-function isTypingTarget(t: EventTarget | null): boolean {
-	const el = t as HTMLElement | null;
-	if (!el?.tagName) return false;
-	const tag = el.tagName;
-	return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true;
-}
 
 /**
  * GTA-style first-person controller: click to capture the mouse, WASD to walk,
@@ -412,7 +407,7 @@ export class PlayerControls {
 			wz /= wishLen;
 		}
 
-		const speed = (sprint ? RUN : WALK) * clamp(wishLen, moving ? 0.4 : 0, 1) * (1 - (1 - WADE_SPEED) * wadeT);
+		const speed = (sprint ? RUN_SPEED : WALK_SPEED) * clamp(wishLen, moving ? 0.4 : 0, 1) * (1 - (1 - WADE_SPEED) * wadeT);
 		const tx = wx * speed;
 		const tz = wz * speed;
 		const rate = (moving ? (this.grounded ? ACCEL : AIR_ACCEL) : FRICTION) * dt;
@@ -430,10 +425,10 @@ export class PlayerControls {
 		if (this.jumpQueued && this.grounded && this.elevFloorY === null) {
 			this.vy = JUMP_V;
 			this.grounded = false;
-			// Small forward boost so a standing hop still carries you over the rail
+			// Wie al loopt zet zich af, wie stilstaat springt recht omhoog.
 			if (moving) {
-				this.vel.x += wx * 1.6;
-				this.vel.z += wz * 1.6;
+				this.vel.x += wx * JUMP_LUNGE;
+				this.vel.z += wz * JUMP_LUNGE;
 			}
 		}
 		this.jumpQueued = false;
@@ -469,12 +464,12 @@ export class PlayerControls {
 		} else {
 			// Airborne gets a looser step so hopping on the escalator doesn't snap you
 			// onto the deck above.
-			const ground = this.world.groundHeightAt(p.x, p.z, this.feetY, this.grounded ? WALK_STEP : 2.5);
+			const ground = this.world.groundHeightAt(p.x, p.z, this.feetY, this.grounded ? WALK_STEP : AIR_STEP);
 
 			if (this.grounded) {
 				// Follow the surface: snappy on ramps, instant on flat ground
 				const near = Math.abs(ground - this.feetY);
-				this.feetY = near < 0.02 ? ground : lerp(this.feetY, ground, Math.min(1, 22 * dt));
+				this.feetY = near < 0.02 ? ground : ease(this.feetY, ground, 22, dt);
 				if (this.feetY - ground > 0.9) {
 					this.grounded = false;
 					this.vy = 0;
@@ -495,14 +490,14 @@ export class PlayerControls {
 		const sp = Math.hypot(this.vel.x, this.vel.z);
 		if (this.grounded && sp > 0.3) {
 			this.bobT += dt * (5.5 + sp * 1.15);
-			const amp = Math.min(1, sp / RUN) * 0.055;
+			const amp = Math.min(1, sp / RUN_SPEED) * 0.055;
 			this.bob = Math.sin(this.bobT * 2) * amp;
 		} else {
-			this.bob = lerp(this.bob, 0, Math.min(1, 8 * dt));
+			this.bob = ease(this.bob, 0, 8, dt);
 		}
-		this.dip = lerp(this.dip, 0, Math.min(1, 7 * dt));
-		this.lean = lerp(this.lean, strafe * (sprint ? 0.02 : 0.013), Math.min(1, 6 * dt));
-		this.sink = lerp(this.sink, wadeT * WADE_SINK, Math.min(1, 8 * dt));
+		this.dip = ease(this.dip, 0, 7, dt);
+		this.lean = ease(this.lean, strafe * (sprint ? 0.02 : 0.013), 6, dt);
+		this.sink = ease(this.sink, wadeT * WADE_SINK, 8, dt);
 
 		p.y = this.feetY + EYE + this.bob - this.dip - this.sink;
 
@@ -673,9 +668,9 @@ export class PlayerControls {
 		const vSpeed = heli ? 7.5 : 6;
 		const tx = (-sin * fwd + cos * strafe) * speed;
 		const tz = (-cos * fwd - sin * strafe) * speed;
-		this.vel.x = lerp(this.vel.x, tx, Math.min(1, dt * accel));
-		this.vel.z = lerp(this.vel.z, tz, Math.min(1, dt * accel));
-		this.vy = lerp(this.vy, vert * vSpeed, Math.min(1, dt * accel));
+		this.vel.x = ease(this.vel.x, tx, accel, dt);
+		this.vel.z = ease(this.vel.z, tz, accel, dt);
+		this.vy = ease(this.vy, vert * vSpeed, accel, dt);
 
 		const p = this.cam.position;
 		const wantX = p.x + this.vel.x * dt;

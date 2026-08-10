@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { clamp, lerp } from '#/util/math';
+import { clamp, ease, lerp } from '#/util/math';
 import { ROOF_Y } from './Helipad';
 
 type HeliState = 'parked' | 'spinup' | 'takeoff' | 'cruise' | 'approach' | 'land' | 'spindown';
@@ -101,8 +101,8 @@ export class Helicopter {
 		// Neus omlaag bij vooruit, banken met de bocht — traag gedempt, sim-feel
 		const wantPitch = clamp(-fwdSpeed * 0.022, -0.32, 0.18);
 		const wantBank = clamp(-yawRate * 0.28, -0.42, 0.42);
-		this.body.rotation.z = lerp(this.body.rotation.z, wantPitch, Math.min(1, dt * 2.4));
-		this.body.rotation.x = lerp(this.body.rotation.x, wantBank, Math.min(1, dt * 2.4));
+		this.body.rotation.z = ease(this.body.rotation.z, wantPitch, 2.4, dt);
+		this.body.rotation.x = ease(this.body.rotation.x, wantBank, 2.4, dt);
 		this.body.rotation.y = yaw;
 
 		// camera zit in het cockpitglas: 1.0 naar voren, 0.85 boven de romp-origin

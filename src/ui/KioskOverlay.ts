@@ -11,7 +11,7 @@ import { CATEGORY_LABELS, getKruidvat, requireStore, STORES } from '#/data/store
 import type { MallWorldEntity } from '#/data/world';
 import { HELIPAD_PAD_SPEC, WORLD_ENTITIES } from '#/data/world';
 import { POOL_POLYGON, SLIDE_PLATFORM } from '#/scene/RoofIsland';
-import { qs } from '#/util/dom';
+import { isTypingTarget, qs } from '#/util/dom';
 import { clamp, half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
@@ -345,14 +345,16 @@ type ScreenPoint = Readonly<{ x: number; y: number }>;
 type Project = (x: number, z: number) => ScreenPoint;
 
 /**
- * Hoeveel breedte een label op dit punt heeft, of null als het punt buiten het
- * tekenvlak valt. De schotel knipt op een cirkel, en wat over die rand hing werd
- * door de clip doormidden gehakt: STARBUCKS kwam er als ARBUCK uit.
+ * Waar een label bij dit punt terechtkan en hoeveel breedte het daar heeft, of null
+ * als er in de buurt geen tekenvlak is. De schotel knipt op een cirkel, en wat over
+ * die rand hing werd door de clip doormidden gehakt: STARBUCKS kwam er als ARBUCK uit.
  */
-type LabelRoom = (point: ScreenPoint) => number | null;
+type LabelSpace = Readonly<{ point: ScreenPoint; width: number }>;
+
+type LabelRoom = (point: ScreenPoint) => LabelSpace | null;
 
 /** De grote plattegrond is rechthoekig en knipt geen enkel label af. */
-const UNCLIPPED: LabelRoom = () => Number.POSITIVE_INFINITY;
+const UNCLIPPED: LabelRoom = (point) => ({ point, width: Number.POSITIVE_INFINITY });
 
 /**
  * Vrije schermruimte rondom een label. Dit was een afstand tussen middelpunten,
@@ -362,6 +364,11 @@ const UNCLIPPED: LabelRoom = () => Number.POSITIVE_INFINITY;
  */
 const BIG_LABEL_GAP = 5;
 const MINI_LABEL_GAP = 3;
+
+/** De smalste plattegrond die de kiosk tekent, wat er om de canvas heen zit, en de val-terug. */
+export const BIG_MAP_MIN_WIDTH = 320;
+const BIG_MAP_PADDING = 36;
+const BIG_MAP_FALLBACK_WIDTH = 820;
 
 const LABEL_SIZE_MAX = 11;
 /** Onder deze maat is monospace op een donkere kaart niet meer te lezen. */
@@ -376,6 +383,22 @@ const LABEL_LINE_HEIGHT = 1.15;
 const LABEL_MAX_LINES = 3;
 /** Rand van de schotel die voor een label niet meetelt. */
 const MINI_LABEL_INSET = 8;
+/**
+ * Hoeveel meter een label naar het midden van de schotel mag schuiven om er nog op te
+ * passen. Een vorm die half over de rand hangt heeft zijn ankerpunt net erbuiten, en
+ * dan viel de naam weg: vanaf de stoep vóór de hoofdingang stond de ingang zelf
+ * naamloos op de kaart, met UITRIT STAD er pal naast.
+ */
+const MINI_LABEL_PULL = 3;
+/**
+ * Hoe breed een label mag worden zodra het onder of boven zijn eigen vorm hangt.
+ *
+ * Daar werd het nog steeds tegen de breedte van díé vorm gemeten, en dat is precies de
+ * maat waar het net niet in paste. Het parkeerloket is 2,2 m, dus `P · TICKETS` kreeg
+ * tweeëntwintig pixels en viel op alle vijf de plekken stil weg. Genoeg voor een naam,
+ * niet genoeg voor een alinea.
+ */
+const ESCAPE_LABEL_WIDTH = 140;
 const ELLIPSIS = '…';
 /** Eén letter en drie puntjes is geen naam meer; dan liever niets. */
 const ELLIPSIS_STEM_MIN = 3;
@@ -385,10 +408,17 @@ function labelFont(weight: number, size: number): string {
 }
 
 /**
+ * Wat het inpassen van een label van een canvas nodig heeft: een font zetten en tekst
+ * meten. Zo kan de wereldcontrole de kaartlabels naleggen zonder een canvas te hebben,
+ * en meet ze met dezelfde regels als de kiosk.
+ */
+export type LabelMeasure = { font: string; measureText(text: string): Readonly<{ width: number }> };
+
+/**
  * `text` afgekapt tot het gemeten binnen `maxWidth` past, of null als er geen
  * leesbare stam overblijft. Meet met de font die al op `ctx` staat.
  */
-function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string | null {
+function ellipsize(ctx: LabelMeasure, text: string, maxWidth: number): string | null {
 	if (ctx.measureText(text).width <= maxWidth) return text;
 	for (let length = text.length - 1; length >= ELLIPSIS_STEM_MIN; length--) {
 		const cut = `${text.slice(0, length).trimEnd()}${ELLIPSIS}`;
@@ -433,11 +463,58 @@ function dishRoom(point: ScreenPoint, cx: number, cy: number, radius: number): n
 	return room > 0 ? room * 2 : null;
 }
 
+/**
+ * Waar het label van dit punt op de schotel terechtkomt.
+ *
+ * Ligt het punt binnen `pull` van de rand of er net buiten, dan schuift het label naar
+ * het midden tot het op `radius - pull` staat en meet het zijn breedte daar. Verder weg
+ * dan dat hoort het niet meer bij deze schotel.
+ */
+function dishSpace(point: ScreenPoint, cx: number, cy: number, radius: number, pull: number): LabelSpace | null {
+	const offsetX = point.x - cx;
+	const offsetY = point.y - cy;
+	const distance = Math.hypot(offsetX, offsetY);
+	if (distance > radius + pull) return null;
+	const limit = Math.max(0, radius - pull);
+	const moved =
+		distance > limit && distance > 0 ? { x: cx + (offsetX * limit) / distance, y: cy + (offsetY * limit) / distance } : point;
+	const width = dishRoom(moved, cx, cy, radius);
+	return width === null ? null : { point: moved, width };
+}
+
 /** Een gemeten label: de regels zoals ze getekend worden, plus wat ze innemen. */
-type FittedLabel = Readonly<{ lines: readonly string[]; size: number; width: number; height: number; whole: boolean }>;
+export type FittedLabel = Readonly<{ lines: readonly string[]; size: number; width: number; height: number; whole: boolean }>;
+
+/** Eén label zoals het getekend gaat worden. */
+export type PlannedLabel = Readonly<{
+	text: string;
+	label: FittedLabel;
+	point: ScreenPoint;
+	vertical: boolean;
+	weight: number;
+	color: string;
+}>;
+
+/** Wat er van de labels van één dek terechtkomt: wat er staat, en wat nergens paste. */
+export type LabelPlan = Readonly<{ plan: readonly PlannedLabel[]; unfittable: readonly string[] }>;
+
+/** De ronde schotel in de HUD: haar maat, de ring eromheen en de stand waarop ze begint. */
+const MINIMAP = { size: 200, rim: 3, zoom: 2 } as const;
+
+/** Waar de speler staat en hoe hij kijkt: alles wat de schotel van hem nodig heeft. */
+export type MinimapView = Readonly<{ x: number; z: number; yaw: number; level: LevelId; zoom?: number }>;
+
+/** Wereld → schotel: gedraaid zodat de kijkrichting boven ligt, met de speler in het midden. */
+function dishProject(x: number, z: number, view: MinimapView, cx: number, cy: number, scale: number): ScreenPoint {
+	const dx = x - view.x;
+	const dz = z - view.z;
+	const cosine = Math.cos(view.yaw);
+	const sine = Math.sin(view.yaw);
+	return { x: cx + (dx * cosine - dz * sine) * scale, y: cy + (dx * sine + dz * cosine) * scale };
+}
 
 /** Woorden over regels verdelen, elke regel zo vol als `budget` toelaat. Meet met de font die op `ctx` staat. */
-function wrapWords(ctx: CanvasRenderingContext2D, words: readonly string[], budget: number): string[] {
+function wrapWords(ctx: LabelMeasure, words: readonly string[], budget: number): string[] {
 	const lines: string[] = [];
 	let current = '';
 	for (const word of words) {
@@ -455,17 +532,23 @@ function wrapWords(ctx: CanvasRenderingContext2D, words: readonly string[], budg
 
 /**
  * De grootste maat waarop `text` binnen `budget` bij `height` past, desnoods over
- * meer regels, en anders de kleinste maat met de naam afgekapt. `whole` zegt of
- * de naam er nog helemaal staat. Zonder regelafbreking werd ISLAND HOP TRAVEL in
- * zijn eigen vier meter brede winkel `ISLAN…`, terwijl het over drie regels past.
+ * meer regels. `whole` zegt of de naam er nog helemaal staat. Zonder regelafbreking
+ * werd ISLAND HOP TRAVEL in zijn eigen vier meter brede winkel `ISLAN…`, terwijl het
+ * over drie regels past.
+ *
+ * Afkappen doet hij alleen als `cut` het toestaat. Anders kapte hij meteen op de
+ * eerste plek af, en die plek is de vorm zelf: HOOFDINGANG werd `HOO…` in zijn eigen
+ * portaal terwijl er een halve centimeter naast plek genoeg was, en de uitwijkplekken
+ * kwamen nooit aan de beurt.
  */
 function fitLabel(
-	ctx: CanvasRenderingContext2D,
+	ctx: LabelMeasure,
 	text: string,
 	weight: number,
 	budget: number,
 	height: number,
 	maxLines: number,
+	cut: boolean,
 ): FittedLabel | null {
 	const words = text.split(' ');
 	for (let size = LABEL_SIZE_MAX; size >= LABEL_SIZE_MIN; size -= 0.5) {
@@ -478,15 +561,16 @@ function fitLabel(
 		if (width > budget) continue;
 		return { lines, size, width, height: block, whole: true };
 	}
+	if (!cut) return null;
 	ctx.font = labelFont(weight, LABEL_SIZE_MIN);
-	const cut = ellipsize(ctx, text, budget);
-	if (cut === null) return null;
+	const stem = ellipsize(ctx, text, budget);
+	if (stem === null) return null;
 	return {
-		lines: [cut],
+		lines: [stem],
 		size: LABEL_SIZE_MIN,
-		width: ctx.measureText(cut).width,
+		width: ctx.measureText(stem).width,
 		height: LABEL_SIZE_MIN * LABEL_LINE_HEIGHT,
-		whole: cut === text,
+		whole: stem === text,
 	};
 }
 
@@ -505,6 +589,8 @@ function drawLabel(
 	ctx.save();
 	ctx.translate(point.x, point.y);
 	if (vertical) ctx.rotate(-Math.PI / 2);
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'middle';
 	ctx.font = labelFont(weight, label.size);
 	const step = label.size * LABEL_LINE_HEIGHT;
 	label.lines.forEach((line, index) => {
@@ -533,9 +619,9 @@ function drawLabel(
  * ze kregen een vaste maat en de volle breedte van het tekenvlak, en zo hing
  * BEARD-MAN'S CAVE bijna zes meter buiten de westgevel in de lege achtergrond.
  */
-function paintLabels(ctx: CanvasRenderingContext2D, lvl: LevelId, project: Project, gap: number, room: LabelRoom): void {
-	ctx.textAlign = 'center';
-	ctx.textBaseline = 'middle';
+function planLabels(ctx: LabelMeasure, lvl: LevelId, project: Project, gap: number, room: LabelRoom): LabelPlan {
+	const plan: PlannedLabel[] = [];
+	const unfittable: string[] = [];
 	const placed: ScreenBox[] = [];
 	for (const feature of labelsOn(lvl)) {
 		const style = LAYER_STYLES[feature.layer];
@@ -548,28 +634,42 @@ function paintLabels(ctx: CanvasRenderingContext2D, lvl: LevelId, project: Proje
 		const shapeAlong = span(shape.minY, shape.maxY);
 		const anchor = project(feature.anchor.x, feature.anchor.z);
 		const oneLine = LABEL_SIZE_MAX * LABEL_LINE_HEIGHT;
-		// Wijk uit voordat je opgeeft: een trapschacht naast een winkel liet
-		// anders de winkelnaam verdwijnen in plaats van hem te verschuiven. Eerst
-		// de hele naam in de vorm, dan een afgekapte regel in de vorm, dan eronder
-		// of erboven. Als laatste het hele grondvlak, want op de parkeervloer staat
-		// precies op het ankerpunt een kolom van 0,7 m waar geen letter in past,
-		// terwijl de naam van het dek bij het dek hoort en niet bij die kolom.
-		const spots: readonly { point: ScreenPoint; across: number; along: number; upright: boolean; maxLines: number }[] = [
-			{ point: anchor, across: shapeAcross, along: shapeAlong, upright: true, maxLines: LABEL_MAX_LINES },
-			{ point: anchor, across: shapeAcross, along: shapeAlong, upright: true, maxLines: 1 },
+		// Wijk uit voordat je afkapt, en kap af voordat je opgeeft. De hele naam in de
+		// vorm, dan eronder of erboven, dan over het hele grondvlak, en pas als laatste
+		// een afgekapte regel in de vorm. Dat grondvlak staat er omdat op de
+		// parkeervloer precies op het ankerpunt een kolom van 0,7 m staat waar geen
+		// letter in past, terwijl de naam van het dek bij het dek hoort.
+		//
+		// De volgorde was andersom, en `fitLabel` kapte zelf af zodra de hele naam niet
+		// paste, dus won de vorm altijd meteen: HOOFDINGANG werd `HOO…` in zijn eigen
+		// portaal en de uitwijkplekken kwamen nooit aan de beurt. Die twee hangen
+		// buiten de vorm en worden daarom ook niet meer tegen diens breedte gemeten;
+		// dat is de maat waar het label net niet in paste en waarom het uitwijkt.
+		const outside = Math.max(shapeAcross, ESCAPE_LABEL_WIDTH);
+		const spots: readonly {
+			point: ScreenPoint;
+			across: number;
+			along: number;
+			upright: boolean;
+			maxLines: number;
+			cut: boolean;
+		}[] = [
+			{ point: anchor, across: shapeAcross, along: shapeAlong, upright: true, maxLines: LABEL_MAX_LINES, cut: false },
 			{
 				point: { x: anchor.x, y: box.maxY + BELOW_LABEL_OFFSET },
-				across: shapeAcross,
+				across: outside,
 				along: oneLine,
 				upright: false,
 				maxLines: 1,
+				cut: false,
 			},
 			{
 				point: { x: anchor.x, y: box.minY - BELOW_LABEL_OFFSET },
-				across: shapeAcross,
+				across: outside,
 				along: oneLine,
 				upright: false,
 				maxLines: 1,
+				cut: false,
 			},
 			{
 				point: anchor,
@@ -577,38 +677,85 @@ function paintLabels(ctx: CanvasRenderingContext2D, lvl: LevelId, project: Proje
 				along: span(box.minY, box.maxY),
 				upright: true,
 				maxLines: LABEL_MAX_LINES,
+				cut: false,
 			},
+			{ point: anchor, across: shapeAcross, along: shapeAlong, upright: true, maxLines: 1, cut: true },
 		];
+		// Nergens gepast is iets anders dan verdrongen, en allebei iets anders dan buiten
+		// beeld: alleen wie ergens ruimte kreeg en er tóch niet in paste is een naam die
+		// de kaart kwijt is.
+		let offered = false;
+		let measured = false;
 		for (const spot of spots) {
-			const { point, across, along, maxLines } = spot;
-			const available = room(point);
+			const { across, along, maxLines } = spot;
+			const available = room(spot.point);
 			if (available === null) continue;
-			const budget = Math.min(across, available);
-			const flat = fitLabel(ctx, text, weight, budget, along, maxLines);
+			offered = true;
+			const point = available.point;
+			const budget = Math.min(across, available.width);
+			const flat = fitLabel(ctx, text, weight, budget, along, maxLines, spot.cut);
 			// Een smalle, diepe vorm draagt zijn naam overlangs: het catwalkdek is
 			// 2,7 m breed en tien meter lang. Alleen als de naam daar wél heel past.
 			const upright =
-				spot.upright && along > across && flat?.whole !== true ? fitLabel(ctx, text, weight, along, across, 1) : null;
+				spot.upright && along > across && flat?.whole !== true ? fitLabel(ctx, text, weight, along, across, 1, false) : null;
 			const vertical = upright?.whole === true;
 			const label = vertical ? upright : flat;
 			if (label === null) continue;
+			measured = true;
 			if (vertical) {
 				const ends = [point.y - half(label.width), point.y + half(label.width)];
-				if (ends.some((y) => (room({ x: point.x, y }) ?? 0) < label.height)) continue;
+				if (ends.some((y) => (room({ x: point.x, y })?.width ?? 0) < label.height)) continue;
 			}
 			const bounds = vertical ? labelBox(point, label.height, label.width) : labelBox(point, label.width, label.height);
 			if (placed.some((taken) => boxesOverlap(taken, bounds, gap))) continue;
 			placed.push(bounds);
-			drawLabel(ctx, label, point, vertical, weight, feature.hero ? HERO_LABEL : style.labelColor);
+			plan.push({ text, label, point, vertical, weight, color: feature.hero ? HERO_LABEL : style.labelColor });
 			break;
 		}
+		if (offered && !measured) unfittable.push(text);
 	}
+	return { plan, unfittable };
 }
 
-function isTypingTarget(t: EventTarget | null): boolean {
-	const el = t as HTMLElement | null;
-	if (!el?.tagName) return false;
-	return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
+/**
+ * De labels die de schotel vanaf deze plek tekent.
+ *
+ * De HUD tekent ze; check-world leest ze na. Dat de hoofdingang vanaf de stoep ervóór
+ * naamloos op de schotel stond was op geen enkele plattegrond te zien, en op een
+ * schermafdruk alleen als je wist waar je moest kijken.
+ */
+export function bigMapHeight(cssW: number): number {
+	return cssW * (PLAN_FRAME_DEPTH / PLAN_FRAME_WIDTH);
+}
+
+function bigMapScale(cssW: number): number {
+	return Math.min(cssW / PLAN_FRAME_WIDTH, bigMapHeight(cssW) / PLAN_FRAME_DEPTH);
+}
+
+/**
+ * De labels die de grote plattegrond van dit dek tekent op een tekenvlak van `cssW`
+ * breed. Op de smalste breedte die de kiosk toelaat leest de wereldcontrole ze na: een
+ * naam die daar wegvalt, valt op elk smaller scherm weg.
+ */
+export function deckLabelPlan(ctx: LabelMeasure, lvl: LevelId, cssW: number): LabelPlan {
+	const cssH = bigMapHeight(cssW);
+	const scale = bigMapScale(cssW);
+	const sx = (x: number): number => half(cssW) + (x - PLAN_FRAME_CENTER.x) * scale;
+	const sy = (z: number): number => half(cssH) + (z - PLAN_FRAME_CENTER.z) * scale;
+	return planLabels(ctx, lvl, (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED);
+}
+
+export function minimapLabelPlan(ctx: LabelMeasure, view: MinimapView): LabelPlan {
+	const center = half(MINIMAP.size);
+	const radius = center - MINIMAP.rim;
+	const scale = at(ZOOM_STEPS, view.zoom ?? MINIMAP.zoom);
+	return planLabels(
+		ctx,
+		view.level,
+		(x, z) => dishProject(x, z, view, center, center, scale),
+		MINI_LABEL_GAP,
+		(point) => dishSpace(point, center, center, radius - MINI_LABEL_INSET, MINI_LABEL_PULL * scale),
+	);
 }
 
 export type UICallbacks = {
@@ -659,7 +806,7 @@ export class KioskOverlay {
 		blips: [],
 		target: null,
 	};
-	private zoom = 2;
+	private zoom: number = MINIMAP.zoom;
 	private bigOpen = false;
 	private bigLevel: LevelId = 'v0';
 	private mapClock = 0;
@@ -1066,26 +1213,14 @@ export class KioskOverlay {
 		return ctx;
 	}
 
-	/** World → minimap screen (heading up, player centred). */
-	private project(x: number, z: number, cx: number, cy: number, scale: number): ScreenPoint {
-		const dx = x - this.map.x;
-		const dz = z - this.map.z;
-		const c = Math.cos(this.map.yaw);
-		const s = Math.sin(this.map.yaw);
-		return {
-			x: cx + (dx * c - dz * s) * scale,
-			y: cy + (dx * s + dz * c) * scale,
-		};
-	}
-
 	private paintMiniMap(): void {
-		const size = 200;
+		const size = MINIMAP.size;
 		const ctx = this.prep(this.elMinimap, size, size);
 		if (!ctx) return;
 
 		const cx = half(size);
 		const cy = half(size);
-		const r = half(size) - 3;
+		const r = cx - MINIMAP.rim;
 		const scale = at(ZOOM_STEPS, this.zoom);
 		const lvl = this.map.level;
 
@@ -1106,13 +1241,15 @@ export class KioskOverlay {
 		ctx.restore();
 
 		// Upright labels for whatever is close by, under the plan's own rules
-		paintLabels(
-			ctx,
-			lvl,
-			(x, z) => this.project(x, z, cx, cy, scale),
-			MINI_LABEL_GAP,
-			(point) => dishRoom(point, cx, cy, r - MINI_LABEL_INSET),
-		);
+		for (const planned of minimapLabelPlan(ctx, {
+			x: this.map.x,
+			z: this.map.z,
+			yaw: this.map.yaw,
+			level: lvl,
+			zoom: this.zoom,
+		}).plan) {
+			drawLabel(ctx, planned.label, planned.point, planned.vertical, planned.weight, planned.color);
+		}
 
 		// View cone — screen space, always pointing up
 		const cone = 44;
@@ -1287,24 +1424,28 @@ export class KioskOverlay {
 	private paintBigLabels(ctx: CanvasRenderingContext2D, cssW: number, cssH: number, scale: number, lvl: LevelId): void {
 		const sx = (x: number) => half(cssW) + (x - PLAN_FRAME_CENTER.x) * scale;
 		const sy = (z: number) => half(cssH) + (z - PLAN_FRAME_CENTER.z) * scale;
-		paintLabels(ctx, lvl, (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED);
+		for (const planned of deckLabelPlan(ctx, lvl, cssW).plan) {
+			drawLabel(ctx, planned.label, planned.point, planned.vertical, planned.weight, planned.color);
+		}
 
 		ctx.fillStyle = 'rgba(148,163,184,0.8)';
 		ctx.font = '600 10px ui-monospace, monospace';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
 		ctx.fillText('N ↑', sx(PLAN_FRAME_CENTER.x), sy(-half(MALL_FOOTPRINT.depth)) - 12);
 	}
 
 	private paintBigMap(): void {
 		const host = this.elBigCanvas.parentElement;
-		const cssW = Math.max(320, (host?.clientWidth ?? 820) - 36);
-		const cssH = cssW * (PLAN_FRAME_DEPTH / PLAN_FRAME_WIDTH);
+		const cssW = Math.max(BIG_MAP_MIN_WIDTH, (host?.clientWidth ?? BIG_MAP_FALLBACK_WIDTH) - BIG_MAP_PADDING);
+		const cssH = bigMapHeight(cssW);
 		const ctx = this.prep(this.elBigCanvas, cssW, cssH);
 		if (!ctx) return;
 
 		ctx.fillStyle = MAP_BACKDROP;
 		ctx.fillRect(0, 0, cssW, cssH);
 
-		const scale = Math.min(cssW / PLAN_FRAME_WIDTH, cssH / PLAN_FRAME_DEPTH);
+		const scale = bigMapScale(cssW);
 		ctx.save();
 		ctx.translate(half(cssW), half(cssH));
 		ctx.scale(scale, scale);

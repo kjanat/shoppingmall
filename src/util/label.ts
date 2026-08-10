@@ -86,6 +86,25 @@ export function speechTail(ctx: CanvasRenderingContext2D, w: number, h: number):
 	ctx.closePath();
 }
 
+/**
+ * Trace a rounded rectangle, closed and ready to fill and stroke, like
+ * speechTail above: the caller keeps its own colours.
+ *
+ * Traced with arcTo, and it opens its own path, so a caller that wants this
+ * shape alongside another subpath has to draw them in separate passes. The
+ * sites that call the native `ctx.roundRect` behind a feature test add a
+ * subpath instead, and are a different helper's job.
+ */
+export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+	ctx.beginPath();
+	ctx.moveTo(x + r, y);
+	ctx.arcTo(x + w, y, x + w, y + h, r);
+	ctx.arcTo(x + w, y + h, x, y + h, r);
+	ctx.arcTo(x, y + h, x, y, r);
+	ctx.arcTo(x, y, x + w, y, r);
+	ctx.closePath();
+}
+
 export type FitOptions = {
 	/** Family stack only. The weight is separate: CSS wants it before the size. */
 	font?: string;

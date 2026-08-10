@@ -69,4 +69,22 @@ export function isAtOrAbove(y: number, id: LevelId): boolean {
 	return y >= levelY(id) - DECK_SLACK;
 }
 
+/**
+ * De hoogteband waarin `levelAt` dít dek antwoordt.
+ *
+ * Van zijn eigen drempel tot die van het dek erboven, en open aan de kant waar geen
+ * dek meer zit. Wie de band zelf uit `y` afleidt vergeet `DECK_SLACK` en komt een
+ * halve meter naast `levelAt` uit: de dikte van een vloerplaat valt dan buiten de
+ * zone waar diezelfde functie hem in legt.
+ */
+export function levelBand(id: LevelId): Readonly<{ minY: number; maxY: number }> {
+	const index = levelElevationIndex(id);
+	const above = LEVELS_BOTTOM_UP[index + 1];
+	const below = LEVELS_BOTTOM_UP[index - 1];
+	return {
+		minY: below ? levelY(id) - DECK_SLACK : Number.NEGATIVE_INFINITY,
+		maxY: above ? above.y - DECK_SLACK : Number.POSITIVE_INFINITY,
+	};
+}
+
 import type { LevelRecord } from '#/data/levelSchema';

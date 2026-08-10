@@ -1,3 +1,5 @@
+import { level, levelAt } from '#/data/levels';
+import { EYE } from '#/player/constants';
 import { booleanUrlPref, clearUrlPref } from '#/render/urlPrefs';
 import { ctx2d, qs } from '#/util/dom';
 import { clamp } from '#/util/math';
@@ -12,6 +14,11 @@ const GRAPH_H = 34;
 /** Anything past this in the graph is off the top; also the "smooth" reference line. */
 const GRAPH_MAX_MS = 50;
 const VSYNC_MS = 1000 / 60;
+const DEGREES_PER_RADIAN = 180 / Math.PI;
+/** Noord is −z, zoals de CardinalSide-panelen van de wereld het leggen. */
+const WINDSTREKEN = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW'] as const;
+/** Één windstreek beslaat 45° van de roos. */
+const GRADEN_PER_WINDSTREEK = 360 / WINDSTREKEN.length;
 
 /** Every value row, in order. The markup and the lookup both read this. Two
  * copies of the list drifted apart the moment a row was added, and the panel
@@ -35,6 +42,9 @@ const ROWS: [id: string, label: string][] = [
 	['gpuApi', 'graphics API'],
 	['programs', "programma's"],
 	['mem', 'geheugen'],
+	['pos', 'positie'],
+	['cam', 'camera'],
+	['dir', 'richting'],
 ];
 
 /** What the frame loop hands over once per frame. */
@@ -63,6 +73,14 @@ export type PerfFrame = {
 	lightsUsed: number;
 	lightsTotal: number;
 	batches: number;
+	/** Camera-oog in wereldcoördinaten. */
+	eyeX: number;
+	eyeY: number;
+	eyeZ: number;
+	/** Genormaliseerde blikrichting van de camera in wereldruimte. */
+	dirX: number;
+	dirY: number;
+	dirZ: number;
 };
 
 type DebugRendererInfo = { UNMASKED_RENDERER_WEBGL: number };
@@ -250,6 +268,9 @@ export class PerfOverlay {
 
 		// The chip is always live; the rest only when it is on screen.
 		const fps = this.framesSinceText > 0 ? Math.round((this.framesSinceText * 1000) / this.msSinceText) : 0;
+		// De pose elke tick en niet elke tekstbeurt: op rentempo is een halve
+		// seconde al 3,5 m, en dan loopt het paneel zichtbaar achter je aan.
+		if (this.open) this.writePose(frame);
 		this.textTurn = !this.textTurn;
 		if (this.textTurn) {
 			this.chip.textContent = `${fps} fps`;
@@ -259,6 +280,27 @@ export class PerfOverlay {
 			this.msSinceText = 0;
 		}
 		if (this.open) this.drawGraph();
+	}
+
+	private setValue(id: string, text: string): void {
+		const el = this.values.get(id);
+		if (el) el.textContent = text;
+	}
+
+	private writePose(frame: PerfFrame): void {
+		// `(-0.04).toFixed(1)` is "-0.0", en dat flikkert bij elke landing op maaiveld.
+		const co = (value: number): string => {
+			const text = value.toFixed(1);
+			return text === '-0.0' ? '0.0' : text;
+		};
+		const feetY = frame.eyeY - EYE;
+		const dek = level(levelAt(feetY)).code;
+		this.setValue('pos', `${co(frame.eyeX)} ${co(feetY)} ${co(frame.eyeZ)} · ${dek}`);
+		this.setValue('cam', `${co(frame.eyeX)} ${co(frame.eyeY)} ${co(frame.eyeZ)}`);
+		const heading = (Math.atan2(frame.dirX, -frame.dirZ) * DEGREES_PER_RADIAN + 360) % 360;
+		const pitch = Math.asin(clamp(frame.dirY, -1, 1)) * DEGREES_PER_RADIAN;
+		const streek = WINDSTREKEN[Math.round(heading / GRADEN_PER_WINDSTREEK) % WINDSTREKEN.length] ?? 'N';
+		this.setValue('dir', `${streek} ${Math.round(heading)}° · ${pitch >= 0 ? '+' : ''}${Math.round(pitch)}°`);
 	}
 
 	private writeNumbers(fps: number): void {
@@ -283,35 +325,31 @@ export class PerfOverlay {
 		const now = performance.now();
 		this.longTasks = this.longTasks.filter((t) => now - t < 1000);
 
-		const set = (id: string, text: string): void => {
-			const el = this.values.get(id);
-			if (el) el.textContent = text;
-		};
-		set('fps', `${fps}`);
-		set('low', n >= 60 ? `${Math.round(1000 / Math.max(lowMs, 0.01))} fps` : '—');
-		set('ms', `${avgMs.toFixed(1)} ms`);
+		this.setValue('fps', `${fps}`);
+		this.setValue('low', n >= 60 ? `${Math.round(1000 / Math.max(lowMs, 0.01))} fps` : '—');
+		this.setValue('ms', `${avgMs.toFixed(1)} ms`);
 		// cpu vs frametijd is de hele diagnose: bijna gelijk = de main thread is
 		// de rem, ver eronder = de GPU (of vsync) bepaalt het tempo.
 		const cpuShare = avgMs > 0 ? Math.round((frame.cpuMs / avgMs) * 100) : 0;
-		set('cpu', `${frame.cpuMs.toFixed(1)} ms · ${cpuShare}%`);
+		this.setValue('cpu', `${frame.cpuMs.toFixed(1)} ms · ${cpuShare}%`);
 		// The cpu figure counts the render call, and the driver blocks in there
 		// once its queue is full, so GPU pressure shows up as CPU time. This is
 		// the number that settles it: if gpu is close to the frame time, the card
 		// is the limit however busy the main thread looks.
 		const gpuShare = avgMs > 0 ? Math.round((frame.gpuMs / avgMs) * 100) : 0;
-		set('gpu', frame.gpuSupported ? `${frame.gpuMs.toFixed(1)} ms · ${gpuShare}%` : 'n/b');
-		set('phases', `${frame.logicMs.toFixed(1)}/${frame.batchMs.toFixed(1)}/${frame.submitMs.toFixed(1)}`);
-		set('p95', `${p95.toFixed(1)} ms`);
-		set('worst', `${worst.toFixed(0)} ms`);
-		set('hitch', `${this.longTasks.length}`);
-		set('draws', `${frame.drawCalls}`);
-		set('tris', frame.triangles >= 1000 ? `${Math.round(frame.triangles / 1000)}k` : `${frame.triangles}`);
-		set('batches', `${frame.batches}`);
-		set('lights', `${frame.lightsUsed}/${frame.lightsTotal}`);
-		set('res', `${frame.bufferWidth}×${frame.bufferHeight} · ${frame.renderScale.toFixed(2)}×`);
-		set('programs', `${frame.programs} · ${frame.geometries}g ${frame.textures}t`);
+		this.setValue('gpu', frame.gpuSupported ? `${frame.gpuMs.toFixed(1)} ms · ${gpuShare}%` : 'n/b');
+		this.setValue('phases', `${frame.logicMs.toFixed(1)}/${frame.batchMs.toFixed(1)}/${frame.submitMs.toFixed(1)}`);
+		this.setValue('p95', `${p95.toFixed(1)} ms`);
+		this.setValue('worst', `${worst.toFixed(0)} ms`);
+		this.setValue('hitch', `${this.longTasks.length}`);
+		this.setValue('draws', `${frame.drawCalls}`);
+		this.setValue('tris', frame.triangles >= 1000 ? `${Math.round(frame.triangles / 1000)}k` : `${frame.triangles}`);
+		this.setValue('batches', `${frame.batches}`);
+		this.setValue('lights', `${frame.lightsUsed}/${frame.lightsTotal}`);
+		this.setValue('res', `${frame.bufferWidth}×${frame.bufferHeight} · ${frame.renderScale.toFixed(2)}×`);
+		this.setValue('programs', `${frame.programs} · ${frame.geometries}g ${frame.textures}t`);
 		const mb = heapMb();
-		set('mem', mb === null ? 'n/b' : `${Math.round(mb)} MB`);
+		this.setValue('mem', mb === null ? 'n/b' : `${Math.round(mb)} MB`);
 	}
 
 	/**

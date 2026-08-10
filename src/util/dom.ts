@@ -21,3 +21,18 @@ export function ctx2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 	if (!ctx) throw new Error('canvas has no 2d context');
 	return ctx;
 }
+
+/**
+ * Whether a key event landed in something the player is typing into, so the
+ * global shortcuts can stand down and let the character through.
+ *
+ * `instanceof` rather than reading `tagName` off the event target: the target is
+ * an EventTarget, the two copies of this both reached past that with a type
+ * assertion, and this narrows it for real. Only an HTMLElement can be an input,
+ * a textarea or contenteditable, so nothing that used to match stops matching.
+ */
+export function isTypingTarget(target: EventTarget | null): boolean {
+	if (!(target instanceof HTMLElement)) return false;
+	const tag = target.tagName;
+	return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
+}

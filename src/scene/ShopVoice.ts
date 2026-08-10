@@ -3,7 +3,9 @@ import { speakLine } from '#/audio/ElevenVoice';
 import { levelAt } from '#/data/levels';
 import type { ShopOwner } from '#/data/shopOwners';
 import { getOwner } from '#/data/shopOwners';
+import { LINE_OF_SIGHT } from '#/data/spatial';
 import { STORES } from '#/data/stores';
+import type { CollisionWorld } from '#/physics/Collision';
 
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { tagLevelCulled } from '#/util/visibility';
@@ -23,8 +25,12 @@ type KeeperSpeech = {
  * Shopkeepers who actually talk (ElevenLabs) + speech bubbles over the counter.
  * Youssef Benali @ Kruidvat is the hero greeter.
  */
+/** Ooghoogte van een verkoper boven het punt waar zijn groep staat. */
+const KEEPER_EYE_LIFT = 1.6;
+
 export class ShopVoice {
 	private keepers = new Map<string, KeeperSpeech>();
+	private world: CollisionWorld | null = null;
 	private speaking = false;
 	private lastSpeakAt = new Map<string, number>();
 	private greeted = new Set<string>();
@@ -169,6 +175,24 @@ export class ShopVoice {
 		}
 	}
 
+	/**
+	 * Wie kan de verkoper zien staan?
+	 *
+	 * Zonder de wereld erbij blijft alles bij afstand en dek, en dat groet je dus
+	 * ook door de achterwand van de winkel ernaast heen.
+	 */
+	bindWorld(world: CollisionWorld): void {
+		this.world = world;
+	}
+
+	private inSight(storeId: string, player: THREE.Vector3): boolean {
+		const world = this.world;
+		if (!world) return true;
+		const p = this.getKeeperWorldPos(storeId);
+		if (!p) return true;
+		return world.hasLineOfSight({ x: p.x, y: p.y + KEEPER_EYE_LIFT, z: p.z }, player, LINE_OF_SIGHT);
+	}
+
 	/** First-time walk-up greeting (once per store visit session) */
 	async greetIfNear(storeId: string, player: THREE.Vector3, radius = 5.5): Promise<boolean> {
 		if (this.greeted.has(storeId)) return false;
@@ -176,6 +200,7 @@ export class ShopVoice {
 		// Don't greet through the floor
 		const store = STORES.find((s) => s.id === storeId);
 		if (store && levelAt(player.y) !== store.level) return false;
+		if (!this.inSight(storeId, player)) return false;
 
 		this.greeted.add(storeId);
 		const owner = getOwner(storeId);
@@ -202,6 +227,7 @@ export class ShopVoice {
 			const d = this.distanceTo(id, player);
 			const store = STORES.find((s) => s.id === id);
 			if (store && levelAt(player.y) !== store.level) continue;
+			if (!this.inSight(id, player)) continue;
 			if (d < bestD) {
 				bestD = d;
 				best = id;

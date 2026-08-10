@@ -11,9 +11,9 @@ import { lit } from '#/render/material';
 import type { SimPersona } from '#/sim/SimChat';
 import { fetchSimChat } from '#/sim/SimChat';
 
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { clamp, clamp01, half, lerp } from '#/util/math';
-import { at, pick, pickWith } from '#/util/rand';
+import { fitText, labelCanvas, labelTexture, roundRect } from '#/util/label';
+import { clamp, clamp01, ease, easeFactor, half, lerp, shortestAngle } from '#/util/math';
+import { at, jitter, mulberry32, pick, pickWith } from '#/util/rand';
 import { isOnViewerLevel, tagLevelCulled } from '#/util/visibility';
 
 export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
@@ -202,16 +202,6 @@ const HAIR = [0x2c1810, 0x5c4033, 0xc4a35a, 0x888888, 0x1a1a1a, 0xd35400, 0xf5f5
 
 // Sims can shop stores + food court (utility places like WC/helipad are out)
 const SHOPABLE = STORES.filter((s) => s.id !== 'info' && (!s.utility || s.id === 'foodcourt'));
-
-function mulberry32(a: number) {
-	return () => {
-		a += 0x6d2b79f5;
-		let t = a;
-		t = Math.imul(t ^ (t >>> 15), t | 1);
-		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-	};
-}
 
 function shopEntrance(s: StoreDef): THREE.Vector3 {
 	// stand in corridor in front of store, not inside wall
@@ -488,7 +478,7 @@ export class Americans {
 			// Shove them away from the muzzle
 			const away = s.pos.clone().sub(origin);
 			away.y = 0;
-			if (away.lengthSq() < 1e-4) away.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+			if (away.lengthSq() < 1e-4) away.set(jitter(1), 0, jitter(1));
 			away.normalize().multiplyScalar(1.4 + Math.random());
 			const nx = s.pos.x + away.x;
 			const nz = s.pos.z + away.z;
@@ -843,9 +833,8 @@ export class Americans {
 		const baseZ = 1;
 		// Arc opens downward by default (∩) — π turns it into a smile (∪)
 		const want = u > 0.55 ? 0 : Math.PI;
-		let d = want - sim.mouth.rotation.z;
-		while (d > Math.PI) d -= Math.PI * 2;
-		while (d < -Math.PI) d += Math.PI * 2;
+		const d = shortestAngle(sim.mouth.rotation.z, want);
+		// `dt * 6 || 1` snaps on a zero-length frame, which easeFactor would read as no movement at all.
 		sim.mouth.rotation.z += d * Math.min(1, dt * 6 || 1);
 
 		if (sim.speechLife > 0) {
@@ -1633,7 +1622,7 @@ export class Americans {
 		sim.pos.z += sim.velocity.z * travelTime;
 		// Climb only on escalator/stairs; otherwise hard floor snap
 		if (Math.abs(target.y - sim.pos.y) > 0.5) {
-			sim.pos.y = lerp(sim.pos.y, target.y, Math.min(1, dt * 2.5));
+			sim.pos.y = ease(sim.pos.y, target.y, 2.5, dt);
 		}
 
 		// Floor snap — feet stay on slab (no through-floor / floating)
@@ -1693,10 +1682,8 @@ export class Americans {
 		const mlen = Math.hypot(mx, mz);
 		if (mlen > 1e-4) {
 			const face = Math.atan2(mx / mlen, mz / mlen);
-			let dy = face - sim.root.rotation.y;
-			while (dy > Math.PI) dy -= Math.PI * 2;
-			while (dy < -Math.PI) dy += Math.PI * 2;
-			sim.root.rotation.y += dy * Math.min(1, dt * 8);
+			const dy = shortestAngle(sim.root.rotation.y, face);
+			sim.root.rotation.y += dy * easeFactor(8, dt);
 			sim.velocity.set(mx / dt, 0, mz / dt);
 		}
 
@@ -1841,12 +1828,12 @@ export class Americans {
 		const positions = new Float32Array(count * 3);
 		const vel = new Float32Array(count * 3);
 		for (let i = 0; i < count; i++) {
-			positions[i * 3] = origin.x + (Math.random() - 0.5) * 0.3;
+			positions[i * 3] = origin.x + jitter(0.3);
 			positions[i * 3 + 1] = origin.y;
-			positions[i * 3 + 2] = origin.z + (Math.random() - 0.5) * 0.3;
-			vel[i * 3] = (Math.random() - 0.5) * 0.4;
+			positions[i * 3 + 2] = origin.z + jitter(0.3);
+			vel[i * 3] = jitter(0.4);
 			vel[i * 3 + 1] = 0.6 + Math.random() * 1.2;
-			vel[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+			vel[i * 3 + 2] = jitter(0.4);
 		}
 		const geo = new THREE.BufferGeometry();
 		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -1949,9 +1936,9 @@ export class Americans {
 			positions[i * 3] = origin.x;
 			positions[i * 3 + 1] = origin.y;
 			positions[i * 3 + 2] = origin.z;
-			vel[i * 3] = (Math.random() - 0.5) * 3;
+			vel[i * 3] = jitter(3);
 			vel[i * 3 + 1] = 2 + Math.random() * 4;
-			vel[i * 3 + 2] = (Math.random() - 0.5) * 3;
+			vel[i * 3 + 2] = jitter(3);
 		}
 		const geo = new THREE.BufferGeometry();
 		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -2021,9 +2008,9 @@ export class Americans {
 			positions[i * 3] = sim.pos.x;
 			positions[i * 3 + 1] = sim.pos.y + 0.5;
 			positions[i * 3 + 2] = sim.pos.z;
-			vel[i * 3] = (Math.random() - 0.5) * 0.8;
+			vel[i * 3] = jitter(0.8);
 			vel[i * 3 + 1] = 0.3 + Math.random() * 0.6;
-			vel[i * 3 + 2] = (Math.random() - 0.5) * 0.8;
+			vel[i * 3 + 2] = jitter(0.8);
 		}
 		const geo = new THREE.BufferGeometry();
 		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -2110,14 +2097,4 @@ export class Americans {
 		o.start(t0);
 		o.stop(t0 + 0.2);
 	}
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-	ctx.beginPath();
-	ctx.moveTo(x + r, y);
-	ctx.arcTo(x + w, y, x + w, y + h, r);
-	ctx.arcTo(x + w, y + h, x, y + h, r);
-	ctx.arcTo(x, y + h, x, y, r);
-	ctx.arcTo(x, y, x + w, y, r);
-	ctx.closePath();
 }

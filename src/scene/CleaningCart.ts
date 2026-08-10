@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { spatial } from '#/audio/SpatialAudio';
 import { levelAt } from '#/data/levels';
+import { LINE_OF_SIGHT } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { clamp, half } from '#/util/math';
+import { clamp, easeFactor, half, shortestAngle } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -17,6 +18,9 @@ import WEI_YELLS from '$/public/voices/wei/manifest.json' with { type: 'json' };
 // ── patrol ───────────────────────────────────────────────
 /** Blocked by the player: the route parameter winds back this fast, so he stalls in place. */
 const BLOCKED_REWIND = 0.5;
+
+/** Wei zit op de buggy; vanaf die hoogte kijkt hij de gang door. */
+const WEI_EYE_HEIGHT = 1.5;
 
 /**
  * Ride-on floor scrubber with Chinese cleaner Wei Chen —
@@ -108,7 +112,13 @@ export class CleaningCart {
 		// Soft hunt: even a little in the way → drift onto your path
 		let hunting = false;
 		let huntYaw: number | null = null;
-		if (playerPos && levelAt(playerPos.y) === 'v0') {
+		// Wei joeg op afstand alleen, dus ook door een winkelwand en door de gevel:
+		// zestien meter is een halve mall en daar staat van alles tussen. Hij ziet je
+		// nu eerst, en verliest je zodra je een winkel in loopt.
+		const seesPlayer =
+			playerPos !== undefined &&
+			this.world.hasLineOfSight({ x: this.pos.x, y: WEI_EYE_HEIGHT, z: this.pos.z }, playerPos, LINE_OF_SIGHT);
+		if (playerPos && seesPlayer && levelAt(playerPos.y) === 'v0') {
 			const dx = playerPos.x - p.x;
 			const dz = playerPos.z - p.z;
 			const dist = Math.hypot(dx, dz);
@@ -158,10 +168,8 @@ export class CleaningCart {
 		} else if (dir.lengthSq() > 0.01) {
 			yaw = Math.atan2(dir.x, dir.z);
 		}
-		let dy = yaw - this.mesh.rotation.y;
-		while (dy > Math.PI) dy -= Math.PI * 2;
-		while (dy < -Math.PI) dy += Math.PI * 2;
-		this.mesh.rotation.y += dy * Math.min(1, dt * (hunting ? 5.5 : 4));
+		const dy = shortestAngle(this.mesh.rotation.y, yaw);
+		this.mesh.rotation.y += dy * easeFactor(hunting ? 5.5 : 4, dt);
 
 		// Spin wheels + scrub brush
 		const spin = dt * 8;
@@ -180,8 +188,9 @@ export class CleaningCart {
 			if (this.speechLife <= 0) this.speech.visible = false;
 		}
 
-		// Track proximity for "you keep standing there" yells
-		if (playerPos && this.isPlayerInWay(playerPos)) {
+		// Track proximity for "you keep standing there" yells. Een botsing telt altijd,
+		// ook als hij je niet zag aankomen; schelden op iemand achter een muur niet.
+		if (playerPos && seesPlayer && this.isPlayerInWay(playerPos)) {
 			this.nearT += dt;
 		} else {
 			this.nearT = 0;
@@ -189,7 +198,7 @@ export class CleaningCart {
 
 		// Scold if: hard collision, or standing in the way ~0.35s
 		if (playerPos && this.yellCd <= 0 && !this.speaking) {
-			const shouldYell = this.blockedThisFrame || this.nearT >= 0.35 || this.isPlayerInWay(playerPos);
+			const shouldYell = this.blockedThisFrame || this.nearT >= 0.35 || (seesPlayer && this.isPlayerInWay(playerPos));
 			if (shouldYell && (this.blockedThisFrame || this.nearT >= 0.35 || this.distTo(playerPos) < 2.8)) {
 				void this.yellAtPlayer(playerPos);
 			}

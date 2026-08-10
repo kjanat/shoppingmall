@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { clamp } from '#/util/math';
+import { clamp, easeFactor, shortestAngle } from '#/util/math';
 import { pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
@@ -90,10 +90,8 @@ export class Penguins {
 				this.pickTarget(p);
 			} else {
 				const ang = Math.atan2(dx, dz);
-				let dy = ang - p.yaw;
-				while (dy > Math.PI) dy -= Math.PI * 2;
-				while (dy < -Math.PI) dy += Math.PI * 2;
-				p.yaw += dy * Math.min(1, dt * 3.2);
+				const dy = shortestAngle(p.yaw, ang);
+				p.yaw += dy * easeFactor(3.2, dt);
 				const step = p.speed * dt;
 				let nx = p.root.position.x + Math.sin(p.yaw) * step;
 				let nz = p.root.position.z + Math.cos(p.yaw) * step;

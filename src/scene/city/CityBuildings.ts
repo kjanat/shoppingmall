@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { lit } from '#/render/material';
 import type { Rand, TowerSpec } from '#/scene/city/cityPlan';
-import { mulberry32, planTowers, TOWER_SEED } from '#/scene/city/cityPlan';
+import { planTowers, TOWER_SEED } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { half } from '#/util/math';
-import { pickWith } from '#/util/rand';
+import { easeFactor, half } from '#/util/math';
+import { jitterWith, mulberry32, pickWith, plusMinusWith } from '#/util/rand';
 
 /**
  * Skyline rond de mall — een ring laagpoly torens buiten de ringweg.
@@ -65,7 +65,7 @@ export class CityBuildings {
 	update(dt: number, t: number): void {
 		// Luchtvaartlampjes: hard aan, zacht uit. De ease loopt op dt zodat het
 		// knipperen niet meeknippert met de framerate van de Pi.
-		const k = Math.min(1, dt * 10);
+		const k = easeFactor(10, dt);
 		for (const b of this.beacons) {
 			const target = Math.sin(t * 1.7 + b.phase) > 0.4 ? 1 : 0.05;
 			b.level += (target - b.level) * k;
@@ -143,12 +143,12 @@ export class CityBuildings {
 
 			if (rand() < 0.38) {
 				const sc = 1.6 + rand();
-				const [x, z] = opDak((rand() * 2 - 1) * mx, (rand() * 2 - 1) * mz);
+				const [x, z] = opDak(plusMinusWith(mx, rand), plusMinusWith(mz, rand));
 				water.push({ x, y: s.h, z, sx: sc, sy: sc * 1.3, sz: sc, rot: s.rot });
 			}
 			const nAC = Math.floor(rand() * 3);
 			for (let i = 0; i < nAC; i++) {
-				const [x, z] = opDak((rand() * 2 - 1) * mx, (rand() * 2 - 1) * mz);
+				const [x, z] = opDak(plusMinusWith(mx, rand), plusMinusWith(mz, rand));
 				boxes.push({
 					x,
 					y: s.h,
@@ -156,11 +156,11 @@ export class CityBuildings {
 					sx: 0.9 + rand() * 1.1,
 					sy: AC_HOOGTE_BASIS + rand() * AC_HOOGTE_SPREIDING,
 					sz: 0.9 + rand() * 1.1,
-					rot: s.rot + (rand() - 0.5) * AC_DRAAI_SPREIDING,
+					rot: s.rot + jitterWith(AC_DRAAI_SPREIDING, rand),
 				});
 			}
 			if (rand() < 0.33) {
-				const [x, z] = opDak((rand() * 2 - 1) * mx * 0.6, (rand() * 2 - 1) * mz * 0.6);
+				const [x, z] = opDak(plusMinusWith(mx, rand) * 0.6, plusMinusWith(mz, rand) * 0.6);
 				boxes.push({ x, y: s.h, z, sx: 0.12, sy: 3 + rand() * 5, sz: 0.12, rot: 0 });
 			}
 		}

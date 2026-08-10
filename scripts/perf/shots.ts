@@ -27,12 +27,14 @@ import { probeSource } from './probe.ts';
 import { profilePoint } from './routes.ts';
 
 /**
- * Standpunten in 3D. Elke plattegrond hier is 2D, dus twee reparaties die alleen
- * in 3D te zien zijn bleven onbewezen: de dekplaat van de helipad en de zandplaat
- * lagen allebei mét hun bovenkant ín de dakplaat en flikkerden daar over
- * tientallen vierkante meters mee. Deze twee standpunten kijken op die naad.
+ * Standpunten in 3D. Elke plattegrond hier is 2D, dus reparaties die alleen in 3D
+ * te zien zijn bleven onbewezen: de dekplaat van de helipad en de zandplaat lagen
+ * allebei mét hun bovenkant ín de dakplaat en flikkerden daar over tientallen
+ * vierkante meters mee. De eerste twee kijken op die naad. Het derde staat op de
+ * stoep voor de hoofdingang, want een portaal, een luifel en een gevelbelettering
+ * zijn op een plattegrond samen één streep.
  */
-const ROOF_VIEWS = ['roof-helipad', 'roof-west'] as const;
+const SCENE_VIEWS = ['roof-helipad', 'roof-west', 'v0-entrance-street'] as const;
 
 const VIEWPORT = { width: 1500, height: 1100 } as const;
 /** Ruim boven een frame op de softwarerasterizer, waar een schot anders afbreekt. */
@@ -84,7 +86,7 @@ try {
 	await browser.page.screenshot({ path: hudPath, animations: 'disabled', timeout: SHOT_TIMEOUT_MS });
 	console.log(blue`${hudPath}`);
 
-	for (const name of ROOF_VIEWS) {
+	for (const name of SCENE_VIEWS) {
 		const { pose } = profilePoint(name);
 		await browser.page.evaluate(`__mallProbe.setPose(${JSON.stringify(pose)})`);
 		await browser.page.waitForTimeout(REPAINT_MS);

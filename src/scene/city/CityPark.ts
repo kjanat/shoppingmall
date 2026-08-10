@@ -17,7 +17,7 @@ const CX = -73;
 const CZ = -55;
 const PARK_W = 34;
 const PARK_D = 30;
-const GROUND_Y = 0.02; // net boven de parkeerplaats-plane, zie CityRoads
+const GROUND_Y = 0.02; // net boven de maaiveldplaat, zie CityRoads
 
 const POND_R = 5;
 const RIM_R = 5.7;

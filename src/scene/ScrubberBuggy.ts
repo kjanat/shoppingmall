@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import type { InteractionReceiver } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
+import { GRAVITY } from '#/player/constants';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
+import { CITY_GROUND_Y } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { clamp, half } from '#/util/math';
 
@@ -17,12 +20,28 @@ export type DriveInput = {
 
 const PARK = new THREE.Vector3(10, 0, 14);
 const RADIUS = 0.9;
-const MAX_SPEED = 11.5;
-const MAX_BOOST = 16.5;
-const ACCEL = 18;
-const BRAKE = 22;
-const FRICTION = 6;
-const TURN_RATE = 2.4; // rad/s at full steer when moving
+/**
+ * Topsnelheid (m/s). Een echte meerij-schrobmachine haalt 6 tot 8 km/u; 4,5 m/s
+ * is 16 km/u, hard genoeg om een gang mee af te leggen en traag genoeg om een
+ * winkelcentrum in te passen. Hij reed 11,5 (41 km/u), de snelheid van een auto.
+ */
+const MAX_SPEED = 4.5;
+/** Turbo (m/s): 25 km/u, en daarmee nog altijd trager dan de ringweg buiten. */
+const MAX_BOOST = 7;
+/** Optrekken (m/s²): van stilstand naar topsnelheid in 0,6 s. */
+const ACCEL = 7.5;
+/** Remmen (m/s²): iets korter dan optrekken, zoals elk voertuig met remmen. */
+const BRAKE = 9;
+/** Uitrollen zonder gas (m/s²): van topsnelheid tot stilstand in 1,8 s. */
+const FRICTION = 2.5;
+/** Draaisnelheid bij vol stuur (rad/s). Bij topsnelheid is dat een bocht met straal 2,3 m. */
+const TURN_RATE = 2;
+/** Vanaf deze snelheid (m/s) stuurt hij vol; eronder loopt het stuurgezag terug tot een derde. */
+const STEER_AUTHORITY_SPEED = 1.6;
+/** Zakt de vloer verder dan dit onder de wielen, dan rijd je een rand af en val je. */
+const DROP_STEP = 0.9;
+/** Wat er van je vaart over is na een landing. */
+const LANDING_GRIP = 0.8;
 
 /**
  * Empty ride-on floor scrubber — same class of buggy Wei Chen drives,
@@ -32,6 +51,14 @@ export class ScrubberBuggy {
 	readonly group = new THREE.Group();
 	readonly pos = new THREE.Vector3().copy(PARK);
 	readonly radius = RADIUS;
+	/** Waarmee dit ding meedoet aan gedragen worden (lift) en vervoerd worden (band). */
+	readonly receiver: InteractionReceiver = {
+		mobility: 'kinematic',
+		mass: null,
+		tags: ['vehicle', 'scrubber'],
+		channels: ['linear-displacement', 'conveyor'],
+		responses: { translation: 'constrain-to-surface', rotation: 'none' },
+	};
 	ridden = false;
 	private world: CollisionWorld;
 	private pool: LightPool;
@@ -40,8 +67,14 @@ export class ScrubberBuggy {
 	private wheels: THREE.Object3D[] = [];
 	private brush!: THREE.Object3D;
 	private wetSign!: THREE.Group;
-	private yaw = Math.PI; // face atrium center-ish
+	/**
+	 * Vooruit is camera-vooruit: −(sin, cos), zoals Controls rekent. Met
+	 * +(sin, cos) zat je naar de tank te kijken en reed W het beeld uit.
+	 */
+	private yaw = 0;
 	private speed = 0;
+	private vy = 0;
+	private grounded = true;
 	private parkPos = PARK.clone();
 	private label!: THREE.Sprite;
 
@@ -51,7 +84,8 @@ export class ScrubberBuggy {
 		this.group.name = 'scrubberBuggy';
 		this.mesh = this.build();
 		this.mesh.position.copy(this.parkPos);
-		this.mesh.rotation.y = this.yaw;
+		// De borstel is de lokale +z-neus; die hoort in de rijrichting −(sin, cos).
+		this.mesh.rotation.y = this.yaw + Math.PI;
 		this.group.add(this.mesh);
 		this.pos.copy(this.parkPos);
 	}
@@ -63,8 +97,8 @@ export class ScrubberBuggy {
 	/** Eye / camera seat */
 	getSeatPosition(): THREE.Vector3 {
 		// Sit slightly above seat, looking forward
-		const fx = Math.sin(this.yaw);
-		const fz = Math.cos(this.yaw);
+		const fx = -Math.sin(this.yaw);
+		const fz = -Math.cos(this.yaw);
 		return new THREE.Vector3(this.pos.x - fx * 0.05, this.pos.y + 1.35, this.pos.z - fz * 0.05);
 	}
 
@@ -92,12 +126,12 @@ export class ScrubberBuggy {
 	release(): THREE.Vector3 {
 		this.ridden = false;
 		this.speed = 0;
-		this.parkPos.set(this.pos.x, 0, this.pos.z);
+		this.parkPos.set(this.pos.x, this.pos.y, this.pos.z);
 		// Step out to the left of the buggy
-		const leftX = Math.cos(this.yaw);
-		const leftZ = -Math.sin(this.yaw);
-		const exit = new THREE.Vector3(this.pos.x + leftX * 1.4, 0, this.pos.z + leftZ * 1.4);
-		const fixed = this.world.resolveCircle(exit.x, exit.z, 0.5, 0.4, 3, true);
+		const leftX = -Math.cos(this.yaw);
+		const leftZ = Math.sin(this.yaw);
+		const exit = new THREE.Vector3(this.pos.x + leftX * 1.4, this.pos.y, this.pos.z + leftZ * 1.4);
+		const fixed = this.world.resolveCircle(exit.x, exit.z, this.pos.y + 0.5, 0.4, 3, true);
 		exit.x = fixed.x;
 		exit.z = fixed.z;
 		if (this.label) {
@@ -110,8 +144,22 @@ export class ScrubberBuggy {
 	 * Idle bob / brush when parked, or full arcade drive when ridden.
 	 * @returns seat world pos when ridden (for camera stick)
 	 */
+	/**
+	 * Cabinevloer van de lift. Staat hij, dan is hij de vloer: het karretje bleef
+	 * anders op het dek achter terwijl de cabine met de speler vertrok.
+	 */
+	private floorOverride: number | null = null;
+
+	setFloorOverride(y: number | null): void {
+		this.floorOverride = y;
+	}
+
 	update(dt: number, input?: DriveInput): THREE.Vector3 | null {
 		if (!this.ridden) {
+			if (this.floorOverride !== null) {
+				this.pos.y = this.floorOverride;
+				this.mesh.position.y = this.floorOverride;
+			}
 			// Idle: slow brush spin so it reads as "ready"
 			if (this.brush) this.brush.rotation.y += dt * 2.5;
 			if (this.wetSign) {
@@ -139,24 +187,61 @@ export class ScrubberBuggy {
 		}
 
 		// Steer more when moving; allow pivot crawl
-		const steerAuth = clamp(Math.abs(this.speed) / 4, 0.35, 1);
+		const steerAuth = clamp(Math.abs(this.speed) / STEER_AUTHORITY_SPEED, 0.35, 1);
 		if (Math.abs(steer) > 0.05) {
 			const dir = this.speed >= -0.15 ? 1 : -1; // reverse steering when reversing hard
 			this.yaw += steer * TURN_RATE * steerAuth * dir * dt * (boost ? 1.15 : 1);
 		}
 
-		// Integrate
-		const fx = Math.sin(this.yaw);
-		const fz = Math.cos(this.yaw);
+		// Integrate. Vooruit is camera-vooruit, zie de yaw-comment bovenaan.
+		const fx = -Math.sin(this.yaw);
+		const fz = -Math.cos(this.yaw);
 		let nx = this.pos.x + fx * this.speed * dt;
 		let nz = this.pos.z + fz * this.speed * dt;
 
-		// Ground floor only — clamp Y via ground height (garages etc. still ok)
-		const gy = this.world.groundHeightAt(nx, nz, this.pos.y + 0.5, 2);
-		// Stay mostly on V0 / P1, not roof racing
-		const feetY = gy < 10 ? gy : this.pos.y;
+		// De roltrap vervoert het karretje net als een voetganger.
+		const carry = this.world.rampCarryAt(nx, nz, this.pos.y);
+		if (carry) {
+			nx += carry.x * dt;
+			nz += carry.z * dt;
+		}
 
-		const hit = this.world.resolveCircle(nx, nz, feetY + 0.5, RADIUS, 4, true);
+		// Verticaal: cabine > staand op de vloer > ballistisch. Elke frame naar
+		// gy snappen teleporteerde het karretje van de garagehelling af naar
+		// straatniveau; nu valt het met dezelfde GRAVITY als de speler.
+		let feetY: number;
+		if (this.floorOverride !== null) {
+			feetY = this.floorOverride;
+			this.vy = 0;
+			this.grounded = true;
+		} else if (this.grounded) {
+			const gy = this.world.groundHeightAt(nx, nz, this.pos.y + 0.5, 2);
+			// Stay mostly on V0 / P1, not roof racing
+			const ground = gy < 10 ? gy : this.pos.y;
+			if (this.pos.y - ground > DROP_STEP) {
+				this.grounded = false;
+				this.vy = 0;
+				feetY = this.pos.y;
+			} else {
+				feetY = ground;
+			}
+		} else {
+			this.vy -= GRAVITY * dt;
+			feetY = this.pos.y + this.vy * dt;
+			const gy = this.world.groundHeightAt(nx, nz, feetY, 0.5);
+			if (feetY <= gy) {
+				feetY = gy;
+				this.vy = 0;
+				this.grounded = true;
+				this.speed *= LANDING_GRIP;
+			}
+		}
+
+		// Op straatniveau geldt dezelfde vrijstelling als voor de speler te voet:
+		// zonder `outside` hield de footprint-klem het karretje 1,2 m vóór de open
+		// schuifdeuren tegen.
+		const buiten = feetY > CITY_GROUND_Y - 0.5;
+		const hit = this.world.resolveCircle(nx, nz, feetY + 0.5, RADIUS, 4, true, !this.grounded, buiten);
 		// Wall scrape kills speed
 		const scraped = Math.hypot(hit.x - nx, hit.z - nz) > 0.02;
 		if (scraped) this.speed *= 0.55;
@@ -165,7 +250,7 @@ export class ScrubberBuggy {
 
 		this.pos.set(nx, feetY, nz);
 		this.mesh.position.set(nx, feetY, nz);
-		this.mesh.rotation.y = this.yaw;
+		this.mesh.rotation.y = this.yaw + Math.PI;
 
 		// Wheels + brush spin with speed
 		const spin = this.speed * dt * 1.8;

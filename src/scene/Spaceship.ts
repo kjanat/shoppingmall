@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { SPACESHIP_FRAME_RAILS, SPACESHIP_FRAME_Y, SPACESHIP_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { labelCanvas, labelTexture } from '#/util/label';
+import { labelCanvas, labelTexture, roundRect } from '#/util/label';
 import { half } from '#/util/math';
 
 /**
@@ -295,14 +295,4 @@ export class Spaceship {
 		sprite.scale.set(8, 2, 1);
 		return sprite;
 	}
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-	ctx.beginPath();
-	ctx.moveTo(x + r, y);
-	ctx.arcTo(x + w, y, x + w, y + h, r);
-	ctx.arcTo(x + w, y + h, x, y + h, r);
-	ctx.arcTo(x, y + h, x, y, r);
-	ctx.arcTo(x, y, x + w, y, r);
-	ctx.closePath();
 }

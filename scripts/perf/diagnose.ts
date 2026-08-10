@@ -103,7 +103,10 @@ function sweepSample(label: string, sample: Sample): string {
 	);
 }
 
-const session = await openGame(WIDTH, HEIGHT, argv.includes('--fresh-profile'), targetUrl, batchOverride);
+// De helft van een A-B-A: dezelfde build, dezelfde machine, alleen de zonecull uit.
+const zoneCullFlag = flagValue('--zone-cull');
+const zoneCullOverride = zoneCullFlag === undefined ? undefined : zoneCullFlag !== 'off' && zoneCullFlag !== '0';
+const session = await openGame(WIDTH, HEIGHT, argv.includes('--fresh-profile'), targetUrl, batchOverride, zoneCullOverride);
 try {
 	const { readyMs, settleMs } = await session.boot();
 	const pointName = flagValue('--point') ?? (sweep ? 'v1-elevator-arrive' : undefined);
@@ -165,6 +168,18 @@ try {
 				`${Math.round(owner.triangles / 1000)}k triangles, ${owner.sources} sources, ${owner.batches} batches, ${owner.largestRadius.toFixed(1)} m radius${owner.dynamic ? ', dynamic' : ''}`,
 			),
 		);
+	}
+
+	console.log(`\n${trimToColumns('── zone culling ────────────────────────────────────────────')}`);
+	if (env.zoneCull) {
+		const { zone, cones, batches, batchesHidden, occupants, occupantsHidden, keptInOwnZone, keptThroughCone } = env.zoneCull;
+		console.log(bar('viewer zone', `${zone}, ${cones} portal ${cones === 1 ? 'cone' : 'cones'} in view`));
+		console.log(bar('batches hidden', `${batchesHidden} of ${batches}`));
+		console.log(bar('loose objects hidden', `${occupantsHidden} of ${occupants}`));
+		console.log(bar('kept in the viewer zone', String(keptInOwnZone)));
+		console.log(bar('kept through a portal', String(keptThroughCone)));
+	} else {
+		note('the build under test reports no zone culling; draw counts include every zone.');
 	}
 
 	if (env.programInfoLogCalls > 0 || env.shaderInfoLogCalls > 0) {

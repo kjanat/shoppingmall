@@ -4,6 +4,8 @@ import { half, midpoint } from '#/util/math';
 export type Vec2 = Readonly<{ x: number; z: number }>;
 export type Vec3 = Readonly<{ x: number; y: number; z: number }>;
 
+export type CardinalSide = 'north' | 'south' | 'west' | 'east';
+
 export type RectangleSource2 = Readonly<{
 	center: Vec2;
 	size: Readonly<{ width: number; depth: number }>;
@@ -113,6 +115,33 @@ export type Penetration = Readonly<{
 
 export const NO_PENETRATION: Penetration = { depth: 0, into: [] };
 
+/**
+ * How far this volume may reach past the outside face of the building, and where.
+ *
+ * The mirror image of `Penetration`. A canopy column stands on the pavement on
+ * purpose, and the facade control in check-world has no way to tell that from a
+ * shop that has drifted through the wall: both are a blocking volume outside the
+ * envelope. The volume that means it says so here, with the metres it needs, and
+ * a declaration that reaches past nothing is itself a build failure.
+ */
+export type Protrusion = Readonly<{
+	/** Metres of allowed reach beyond the outside face. */
+	depth: number;
+	/** Facade sides this volume may reach past. */
+	sides: readonly CardinalSide[];
+}>;
+
+/**
+ * Metres of reach past the envelope below which a volume counts as resting against
+ * it rather than protruding.
+ *
+ * One number, because two parties have to agree on it exactly: the facade control
+ * demands a permit above this figure, and the geometry that writes its own permits
+ * issues one above the same figure. Split them and a piece that reaches out by a
+ * hair either goes unpermitted or carries a permit the control calls unused.
+ */
+export const PROTRUSION_MARGIN = 0.02;
+
 export type SpatialVolume = Readonly<{
 	id: string;
 	role: SpatialRole;
@@ -121,6 +150,8 @@ export type SpatialVolume = Readonly<{
 	blocksMovement: boolean;
 	/** Declared intrusion into other geometry; absent means none is permitted. */
 	penetration?: Penetration;
+	/** Declared reach past the building envelope; absent means the facade is the limit. */
+	protrusion?: Protrusion;
 	/** Visual and physical obstruction are separate. Opaque visual geometry can block a route without a collider. */
 	clearance:
 		| Readonly<{ kind: 'clear' }>
@@ -178,6 +209,36 @@ export type TargetSelector = Readonly<{
 	requireChannels: readonly InteractionChannel[];
 }>;
 
+/**
+ * Hoe een doos tussen twee punten meetelt.
+ *
+ * `line-of-sight` is een blik: wie zélf in een doos staat kijkt eruit, want een
+ * bewaker die tegen een wand aan geduwd is zou anders nooit meer iets zien.
+ * `projectile` is een lichaam onderweg: dat eindigt in een muur en gaat er niet
+ * uit verder. Dat verschil is er één keer niet gemaakt en toen kwamen kogels aan
+ * de andere kant van elke wand naar buiten, omdat de stap van een frame ergens
+ * midden ín het steen eindigt en het frame erna daar begint.
+ */
+export type Occlusion = Readonly<{
+	mode: 'none' | 'solid' | 'line-of-sight' | 'projectile';
+	blockingTags: readonly string[];
+}>;
+
+/**
+ * The tag a collider carries when it stops sight as well as bodies.
+ *
+ * Not every collider does. The atrium void barrier and the escalator shafts are
+ * boxes that exist to steer a walking body and reach from the floor to the sky;
+ * reading them as walls would put a wall across the middle of the building.
+ */
+export const SIGHT_BLOCKING_TAG = 'sight-blocking';
+
+/** The occlusion every system that needs a clear view declares, so they cannot drift apart. */
+export const LINE_OF_SIGHT: Occlusion = { mode: 'line-of-sight', blockingTags: [SIGHT_BLOCKING_TAG] };
+
+/** Dezelfde dozen, gelezen als muur voor iets dat er tegenaan vliegt in plaats van erdoorheen kijkt. */
+export const PROJECTILE_PATH: Occlusion = { mode: 'projectile', blockingTags: [SIGHT_BLOCKING_TAG] };
+
 export type InteractionEmitter = Readonly<{
 	id: string;
 	channel: InteractionChannel;
@@ -189,10 +250,7 @@ export type InteractionEmitter = Readonly<{
 		| Readonly<{ kind: 'pulse'; duration: number; cooldown: number }>
 		| Readonly<{ kind: 'event'; event: string }>;
 	targets: TargetSelector;
-	occlusion: Readonly<{
-		mode: 'none' | 'solid' | 'line-of-sight';
-		blockingTags: readonly string[];
-	}>;
+	occlusion: Occlusion;
 }>;
 
 export type Mobility = 'static' | 'kinematic' | 'dynamic' | 'character' | 'particle';
@@ -277,13 +335,32 @@ export type SpatialProblem = Readonly<{
 		| 'unsupported-placement'
 		| 'uncontained-volume'
 		| 'coplanar-surface'
-		| 'invalid-interaction';
+		| 'invalid-interaction'
+		| 'unused-penetration';
 	message: string;
 	entities: readonly string[];
 }>;
 
 /** Marks the volume whose plan every other volume of the same entity has to stay inside. */
 export const PLAN_ENVELOPE_TAG = 'plan-envelope';
+
+/**
+ * Marks a volume you see through but cannot walk through.
+ *
+ * The zone graph reads it: the main entrance is two storeys of glazing over a
+ * doorway, so the street and both decks behind it stay in sight of each other
+ * whether the sliding pair is open or shut.
+ */
+export const GLASS_TAG = 'glass';
+
+/**
+ * Declares that an entity holding declared free space still joins nothing.
+ *
+ * The lift recess at P1 is the case it exists for: it is an opening in the
+ * schema and a niche in the building. A tag on an entity that does join two
+ * zones fails the zone-graph control the way an unused exemption row does.
+ */
+export const NOT_A_PORTAL_TAG = 'geen-portaal';
 
 export type Bounds2 = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
 export type Bounds3 = Bounds2 & Readonly<{ minY: number; maxY: number }>;
@@ -687,8 +764,8 @@ const OPAQUE_ROLES: readonly SpatialRole[] = ['solid', 'walkable', 'support'];
  * Clutter is put down on the world; it cannot stand inside the building. Both the
  * physical-overlap rule and the intrusion rule need `blocksMovement` on both sides,
  * and a decorative car has it off, so two of them sat 0.35 m inside a concrete
- * pillar with every check green. Paint may run under a pillar, which is why only
- * opaque roles count.
+ * pillar with every check green. Paint is the other half of the question and is
+ * answered by `coveringInStructure`.
  */
 function clutterInStructure(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, volumeB: SpatialVolume): boolean {
 	if (!boundedByItsShape(volumeA.geometry) || !boundedByItsShape(volumeB.geometry)) return false;
@@ -696,6 +773,52 @@ function clutterInStructure(a: WorldEntity, volumeA: SpatialVolume, b: WorldEnti
 	const structure = a.placement.class === 'structure' ? volumeA : b.placement.class === 'structure' ? volumeB : null;
 	if (!clutter || !structure) return false;
 	return OPAQUE_ROLES.includes(clutter.role) && OPAQUE_ROLES.includes(structure.role);
+}
+
+type VolumeOfEntity = Readonly<{ entity: WorldEntity; volume: SpatialVolume }>;
+
+/**
+ * The covering and the structural body it is inside of, or null.
+ *
+ * Running under structure is what paint is for: the deck slab carries it, the
+ * ceiling and the lintel pass over it, and neither of those ever reaches this far,
+ * because two volumes have to meet in three dimensions before they are compared at
+ * all. What does reach here is a stripe crossing something that stands on the same
+ * floor, and there the paint is inside the concrete rather than under it. Six
+ * parking bays and three lane arrows ran through a column that way, and every rule
+ * in this file let them: `overlapAllowed` grants a covering its overlap by name, and
+ * the rule above ignores coverings entirely.
+ */
+function coveringInStructure(
+	a: WorldEntity,
+	volumeA: SpatialVolume,
+	b: WorldEntity,
+	volumeB: SpatialVolume,
+): Readonly<{ covering: VolumeOfEntity; structure: VolumeOfEntity }> | null {
+	if (!boundedByItsShape(volumeA.geometry) || !boundedByItsShape(volumeB.geometry)) return null;
+	const first = { entity: a, volume: volumeA };
+	const second = { entity: b, volume: volumeB };
+	const covering = volumeA.role === 'decorative-covering' ? first : volumeB.role === 'decorative-covering' ? second : null;
+	if (!covering) return null;
+	const structure = covering === first ? second : first;
+	if (structure.entity.placement.class !== 'structure' || !OPAQUE_ROLES.includes(structure.volume.role)) return null;
+	return { covering, structure };
+}
+
+/**
+ * Whether this permit is doing any work: the volume really does reach into geometry
+ * of a class it named.
+ *
+ * A permit that cuts into nothing is the mirror of the unused protrusion the facade
+ * control already reports. Both retaining walls of the exit trench declared 25 mm into
+ * the structure and then stopped at the facade, so the declaration outlived the lap it
+ * was written for and nothing said a word.
+ */
+function penetrationUsed(volume: SpatialVolume, target: WorldEntity, other: SpatialVolume): boolean {
+	const permit = volume.penetration;
+	if (!permit || permit.depth <= EPSILON) return false;
+	if (!permit.into.includes(target.placement.class)) return false;
+	return intrusionDepth(volume.geometry, other.geometry) > EPSILON;
 }
 
 /** An authored interpenetration: the wall caps run over the side walls and say so. */
@@ -815,6 +938,7 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 		}
 	}
 
+	const usedPenetration = new Set<string>();
 	for (let i = 0; i < entities.length; i++) {
 		const a = entities[i];
 		if (!a) continue;
@@ -823,6 +947,8 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 			if (!b) continue;
 			for (const volumeA of a.volumes) {
 				for (const volumeB of b.volumes) {
+					if (penetrationUsed(volumeA, b, volumeB)) usedPenetration.add(`${a.id}.${volumeA.id}`);
+					if (penetrationUsed(volumeB, a, volumeA)) usedPenetration.add(`${b.id}.${volumeB.id}`);
 					if (
 						coplanarTops(volumeA, volumeB) &&
 						horizontalOverlap(volumeA.geometry, volumeB.geometry) &&
@@ -839,6 +965,7 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 					if (!geometriesOverlap(volumeA.geometry, volumeB.geometry)) continue;
 					const clearanceA = passageClearance(volumeA);
 					const clearanceB = passageClearance(volumeB);
+					const buriedCovering = coveringInStructure(a, volumeA, b, volumeB);
 					const frontage =
 						volumeA.role === 'storefront-clearance'
 							? { entity: a, volume: volumeA, obstacle: { entity: b, volume: volumeB } }
@@ -872,6 +999,12 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 							message: `${a.id}.${volumeA.id} and ${b.id}.${volumeB.id} interpenetrate, and clutter cannot stand inside the structure`,
 							entities: [a.id, b.id],
 						});
+					} else if (buriedCovering && !authoredJoin(a, volumeA, b, volumeB)) {
+						problems.push({
+							code: 'unsupported-placement',
+							message: `${buriedCovering.covering.entity.id}.${buriedCovering.covering.volume.id} runs through ${buriedCovering.structure.entity.id}.${buriedCovering.structure.volume.id} instead of around its footprint`,
+							entities: [a.id, b.id],
+						});
 					} else if (obstructedSurface(volumeA, volumeB)) {
 						const surface = volumeA.role === 'walkable' ? { entity: a, volume: volumeA } : { entity: b, volume: volumeB };
 						const obstacle = surface.volume === volumeA ? { entity: b, volume: volumeB } : { entity: a, volume: volumeA };
@@ -892,6 +1025,19 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 					}
 				}
 			}
+		}
+	}
+
+	for (const entity of entities) {
+		for (const volume of entity.volumes) {
+			const permit = volume.penetration;
+			if (!permit || permit.depth <= EPSILON) continue;
+			if (usedPenetration.has(`${entity.id}.${volume.id}`)) continue;
+			problems.push({
+				code: 'unused-penetration',
+				message: `${entity.id}.${volume.id} declares ${permit.depth.toFixed(3)} m of penetration into ${permit.into.join(', ')} but cuts into nothing`,
+				entities: [entity.id],
+			});
 		}
 	}
 

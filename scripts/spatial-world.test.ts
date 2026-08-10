@@ -298,14 +298,36 @@ describe('authoritative spatial world', () => {
 			},
 		]);
 
+		// Een vergunning voor een klasse die dit volume nergens raakt houdt de doorsnijding
+		// niet tegen, en blijft daarnaast achter als vergunning die in niets snijdt.
 		const wrongClass = entity('room', 'fixture', [{ ...shell, penetration: { depth: 0.4, into: ['furnishing'] } }]);
-		assert.equal(validateSpatialWorld([floor, wall, wrongClass]).length, 1);
+		assert.deepEqual(
+			validateSpatialWorld([floor, wall, wrongClass])
+				.map((problem) => problem.code)
+				.toSorted(),
+			['unsupported-placement', 'unused-penetration'],
+		);
 
 		const tooShallow = entity('room', 'fixture', [{ ...shell, penetration: { depth: 0.2, into: ['structure'] } }]);
 		assert.equal(validateSpatialWorld([floor, wall, tooShallow]).length, 1);
 
 		const declared = entity('room', 'fixture', [{ ...shell, penetration: { depth: 0.4, into: ['structure'] } }]);
 		assert.deepEqual(validateSpatialWorld([floor, wall, declared]), []);
+	});
+
+	test('a penetration that reaches into nothing is reported the way an unused protrusion is', () => {
+		const floor = entity('floor', 'structure', [prism('surface', 'support', 0, 0, 20, 20, -0.3, 0, false, true)]);
+		const clear = { ...prism('shell', 'solid', 0, 6, 6, 3.4, 0, 3, true, true) };
+		const room = entity('room', 'fixture', [{ ...clear, penetration: { depth: 0.4, into: ['structure'] } }]);
+
+		assert.deepEqual(validateSpatialWorld([floor, room]), [
+			{
+				code: 'unused-penetration',
+				message: 'room.shell declares 0.400 m of penetration into structure but cuts into nothing',
+				entities: ['room'],
+			},
+		]);
+		assert.deepEqual(validateSpatialWorld([floor, entity('room', 'fixture', [clear])]), []);
 	});
 
 	test('a storefront frontage rejects a collider and a solid without one alike', () => {
@@ -505,7 +527,7 @@ describe('authoritative spatial world', () => {
 		assert.deepEqual(validateSpatialWorld([floor, carpet, wrapper, coke]), []);
 	});
 
-	test('clutter without a collider is still rejected inside the structure, and paint under it is not', () => {
+	test('clutter without a collider is still rejected inside the structure, and so is paint that crosses it', () => {
 		const deck = entity('deck', 'structure', [prism('surface', 'support', 0, 0, 40, 40, -0.3, 0, false, true)]);
 		const shell = entity('shell', 'structure', [prism('pillar', 'solid', 0, 0, 0.7, 0.7, 0, 4.4, true, true)]);
 		const car = entity('cars', 'clutter', [prism('car', 'solid', 0, 2, 1.9, 4, 0, 1.1, false, false)]);
@@ -518,7 +540,22 @@ describe('authoritative spatial world', () => {
 		]);
 
 		const paint = entity('bays', 'clutter', [prism('stall', 'decorative-covering', 0, 2, 2.4, 4.8, 0, 0.14, false, false)]);
-		assert.deepEqual(validateSpatialWorld([deck, shell, paint]), []);
+		assert.deepEqual(validateSpatialWorld([deck, shell, paint]), [
+			{
+				code: 'unsupported-placement',
+				message: 'bays.stall runs through shell.pillar instead of around its footprint',
+				entities: ['shell', 'bays'],
+			},
+		]);
+
+		// Hetzelfde vak om de kolomvoet heen geknipt: twee stroken ernaast en de rest
+		// erachter. Het reepje van vijf centimeter vóór de kolom is geen streep meer.
+		const clipped = entity('bays', 'clutter', [
+			prism('stall-1', 'decorative-covering', -0.775, 2, 0.85, 4.8, 0, 0.14, false, false),
+			prism('stall-2', 'decorative-covering', 0.775, 2, 0.85, 4.8, 0, 0.14, false, false),
+			prism('stall-3', 'decorative-covering', 0, 2.375, 0.7, 4.05, 0, 0.14, false, false),
+		]);
+		assert.deepEqual(validateSpatialWorld([deck, shell, clipped]), []);
 
 		const parked = entity('cars', 'clutter', [prism('car', 'solid', 0, 2.4, 1.9, 4, 0, 1.1, false, false)]);
 		assert.deepEqual(validateSpatialWorld([deck, shell, parked]), []);

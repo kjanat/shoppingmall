@@ -10,18 +10,26 @@ import type { GraphNode } from '#/data/graph';
 import { MALL_SHELL, WORLD_VIEW_DISTANCE } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { level, levelAt, levelY } from '#/data/levels';
+import { SIGHT_BLOCKING_TAG } from '#/data/spatial';
 import type { StoreDef } from '#/data/stores';
 import { getKruidvat, getStore, shopStores } from '#/data/stores';
+import { ELEVATOR_ENTITY } from '#/data/world';
+import type { ZoneId } from '#/data/zones';
+import { zoneAt, zoneBit } from '#/data/zones';
 import { Pathfinder } from '#/path/Pathfinder';
 import { PathMesh } from '#/path/PathMesh';
+import { CabinCarrier } from '#/physics/Carrier';
+import type { RoomCollider } from '#/physics/Collision';
 import { CollisionWorld } from '#/physics/Collision';
 import { PlayerControls } from '#/player/Controls';
 import { EYE, PLAYER_RADIUS } from '#/player/constants';
 import { createComposer } from '#/post/Composer';
 import { GpuTimer } from '#/render/GpuTimer';
-import { lampCount } from '#/render/graphicsPrefs';
+import { lampCount, zoneCullOn } from '#/render/graphicsPrefs';
 import { LightPool } from '#/render/LightPool';
 import { SceneBatcher } from '#/render/SceneBatcher';
+import { ZoneCuller } from '#/render/ZoneCuller';
+import { ZoneVisibility } from '#/render/ZoneVisibility';
 import { AlienProbe } from '#/scene/AlienProbe';
 import { Amenities } from '#/scene/Amenities';
 import type { PersonRow } from '#/scene/Americans';
@@ -33,15 +41,18 @@ import { CityBirds } from '#/scene/city/CityBirds';
 import { CityBuildings } from '#/scene/city/CityBuildings';
 import { CityGarage } from '#/scene/city/CityGarage';
 import { CityPark } from '#/scene/city/CityPark';
+import { CityPlaza } from '#/scene/city/CityPlaza';
 import { CityRoads } from '#/scene/city/CityRoads';
 import { CitySky } from '#/scene/city/CitySky';
 import { CityTheatre } from '#/scene/city/CityTheatre';
 import type { RoadObstacle } from '#/scene/city/CityTraffic';
 import { CityTraffic } from '#/scene/city/CityTraffic';
+import { CITY_TRAFFIC_ZONES } from '#/scene/city/cityPlan';
 import { DiscoParty } from '#/scene/Disco';
 import { BARTEK_LINES, DJBartek } from '#/scene/DJBartek';
 import { DriveableCars } from '#/scene/DriveableCars';
 import { Drone } from '#/scene/Drone';
+import { Entrance } from '#/scene/Entrance';
 import { FoodCourt } from '#/scene/FoodCourt';
 import { GlassElevator } from '#/scene/GlassElevator';
 import { Helicopter } from '#/scene/Helicopter';
@@ -49,6 +60,7 @@ import { Helipad } from '#/scene/Helipad';
 import type { DaylightDimmer } from '#/scene/Lighting';
 import { setupLighting } from '#/scene/Lighting';
 import { MallBuilder } from '#/scene/MallBuilder';
+import { MallFacade } from '#/scene/MallFacade';
 import { MallRat } from '#/scene/MallRat';
 import { Monkey } from '#/scene/Monkey';
 import { PalmForest } from '#/scene/Palms';
@@ -77,10 +89,11 @@ import { PeopleDashboard } from '#/ui/PeopleDashboard';
 import type { PerfOverlay } from '#/ui/PerfOverlay';
 import { SettingsPanel } from '#/ui/SettingsPanel';
 import { setLabelAnisotropy } from '#/util/label';
-import { half, lerp } from '#/util/math';
-import { at, pick } from '#/util/rand';
+import { easeFactor, half, lerp, shortestAngle } from '#/util/math';
+import { at, jitter, pick } from '#/util/rand';
 import { cullByLevel } from '#/util/visibility';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
+import { CoarseTicker } from './ZoneLod';
 
 const PERSIST_EVERY = 0.75; // seconds
 /** Praatafstand tot een verkoper — E praat én de E-melding luistert hiernaar. */
@@ -111,6 +124,16 @@ const FRAME_MS_SPIKE = 250;
 
 type PerfPose = { x: number; y: number; z: number; lookX: number; lookY: number; lookZ: number };
 type PerfCpuFrame = { logicMs: number; batchMs: number; submitMs: number; triangles: number };
+type PerfZoneCull = {
+	zone: ZoneId;
+	cones: number;
+	batches: number;
+	batchesHidden: number;
+	occupants: number;
+	occupantsHidden: number;
+	keptInOwnZone: number;
+	keptThroughCone: number;
+};
 
 export class App {
 	private renderer: THREE.WebGLRenderer;
@@ -123,6 +146,7 @@ export class App {
 	private world = new CollisionWorld();
 	private atmosphere: Atmosphere;
 	private mall = new MallBuilder();
+	private mallFacade = new MallFacade();
 	private palms = new PalmForest();
 	private walkways = new MovingWalkways();
 	/** DE STAD — 8 modules buiten de muren + tropisch dakeiland met badgasten */
@@ -130,6 +154,7 @@ export class App {
 	private cityRoads = new CityRoads();
 	private cityTraffic = new CityTraffic(() => this.cityRoads.lightPhase);
 	private cityPark = new CityPark();
+	private cityPlaza = new CityPlaza();
 	private cityTheatre = new CityTheatre();
 	private cityGarage = new CityGarage();
 	private citySky = new CitySky();
@@ -158,6 +183,8 @@ export class App {
 	private helipad: Helipad;
 	private foodCourt: FoodCourt;
 	private elevator: GlassElevator;
+	private entrance: Entrance;
+	private carrier: CabinCarrier;
 	private parking: ParkingGarage;
 	private security!: SecurityGuards;
 	private nearElevHint = false;
@@ -166,6 +193,8 @@ export class App {
 	/** Reused for binaural listener orientation */
 	private _fwd = new THREE.Vector3();
 	private _up = new THREE.Vector3();
+	/** Werkplek voor de zonevraag van een LOD-klok; hij loopt elk frame over tientallen lichamen. */
+	private readonly _zoneSpot = new THREE.Vector3();
 	/** Latched until you walk out of the cabin XZ */
 	private elevRiding = false;
 	private elevUi!: ElevatorPanel;
@@ -193,6 +222,8 @@ export class App {
 	private perfFrozen = false;
 	private perfFrozenElapsed = 0;
 	private readonly perfCpuFrame: PerfCpuFrame = { logicMs: 0, batchMs: 0, submitMs: 0, triangles: 0 };
+	/** Hergebruikt voor de HUD-pose, zodat het paneel geen vector per tick alloceert. */
+	private readonly hudDirection = new THREE.Vector3();
 	/** Zaallicht-schaal en de discodim lopen allebei hierlangs. */
 	private daylight!: DaylightDimmer;
 	/** Hergebruikt: getDrawingBufferSize schrijft in een doelvector, elk frame. */
@@ -256,6 +287,34 @@ export class App {
 	private persistT = 0;
 	private restoredFromSave = false;
 	private sceneBatcher!: SceneBatcher;
+	/**
+	 * Zone- en portaalculling. Zonder deze stond je op de stoep en werd het hele
+	 * interieur getekend, beschaduwd én gesimuleerd terwijl er een gevel voor stond.
+	 */
+	private readonly zoneCuller = new ZoneCuller();
+	/** Dezelfde cull voor alles wat de batcher niet overnam. */
+	private zoneVisibility!: ZoneVisibility;
+	/** Uit te zetten, zodat er een A-B-A op één build tegenaan gelegd kan worden. */
+	private zoneCullOn = zoneCullOn();
+	/** De zone waar de camera in staat, één keer per frame bepaald. */
+	private zone: ZoneId = 'stad';
+	/**
+	 * Grove klokken voor wat in een onzichtbare zone staat. Eén per systeem, want ze
+	 * lopen in verschillende zones vol en mogen elkaars achterstand niet erven.
+	 */
+	private readonly lod = {
+		sims: new CoarseTicker(),
+		security: new CoarseTicker(),
+		protest: new CoarseTicker(),
+		penguins: new CoarseTicker(),
+		rat: new CoarseTicker(),
+		thief: new CoarseTicker(),
+		cleaner: new CoarseTicker(),
+		monkey: new CoarseTicker(),
+		catwalk: new CoarseTicker(),
+		roof: new CoarseTicker(),
+		city: new CoarseTicker(),
+	};
 	/** Resolves once the shaders are linked and the frame loop is running. */
 	readonly ready: Promise<void>;
 
@@ -279,6 +338,7 @@ export class App {
 		this.helipad = new Helipad(this.pool);
 		this.foodCourt = new FoodCourt(this.pool);
 		this.elevator = new GlassElevator(this.pool);
+		this.entrance = new Entrance(this.pool);
 		this.parking = new ParkingGarage(this.pool);
 		this.djBartek = new DJBartek(this.pool);
 		this.alienProbe = new AlienProbe(this.pool);
@@ -288,6 +348,17 @@ export class App {
 		this.rat = new MallRat(this.world);
 		this.cleaner = new CleaningCart(this.world);
 		this.scrubber = new ScrubberBuggy(this.world, this.pool);
+		this.carrier = new CabinCarrier(
+			ELEVATOR_ENTITY,
+			() => this.elevator.cabinFloorY,
+			(x, z) => this.elevator.contains(x, z, 0.05),
+		);
+		this.carrier.register({
+			id: 'scrubber-buggy',
+			receiver: this.scrubber.receiver,
+			position: () => this.scrubber.pos,
+			setFloor: (y) => this.scrubber.setFloorOverride(y),
+		});
 		this.driveCars = new DriveableCars(this.world);
 		this.protest = new ProtestGroupies(this.world);
 		this.security = new SecurityGuards(this.world, this.pool);
@@ -328,6 +399,8 @@ export class App {
 		this.scene.add(this.mall.build());
 		// Wire Youssef + all keepers for speech bubbles + ElevenLabs
 		this.shopVoice.bindFromMall(this.mall.group);
+		// En de wereld erbij, zodat een verkoper niet door zijn eigen achterwand groet.
+		this.shopVoice.bindWorld(this.world);
 		this.scene.add(this.palms.group);
 		this.scene.add(this.walkways.group);
 		this.scene.add(this.amenities.group);
@@ -350,10 +423,13 @@ export class App {
 		this.scene.add(this.helipad.group);
 		this.scene.add(this.foodCourt.group);
 		this.scene.add(this.elevator.group);
+		this.scene.add(this.entrance.group);
+		this.scene.add(this.mallFacade.group);
 
 		// ── DE STAD + het dakeiland ─────────────────────────
 		this.scene.add(this.cityBuildings.group);
 		this.scene.add(this.cityRoads.group);
+		this.scene.add(this.cityPlaza.group);
 		this.scene.add(this.cityTraffic.group);
 		this.scene.add(this.cityPark.group);
 		this.scene.add(this.cityTheatre.group);
@@ -375,16 +451,21 @@ export class App {
 		this.scene.add(this.cityTheatre.group);
 		this.scene.add(this.cityBirds.group);
 		// WC + gebedsruimte + cave + travel desk walls
-		for (const c of [
+		const roomColliders: RoomCollider[] = [
 			...this.restrooms.getColliders(),
 			...this.prayer.getColliders(),
 			...this.beardCave.getColliders(),
 			...this.travel.getColliders(),
-		]) {
+		];
+		for (const c of roomColliders) {
 			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
-				minY: -0.5,
-				maxY: 3.2,
+				minY: c.minY ?? -0.5,
+				maxY: c.maxY ?? 3.2,
 				label: c.label,
+				// Dichte kamerwanden: je kijkt er niet doorheen en je schiet er niet
+				// doorheen. De glazen lift hieronder krijgt de tag met opzet niet, en
+				// een meubel tot kniehoogte evenmin.
+				tags: c.blocksSight === false ? [] : [SIGHT_BLOCKING_TAG],
 			});
 		}
 		// Elevator shaft: full height P1→dak; climbable so player enters, sims bounce
@@ -442,8 +523,9 @@ export class App {
 		});
 
 		// Preserve every gameplay object, but submit compatible opaque meshes
-		// through a small number of GPU batches.
-		this.sceneBatcher = new SceneBatcher(this.scene, [
+		// through a small number of GPU batches. Eén lijst, want de zonecull moet
+		// precies dezelfde wortels als bewegend kennen als de batcher.
+		const dynamicRoots = [
 			...this.mall.dynamicRoots,
 			this.palms.group,
 			this.walkways.group,
@@ -464,6 +546,8 @@ export class App {
 			this.prayer.group,
 			this.penguins.group,
 			this.elevator.group,
+			// De schuifbladen bewegen, dus de entree is een dynamische wortel.
+			this.entrance.group,
 			this.cityBuildings.group,
 			this.cityRoads.group,
 			this.cityTraffic.group,
@@ -481,7 +565,12 @@ export class App {
 			this.drone.group,
 			this.catwalk.group,
 			this.monkey.group,
-		]);
+		];
+		this.sceneBatcher = new SceneBatcher(this.scene, dynamicRoots);
+		// Ná de batcher: wat hij overnam heeft nu laagmasker nul en telt hier niet
+		// meer mee. Wat overblijft — losse meshes, InstancedMeshes, sprites, punten —
+		// is vanaf de stoep het grootste deel van de draw calls.
+		this.zoneVisibility = new ZoneVisibility(this.scene, dynamicRoots);
 		// De statische wereldmatrix is hierboven eenmaal vastgelegd. Vanaf nu
 		// ververst SceneBatcher alleen de expliciet bewegende wortels. De algemene
 		// rendererwandeling over circa 7000 objecten blijft daarom uit.
@@ -619,6 +708,18 @@ export class App {
 				},
 				readBatchOwners: () => this.sceneBatcher.stats.owners,
 				readCpuFrame: (): PerfCpuFrame => this.perfCpuFrame,
+				// Zonder deze telling is een cull die niets wegneemt niet te
+				// onderscheiden van een standpunt waar toevallig alles zichtbaar is.
+				readZoneCull: (): PerfZoneCull => ({
+					zone: this.zoneCuller.stats.zone,
+					cones: this.zoneCuller.stats.cones,
+					batches: this.sceneBatcher.stats.batchedMeshes,
+					batchesHidden: this.zoneCuller.stats.hidden - this.zoneVisibility.stats.hidden,
+					occupants: this.zoneVisibility.stats.occupants,
+					occupantsHidden: this.zoneVisibility.stats.hidden,
+					keptInOwnZone: this.zoneCuller.stats.keptInOwnZone,
+					keptThroughCone: this.zoneCuller.stats.keptThroughCone,
+				}),
 			});
 		}
 		if (!feature('NO_PERF_HUD') && !externalPerfProbe) {
@@ -692,6 +793,15 @@ export class App {
 				this.dynScale = 1;
 				this.dynResIndex = 0;
 				this.applyPixelRatio();
+			}
+		});
+		// Zone-culling (⚙): uitzetten zet elke batch en elk los object weer aan en
+		// laat elk systeem weer per frame lopen, zodat een A-B-A op één build kan.
+		this.settingsUi.bindZoneCull((on) => {
+			this.zoneCullOn = on;
+			if (!on) {
+				this.sceneBatcher.showAllZones();
+				this.zoneVisibility.showAll();
 			}
 		});
 		this.settingsUi.bindFill((scale) => this.daylight.setFill(scale));
@@ -1711,9 +1821,9 @@ export class App {
 			colors[i * 3] = c.r;
 			colors[i * 3 + 1] = c.g;
 			colors[i * 3 + 2] = c.b;
-			this.confettiVel[i * 3] = (Math.random() - 0.5) * 4;
+			this.confettiVel[i * 3] = jitter(4);
 			this.confettiVel[i * 3 + 1] = Math.random() * 3 + 1;
-			this.confettiVel[i * 3 + 2] = (Math.random() - 0.5) * 4;
+			this.confettiVel[i * 3 + 2] = jitter(4);
 		}
 
 		const geo = new THREE.BufferGeometry();
@@ -2007,6 +2117,57 @@ export class App {
 		cam.z = r.z;
 	}
 
+	/**
+	 * De camera afmaken en de zonekegels erop zetten.
+	 *
+	 * Twee keer per frame: aan het begin bepaalt hij wat er gesimuleerd moet worden,
+	 * vlak voor de tekening wat er getekend moet worden. De camera verzet zich
+	 * daartussen, en een cull op de stand van vorig frame laat geometrie een frame
+	 * te laat opkomen.
+	 */
+	private refreshZoneView(): void {
+		this.camera.updateWorldMatrix(true, false);
+		this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
+		this.zone = zoneAt(this.camera.position.x, this.camera.position.y, this.camera.position.z);
+		this.zoneCuller.update(this.camera, this.zone);
+	}
+
+	/** Is er iets van een van deze zones in beeld? Elke LOD-klok hangt hieraan. */
+	private seesZones(mask: number): boolean {
+		return !this.zoneCullOn || this.zoneCuller.seesAnyOf(mask);
+	}
+
+	/**
+	 * Ziet de speler de plek waar dit systeem staat?
+	 *
+	 * Uit de actoren zelf en niet uit een opgeschreven zone. Elke tik-klok had zijn
+	 * dek een tweede keer opgeschreven bij zijn aanroep, en niets hield die twee
+	 * tegen elkaar: Wei die de roltrap op loopt en een auto die de geul in rijdt
+	 * bleven op het dek hangen waar ze niet meer stonden, en dan tikt een systeem
+	 * dat je vlak voor je neus ziet op vier hertz.
+	 */
+	private seesWhere(...spots: readonly THREE.Vector3[]): boolean {
+		let mask = 0;
+		for (const spot of spots) mask |= zoneBit(zoneAt(spot.x, spot.y, spot.z));
+		return this.seesZones(mask);
+	}
+
+	/** Hetzelfde, voor een cast die uit losse lichamen bestaat. */
+	private seesCast(...roots: readonly THREE.Object3D[]): boolean {
+		let mask = 0;
+		for (const root of roots) {
+			for (const member of root.children) {
+				member.getWorldPosition(this._zoneSpot);
+				mask |= zoneBit(zoneAt(this._zoneSpot.x, this._zoneSpot.y, this._zoneSpot.z));
+			}
+			if (root.children.length === 0) {
+				root.getWorldPosition(this._zoneSpot);
+				mask |= zoneBit(zoneAt(this._zoneSpot.x, this._zoneSpot.y, this._zoneSpot.z));
+			}
+		}
+		return this.seesZones(mask);
+	}
+
 	private animate = (timestamp?: number): void => {
 		requestAnimationFrame(this.animate);
 		// THREE.Timer: update once per frame, then query delta/elapsed (stable multi-read)
@@ -2026,18 +2187,31 @@ export class App {
 		// volledig wat je eraan moet doen.
 		const cpuStart = performance.now();
 
-		this.atmosphere.update(dt, this.camera.position);
+		// Eerst de kegels, want daarna vraagt elk systeem of zijn zone in beeld staat.
+		// Op de camerastand van het vorige frame: een LOD-besluit dat vier keer per
+		// seconde valt merkt een frame verschuiving niet.
+		this.refreshZoneView();
+		// Shoppers lopen over V0 en V1; zie je geen van beide, dan lopen ze in
+		// kwartseconden door in plaats van per frame.
+		const simsSeen = this.seesCast(this.atmosphere.americans.group);
+		const simsDt = this.lod.sims.step(dt, simsSeen);
+		if (simsDt !== null) this.atmosphere.update(simsDt, this.camera.position);
 		this.pathMesh.update(dt);
-		this.thief.update(dt);
+		// De heist loopt door als je hem niet ziet: grover, niet trager. Anders staat
+		// de dief stil in de gang zodra je je omdraait.
+		const thiefDt = this.lod.thief.step(dt, this.seesWhere(this.thief.group.position));
+		if (thiefDt !== null) this.thief.update(thiefDt);
 		this.beardCave.update(dt);
-		this.protest.update(dt, this.camera.position);
+		const protestDt = this.lod.protest.step(dt, this.seesWhere(this.protest.pos));
+		if (protestDt !== null) this.protest.update(protestDt, this.camera.position);
 		this.travel.update(dt);
 		this.elevator.update(dt, this.camera.position);
 		// Board / stay latched on elevator BEFORE player physics so ground snap
 		// doesn't yank you out mid-shaft (that was the stutter + strand bug).
 		this.updateElevatorRide();
 
-		this.rat.update(dt);
+		const ratDt = this.lod.rat.step(dt, this.seesWhere(this.rat.group.position));
+		if (ratDt !== null) this.rat.update(ratDt);
 		// Player vehicles: drive first so camera sticks before other systems
 		if (this.vehicle === 'car' && this.driveCars.ridden) {
 			const seat = this.driveCars.update(dt, this.player.getDriveInput());
@@ -2046,7 +2220,9 @@ export class App {
 				this.player.setHeading(this.driveCars.heading);
 				this.player.driving = true;
 			}
-		} else if (this.vehicle === 'scrubber' && this.scrubber.ridden) {
+		}
+		this.carrier.update();
+		if (this.vehicle === 'scrubber' && this.scrubber.ridden) {
 			const seat = this.scrubber.update(dt, this.player.getDriveInput());
 			if (seat) {
 				this.camera.position.copy(seat);
@@ -2056,11 +2232,14 @@ export class App {
 		} else {
 			this.scrubber.update(dt);
 		}
-		this.cleaner.update(
-			dt,
-			// Don't let Wei hunt you while you're racing a vehicle
-			this.vehicle === 'scrubber' || this.vehicle === 'car' ? undefined : this.camera.position,
-		);
+		const cleanerDt = this.lod.cleaner.step(dt, this.seesWhere(this.cleaner.pos));
+		if (cleanerDt !== null) {
+			this.cleaner.update(
+				cleanerDt,
+				// Don't let Wei hunt you while you're racing a vehicle
+				this.vehicle === 'scrubber' || this.vehicle === 'car' ? undefined : this.camera.position,
+			);
+		}
 		// Binaural listener: camera position + look/up for HRTF
 		{
 			const cam = this.camera;
@@ -2079,7 +2258,8 @@ export class App {
 			});
 		}
 		this.prayer.update(dt, this.camera.position);
-		this.penguins.update(dt);
+		const penguinDt = this.lod.penguins.step(dt, this.seesCast(this.penguins.group));
+		if (penguinDt !== null) this.penguins.update(penguinDt);
 
 		// Mall security — feed every "threat" in the building
 		this.securityHitCd = Math.max(0, this.securityHitCd - dt);
@@ -2129,7 +2309,9 @@ export class App {
 				kind: 'cleaner',
 				weight: 0.7,
 			});
-			this.security.update(dt, this.camera.position, threats);
+			// De bewakers patrouilleren op V0 en op de V1-balustrade.
+			const securityDt = this.lod.security.step(dt, this.seesCast(this.security.group));
+			if (securityDt !== null) this.security.update(securityDt, this.camera.position, threats);
 		}
 
 		// Vóór de speler-update, want E is ook actieknop: ligt er iets klaar dan mag
@@ -2143,10 +2325,8 @@ export class App {
 				this.camera.position.copy(eye.pos);
 				this.camera.rotation.order = 'YXZ';
 				// Shortest-path yaw lerp so we never spin through the floor
-				let dy = eye.yaw - this.camera.rotation.y;
-				while (dy > Math.PI) dy -= Math.PI * 2;
-				while (dy < -Math.PI) dy += Math.PI * 2;
-				this.camera.rotation.y += dy * Math.min(1, dt * 10);
+				const dy = shortestAngle(this.camera.rotation.y, eye.yaw);
+				this.camera.rotation.y += dy * easeFactor(10, dt);
 				this.camera.rotation.x = lerp(this.camera.rotation.x, -0.05, 0.15);
 				this.camera.rotation.z = 0;
 			}
@@ -2188,16 +2368,25 @@ export class App {
 
 		// Outdoor city systems — verkeer, stoplichten, skyline, park, theater,
 		// outdoor garage, lucht, vogels, dakeiland + badgasten
-		this.cityRoads.update(dt, elapsed);
-		this.cityTraffic.update(dt, elapsed);
-		this.cityBuildings.update(dt, elapsed);
-		this.cityPark.update(dt, elapsed);
-		this.cityTheatre.update(dt, elapsed);
-		this.cityGarage.update(dt, elapsed);
-		this.citySky.update(dt, elapsed);
-		this.cityBirds.update(dt, elapsed);
-		this.roofIsland.update(dt, elapsed);
-		this.poolPeople.update(dt, elapsed);
+		// Niet alleen `stad`: de aftakking rijdt de geul in en parkeert op P1. Wie daar
+		// naast een geparkeerde auto staat zonder de geul in beeld zag hem op vier hertz
+		// schokken terwijl hij het dichtstbijzijnde bewegende ding op het scherm was.
+		const cityDt = this.lod.city.step(dt, this.seesZones(CITY_TRAFFIC_ZONES));
+		if (cityDt !== null) {
+			this.cityRoads.update(cityDt, elapsed);
+			this.cityTraffic.update(cityDt, elapsed);
+			this.cityBuildings.update(cityDt, elapsed);
+			this.cityPark.update(cityDt, elapsed);
+			this.cityTheatre.update(cityDt, elapsed);
+			this.cityGarage.update(cityDt, elapsed);
+			this.citySky.update(cityDt, elapsed);
+			this.cityBirds.update(cityDt, elapsed);
+		}
+		const roofDt = this.lod.roof.step(dt, this.seesWhere(this.roofIsland.group.position, this.poolPeople.group.position));
+		if (roofDt !== null) {
+			this.roofIsland.update(roofDt, elapsed);
+			this.poolPeople.update(roofDt, elapsed);
+		}
 		this.tickSlide(dt);
 
 		// Feed the monkey its victim list, then let it aim
@@ -2206,8 +2395,12 @@ export class App {
 			this.simPositions.push(child.position);
 		}
 		this.monkey.setSimPositions(this.simPositions);
-		this.monkey.update(dt);
-		this.catwalk.update(dt, elapsed);
+		// De aap klimt tussen atrium en balustrade, dus zijn zone is waar hij hangt.
+		const monkeyDt = this.lod.monkey.step(dt, this.seesWhere(this.monkey.group.position));
+		if (monkeyDt !== null) this.monkey.update(monkeyDt);
+		const catwalkDt = this.lod.catwalk.step(dt, this.seesWhere(this.catwalk.group.position));
+		if (catwalkDt !== null) this.catwalk.update(catwalkDt, elapsed);
+		this.entrance.update(dt, this.camera.position);
 		if (this.vehicle === 'heli') this.heli.followCamera(this.camera, dt);
 		else this.heli.update(dt);
 		this.drone.followCamera(this.camera, dt);
@@ -2420,8 +2613,14 @@ export class App {
 
 		const afterLogic = performance.now();
 		this.renderer.info.reset();
-		this.camera.updateWorldMatrix(true, false);
+		this.refreshZoneView();
 		this.sceneBatcher.update();
+		// Na sceneBatcher.update(): de bollen zijn meegegroeid met wat bewoog en de
+		// zoneverzameling van elke batch klopt weer, dus nu pas kan de cull erover.
+		if (this.zoneCullOn) {
+			this.sceneBatcher.applyZoneVisibility(this.zoneCuller);
+			this.zoneVisibility.apply(this.zoneCuller);
+		}
 		// Na sceneBatcher.update(): alleen de expliciet dynamische wortels zijn
 		// ververst, waaronder ieder object dat een virtuele lamp volgt.
 		this.pool.update(this.camera);
@@ -2442,7 +2641,14 @@ export class App {
 		// valt dit hele blok weg, inclusief het uitlezen van renderer.info.
 		if (!feature('NO_PERF_HUD')) {
 			const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
+			const blik = this.camera.getWorldDirection(this.hudDirection);
 			this.perfHud?.update({
+				eyeX: this.camera.position.x,
+				eyeY: this.camera.position.y,
+				eyeZ: this.camera.position.z,
+				dirX: blik.x,
+				dirY: blik.y,
+				dirZ: blik.z,
 				frameMs,
 				drawCalls: this.renderer.info.render.calls,
 				triangles: this.renderer.info.render.triangles,

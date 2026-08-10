@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { level, levelY } from '#/data/levels';
 import type { StoreDef } from '#/data/stores';
-import { labelCanvas, labelTexture } from '#/util/label';
+import { labelCanvas, labelTexture, roundRect } from '#/util/label';
 import { tagLevelCulled } from '#/util/visibility';
 
 /** Clean mall directory labels — white pills, no neon pulse. */
@@ -94,14 +94,4 @@ export class StoreLabels {
 		sprite.scale.set(9, 1.5, 1);
 		return sprite;
 	}
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-	ctx.beginPath();
-	ctx.moveTo(x + r, y);
-	ctx.arcTo(x + w, y, x + w, y + h, r);
-	ctx.arcTo(x + w, y + h, x, y + h, r);
-	ctx.arcTo(x, y + h, x, y, r);
-	ctx.arcTo(x, y, x + w, y, r);
-	ctx.closePath();
 }

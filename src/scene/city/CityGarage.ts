@@ -1,11 +1,21 @@
 import * as THREE from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
-import type { Rand } from '#/scene/city/cityPlan';
-import { GARAGE_PLAN, mulberry32 } from '#/scene/city/cityPlan';
+import type { GarageRampRun, Rand } from '#/scene/city/cityPlan';
+import {
+	GARAGE_PARAPETS,
+	GARAGE_PLAN,
+	GARAGE_RAMP_EAST_EDGE_X,
+	GARAGE_RAMP_EAST_X,
+	GARAGE_RAMP_LANDINGS,
+	GARAGE_RAMP_RUNS,
+	GARAGE_RAMP_SOUTH_EDGE_Z,
+	garageDeckTop,
+	garageEastSpiralY,
+} from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { half, inverseLerpClamped, midpoint, span } from '#/util/math';
-import { at, pickWith } from '#/util/rand';
+import { easeFactor, half, inverseLerpClamped, midpoint, span } from '#/util/math';
+import { at, jitterWith, mulberry32, pickWith } from '#/util/rand';
 
 /**
  * Parkeergarage op het ZO-blok (x 56..86, z 44..68). Vier open parkeerdekken
@@ -34,9 +44,7 @@ const SLAB_T = GARAGE_PLAN.slabThickness;
 /** Parkeerdekken 0..3; de plaat op 4·FLOOR_H is het dak (leeg — VOL is een gemoedstoestand). */
 const DECKS = GARAGE_PLAN.decks;
 const GROND_DEK_Y = GARAGE_PLAN.groundDeckY;
-
-/** Bovenkant van dek i — de begane grond is een dunnere plaat op het parkeerterrein. */
-const deckTop = (i: number): number => (i === 0 ? GROND_DEK_Y : i * FLOOR_H + half(SLAB_T));
+const RAMP = GARAGE_PLAN.ramp;
 
 // Kolommen op de gaten tússen de parkeervakken, zodat niemand instanced blik
 // door instanced beton hoeft te zien steken.
@@ -109,7 +117,7 @@ export class CityGarage {
 		// beweegt daartussen alsof hij ergens over nadenkt. De ease loopt op dt
 		// zodat de bedenktijd niet meeschaalt met de framerate van de Pi.
 		const doel = inverseLerpClamped(-1, 1, Math.sin(t * 0.35) * 1.8);
-		this.boomOpen += (doel - this.boomOpen) * Math.min(1, dt * 1.6);
+		this.boomOpen += (doel - this.boomOpen) * easeFactor(1.6, dt);
 		this.boomPivot.rotation.x = -1.25 * this.boomOpen;
 	}
 
@@ -144,15 +152,18 @@ export class CityGarage {
 		this.fill(this.unitBox, this.betonDonker, cols, 'garage_kolommen');
 
 		// Borstweringen op elk dek, rondom — laag genoeg om overheen te kijken,
-		// hoog genoeg om er een verzekeringspolis op te baseren.
-		const borst: Placement[] = [];
-		for (let i = 1; i <= DECKS; i++) {
-			const y = deckTop(i) + 0.5;
-			borst.push(P(CX, y, Z0 + 0.09, W, 1.0, 0.18));
-			borst.push(P(CX, y, Z1 - 0.09, W, 1.0, 0.18));
-			borst.push(P(X0 + 0.09, y, CZ, 0.18, 1.0, D - 0.36));
-			borst.push(P(X1 - 0.09, y, CZ, 0.18, 1.0, D - 0.36));
-		}
+		// hoog genoeg om er een verzekeringspolis op te baseren. Het zijn dezelfde
+		// dozen die de collision als kerb gebruikt.
+		const borst: Placement[] = GARAGE_PARAPETS.map((p) =>
+			P(
+				midpoint(p.minX, p.maxX),
+				midpoint(p.minY, p.maxY),
+				midpoint(p.minZ, p.maxZ),
+				span(p.minX, p.maxX),
+				span(p.minY, p.maxY),
+				span(p.minZ, p.maxZ),
+			),
+		);
 		this.fill(this.unitBox, this.beton, borst, 'garage_borstwering');
 
 		// Tl-balken onder elk dek: MeshBasicMaterial dat koud kantoorlicht
@@ -167,28 +178,78 @@ export class CityGarage {
 	}
 
 	/**
-	 * Buitenspiraal-suggestie om de ZO-hoek: schuine plaat zuid (maaiveld → dek 1),
-	 * hoekbordes, schuine plaat oost (dek 1 → dek 2), landing noord. De rest van
+	 * Buitenspiraal om de ZO-hoek: schuine plaat zuid (maaiveld → dek 1),
+	 * hoekbordes, schuine plaat oost (dek 1 → dek 2), bordes noord. De rest van
 	 * de spiraal is binnen, zegt de bewegwijzering, en die geloven we.
+	 *
+	 * Elke maat komt uit `GARAGE_PLAN.ramp`, want de collision loopt over
+	 * dezelfde platen.
 	 */
 	private buildRamp(): void {
-		const aZuid = Math.atan2(3.2, 23);
-		const aOost = Math.atan2(3.2, 15);
+		for (const run of GARAGE_RAMP_RUNS) this.addRampPlate(run);
 
-		// Zuidplaat: komt op x≈60 van het parkeerterrein en klimt oostwaarts.
-		this.addBox(this.beton, 23.3, 0.25, 3.2, 71.5, 1.6, 65.8, 0, aZuid);
-		this.addBox(this.betonDonker, 23.3, 0.6, 0.12, 71.5, 2.03, 67.34, 0, aZuid);
-
-		// Hoekbordes ZO (vlak op dek 1-hoogte), dan de oostplaat noordwaarts omhoog.
-		this.addBox(this.beton, 2.8, 0.25, 4.4, 84.5, 3.08, 65.4);
-		this.addBox(this.beton, 2.8, 0.25, 15.4, 84.5, 4.8, 55.9, aOost, 0);
-		this.addBox(this.betonDonker, 0.12, 0.6, 15.4, 85.86, 5.22, 55.9, aOost, 0);
-		this.addBox(this.beton, 2.8, 0.25, 3.4, 84.5, 6.28, 47.0);
+		for (const bordes of GARAGE_RAMP_LANDINGS) {
+			this.addBox(
+				this.beton,
+				span(bordes.minX, bordes.maxX),
+				RAMP.thickness,
+				span(bordes.minZ, bordes.maxZ),
+				midpoint(bordes.minX, bordes.maxX),
+				bordes.y - half(RAMP.thickness),
+				midpoint(bordes.minZ, bordes.maxZ),
+			);
+		}
 
 		// Steunpoten — drie stuks, want beton dat zichtbaar zweeft roept vragen op.
-		this.addBox(this.betonDonker, 0.3, 3.0, 0.3, 84.5, 1.5, 65.4);
-		this.addBox(this.betonDonker, 0.3, 3.8, 0.3, 84.5, 1.9, 60.0);
-		this.addBox(this.betonDonker, 0.3, 5.6, 0.3, 84.5, 2.8, 51.0);
+		for (const z of RAMP.legZ) {
+			const top = garageEastSpiralY(z) - RAMP.thickness;
+			this.addBox(this.betonDonker, RAMP.legSize, top, RAMP.legSize, GARAGE_RAMP_EAST_X, half(top), z);
+		}
+	}
+
+	/**
+	 * Eén schuine plaat, met zijn bovenkant precies op de looplijn van `run`, plus
+	 * de leuning langs de buitenrand. Het hart van de plaat zakt daarvoor een halve
+	 * dikte langs de normaal; de leuning staat er een halve leuninghoogte boven.
+	 */
+	private addRampPlate(run: GarageRampRun): void {
+		const langsX = run.start.z === run.end.z;
+		const loop = langsX ? span(run.start.x, run.end.x) : span(run.end.z, run.start.z);
+		const stijging = span(run.start.y, run.end.y);
+		const lengte = Math.hypot(loop, stijging);
+		const hoek = Math.atan2(stijging, loop);
+		const zak = half(RAMP.thickness);
+		const leuning = half(RAMP.guard.height);
+		const x = midpoint(run.start.x, run.end.x);
+		const y = midpoint(run.start.y, run.end.y);
+		const z = midpoint(run.start.z, run.end.z);
+		if (langsX) {
+			this.addBox(this.beton, lengte, RAMP.thickness, run.width, x + Math.sin(hoek) * zak, y - Math.cos(hoek) * zak, z, 0, hoek);
+			this.addBox(
+				this.betonDonker,
+				lengte,
+				RAMP.guard.height,
+				RAMP.guard.thickness,
+				x - Math.sin(hoek) * leuning,
+				y + Math.cos(hoek) * leuning,
+				GARAGE_RAMP_SOUTH_EDGE_Z - half(RAMP.guard.thickness),
+				0,
+				hoek,
+			);
+			return;
+		}
+		this.addBox(this.beton, run.width, RAMP.thickness, lengte, x, y - Math.cos(hoek) * zak, z - Math.sin(hoek) * zak, hoek, 0);
+		this.addBox(
+			this.betonDonker,
+			RAMP.guard.thickness,
+			RAMP.guard.height,
+			lengte,
+			GARAGE_RAMP_EAST_EDGE_X - half(RAMP.guard.thickness),
+			y + Math.cos(hoek) * leuning,
+			z + Math.sin(hoek) * leuning,
+			hoek,
+			0,
+		);
 	}
 
 	/** Groot blauw P-bord op de westgevel (richting mall), met VOL in rood eronder. */
@@ -242,7 +303,7 @@ export class CityGarage {
 		const bodies: Placement[] = [];
 		const wheels: Placement[] = [];
 		for (let dek = 0; dek < perDek.length; dek++) {
-			const base = deckTop(dek);
+			const base = garageDeckTop(dek);
 			// Alle 16 vakken van dit dek, geschud (Fisher–Yates), de eerste n bezet.
 			const vakken: [number, number][] = [];
 			for (let k = 0; k < SLOTS; k++) {
@@ -273,7 +334,7 @@ export class CityGarage {
 		const kleur = new THREE.Color();
 		for (let i = 0; i < bodies.length; i++) {
 			kleur.setHex(pickWith(palet, rand));
-			kleur.offsetHSL(0, 0, (rand() - 0.5) * 0.08);
+			kleur.offsetHSL(0, 0, jitterWith(0.08, rand));
 			bodyMesh.setColorAt(i, kleur);
 		}
 		this.fill(cabinGeo, glassMat, bodies, 'garage_cabines'); // zelfde transforms als de body's

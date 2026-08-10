@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FOUNTAIN_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
+import { jitter } from '#/util/rand';
 
 // ── particles ────────────────────────────────────────────
 /** Sideways speed a respawned drop leaves the nozzle with, either way. */
@@ -212,9 +213,9 @@ export class Amenities {
 	private makeParticles(count: number, color: number, size: number): THREE.Points {
 		const positions = new Float32Array(count * 3);
 		for (let i = 0; i < count; i++) {
-			positions[i * 3] = (Math.random() - 0.5) * 0.4;
+			positions[i * 3] = jitter(0.4);
 			positions[i * 3 + 1] = 1.5 + Math.random() * 1.5;
-			positions[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+			positions[i * 3 + 2] = jitter(0.4);
 		}
 		const geo = new THREE.BufferGeometry();
 		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -231,9 +232,9 @@ export class Amenities {
 	private initVel(count: number, upMin: number, upMax: number): Float32Array {
 		const v = new Float32Array(count * 3);
 		for (let i = 0; i < count; i++) {
-			v[i * 3] = (Math.random() - 0.5) * 0.4;
+			v[i * 3] = jitter(0.4);
 			v[i * 3 + 1] = upMin + Math.random() * (upMax - upMin);
-			v[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+			v[i * 3 + 2] = jitter(0.4);
 		}
 		return v;
 	}
@@ -247,12 +248,12 @@ export class Amenities {
 			arr[i + 2] = (arr[i + 2] ?? 0) + (vel[i + 2] ?? 0) * dt;
 			vel[i + 1] = (vel[i + 1] ?? 0) - 6 * dt;
 			if ((arr[i + 1] ?? 0) < resetY - 0.5 || (arr[i + 1] ?? 0) > maxY + 2) {
-				arr[i] = (Math.random() - 0.5) * 0.35;
+				arr[i] = jitter(0.35);
 				arr[i + 1] = resetY;
-				arr[i + 2] = (Math.random() - 0.5) * 0.35;
-				vel[i] = (Math.random() - 0.5) * DROP_SIDE_SPEED;
+				arr[i + 2] = jitter(0.35);
+				vel[i] = jitter(DROP_SIDE_SPEED);
 				vel[i + 1] = 1.5 + Math.random() * 2.5;
-				vel[i + 2] = (Math.random() - 0.5) * DROP_SIDE_SPEED;
+				vel[i + 2] = jitter(DROP_SIDE_SPEED);
 			}
 		}
 		pos.needsUpdate = true;

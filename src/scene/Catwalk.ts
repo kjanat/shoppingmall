@@ -3,13 +3,14 @@ import { CATWALK_DECK, CATWALK_SPEC, catwalkSeatRows } from '#/data/world';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half } from '#/util/math';
-import { at } from '#/util/rand';
+import { at, jitter } from '#/util/rand';
 
 /**
- * Prairie Lakes Fashion Week: a runway beside Douglas on the ground floor.
+ * Prairie Lakes Fashion Week: a runway in the south-east corner of the ground floor.
  *
- * Sits at x=-28, z=-3.7…8.6 — deliberately clear of every wayfinding edge, so
- * the shopper crowd never tries to path through the show.
+ * It stands east of x 31, past the last wayfinding node, so the shopper crowd never
+ * tries to path through the show. Every coordinate here comes from `CATWALK_SPEC`,
+ * which is where it moved from the west wall when the main entrance took that bay.
  */
 const { runwayX: RUNWAY_X, startZ: START_Z, tipZ: TIP_Z, podiumY: PODIUM_Y, halfWidth: HALF_W } = CATWALK_SPEC;
 const DECK_LENGTH = CATWALK_DECK.length;
@@ -30,6 +31,8 @@ const HEAD_TURN_AMP = 0.12;
 /** The pose: a quarter turn out, then a longer turn back over the shoulder. */
 const POSE_TURN = 0.5;
 const POSE_LOOK_BACK = 1.1;
+/** Waar een toeschouwer gaat staan: naast het dek en een eind voor de neus. */
+const FRONT_ROW = { side: 3.4, back: 1.5 };
 /** Camera flashes pop this far off the runway, either side. */
 const FLASH_DIST = 2.1;
 const FLASH_DIST_SPREAD = 0.5;
@@ -148,9 +151,9 @@ export class Catwalk {
 		return active ? { name: active.name, phase: active.phase } : null;
 	}
 
-	/** Where a spectator should stand to watch the show. */
+	/** Where a spectator should stand to watch the show: the mall side, not the wall side. */
 	getFrontRow(): THREE.Vector3 {
-		return new THREE.Vector3(RUNWAY_X + 3.4, 0, TIP_Z - 1.5);
+		return new THREE.Vector3(RUNWAY_X - FRONT_ROW.side, 0, TIP_Z - FRONT_ROW.back);
 	}
 
 	update(dt: number, t: number): void {
@@ -192,7 +195,7 @@ export class Catwalk {
 				// Fan east toward the seats, with fizz
 				this.spritzVel[i * 3] = 1.6 + Math.random() * 1.8;
 				this.spritzVel[i * 3 + 1] = 2.2 + Math.random() * 1.4;
-				this.spritzVel[i * 3 + 2] = (Math.random() - 0.5) * 2.4;
+				this.spritzVel[i * 3 + 2] = jitter(2.4);
 				this.spritzLife[i] = 1.4;
 			}
 		}
@@ -634,7 +637,7 @@ export class Catwalk {
 			mesh.position.set(
 				RUNWAY_X + side * (FLASH_DIST + Math.random() * FLASH_DIST_SPREAD),
 				1.1 + Math.random() * 0.4,
-				TIP_Z - 1 + (Math.random() - 0.5) * 3,
+				TIP_Z - 1 + jitter(3),
 			);
 			mesh.rotation.y = side === -1 ? Math.PI / 2 : -Math.PI / 2;
 			this.group.add(mesh);

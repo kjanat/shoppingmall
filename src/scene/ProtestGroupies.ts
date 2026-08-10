@@ -3,10 +3,12 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SpatialSource } from '#/audio/SpatialAudio';
 import { spatial } from '#/audio/SpatialAudio';
 import { levelAt } from '#/data/levels';
+import { LINE_OF_SIGHT } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
+import { GRAVITY } from '#/player/constants';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture, speechTail } from '#/util/label';
-import { half, lerp } from '#/util/math';
+import { fitText, labelCanvas, labelTexture, roundRect, speechTail } from '#/util/label';
+import { easeFactor, half, lerp, shortestAngle } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 import MANIFEST from '$/public/voices/protest/manifest.json' with { type: 'json' };
@@ -105,9 +107,11 @@ type ChantState =
 const CROWD_COUNT = 24;
 const SWARM_RADIUS = 6.5;
 const SWARM_WANDER_RADIUS = 8;
+
+/** Ooghoogte van de menigte, waar de nieuwsgierigheid vandaan kijkt. */
+const PROTEST_EYE_HEIGHT = 1.55;
 const SEPARATION_RADIUS = 0.9;
 const SEPARATION_CELL = 1.2;
-const JUMP_GRAVITY = 9.5;
 
 // ── body sway: one lean per stride, so half the step frequency ──
 const SWAY_PHASE_RATIO = 0.5;
@@ -416,7 +420,16 @@ export class ProtestGroupies {
 
 		let targetX = this.swarmTargetX;
 		let targetZ = this.swarmTargetZ;
-		if (playerPos && levelAt(playerPos.y) === 'v0') {
+		// De menigte draaide zich naar je toe zodra je binnen achttien meter kwam, ook
+		// als je achter een winkelwand stond. Nieuwsgierigheid vraagt eerst zicht.
+		const inSight =
+			playerPos !== undefined &&
+			this.world.hasLineOfSight(
+				{ x: this.pos.x + this.swarmX, y: PROTEST_EYE_HEIGHT, z: this.pos.z + this.swarmZ },
+				playerPos,
+				LINE_OF_SIGHT,
+			);
+		if (playerPos && inSight && levelAt(playerPos.y) === 'v0') {
 			const playerX = playerPos.x - this.pos.x;
 			const playerZ = playerPos.z - this.pos.z;
 			const distance = Math.hypot(playerX - this.swarmX, playerZ - this.swarmZ);
@@ -433,7 +446,7 @@ export class ProtestGroupies {
 		const speed = this.surgeTime > 0 ? 1.05 : 0.72;
 		const desiredX = distance > 0.05 ? (dx / distance) * Math.min(speed, distance * 0.45) : 0;
 		const desiredZ = distance > 0.05 ? (dz / distance) * Math.min(speed, distance * 0.45) : 0;
-		const follow = Math.min(1, dt * 0.9);
+		const follow = easeFactor(0.9, dt);
 		this.swarmVx = lerp(this.swarmVx, desiredX, follow);
 		this.swarmVz = lerp(this.swarmVz, desiredZ, follow);
 
@@ -544,7 +557,7 @@ export class ProtestGroupies {
 		const moving = Math.hypot(p.vx, p.vz);
 		if (moving > 0.04) {
 			const wanted = Math.atan2(p.vx, p.vz);
-			p.facing += shortestAngle(p.facing, wanted) * Math.min(1, dt * 4);
+			p.facing += shortestAngle(p.facing, wanted) * easeFactor(4, dt);
 		}
 		p.walkPhase += dt * (2.5 + moving * 4.5) * p.energy;
 
@@ -558,7 +571,7 @@ export class ProtestGroupies {
 			}
 		}
 		if (p.jumpY > 0 || p.jumpVy > 0) {
-			p.jumpVy -= JUMP_GRAVITY * dt;
+			p.jumpVy -= GRAVITY * dt;
 			p.jumpY += p.jumpVy * dt;
 			if (p.jumpY <= 0) {
 				p.jumpY = 0;
@@ -1433,21 +1446,4 @@ export class ProtestGroupies {
 		p.speech.visible = true;
 		p.speechLife = merkel ? 3.2 : 2.4 + Math.random() * 0.8;
 	}
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-	ctx.beginPath();
-	ctx.moveTo(x + r, y);
-	ctx.arcTo(x + w, y, x + w, y + h, r);
-	ctx.arcTo(x + w, y + h, x, y + h, r);
-	ctx.arcTo(x, y + h, x, y, r);
-	ctx.arcTo(x, y, x + w, y, r);
-	ctx.closePath();
-}
-
-function shortestAngle(from: number, to: number): number {
-	let delta = to - from;
-	while (delta > Math.PI) delta -= Math.PI * 2;
-	while (delta < -Math.PI) delta += Math.PI * 2;
-	return delta;
 }

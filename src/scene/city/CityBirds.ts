@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp } from '#/util/math';
+import { plusMinus } from '#/util/rand';
 
 /**
  * Veertien vogels boven mall en stad (y 18..34). Elke vogel is twee
@@ -73,15 +74,15 @@ export class CityBirds {
 			let cz: number;
 			if (i < N_BOVEN_MALL) {
 				// Boven de mall: het dak (y 13.95) is hun foodcourt-uitzicht.
-				cx = (Math.random() * 2 - 1) * 28;
-				cz = (Math.random() * 2 - 1) * 16;
+				cx = plusMinus(28);
+				cz = plusMinus(16);
 			} else if (i % 2 === 0) {
 				// Oost/west boven de stad.
 				cx = (Math.random() < 0.5 ? -1 : 1) * (52 + Math.random() * 26);
-				cz = (Math.random() * 2 - 1) * 55;
+				cz = plusMinus(55);
 			} else {
 				// Noord/zuid boven de stad.
-				cx = (Math.random() * 2 - 1) * 68;
+				cx = plusMinus(68);
 				cz = (Math.random() < 0.5 ? -1 : 1) * (36 + Math.random() * 22);
 			}
 			// Middelpunt + straal binnen de wereldgrens houden — vogels die de

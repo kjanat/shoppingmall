@@ -1,21 +1,34 @@
 import type { VerticalConnector } from '#/data/connectors';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
-import { levelY } from '#/data/levels';
+import { LEVELS, levelY } from '#/data/levels';
+import type { Bounds2, Occlusion, Vec3 } from '#/data/spatial';
+import { SIGHT_BLOCKING_TAG } from '#/data/spatial';
 import { STORES } from '#/data/stores';
 import {
+	atriumPlanterTiers,
 	CATWALK_DECK,
+	ENTRANCE_PORTAL,
+	ENTRANCE_SPEC,
 	FOUNTAIN_SPEC,
 	HELIPAD_DECK_BOUNDS,
 	KIOSK_SPEC,
 	PARKING_EXIT_RAMP,
+	PARKING_EXIT_WALL_GAP,
 	parkingDeckColliders,
+	parkingExitTrenchColliders,
 	SECRET_STAIRS_OPENING_BOUNDS,
+	SLAB_SPEC_BY_LEVEL,
+	slabOpeningWithin,
 	VERTICAL_CONNECTORS,
 } from '#/data/world';
 import {
 	CITY_BOUNDS,
 	CITY_GROUND_Y,
+	GARAGE_DECKS,
+	GARAGE_PARAPETS,
 	GARAGE_PLAN,
+	GARAGE_RAMP_LANDINGS,
+	GARAGE_RAMP_RUNS,
 	THEATRE_PLAN,
 	TOWER_SPECS,
 	theatreTreadY,
@@ -30,7 +43,7 @@ import {
 	SLIDE_PLATFORM_TOP_Y,
 } from '#/scene/RoofIsland';
 import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
-import { clamp, half, midpoint } from '#/util/math';
+import { clamp, half, inverseLerpClamped, lerp, midpoint } from '#/util/math';
 
 export { ESCALATOR_SPEED } from '#/data/world';
 
@@ -47,6 +60,8 @@ export type AABB = {
 	climbable?: boolean;
 	/** Stands outside the mall; only tested for agents that are allowed out there. */
 	outdoor?: boolean;
+	/** What this box is, for queries that care about more than a body hitting it. */
+	tags?: readonly string[];
 };
 
 type BoxOptions = {
@@ -55,7 +70,103 @@ type BoxOptions = {
 	label?: string;
 	climbable?: boolean;
 	outdoor?: boolean;
+	tags?: readonly string[];
 };
+
+/**
+ * Een doos die ook het zicht tegenhoudt.
+ *
+ * Niet iedere doos doet dat. Het atriumhek en de roltrapkokers lopen van de vloer
+ * tot boven het dak omdat een lopend lichaam er zo omheen gestuurd wordt; wie ze
+ * als muur leest legt een muur dwars door het gebouw. Glas houdt wél een lichaam
+ * tegen en geen blik, dus de pui en de glazen lift dragen hem evenmin.
+ */
+function opaque(options: BoxOptions): BoxOptions {
+	return { ...options, tags: [...(options.tags ?? []), SIGHT_BLOCKING_TAG] };
+}
+
+/** Onder deze loop staan twee kijkers op dezelfde plek en is er geen lijn te trekken. */
+const SIGHT_MIN_RUN = 1e-4;
+
+/**
+ * Staat dit punt in de doos? Met de hoogte erbij.
+ *
+ * Zonder y stond wie op een borstwering of een winkelrug klom in elke doos onder
+ * zich, en dan gold de vrijstelling hieronder voor het hele segment: één stap op
+ * een muur maakte diezelfde muur doorzichtig.
+ */
+function insideBox(b: AABB, x: number, y: number, z: number): boolean {
+	if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) return false;
+	if (b.minY !== undefined && y < b.minY) return false;
+	if (b.maxY !== undefined && y > b.maxY) return false;
+	return true;
+}
+
+/**
+ * Het stukje grondvlak dat het segment beslaat terwijl het tussen twee hoogtes zit.
+ *
+ * Een kogel legt schuin af; alleen het deel van zijn stap dat werkelijk in de
+ * plaatdikte valt zegt iets over waar hij die plaat raakt.
+ */
+function segmentPlanWithin(from: Vec3, to: Vec3, lowY: number, highY: number): Bounds2 {
+	const rise = to.y - from.y;
+	const flat = Math.abs(rise) < SIGHT_MIN_RUN;
+	const low = flat ? 0 : inverseLerpClamped(from.y, to.y, lowY);
+	const high = flat ? 1 : inverseLerpClamped(from.y, to.y, highY);
+	const start = Math.min(low, high);
+	const end = Math.max(low, high);
+	const startX = lerp(from.x, to.x, start);
+	const endX = lerp(from.x, to.x, end);
+	const startZ = lerp(from.z, to.z, start);
+	const endZ = lerp(from.z, to.z, end);
+	return {
+		minX: Math.min(startX, endX),
+		maxX: Math.max(startX, endX),
+		minZ: Math.min(startZ, endZ),
+		maxZ: Math.max(startZ, endZ),
+	};
+}
+
+/** De plakjesmethode in XZ: het segment raakt de doos als beide assen elkaar overlappen. */
+function segmentCrossesBox(b: AABB, x: number, z: number, dx: number, dz: number): boolean {
+	let enter = 0;
+	let exit = 1;
+	for (const axis of [
+		{ origin: x, delta: dx, min: b.minX, max: b.maxX },
+		{ origin: z, delta: dz, min: b.minZ, max: b.maxZ },
+	]) {
+		if (Math.abs(axis.delta) < SIGHT_MIN_RUN) {
+			if (axis.origin < axis.min || axis.origin > axis.max) return false;
+			continue;
+		}
+		const first = (axis.min - axis.origin) / axis.delta;
+		const second = (axis.max - axis.origin) / axis.delta;
+		const near = Math.min(first, second);
+		const far = Math.max(first, second);
+		if (near > enter) enter = near;
+		if (far < exit) exit = far;
+		if (enter > exit) return false;
+	}
+	return enter <= exit;
+}
+
+/**
+ * Een doos die een kamer zelf aanlevert.
+ *
+ * Zonder hoogte loopt hij van onder de vloer tot boven een hoofd en houdt hij het
+ * zicht tegen, want dat is wat een kamerwand is. Een bank van kniehoogte is dat
+ * niet: die zet zijn eigen `maxY` en laat het zicht door.
+ */
+export type RoomCollider = Readonly<{
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+	label: string;
+	minY?: number;
+	maxY?: number;
+	blocksSight?: boolean;
+}>;
 
 /** A flat walkable rectangle in the city, above street level. */
 export type CitySurface = {
@@ -187,6 +298,10 @@ export class CollisionWorld {
 			width: PARKING_EXIT_RAMP.width,
 			label: PARKING_EXIT_RAMP.id,
 		},
+		// De buitenspiraal van de stadsgarage. Zonder deze twee stond er decor:
+		// citySurfaces zijn vlakke rechthoeken, dus een schuine plaat leverde geen
+		// vloer op en je liep er dwars doorheen naar het maaiveld.
+		...GARAGE_RAMP_RUNS.map((run): PathRamp => ({ start: run.start, end: run.end, width: run.width, label: run.id })),
 	];
 	/** Inclines the player can actually walk up — mirrors the built geometry. */
 	readonly ramps: Ramp[] = [
@@ -269,6 +384,15 @@ export class CollisionWorld {
 			y: SLIDE_PLATFORM_TOP_Y,
 			label: 'slide_platform',
 		},
+		// Zitrand en bakrand bij de atriumbalustrade: het opstapje naar de vide.
+		...atriumPlanterTiers().map((tier) => ({
+			minX: tier.standMinX,
+			maxX: tier.maxX,
+			minZ: tier.minZ,
+			maxZ: tier.maxZ,
+			y: tier.topY,
+			label: `atrium_planter_${tier.id}`,
+		})),
 	];
 
 	/**
@@ -295,6 +419,7 @@ export class CollisionWorld {
 			label: opts?.label,
 			climbable: opts?.climbable,
 			outdoor: opts?.outdoor,
+			tags: opts?.tags,
 		});
 	}
 
@@ -310,32 +435,73 @@ export class CollisionWorld {
 
 		// West wall has a basement-height opening for the authored parking ramp.
 		// A single floor-agnostic AABB here made the rendered exit impassable.
-		const exitExtentZ = half(PARKING_EXIT_RAMP.width) + 0.5;
-		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, -mallEdgeZ - wallT, -exitExtentZ, {
+		const exitExtentZ = PARKING_EXIT_WALL_GAP;
+		const wallWestMinX = -mallEdgeX - wallT;
+		const wallWestMaxX = -mallEdgeX + 0.2;
+		this.add(wallWestMinX, wallWestMaxX, -mallEdgeZ - wallT, -exitExtentZ, opaque({ maxY: SHELL_TOP_Y, label: 'wall_w_north' }));
+		this.add(
+			wallWestMinX,
+			wallWestMaxX,
+			ENTRANCE_PORTAL.maxZ,
+			mallEdgeZ + wallT,
+			opaque({ maxY: SHELL_TOP_Y, label: 'wall_w_south' }),
+		);
+		this.add(
+			wallWestMinX,
+			wallWestMaxX,
+			-exitExtentZ,
+			exitExtentZ,
+			opaque({ minY: -0.5, maxY: SHELL_TOP_Y, label: 'wall_w_above_exit' }),
+		);
+
+		// De hoofdingang. De twee zijlichten zijn glas voor het oog en wand voor het
+		// lichaam, en boven de deuren staat het scherm door tot het dak: zonder die
+		// doos loop je op V1 dwars door de pui de straat op. Alleen de deuropening
+		// zelf is vrij, over de volle hoogte waar een lopende speler in past.
+		for (const [label, minZ, maxZ] of [
+			['entrance_sidelight_n', ENTRANCE_PORTAL.minZ, ENTRANCE_PORTAL.doorMinZ],
+			['entrance_sidelight_s', ENTRANCE_PORTAL.doorMaxZ, ENTRANCE_PORTAL.maxZ],
+		] as const) {
+			this.add(wallWestMinX, wallWestMaxX, minZ, maxZ, { maxY: SHELL_TOP_Y, label });
+		}
+		this.add(wallWestMinX, wallWestMaxX, ENTRANCE_PORTAL.doorMinZ, ENTRANCE_PORTAL.doorMaxZ, {
+			minY: ENTRANCE_SPEC.doorHeadY,
 			maxY: SHELL_TOP_Y,
-			label: 'wall_w_north',
+			label: 'entrance_screen',
 		});
-		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, exitExtentZ, mallEdgeZ + wallT, {
-			maxY: SHELL_TOP_Y,
-			label: 'wall_w_south',
-		});
-		this.add(-mallEdgeX - wallT, -mallEdgeX + 0.2, -exitExtentZ, exitExtentZ, {
-			minY: -0.5,
-			maxY: SHELL_TOP_Y,
-			label: 'wall_w_above_exit',
-		});
-		this.add(mallEdgeX - 0.2, mallEdgeX + wallT, -mallEdgeZ - wallT, mallEdgeZ + wallT, {
-			maxY: SHELL_TOP_Y,
-			label: 'wall_e',
-		});
-		this.add(-mallEdgeX - wallT, mallEdgeX + wallT, -mallEdgeZ - wallT, -mallEdgeZ + 0.2, {
-			maxY: SHELL_TOP_Y,
-			label: 'wall_n',
-		});
-		this.add(-mallEdgeX - wallT, mallEdgeX + wallT, mallEdgeZ - 0.2, mallEdgeZ + wallT, {
-			maxY: SHELL_TOP_Y,
-			label: 'wall_s',
-		});
+		// De luifelkolommen staan op de stoep, dus alleen wie buiten mag komen botst erop.
+		for (const sign of [-1, 1] as const) {
+			const z = ENTRANCE_PORTAL.centerZ + sign * ENTRANCE_SPEC.column.offsetZ;
+			const r = ENTRANCE_SPEC.column.radius;
+			this.add(
+				ENTRANCE_PORTAL.columnX - r,
+				ENTRANCE_PORTAL.columnX + r,
+				z - r,
+				z + r,
+				opaque({ minY: -0.5, maxY: ENTRANCE_SPEC.canopy.topY, label: 'entrance_column', outdoor: true }),
+			);
+		}
+		this.add(
+			mallEdgeX - 0.2,
+			mallEdgeX + wallT,
+			-mallEdgeZ - wallT,
+			mallEdgeZ + wallT,
+			opaque({ maxY: SHELL_TOP_Y, label: 'wall_e' }),
+		);
+		this.add(
+			-mallEdgeX - wallT,
+			mallEdgeX + wallT,
+			-mallEdgeZ - wallT,
+			-mallEdgeZ + 0.2,
+			opaque({ maxY: SHELL_TOP_Y, label: 'wall_n' }),
+		);
+		this.add(
+			-mallEdgeX - wallT,
+			mallEdgeX + wallT,
+			mallEdgeZ - 0.2,
+			mallEdgeZ + wallT,
+			opaque({ maxY: SHELL_TOP_Y, label: 'wall_s' }),
+		);
 
 		// Store: thin BACK wall only — open interior for stock + shopkeeper
 		for (const s of STORES) {
@@ -346,11 +512,13 @@ export class CollisionWorld {
 			const backCx = s.x - Math.sin(s.rotation) * roomDepth;
 			const backCz = s.z - Math.cos(s.rotation) * roomDepth;
 			const storeCollisionExtent = s.width * 0.48;
-			this.add(backCx - storeCollisionExtent, backCx + storeCollisionExtent, backCz - 0.4, backCz + 0.4, {
-				minY: y0 - 0.5,
-				maxY: y1,
-				label: `store_back_${s.id}`,
-			});
+			this.add(
+				backCx - storeCollisionExtent,
+				backCx + storeCollisionExtent,
+				backCz - 0.4,
+				backCz + 0.4,
+				opaque({ minY: y0 - 0.5, maxY: y1, label: `store_back_${s.id}` }),
+			);
 		}
 
 		for (const connector of VERTICAL_CONNECTORS) {
@@ -370,7 +538,7 @@ export class CollisionWorld {
 			FOUNTAIN_SPEC.center.x + FOUNTAIN_SPEC.kerbRadius,
 			FOUNTAIN_SPEC.center.z - FOUNTAIN_SPEC.kerbRadius,
 			FOUNTAIN_SPEC.center.z + FOUNTAIN_SPEC.kerbRadius,
-			{ minY: -0.5, maxY: FOUNTAIN_SPEC.blockHeight, label: 'fountain' },
+			opaque({ minY: -0.5, maxY: FOUNTAIN_SPEC.blockHeight, label: 'fountain' }),
 		);
 
 		// Floor-1 VOID (architect: weide/void) — cannot walk over atrium hole
@@ -393,8 +561,18 @@ export class CollisionWorld {
 			label: 'catwalk',
 		});
 
+		// De plantenbak bij de vide. Elke trede stopt een kerbdikte onder zijn eigen
+		// loopvlak, dus vanaf het dek loop je ertegenaan en erbovenop sta je erop.
+		for (const tier of atriumPlanterTiers()) {
+			this.add(tier.minX, tier.maxX, tier.minZ, tier.maxZ, {
+				minY: levelY('v1') - 0.5,
+				maxY: tier.topY - KERB_LIP,
+				label: `atrium_planter_${tier.id}`,
+			});
+		}
+
 		// Aperol bar
-		this.add(-16, -12, 9, 11.5, { minY: -0.5, maxY: 3, label: 'aperol' });
+		this.add(-16, -12, 9, 11.5, opaque({ minY: -0.5, maxY: 3, label: 'aperol' }));
 
 		// Kiosk base
 		this.add(
@@ -402,17 +580,32 @@ export class CollisionWorld {
 			KIOSK_SPEC.center.x + KIOSK_SPEC.baseRadius,
 			KIOSK_SPEC.center.z - KIOSK_SPEC.baseRadius,
 			KIOSK_SPEC.center.z + KIOSK_SPEC.baseRadius,
-			{ minY: -0.5, maxY: KIOSK_SPEC.height, label: 'kiosk' },
+			opaque({ minY: -0.5, maxY: KIOSK_SPEC.height, label: 'kiosk' }),
 		);
 
 		// De parkeerschil: dezelfde wanden, kolommen en cabine die de plattegrond
 		// tekent. P1 had helemaal geen geometrie en je liep dwars door alles heen.
 		for (const collider of parkingDeckColliders()) {
-			this.add(collider.minX, collider.maxX, collider.minZ, collider.maxZ, {
-				minY: collider.minY,
-				maxY: collider.maxY,
-				label: collider.label,
-			});
+			this.add(
+				collider.minX,
+				collider.maxX,
+				collider.minZ,
+				collider.maxZ,
+				opaque({ minY: collider.minY, maxY: collider.maxY, label: collider.label }),
+			);
+		}
+
+		// De keermuren van de uitritgeul, waar hij buiten de gevel open ligt. Daar
+		// stond niets langs de rijbaan: naast de helling af was zes meter vallen.
+		// Ze staan op de stoep, dus alleen wie buiten mag komen botst erop.
+		for (const collider of parkingExitTrenchColliders()) {
+			this.add(
+				collider.minX,
+				collider.maxX,
+				collider.minZ,
+				collider.maxZ,
+				opaque({ minY: collider.minY, maxY: collider.maxY, label: collider.label, outdoor: true }),
+			);
 		}
 	}
 
@@ -430,21 +623,23 @@ export class CollisionWorld {
 			const sin = Math.abs(Math.sin(t.rot));
 			const ex = half(t.w * cos + t.d * sin);
 			const ez = half(t.w * sin + t.d * cos);
-			this.add(t.x - ex, t.x + ex, t.z - ez, t.z + ez, {
-				minY: -0.5,
-				maxY: t.h,
-				label: `city_tower_${i}`,
-				outdoor: true,
-			});
+			this.add(
+				t.x - ex,
+				t.x + ex,
+				t.z - ez,
+				t.z + ez,
+				opaque({ minY: -0.5, maxY: t.h, label: `city_tower_${i}`, outdoor: true }),
+			);
 		});
 
 		const zaal = THEATRE_PLAN.hall;
-		this.add(zaal.minX, zaal.maxX, zaal.minZ, zaal.maxZ, {
-			minY: -0.5,
-			maxY: THEATRE_PLAN.hallHeight,
-			label: 'city_theatre_hall',
-			outdoor: true,
-		});
+		this.add(
+			zaal.minX,
+			zaal.maxX,
+			zaal.minZ,
+			zaal.maxZ,
+			opaque({ minY: -0.5, maxY: THEATRE_PLAN.hallHeight, label: 'city_theatre_hall', outdoor: true }),
+		);
 
 		// Podium en treden zijn loopvlakken; de kerbdozen eromheen dwingen je de
 		// trap op in plaats van tegen de zijkant omhoog.
@@ -469,12 +664,13 @@ export class CollisionWorld {
 		const zuilen = THEATRE_PLAN.columns;
 		for (let i = 0; i < zuilen.count; i++) {
 			const x = zuilen.x0 + i * zuilen.pitch;
-			this.add(x - zuilen.radius, x + zuilen.radius, zuilen.z - zuilen.radius, zuilen.z + zuilen.radius, {
-				minY: zuilen.bottomY - 0.5,
-				maxY: zuilen.topY,
-				label: `city_theatre_column_${i}`,
-				outdoor: true,
-			});
+			this.add(
+				x - zuilen.radius,
+				x + zuilen.radius,
+				zuilen.z - zuilen.radius,
+				zuilen.z + zuilen.radius,
+				opaque({ minY: zuilen.bottomY - 0.5, maxY: zuilen.topY, label: `city_theatre_column_${i}`, outdoor: true }),
+			);
 		}
 
 		// De garage staat op poten: het maaiveld-dek is open, dus dat loop je op.
@@ -484,14 +680,107 @@ export class CollisionWorld {
 		const kolom = half(GARAGE_PLAN.columnSize);
 		for (const x of GARAGE_PLAN.columnX) {
 			for (const z of GARAGE_PLAN.columnZ) {
-				this.add(x - kolom, x + kolom, z - kolom, z + kolom, {
-					minY: -0.5,
-					maxY: GARAGE_PLAN.columnTopY,
-					label: 'city_garage_column',
-					outdoor: true,
-				});
+				this.add(
+					x - kolom,
+					x + kolom,
+					z - kolom,
+					z + kolom,
+					opaque({ minY: -0.5, maxY: GARAGE_PLAN.columnTopY, label: 'city_garage_column', outdoor: true }),
+				);
 			}
 		}
+
+		// De bordessen van de spiraal en de dekken erboven zijn vlak, dus stadsdek;
+		// de schuine platen ertussen lopen als pathRamp. De borstwering is de kerb
+		// die je op een dek houdt: hij begint op het loopvlak, zodat wie een
+		// verdieping lager staat er niet tegenaan botst.
+		for (const bordes of [...GARAGE_RAMP_LANDINGS, ...GARAGE_DECKS]) {
+			this.citySurfaces.push({
+				minX: bordes.minX,
+				maxX: bordes.maxX,
+				minZ: bordes.minZ,
+				maxZ: bordes.maxZ,
+				y: bordes.y,
+				label: bordes.id,
+			});
+		}
+		for (const p of GARAGE_PARAPETS) {
+			this.add(p.minX, p.maxX, p.minZ, p.maxZ, opaque({ minY: p.minY, maxY: p.maxY, label: p.id, outdoor: true }));
+		}
+	}
+
+	/**
+	 * Kan `from` `to` zien?
+	 *
+	 * Eén helper, want anders krijgt elk systeem zijn eigen antwoord: de bewaker
+	 * schoot dwars door de westgevel op iemand op de stoep, en Wei joeg je door een
+	 * winkelwand heen. De vraag is horizontaal met een hoogtevenster erbij, precies
+	 * zoals de dozen zelf zijn opgeschreven: een balie van een meter hoog staat niet
+	 * tussen twee hoofden in, en een gevel van de voet tot de kroonlijst wel.
+	 *
+	 * De occlusie komt uit het emitterschema, dus wie de vraag stelt schrijft op
+	 * waar hij tegenaan kijkt en niet hoe hij dat uitrekent. `mode: 'none'` is altijd
+	 * vrij zicht; dozen zonder een van `blockingTags` tellen niet mee.
+	 *
+	 * `projectile` leest dezelfde dozen als muur in plaats van als uitzicht: een
+	 * eindpunt in de doos is dan een treffer en geen vrijstelling. Een kogel legt
+	 * een halve meter per frame af en een winkelwand is er zestien centimeter dik,
+	 * dus vrijwel elke doorgang eindigt één frame lang ín de wand; met de
+	 * kijkersvrijstelling was dat frame vrijgesteld, het volgende ook (want daar
+	 * begon het segment erin) en kwam de kogel er aan de andere kant uit.
+	 */
+	hasLineOfSight(from: Vec3, to: Vec3, occlusion: Occlusion): boolean {
+		if (occlusion.mode === 'none') return true;
+		const forgiveEnds = occlusion.mode !== 'projectile';
+		const minY = Math.min(from.y, to.y);
+		const maxY = Math.max(from.y, to.y);
+		const dx = to.x - from.x;
+		const dz = to.z - from.z;
+		// Twee kijkers op dezelfde plek hebben geen lijn te trekken. Een kogel wel: die
+		// valt loodrecht en heeft dan nog steeds een doos onder zich.
+		if (forgiveEnds && dx * dx + dz * dz < SIGHT_MIN_RUN * SIGHT_MIN_RUN) return true;
+		for (const b of this.boxes) {
+			const tags = b.tags;
+			if (!tags || !occlusion.blockingTags.some((tag) => tags.includes(tag))) continue;
+			if (b.minY !== undefined && maxY < b.minY) continue;
+			if (b.maxY !== undefined && minY > b.maxY) continue;
+			const ends = insideBox(b, from.x, from.y, from.z) || insideBox(b, to.x, to.y, to.z);
+			// Wie er zelf in staat kijkt er niet doorheen: een bewaker die tegen een
+			// wand aan geduwd is zou anders nooit meer iets zien.
+			if (ends && forgiveEnds) continue;
+			if (ends) return false;
+			if (segmentCrossesBox(b, from.x, from.z, dx, dz)) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Duikt het segment door een vloerplaat heen?
+	 *
+	 * Er staat geen collisiondoos onder een dek — een plaat is vloer en geen muur —
+	 * dus een kogel van de V1-balustrade viel dwars door de begane grond en stierf
+	 * pas onder de fundering. De platen en hun gaten staan al in het wereldmodel; de
+	 * vraag leest precies die lijst, zodat het atriumgat een kogel wél doorlaat.
+	 */
+	crossesSlab(from: Vec3, to: Vec3, radius: number): boolean {
+		const lowY = Math.min(from.y, to.y);
+		const highY = Math.max(from.y, to.y);
+		for (const level of LEVELS) {
+			const slab = SLAB_SPEC_BY_LEVEL[level.id];
+			const bottom = slab.topY - slab.thickness;
+			if (highY <= bottom || lowY >= slab.topY) continue;
+			const plan = segmentPlanWithin(from, to, bottom, slab.topY);
+			// Met zijn eigen straal eromheen, want een kogel die recht naar beneden valt
+			// beslaat anders een vlak van niets en past dan door geen enkel gat.
+			const rect = {
+				minX: plan.minX - radius,
+				maxX: plan.maxX + radius,
+				minZ: plan.minZ - radius,
+				maxZ: plan.maxZ + radius,
+			};
+			if (slabOpeningWithin(level.id, rect) === null) return true;
+		}
+		return false;
 	}
 
 	/** Binnen de voetafdruk liggen de mall-platen; erbuiten alleen de stad. */

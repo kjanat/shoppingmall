@@ -27,7 +27,7 @@
  * when the canvas was created.
  */
 
-import { BATCH_KEY, isBatchMode } from '#/render/graphicsPrefs';
+import { BATCH_KEY, isBatchMode, ZONE_CULL_KEY } from '#/render/graphicsPrefs';
 
 /** One render target + viewport size, e.g. the main pass or the shadow map. */
 export type PassTiming = {
@@ -86,6 +86,22 @@ export type RoutePose = {
 	lookZ: number;
 };
 
+/**
+ * Wat de zonecull van dit standpunt vond. Zonder deze telling is een cull die
+ * niets doet niet te onderscheiden van een cull die alles al mocht tekenen.
+ */
+export type ZoneCullTally = {
+	zone: string;
+	cones: number;
+	batches: number;
+	batchesHidden: number;
+	occupants: number;
+	occupantsHidden: number;
+	/** Bleef staan omdat het in de zone van de kijker zelf ligt, of via een portaalkegel. */
+	keptInOwnZone: number;
+	keptThroughCone: number;
+};
+
 export type Environment = {
 	renderer: string;
 	vendor: string;
@@ -100,6 +116,7 @@ export type Environment = {
 	batchDrawCalls: number;
 	batchLargestRadius: number;
 	batchOwners: BatchOwnerTiming[];
+	zoneCull: ZoneCullTally | null;
 	warmupPrograms: number;
 	/** Programs linked, and how big their source was, since page load. */
 	programsLinked: number;
@@ -139,15 +156,15 @@ declare global {
 }
 
 /** The probe source, ready to hand to Page.addScriptToEvaluateOnNewDocument. */
-export function probeSource(batchOverride?: string): string {
+export function probeSource(batchOverride?: string, zoneCull?: boolean): string {
 	const mode = isBatchMode(batchOverride) ? batchOverride : undefined;
-	return `(${installProbe.toString()})(${JSON.stringify(BATCH_KEY)}, ${JSON.stringify(mode)});`;
+	return `(${installProbe.toString()})(${JSON.stringify(BATCH_KEY)}, ${JSON.stringify(mode)}, ${JSON.stringify(ZONE_CULL_KEY)}, ${JSON.stringify(zoneCull)});`;
 }
 
 // Everything below runs in the browser. It must stay self-contained: it is
 // stringified, so a reference to anything outside this function will not exist
 // at the other end.
-function installProbe(batchKey: string, batchOverride?: string): void {
+function installProbe(batchKey: string, batchOverride: string | undefined, zoneCullKey: string, zoneCull?: boolean): void {
 	// App uses its own GPU query for the HUD. Two TIME_ELAPSED_EXT queries cannot
 	// overlap on one context, so announce the external probe before App starts.
 	Object.defineProperty(globalThis, '__mallPerfProbeActive', { value: true, configurable: true });
@@ -158,6 +175,9 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 	try {
 		localStorage.setItem('mallsim.dynres.v1', '0');
 		if (batchOverride) localStorage.setItem(batchKey, batchOverride);
+		// Dezelfde reden: de zonecull moet vaststaan voordat App hem uitleest, want
+		// de helft van een A-B-A is een run met hem uit.
+		if (zoneCull !== undefined) localStorage.setItem(zoneCullKey, zoneCull ? '1' : '0');
 	} catch {
 		// Storage blocked. The run is still valid as long as nobody turned the
 		// setting on in this profile.
@@ -269,6 +289,27 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 		if (typeof control !== 'object' || control === null) return undefined;
 		const fn = Reflect.get(control, name);
 		return typeof fn === 'function' ? Reflect.apply(fn, control, args) : undefined;
+	};
+
+	const readZoneCull = (): ZoneCullTally | null => {
+		const tally = invokeControl('readZoneCull');
+		if (typeof tally !== 'object' || tally === null) return null;
+		const zone = Reflect.get(tally, 'zone');
+		if (typeof zone !== 'string') return null;
+		const count = (key: string): number => {
+			const value = Reflect.get(tally, key);
+			return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+		};
+		return {
+			zone,
+			cones: count('cones'),
+			batches: count('batches'),
+			batchesHidden: count('batchesHidden'),
+			occupants: count('occupants'),
+			occupantsHidden: count('occupantsHidden'),
+			keptInOwnZone: count('keptInOwnZone'),
+			keptThroughCone: count('keptThroughCone'),
+		};
 	};
 
 	const collectCpuFrame = (): void => {
@@ -669,6 +710,7 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 					batchOwners.push({ name, dynamic, sources, batches, triangles, largestRadius });
 				}
 			}
+			const zoneCull = readZoneCull();
 			if (ctx) {
 				const debugInfo = ctx.getExtension('WEBGL_debug_renderer_info');
 				if (debugInfo && 'UNMASKED_RENDERER_WEBGL' in debugInfo && 'UNMASKED_VENDOR_WEBGL' in debugInfo) {
@@ -692,6 +734,7 @@ function installProbe(batchKey: string, batchOverride?: string): void {
 				batchDrawCalls: Number(document.documentElement.dataset['batchDrawCalls'] ?? 0),
 				batchLargestRadius: Number(document.documentElement.dataset['batchLargestRadius'] ?? 0),
 				batchOwners,
+				zoneCull,
 				warmupPrograms: Number(document.documentElement.dataset['warmupPrograms'] ?? 0),
 				programsLinked: counters.links,
 				shaderCount: counters.shaders,

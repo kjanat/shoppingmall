@@ -1,7 +1,7 @@
-import type { Vec2, Vec3 } from '#/data/spatial';
+import type { CardinalSide, Vec2, Vec3 } from '#/data/spatial';
 import { half, midpoint, span } from '#/util/math';
 
-export type CardinalSide = 'north' | 'south' | 'west' | 'east';
+export type { CardinalSide };
 export type RectangleCorner = 'north-west' | 'north-east' | 'south-west' | 'south-east';
 
 const CARDINAL_SIDES = ['north', 'south', 'west', 'east'] as const satisfies readonly CardinalSide[];

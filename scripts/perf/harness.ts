@@ -17,7 +17,7 @@ import { blue, space } from 'ansispeck/safe';
 import { PROFILE_DIR, STATIC_DIR } from './paths.ts';
 import type { PerfBrowser } from './playwright.ts';
 import { isSoftwareHeadless, launchPerfBrowser } from './playwright.ts';
-import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample } from './probe.ts';
+import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample, ZoneCullTally } from './probe.ts';
 import { probeSource } from './probe.ts';
 import { isRecord, readArray, readBoolean, readNumber, readString } from './values.ts';
 
@@ -118,6 +118,7 @@ export async function openGame(
 	freshProfile = false,
 	url?: string,
 	batchOverride?: string,
+	zoneCull?: boolean,
 ): Promise<GameSession> {
 	const server: StaticServer = url ? { url, stop: async () => {} } : await serveGame();
 	// A little taller than the viewport: Chrome's own chrome eats some of it, and
@@ -130,7 +131,7 @@ export async function openGame(
 		throw error;
 	}
 	try {
-		await browser.page.addInitScript({ content: probeSource(batchOverride) });
+		await browser.page.addInitScript({ content: probeSource(batchOverride, zoneCull) });
 	} catch (error) {
 		try {
 			await browser.close();
@@ -254,6 +255,20 @@ export function parseSample(value: unknown): Sample {
 	return sample;
 }
 
+function parseZoneCull(value: unknown): ZoneCullTally | null {
+	if (!isRecord(value)) return null;
+	return {
+		zone: readString(value, 'zone', '?'),
+		cones: readNumber(value, 'cones'),
+		batches: readNumber(value, 'batches'),
+		batchesHidden: readNumber(value, 'batchesHidden'),
+		occupants: readNumber(value, 'occupants'),
+		occupantsHidden: readNumber(value, 'occupantsHidden'),
+		keptInOwnZone: readNumber(value, 'keptInOwnZone'),
+		keptThroughCone: readNumber(value, 'keptThroughCone'),
+	};
+}
+
 export function parseEnvironment(value: unknown): Environment {
 	if (!isRecord(value)) throw new Error('probe returned no environment — is the probe installed?');
 	const batchOwners: BatchOwnerTiming[] = readArray(value, 'batchOwners').flatMap((entry) => {
@@ -283,6 +298,7 @@ export function parseEnvironment(value: unknown): Environment {
 		batchDrawCalls: readNumber(value, 'batchDrawCalls'),
 		batchLargestRadius: readNumber(value, 'batchLargestRadius'),
 		batchOwners,
+		zoneCull: parseZoneCull(value['zoneCull']),
 		warmupPrograms: readNumber(value, 'warmupPrograms'),
 		programsLinked: readNumber(value, 'programsLinked'),
 		shaderCount: readNumber(value, 'shaderCount'),

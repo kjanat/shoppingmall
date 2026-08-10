@@ -1,15 +1,26 @@
 import * as THREE from 'three';
 import { spatial } from '#/audio/SpatialAudio';
 import { level, levelAt } from '#/data/levels';
+import { LINE_OF_SIGHT, PROJECTILE_PATH } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
+import { GRAVITY } from '#/player/constants';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { lerp } from '#/util/math';
-import { at, pick } from '#/util/rand';
+import { fitText, labelCanvas, labelTexture, roundRect } from '#/util/label';
+import { lerp, shortestAngle } from '#/util/math';
+import { at, jitter, pick, plusMinus } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
 type GuardState = 'patrol' | 'alert' | 'firing';
+
+/** Het lijf van een kogel. De mesh en de vraag of hij door een vloergat past lezen dezelfde maat. */
+export const BULLET_RADIUS = 0.06;
+
+/**
+ * Hoe hard een kogel gaat. De wereldcontrole marcheert er een langs de westgevel om
+ * te bewijzen dat hij erop stukloopt, en die stap moet dezelfde zijn als hier.
+ */
+export const BULLET_SPEED = { min: 28, spread: 8 } as const;
 
 type Guard = {
 	root: THREE.Group;
@@ -53,6 +64,9 @@ type Bullet = {
 };
 
 type Threat = { x: number; y: number; z: number; kind: string; weight: number };
+
+/** Ooghoogte van een bewaker boven zijn voeten; vanaf daar kijkt hij, niet vanaf de vloer. */
+const EYE_HEIGHT = 1.62;
 
 const YELLS = [
 	'2A, BABY!',
@@ -202,9 +216,9 @@ export class SecurityGuards {
 			const paranoid = Math.random() < 0.012;
 			if (hit || paranoid) {
 				const t = hit ?? {
-					x: g.root.position.x + (Math.random() - 0.5) * 6,
+					x: g.root.position.x + jitter(6),
 					y: g.root.position.y + 1.4,
-					z: g.root.position.z + (Math.random() - 0.5) * 6,
+					z: g.root.position.z + jitter(6),
 					kind: 'shadow',
 					weight: 0.5,
 				};
@@ -274,6 +288,10 @@ export class SecurityGuards {
 			if (Math.abs(t.y - (py + 1.4)) > 3.5 && Math.abs(t.y - py) > 3.5) continue;
 			const d = Math.hypot(t.x - px, t.z - pz);
 			if (d > maxDist) continue;
+			// Afstand alleen maakte van elke gevel een raam: een bewaker binnen opende
+			// het vuur op iemand op de stoep, dwars door de westgevel. Zicht is de vraag,
+			// en de deuropening in diezelfde gevel is het antwoord dat wél schiet.
+			if (!this.world.hasLineOfSight({ x: px, y: py + EYE_HEIGHT, z: pz }, t, LINE_OF_SIGHT)) continue;
 			// Closer + higher weight = more "threatening"
 			const score = d / Math.max(0.3, t.weight);
 			if (score < bestScore) {
@@ -308,9 +326,7 @@ export class SecurityGuards {
 		const dz = z - g.root.position.z;
 		if (dx * dx + dz * dz < 1e-4) return;
 		const target = Math.atan2(dx, dz);
-		let dy = target - g.yaw;
-		while (dy > Math.PI) dy -= Math.PI * 2;
-		while (dy < -Math.PI) dy += Math.PI * 2;
+		const dy = shortestAngle(g.yaw, target);
 		g.yaw += dy * 0.22;
 		g.root.rotation.y = g.yaw;
 	}
@@ -332,19 +348,19 @@ export class SecurityGuards {
 		if (this.tmp.lengthSq() < 0.01) this.tmp.set(fx, 0, fz);
 		this.tmp.normalize();
 		// cone of inaccuracy
-		this.tmp.x += (Math.random() - 0.5) * 0.18;
-		this.tmp.y += (Math.random() - 0.5) * 0.1;
-		this.tmp.z += (Math.random() - 0.5) * 0.18;
+		this.tmp.x += jitter(0.18);
+		this.tmp.y += jitter(0.1);
+		this.tmp.z += jitter(0.18);
 		this.tmp.normalize();
 
-		const speed = 28 + Math.random() * 8;
+		const speed = BULLET_SPEED.min + Math.random() * BULLET_SPEED.spread;
 		const mat = this.track(
 			new THREE.MeshBasicMaterial({
 				color: 0xffeb3b,
 				toneMapped: false,
 			}),
 		);
-		const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), mat);
+		const mesh = new THREE.Mesh(new THREE.SphereGeometry(BULLET_RADIUS, 6, 6), mat);
 		mesh.position.copy(origin);
 		this.group.add(mesh);
 		this.bullets.push({
@@ -384,11 +400,30 @@ export class SecurityGuards {
 			const b = this.bullets[i];
 			if (!b) continue;
 			b.life -= dt;
+			const fromX = b.mesh.position.x;
+			const fromY = b.mesh.position.y;
+			const fromZ = b.mesh.position.z;
 			b.mesh.position.x += b.vx * dt;
 			b.mesh.position.y += b.vy * dt;
 			b.mesh.position.z += b.vz * dt;
-			// gravity-ish drop
-			b.vy -= 4 * dt;
+			b.vy -= GRAVITY * dt;
+			// Een kogel gaat niet door een muur die een blik ook tegenhoudt, en niet
+			// door de vloer eronder. Dezelfde dozen als de aggro erboven, maar gelezen
+			// als muur: `PROJECTILE_PATH` telt een eindpunt ín een doos als treffer, want
+			// een stap van een halve meter eindigt midden in een wand van zestien
+			// centimeter en met de kijkersvrijstelling kwam hij er aan de overkant uit.
+			const was = { x: fromX, y: fromY, z: fromZ };
+			const now = { x: b.mesh.position.x, y: b.mesh.position.y, z: b.mesh.position.z };
+			if (!this.world.hasLineOfSight(was, now, PROJECTILE_PATH) || this.world.crossesSlab(was, now, BULLET_RADIUS)) {
+				b.life = 0;
+				this.group.remove(b.mesh);
+				(b.mesh.material as THREE.Material).dispose();
+				b.mesh.geometry.dispose();
+				this.bullets.splice(i, 1);
+				// Zonder deze sprong liep de treffercontrole hieronder door op de stand
+				// achter de muur, en schoot een dode kogel je alsnog aan de andere kant.
+				continue;
+			}
 
 			// Player hit (generous capsule)
 			const dx = b.mesh.position.x - playerPos.x;
@@ -425,7 +460,7 @@ export class SecurityGuards {
 				const t = i / n;
 				// Crack → body thump
 				const env = Math.exp(-t * 38) * (1 - t * 0.3);
-				d[i] = (Math.random() * 2 - 1) * env;
+				d[i] = plusMinus(env);
 			}
 			void spatial.playAt(
 				buf,
@@ -655,14 +690,4 @@ function shortName(full: string): string {
 	if (nickname) return nickname;
 	const parts = full.split(/\s+/);
 	return parts[parts.length - 1] ?? full;
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-	ctx.beginPath();
-	ctx.moveTo(x + r, y);
-	ctx.arcTo(x + w, y, x + w, y + h, r);
-	ctx.arcTo(x + w, y + h, x, y + h, r);
-	ctx.arcTo(x, y + h, x, y, r);
-	ctx.arcTo(x, y, x + w, y, r);
-	ctx.closePath();
 }

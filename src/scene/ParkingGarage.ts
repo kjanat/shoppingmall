@@ -5,24 +5,86 @@ import {
 	PARKED_CAR_SPEC,
 	PARKED_CAR_SPOTS,
 	PARKING_BAY_SPEC,
+	PARKING_BOOTH_LABEL,
 	PARKING_CEILING_SPEC,
 	PARKING_DECK_SPEC,
+	PARKING_EXIT_CHEVRONS,
+	PARKING_EXIT_RAIL,
+	PARKING_EXIT_RAIL_HEADS,
 	PARKING_EXIT_RAMP,
+	PARKING_EXIT_RAMP_ANGLE,
+	PARKING_EXIT_RAMP_LENGTH,
+	PARKING_EXIT_TRENCH,
+	PARKING_EXIT_TRENCH_WALLS,
 	PARKING_SLAB_SPEC,
 	PARKING_WALL_PANELS,
+	parkingPaintPatches,
 	parkingPillarCenters,
 	parkingStalls,
 } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { addBoxMesh } from '#/render/meshFactory';
+import { addBoxMesh, addSignBack } from '#/render/meshFactory';
 import { addExtrudedXZMesh } from '#/render/xzShape';
+import { CITY_GROUND_Y } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { half, midpoint } from '#/util/math';
+import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** World Y of the parking deck (one storey under V0) */
 export const GARAGE_Y = levelY('p1');
+
+/** Straal van een ophangstang. Een bord dat aan niets hangt is geen bord maar een vlek. */
+const SIGN_HANGER_RADIUS = 0.02;
+
+/**
+ * Hoever het grijze achtervlak achter een bord hangt dat van twee kanten te naderen
+ * is. De borden hier hangen aan stangen of staan op palen in de open lucht, dus van
+ * achteren keek je dwars door de tekst heen naar de overkant.
+ */
+const SIGN_BACK_GAP = 0.03;
+const SIGN_BACK_COLOR = 0x8d9296;
+
+/** ← EXIT · STAD, hangend boven de mond binnen in de garage. */
+const EXIT_SIGN = { setback: 2, centerY: 2.8, height: 0.7, hangerSpread: 1.3 } as const;
+
+/**
+ * CITY RING → bij de uitritmond. Hij stond op de hartlijn van de rijbaan en hing
+ * daar aan niets; op twee palen naast de baan staat hij waar wie naar buiten rijdt
+ * hem aan zijn rechterkant heeft.
+ */
+const CITY_SIGN = {
+	width: 2.8,
+	height: 0.55,
+	setback: 2,
+	centerY: 1.15,
+	centerZ: -5,
+	post: { radius: 0.06, spacing: 1.1, behind: 0.06 },
+} as const;
+
+/** P1 · PARKEERGARAGE tegen de noordwand, in plaats van een meter ervoor in de lucht. */
+const DECK_SIGN_CLEARANCE = 0.04;
+/** ↑ LIFT · V0 tegen het westvlak van de liftschacht. */
+const LIFT_SIGN_CLEARANCE = 0.05;
+/** MAX 2.1 m boven het gangpad, aan de plaat erboven. */
+const HEIGHT_SIGN = { x: -20, centerY: 3, height: 0.4, hangerSpread: 0.9 } as const;
+
+/** Hoeveel het vaknummer boven de belijning ligt, zodat de twee niet tegen elkaar op flikkeren. */
+const NUMBER_LIFT = 0.01;
+
+/** Eén pijl, geschilderd in meters op de tegel die zich over de baan herhaalt. */
+const CHEVRON_PAINT = {
+	/** Textuurpixels per meter; de pijl staat op ware grootte in het doek. */
+	pixelsPerMetre: 24,
+	color: '#ffc107',
+	/** Streekbreedte, lengte van de punt tot het einde van de armen, en de rand die vrij blijft. */
+	stroke: 0.4,
+	reach: 1.6,
+	inset: 0.5,
+	edge: 0.35,
+	/** Alles onder deze dekking valt weg. */
+	alphaTest: 0.5,
+} as const;
 
 /**
  * Underground parking garage — grey concrete, pillars, bays, a few cars.
@@ -32,6 +94,7 @@ export class ParkingGarage {
 	readonly group = new THREE.Group();
 	readonly pos = new THREE.Vector3(0, GARAGE_Y, 0);
 	private materials: THREE.Material[] = [];
+	private backMat: THREE.Material | null = null;
 	private pool: LightPool;
 
 	constructor(pool: LightPool) {
@@ -70,14 +133,16 @@ export class ParkingGarage {
 			topY: PARKING_CEILING_SPEC.topY - GARAGE_Y,
 		});
 
-		// Perimeter walls (open near elevator east + west exit ramp to city)
+		// Perimeter walls. Only the exit mouth is an opening, and its lintel is the
+		// one panel that starts above the deck instead of on it.
 		for (const panel of PARKING_WALL_PANELS) {
+			const base = panel.base - GARAGE_Y;
 			addBoxMesh(this.group, dark, {
 				name: `parking-wall-${panel.id}`,
 				width: panel.size.width,
-				height: clearHeight,
+				height: span(base, clearHeight),
 				depth: panel.size.depth,
-				position: { x: panel.center.x, y: half(clearHeight), z: panel.center.z },
+				position: { x: panel.center.x, y: midpoint(base, clearHeight), z: panel.center.z },
 			});
 		}
 
@@ -87,52 +152,156 @@ export class ParkingGarage {
 
 	/** Ramp from P1 deck up to street level, heading west out of the mall */
 	private buildExitRamp(concrete: THREE.Material, dark: THREE.Material): void {
-		const { start, end, width, thickness, guardHeight } = PARKING_EXIT_RAMP;
-		const { x: startX, y: startY } = start;
-		const { x: endX, y: endY } = end;
-		const localStartY = startY - GARAGE_Y;
-		const localEndY = endY - GARAGE_Y;
-		const run = Math.abs(endX - startX);
-		const rise = localEndY - localStartY;
-		const length = Math.hypot(run, rise);
-		const angle = -Math.atan2(rise, run);
-		const centerX = midpoint(startX, endX);
+		const { start, end, width, thickness } = PARKING_EXIT_RAMP;
+		const localStartY = start.y - GARAGE_Y;
+		const localEndY = end.y - GARAGE_Y;
+		// Lengte en hoek van de helling komen uit de spec: de leuning, de verf en de
+		// wereldcontrole rekenen met dezelfde twee, en dit was de vierde kopie ervan.
+		const angle = PARKING_EXIT_RAMP_ANGLE;
+		const centerX = midpoint(start.x, end.x);
 		const surfaceCenterY = midpoint(localStartY, localEndY);
 		const slabNormalOffset = half(thickness);
-		const slab = new THREE.Mesh(new THREE.BoxGeometry(length, thickness, width), concrete);
+		const slab = new THREE.Mesh(new THREE.BoxGeometry(PARKING_EXIT_RAMP_LENGTH, thickness, width), concrete);
 		slab.position.set(centerX + Math.sin(angle) * slabNormalOffset, surfaceCenterY - Math.cos(angle) * slabNormalOffset, 0);
 		slab.rotation.z = angle;
 		slab.receiveShadow = true;
 		this.group.add(slab);
 
-		const railOffset = half(guardHeight);
-		for (const sideZ of [-half(width) - 0.15, half(width) + 0.15]) {
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(length, guardHeight, 0.12), dark);
-			rail.position.set(centerX - Math.sin(angle) * railOffset, surfaceCenterY + Math.cos(angle) * railOffset, sideZ);
-			rail.rotation.z = angle;
-			this.group.add(rail);
+		// Leuning en kop komen uit PARKING_EXIT_RAIL: de doos is precies zo lang dat
+		// zijn gedraaide hoeken op de mond uitkomen, en de kop dekt hem daar af.
+		const rail = PARKING_EXIT_RAIL;
+		for (const sign of [-1, 1] as const) {
+			const bar = new THREE.Mesh(new THREE.BoxGeometry(rail.length, rail.height, rail.thickness), dark);
+			bar.position.set(rail.centerX, rail.centerY - GARAGE_Y, sign * rail.offsetZ);
+			bar.rotation.z = rail.angle;
+			this.group.add(bar);
 		}
-		// Yellow EXIT arrows on first segments
-		const yellow = this.track(new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }));
-		for (let i = 0; i < 4; i++) {
-			const t = (i + 0.5) / 8;
-			const x = start.x + (end.x - start.x) * t;
-			const y = localStartY + rise * t + 0.2;
-			const arrow = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.45), yellow);
-			arrow.rotation.x = -Math.PI / 2;
-			arrow.rotation.z = Math.PI / 2; // point west
-			arrow.position.set(x, y, 0);
-			this.group.add(arrow);
+		for (const head of PARKING_EXIT_RAIL_HEADS) {
+			addBoxMesh(this.group, dark, {
+				name: 'parking-exit-rail-head',
+				width: span(head.minX, head.maxX),
+				height: span(head.minY, head.maxY),
+				depth: span(head.minZ, head.maxZ),
+				position: {
+					x: midpoint(head.minX, head.maxX),
+					y: midpoint(head.minY, head.maxY) - GARAGE_Y,
+					z: midpoint(head.minZ, head.maxZ),
+				},
+			});
 		}
-		// Sign at ramp mouth (inside garage)
+
+		// Keermuren langs de hele geul. Zonder deze keek je vanuit P1 dwars de wereld
+		// uit: onder maaiveld staat er buiten de parkeerschil niets, en het grondvlak
+		// van de stad is enkelzijdig, dus auto's en torens zweefden op de lucht.
+		for (const muur of PARKING_EXIT_TRENCH_WALLS) {
+			const onder = PARKING_EXIT_TRENCH.baseY - GARAGE_Y;
+			const boven = muur.topY - GARAGE_Y;
+			addBoxMesh(this.group, concrete, {
+				name: `parking-trench-${muur.id}`,
+				width: span(muur.minX, muur.maxX),
+				height: span(onder, boven),
+				depth: span(muur.minZ, muur.maxZ),
+				position: {
+					x: midpoint(muur.minX, muur.maxX),
+					y: midpoint(onder, boven),
+					z: midpoint(muur.minZ, muur.maxZ),
+				},
+			});
+		}
+		this.buildExitChevrons();
+
+		// Sign at ramp mouth (inside garage), hanging from the deck above it.
 		const exitSign = this.makeTextPlane('← EXIT · STAD', 3.2, 0.7, '#b71c1c', '#fff');
-		exitSign.position.set(start.x + 2, localStartY + 2.8, 0);
+		exitSign.position.set(start.x + EXIT_SIGN.setback, localStartY + EXIT_SIGN.centerY, 0);
 		exitSign.rotation.y = Math.PI / 2;
 		this.group.add(exitSign);
-		const citySign = this.makeTextPlane('CITY RING →', 2.8, 0.55, '#0d47a1', '#fff');
-		citySign.position.set(end.x + 2, localEndY + 1.15, 0);
+		this.backSign(exitSign);
+		this.hangFromCeiling(exitSign.position.x, exitSign.position.y + half(EXIT_SIGN.height), EXIT_SIGN.hangerSpread);
+
+		// CITY RING stond zonder iets eronder midden boven de rijbaan. Nu op twee palen
+		// op de stoep naast de mond, aan de kant waar wie naar buiten rijdt hem heeft.
+		const citySign = this.makeTextPlane('CITY RING →', CITY_SIGN.width, CITY_SIGN.height, '#0d47a1', '#fff');
+		const citySignX = end.x + CITY_SIGN.setback;
+		const citySignY = localEndY + CITY_SIGN.centerY;
+		citySign.position.set(citySignX, citySignY, CITY_SIGN.centerZ);
 		citySign.rotation.y = Math.PI / 2;
 		this.group.add(citySign);
+		// Hij staat vrij op de stoep, dus van het plein af kijk je tegen zijn rug aan.
+		this.backSign(citySign);
+		const postTop = citySignY + half(CITY_SIGN.height);
+		const postBase = CITY_GROUND_Y - GARAGE_Y;
+		const postMat = this.track(lit({ color: 0x9aa2a8, roughness: 0.5, metalness: 0.6 }));
+		for (const sign of [-1, 1] as const) {
+			const post = new THREE.Mesh(
+				new THREE.CylinderGeometry(CITY_SIGN.post.radius, CITY_SIGN.post.radius, span(postBase, postTop), 8),
+				postMat,
+			);
+			post.position.set(
+				citySignX - CITY_SIGN.post.behind,
+				midpoint(postBase, postTop),
+				CITY_SIGN.centerZ + sign * CITY_SIGN.post.spacing,
+			);
+			this.group.add(post);
+		}
+	}
+
+	/**
+	 * Het pijlvak op de uitrit: één vlak dat in het hellingvlak zelf ligt.
+	 *
+	 * De geometrie wordt platgelegd in het XZ-vlak en pas daarna om z gekanteld, dus
+	 * hij draait met de helling mee in plaats van er horizontaal boven te hangen.
+	 * `PARKING_EXIT_CHEVRONS` zet hem uit, inclusief de hoogte langs de normaal.
+	 */
+	private buildExitChevrons(): void {
+		const vak = PARKING_EXIT_CHEVRONS;
+		const geometry = new THREE.PlaneGeometry(vak.length, vak.width);
+		geometry.rotateX(-Math.PI / 2);
+		const strip = new THREE.Mesh(geometry, this.track(this.chevronMaterial()));
+		strip.name = 'parking-exit-chevrons';
+		strip.position.set(vak.center.x, vak.center.y - GARAGE_Y, vak.center.z);
+		strip.rotation.z = vak.angle;
+		this.group.add(strip);
+	}
+
+	/** Eén pijl per herhaling, geschilderd op ware grootte in meters en dan getegeld over de baan. */
+	private chevronMaterial(): THREE.MeshBasicMaterial {
+		const vak = PARKING_EXIT_CHEVRONS;
+		const pixels = CHEVRON_PAINT.pixelsPerMetre;
+		const tegel = vak.length / vak.count;
+		const { canvas, ctx } = labelCanvas(tegel * pixels, vak.width * pixels);
+		ctx.scale(pixels, pixels);
+		ctx.strokeStyle = CHEVRON_PAINT.color;
+		ctx.lineWidth = CHEVRON_PAINT.stroke;
+		ctx.lineCap = 'butt';
+		ctx.lineJoin = 'miter';
+		// De punt wijst naar u = 0, en dat is de mondzijde: de kant waar u naartoe rijdt.
+		const punt = CHEVRON_PAINT.inset;
+		const staart = punt + CHEVRON_PAINT.reach;
+		ctx.beginPath();
+		ctx.moveTo(staart, CHEVRON_PAINT.edge);
+		ctx.lineTo(punt, half(vak.width));
+		ctx.lineTo(staart, vak.width - CHEVRON_PAINT.edge);
+		ctx.stroke();
+		const texture = labelTexture(canvas);
+		texture.wrapS = THREE.RepeatWrapping;
+		texture.repeat.set(vak.count, 1);
+		// Alleen alphaTest en niet transparent: zo blijft het vlak in de dekkende
+		// wachtrij, schrijft het diepte en hoeft er niets gesorteerd te worden.
+		return new THREE.MeshBasicMaterial({ map: texture, alphaTest: CHEVRON_PAINT.alphaTest, toneMapped: false });
+	}
+
+	/** Twee dunne stangen van de plaat boven een hangend bord naar de bovenkant ervan. */
+	private hangFromCeiling(x: number, topY: number, spread: number): void {
+		const ceiling = PARKING_DECK_SPEC.clearHeight;
+		const rodMat = this.track(lit({ color: 0x9aa2a8, roughness: 0.5, metalness: 0.6 }));
+		for (const sign of [-1, 1] as const) {
+			const rod = new THREE.Mesh(
+				new THREE.CylinderGeometry(SIGN_HANGER_RADIUS, SIGN_HANGER_RADIUS, span(topY, ceiling), 6),
+				rodMat,
+			);
+			rod.position.set(x, midpoint(topY, ceiling), sign * spread);
+			this.group.add(rod);
+		}
 	}
 
 	private buildPillars(): void {
@@ -151,27 +320,28 @@ export class ParkingGarage {
 		}
 	}
 
+	/**
+	 * De belijning van de vakken en de pijlen op het middenpad, allebei uit
+	 * `parkingPaintPatches` en dus al om de kolomvoeten heen geknipt. Ze liepen er
+	 * dwars doorheen: zes vakken en drie pijlen verdwenen half in het beton.
+	 */
 	private buildBays(): void {
 		const line = this.track(new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
 		const yellow = this.track(new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }));
-		const { stall, paintY, number, aisle } = PARKING_BAY_SPEC;
-		// Rows of parking bays N and S of center drive aisle
+		const { paintY, number } = PARKING_BAY_SPEC;
+		for (const patch of parkingPaintPatches()) {
+			const verf = new THREE.Mesh(new THREE.PlaneGeometry(patch.width, patch.depth), patch.kind === 'bay' ? line : yellow);
+			verf.name = `parking-paint-${patch.id}`;
+			verf.rotation.x = -Math.PI / 2;
+			verf.position.set(patch.center.x, paintY, patch.center.z);
+			this.group.add(verf);
+		}
+		// Het nummer ligt op zijn eigen vak, aan de kant van het middenpad.
 		for (const { id, center } of parkingStalls()) {
-			const bay = new THREE.Mesh(new THREE.PlaneGeometry(stall.width, stall.depth), line);
-			bay.rotation.x = -Math.PI / 2;
-			bay.position.set(center.x, paintY, center.z);
-			this.group.add(bay);
 			const num = this.makeTextPlane(id, number.width, number.height);
 			num.rotation.x = -Math.PI / 2;
-			num.position.set(center.x, paintY + 0.01, center.z + (center.z < 0 ? number.offsetZ : -number.offsetZ));
+			num.position.set(center.x, paintY + NUMBER_LIFT, center.z + (center.z < 0 ? number.offsetZ : -number.offsetZ));
 			this.group.add(num);
-		}
-		// Center drive arrows
-		for (let i = -aisle.arrows; i <= aisle.arrows; i++) {
-			const arrow = new THREE.Mesh(new THREE.PlaneGeometry(aisle.width, aisle.depth), yellow);
-			arrow.rotation.x = -Math.PI / 2;
-			arrow.position.set(i * aisle.spacing, paintY, 0);
-			this.group.add(arrow);
 		}
 	}
 
@@ -241,24 +411,50 @@ export class ParkingGarage {
 		);
 		win.position.set(0, 1.4, 1.02);
 		booth.add(win);
-		const sign = this.makeTextPlane('P · TICKETS', 1.6, 0.4);
+		const sign = this.makeTextPlane(PARKING_BOOTH_LABEL, 1.6, 0.4);
 		sign.position.set(0, 2.55, 0);
 		booth.add(sign);
+		addSignBack(booth, sign, this.signBack(), SIGN_BACK_GAP);
 		this.group.add(booth);
 	}
 
+	/**
+	 * De drie dekborden. Ze zweefden alle drie: het grote een meter vóór de
+	 * noordwand, het liftbord los naast de schacht en het doorrijhoogtebord midden
+	 * boven het gangpad. Nu tegen de wand, tegen de schacht, en aan de plaat erboven.
+	 */
 	private buildSigns(): void {
+		const northWall = PARKING_WALL_PANELS.find((panel) => panel.id === 'north');
+		if (!northWall) throw new Error('geen noordpaneel in PARKING_WALL_PANELS');
 		const big = this.makeTextPlane('P1  PARKEERGARAGE', 6, 1.0, '#0d47a1', '#fff');
-		big.position.set(0, 3.2, -19.5);
+		big.position.set(0, 3.2, northWall.center.z + half(northWall.size.depth) + DECK_SIGN_CLEARANCE);
 		this.group.add(big);
+
 		const exit = this.makeTextPlane('↑ LIFT · V0', 2.5, 0.55, '#b71c1c', '#fff');
-		exit.position.set(ELEVATOR_SPEC.center.x - 2, 2.4, ELEVATOR_SPEC.center.z);
+		exit.position.set(ELEVATOR_SPEC.center.x - ELEVATOR_SPEC.shaft.wallOffset - LIFT_SIGN_CLEARANCE, 2.4, ELEVATOR_SPEC.center.z);
 		exit.rotation.y = -Math.PI / 2;
 		this.group.add(exit);
-		const no = this.makeTextPlane('MAX 2.1 m', 2.2, 0.4, '#212121', '#ffc107');
-		no.position.set(-20, 3.0, 0);
+
+		const no = this.makeTextPlane('MAX 2.1 m', 2.2, HEIGHT_SIGN.height, '#212121', '#ffc107');
+		no.position.set(HEIGHT_SIGN.x, HEIGHT_SIGN.centerY, 0);
 		no.rotation.y = Math.PI / 2;
 		this.group.add(no);
+		this.backSign(no);
+		this.hangFromCeiling(HEIGHT_SIGN.x, HEIGHT_SIGN.centerY + half(HEIGHT_SIGN.height), HEIGHT_SIGN.hangerSpread);
+	}
+
+	/**
+	 * Het grijze achtervlak, gedeeld over alle borden die vrij hangen of staan. De
+	 * borden die met hun rug tegen een wand of een schacht zitten krijgen er geen: daar
+	 * kan niemand achter komen.
+	 */
+	private signBack(): THREE.Material {
+		this.backMat ??= this.track(lit({ color: SIGN_BACK_COLOR, roughness: 0.8 }));
+		return this.backMat;
+	}
+
+	private backSign(sign: THREE.Mesh): void {
+		addSignBack(this.group, sign, this.signBack(), SIGN_BACK_GAP);
 	}
 
 	private buildLights(): void {

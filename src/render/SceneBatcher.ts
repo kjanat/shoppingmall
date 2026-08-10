@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { levelAt } from '#/data/levels';
+import { ZONES, zoneMaskAround, zoneMaskOfBounds } from '#/data/zones';
 import type { BatchMode } from '#/render/graphicsPrefs';
 import { batchMode } from '#/render/graphicsPrefs';
+import type { ZoneCuller } from '#/render/ZoneCuller';
 import { span } from '#/util/math';
 
 type ColorMaterial = THREE.Material & { color?: THREE.Color };
@@ -18,9 +20,24 @@ type SourceInstance = {
 	color: THREE.Vector4;
 	visible: boolean;
 	streak: number;
+	/** World-space radius, taken once: a zone question needs a body and not a point. */
+	radius: number;
+	/** Which zones this instance currently stands in. */
+	zoneMask: number;
 };
 
-type Batch = { mesh: THREE.BatchedMesh; sources: SourceInstance[]; dynamicRoot: THREE.Object3D | null };
+type Batch = {
+	mesh: THREE.BatchedMesh;
+	sources: SourceInstance[];
+	dynamicRoot: THREE.Object3D | null;
+	/**
+	 * How many of this batch's instances stand in each zone, and the union of those
+	 * zones. Counted rather than recomputed: a batch of 1726 sources would otherwise
+	 * walk them all whenever one of them stepped over a deck edge.
+	 */
+	zoneCounts: Int32Array;
+	zoneMask: number;
+};
 
 export type SceneBatchStats = {
 	mode: BatchMode;
@@ -52,6 +69,66 @@ const COLD_SHARDS = 8;
 const WHITE = new THREE.Color(0xffffff);
 const INSTANCE_COLOR = new THREE.Vector4(1, 1, 1, 1);
 const MOVED_SPHERE = new THREE.Sphere();
+const SOURCE_SPHERE = new THREE.Sphere();
+const SOURCE_BOX = new THREE.Box3();
+
+/** The world-space radius of one source mesh, so its zone question uses its body. */
+function sourceRadius(mesh: THREE.Mesh<THREE.BufferGeometry, ColorMaterial>): number {
+	const geometry = mesh.geometry;
+	if (!geometry.boundingSphere) geometry.computeBoundingSphere();
+	const sphere = geometry.boundingSphere;
+	if (!sphere) return 0;
+	return SOURCE_SPHERE.copy(sphere).applyMatrix4(mesh.matrixWorld).radius;
+}
+
+/**
+ * The zones a mesh really occupies, from its world box.
+ *
+ * A sphere round the origin is the wrong shape for a slab: the ground floor is
+ * 72 by 48 metres and a metre thick, so its sphere has a 43 m radius and claims
+ * every deck plus the city. Only the box gets that slab tagged as one deck, and a
+ * batch is as wide as its widest member.
+ */
+function boxZoneMask(mesh: THREE.Object3D): number {
+	SOURCE_BOX.setFromObject(mesh, true);
+	if (SOURCE_BOX.isEmpty()) return 0;
+	return zoneMaskOfBounds({
+		minX: SOURCE_BOX.min.x,
+		maxX: SOURCE_BOX.max.x,
+		minY: SOURCE_BOX.min.y,
+		maxY: SOURCE_BOX.max.y,
+		minZ: SOURCE_BOX.min.z,
+		maxZ: SOURCE_BOX.max.z,
+	});
+}
+
+/**
+ * The zones a mover occupies, from its sphere.
+ *
+ * Movers are limbs, shoppers, birds and shopping stock: small next to a deck, so
+ * the sphere costs nothing in precision, and it is the only shape that survives a
+ * rotation without re-deriving a box every frame.
+ */
+function instanceZoneMask(matrix: THREE.Matrix4, radius: number): number {
+	const e = matrix.elements;
+	return zoneMaskAround(e[12] ?? 0, e[13] ?? 0, e[14] ?? 0, radius);
+}
+
+function countZones(batch: Batch, mask: number, delta: number): void {
+	for (let index = 0; index < ZONES.length; index++) {
+		if ((mask & (1 << index)) === 0) continue;
+		const counts = batch.zoneCounts;
+		counts[index] = (counts[index] ?? 0) + delta;
+	}
+}
+
+function refreshZoneMask(batch: Batch): void {
+	let mask = 0;
+	for (let index = 0; index < ZONES.length; index++) {
+		if ((batch.zoneCounts[index] ?? 0) > 0) mask |= 1 << index;
+	}
+	batch.zoneMask = mask;
+}
 
 /**
  * A moved instance leaves the batch's lazily-computed union bounding sphere
@@ -317,6 +394,7 @@ export class SceneBatcher {
 				// Layer zero is used by all game/shadow cameras. A zero mask avoids
 				// drawing the source without destroying its visible state.
 				mesh.layers.mask = 0;
+				const radius = sourceRadius(mesh);
 				sources.push({
 					mesh,
 					instanceId,
@@ -325,6 +403,8 @@ export class SceneBatcher {
 					color: new THREE.Vector4(),
 					visible: isVisible(mesh),
 					streak: 0,
+					radius,
+					zoneMask: boxZoneMask(mesh),
 				});
 				const source = sources[sources.length - 1];
 				if (source) {
@@ -352,7 +432,10 @@ export class SceneBatcher {
 			owner.triangles += meshes.reduce((sum, mesh) => sum + geometryTriangles(mesh.geometry), 0);
 			owner.largestRadius = Math.max(owner.largestRadius, radius);
 			ownerStats.set(ownerKey, owner);
-			this.batches.push({ mesh: batched, sources, dynamicRoot });
+			const batch: Batch = { mesh: batched, sources, dynamicRoot, zoneCounts: new Int32Array(ZONES.length), zoneMask: 0 };
+			for (const source of sources) countZones(batch, source.zoneMask, 1);
+			refreshZoneMask(batch);
+			this.batches.push(batch);
 			scene.add(batched);
 		}
 
@@ -394,6 +477,16 @@ export class SceneBatcher {
 					// hidden instances are already inside the sphere, so only this branch
 					// has to keep the frustum sphere honest.
 					growBounds(batch.mesh, source);
+					// A mover can cross a deck edge or walk out of the building, and the
+					// batch's zone set has to follow it there. Everything else stands
+					// still, so nothing else is asked.
+					const zoneMask = instanceZoneMask(world, source.radius);
+					if (zoneMask !== source.zoneMask) {
+						countZones(batch, source.zoneMask, -1);
+						countZones(batch, zoneMask, 1);
+						source.zoneMask = zoneMask;
+						refreshZoneMask(batch);
+					}
 				}
 
 				const color = instanceColor(source.mesh.material);
@@ -412,5 +505,26 @@ export class SceneBatcher {
 				source.streak = changed ? 0 : source.streak + 1;
 			}
 		}
+	}
+
+	/**
+	 * Hide every batch that stands only in zones the viewer cannot reach or see into.
+	 *
+	 * On the whole batch, not per instance: the per-instance walk is the cost the
+	 * file comment above describes, and a batch is already the unit three submits.
+	 * `visible = false` takes it out of the shadow pass as well, which is the point —
+	 * a shop two decks up was casting through the facade onto the pavement.
+	 *
+	 * Call it after `update()`: the spheres it tests are the ones update() just grew.
+	 */
+	applyZoneVisibility(culler: ZoneCuller): void {
+		for (const batch of this.batches) {
+			batch.mesh.visible = culler.accepts(batch.zoneMask, batch.mesh.boundingSphere);
+		}
+	}
+
+	/** Every batch drawn again, whatever the zones say. Used when the culler is off. */
+	showAllZones(): void {
+		for (const batch of this.batches) batch.mesh.visible = true;
 	}
 }

@@ -4,9 +4,9 @@ import { levelY } from '#/data/levels';
 import { PRAYER_ROOM_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture, speechTail } from '#/util/label';
+import { fitText, labelCanvas, labelTexture, roundRect, speechTail } from '#/util/label';
 import { clamp01, half } from '#/util/math';
-import { at, pick } from '#/util/rand';
+import { at, jitterWith, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
 /** Chant lines shown above everyone in the room */
@@ -468,7 +468,11 @@ export class PrayerRoom {
 			const m2 = m1.clone();
 			m2.position.x = 0.03;
 			g.add(m1, m2);
-			g.rotation.set((rng(seed) - 0.5) * BAG_TILT_X, rng(seed + 1) * Math.PI * 2, (rng(seed + 2) - 0.5) * BAG_TILT_Z);
+			g.rotation.set(
+				jitterWith(BAG_TILT_X, () => rng(seed)),
+				rng(seed + 1) * Math.PI * 2,
+				jitterWith(BAG_TILT_Z, () => rng(seed + 2)),
+			);
 			return g;
 		};
 
@@ -482,12 +486,16 @@ export class PrayerRoom {
 			g.add(box);
 			for (let i = 0; i < 5; i++) {
 				const f = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.12, 0.018), fryM);
-				f.position.set((rng(seed + i * 3) - 0.5) * 0.08, 0.16 + rng(seed + i) * 0.04, (rng(seed + i * 5) - 0.5) * 0.06);
-				f.rotation.z = (rng(seed + i * 7) - 0.5) * 0.4;
+				f.position.set(
+					jitterWith(0.08, () => rng(seed + i * 3)),
+					0.16 + rng(seed + i) * 0.04,
+					jitterWith(0.06, () => rng(seed + i * 5)),
+				);
+				f.rotation.z = jitterWith(0.4, () => rng(seed + i * 7));
 				g.add(f);
 			}
 			g.rotation.y = rng(seed + 9) * Math.PI * 2;
-			g.rotation.z = (rng(seed + 10) - 0.5) * 0.6;
+			g.rotation.z = jitterWith(0.6, () => rng(seed + 10));
 			return g;
 		};
 
@@ -509,7 +517,7 @@ export class PrayerRoom {
 			g.add(straw);
 			// tip over sometimes
 			if (rng(seed) > 0.45) {
-				g.rotation.z = Math.PI / 2 + (rng(seed + 1) - 0.5) * 0.3;
+				g.rotation.z = Math.PI / 2 + jitterWith(0.3, () => rng(seed + 1));
 				g.position.y = 0.05;
 			}
 			g.rotation.y = rng(seed + 2) * Math.PI * 2;
@@ -526,7 +534,7 @@ export class PrayerRoom {
 			);
 			const w = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.01, 0.14), paper);
 			w.rotation.y = rng(seed) * Math.PI * 2;
-			w.rotation.z = (rng(seed + 1) - 0.5) * 0.4;
+			w.rotation.z = jitterWith(0.4, () => rng(seed + 1));
 			w.position.y = 0.02;
 			return w;
 		};
@@ -584,7 +592,7 @@ export class PrayerRoom {
 			const crushed = rng(seed) > 0.55;
 			if (crushed) {
 				g.scale.set(1.15, 0.45, 1.1);
-				g.rotation.z = Math.PI / 2 + (rng(seed + 3) - 0.5) * 0.4;
+				g.rotation.z = Math.PI / 2 + jitterWith(0.4, () => rng(seed + 3));
 				g.position.y = 0.03;
 			} else if (rng(seed + 4) > 0.5) {
 				g.rotation.z = Math.PI / 2;
@@ -599,14 +607,14 @@ export class PrayerRoom {
 		const spots: { x: number; z: number }[] = [];
 		for (let i = 0; i < 55; i++) {
 			spots.push({
-				x: (rng(i * 1.7) - 0.5) * 4.6,
-				z: (rng(i * 2.3 + 9) - 0.5) * 3.4,
+				x: jitterWith(4.6, () => rng(i * 1.7)),
+				z: jitterWith(3.4, () => rng(i * 2.3 + 9)),
 			});
 		}
 		// Extra pile near goat / entrance
 		for (let i = 0; i < 12; i++) {
 			spots.push({
-				x: (rng(100 + i) - 0.5) * 1.2,
+				x: jitterWith(1.2, () => rng(100 + i)),
 				z: 1.2 + rng(110 + i) * 0.7,
 			});
 		}
@@ -1348,16 +1356,6 @@ export class PrayerRoom {
 		const tex = labelTexture(c);
 		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-	ctx.beginPath();
-	ctx.moveTo(x + r, y);
-	ctx.arcTo(x + w, y, x + w, y + h, r);
-	ctx.arcTo(x + w, y + h, x, y + h, r);
-	ctx.arcTo(x, y + h, x, y, r);
-	ctx.arcTo(x, y, x + w, y, r);
-	ctx.closePath();
 }
 
 /**

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { lit } from '#/render/material';
 import { THEATRE_PLAN, theatreTreadY, theatreTreadZ } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { half, midpoint, span } from '#/util/math';
+import { easeFactor, half, midpoint, span } from '#/util/math';
 
 /**
  * PRAIRIE THEATRE — monumentaal cultuurpaleis op het NO-blok (x 56..88, z -68..-44).
@@ -67,7 +67,7 @@ export class CityTheatre {
 		// Naambord dimt licht mee op de offbeat; ease op dt zodat een framedrop
 		// op de Pi geen stroboscoop van maakt.
 		const target = step % 2 === 0 ? 1 : 0.82;
-		this.titleLevel += (target - this.titleLevel) * Math.min(1, dt * 6);
+		this.titleLevel += (target - this.titleLevel) * easeFactor(6, dt);
 		this.titleMat.color.setScalar(this.titleLevel);
 	}
 

@@ -6,6 +6,9 @@ import { getOwner } from '#/data/shopOwners';
 import type { StoreDef } from '#/data/stores';
 import { shopStores } from '#/data/stores';
 import {
+	ATRIUM_BALUSTRADE_SPEC,
+	ATRIUM_PLANTER_SPEC,
+	atriumPlanterTiers,
 	ESCALATORS,
 	FOUNTAIN_SPEC,
 	KIOSK_SPEC,
@@ -21,7 +24,7 @@ import { addExtrudedXZMesh } from '#/render/xzShape';
 import type { EscalatorGeometry } from '#/scene/escalatorGeometry';
 import { deriveEscalatorGeometry } from '#/scene/escalatorGeometry';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
-import { clamp, half, inverseLerpClamped, midpoint } from '#/util/math';
+import { clamp, half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** Hoogte van de roltraphelling op z, vlak op beide landingen. */
@@ -180,6 +183,7 @@ export class MallBuilder {
 		this.buildStores();
 		this.buildKiosk();
 		this.buildRailings();
+		this.buildAtriumPlanter();
 		this.buildCeilingLights();
 		return this.group;
 	}
@@ -310,13 +314,6 @@ export class MallBuilder {
 		skylight.rotation.x = -Math.PI / 2;
 		skylight.position.y = MALL_SLAB_SPECS.roof.topY - MALL_SLAB_SPECS.roof.thickness - 0.1;
 		this.group.add(skylight);
-
-		// Parking lot-ish ground outside
-		const voidMat = this.track(lit({ color: 0x8a9099, roughness: 0.95 }));
-		const voidPlane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), voidMat);
-		voidPlane.rotation.x = -Math.PI / 2;
-		voidPlane.position.y = -0.5;
-		this.group.add(voidPlane);
 	}
 
 	/**
@@ -1495,20 +1492,68 @@ export class MallBuilder {
 			},
 		] as const) {
 			const alongZ = run.axis === 'z';
+			const { glassHeight, railThickness } = ATRIUM_BALUSTRADE_SPEC;
 			addPlaneMesh(this.group, glassMat, {
 				name: `atrium-glass-${run.name}`,
 				width: run.length,
-				height: 1.1,
-				position: { ...run.position, y: levelY('v1') + 0.55 },
+				height: glassHeight,
+				position: { ...run.position, y: levelY('v1') + half(glassHeight) },
 				rotation: { x: 0, y: alongZ ? Math.PI / 2 : 0, z: 0 },
 			});
 			addBoxMesh(this.group, railMat, {
 				name: `atrium-rail-${run.name}`,
-				width: alongZ ? 0.05 : run.length,
-				height: 0.05,
-				depth: alongZ ? run.length : 0.05,
-				position: { ...run.position, y: levelY('v1') + 1.1 },
+				width: alongZ ? railThickness : run.length,
+				height: railThickness,
+				depth: alongZ ? run.length : railThickness,
+				position: { ...run.position, y: levelY('v1') + glassHeight },
 			});
+		}
+	}
+
+	/**
+	 * De plantenbak met zitrand tegen de vide: het opstapje waarmee je de
+	 * balustrade nog haalt. De maten komen uit `atriumPlanterTiers`, dezelfde
+	 * lijst waar collision zijn treden uit leest.
+	 */
+	private buildAtriumPlanter(): void {
+		const stone = this.track(lit({ color: 0xb8ab99, roughness: 0.85 }));
+		const soil = this.track(lit({ color: 0x4e3b2a, roughness: 1 }));
+		const leaf = this.track(lit({ color: 0x3f7d3a, roughness: 0.9 }));
+		const v1 = levelY('v1');
+		const { shrub } = ATRIUM_PLANTER_SPEC;
+
+		for (const tier of atriumPlanterTiers()) {
+			const width = span(tier.minX, tier.maxX);
+			const depth = span(tier.minZ, tier.maxZ);
+			const height = tier.topY - v1;
+			addBoxMesh(this.group, stone, {
+				name: `atrium-planter-${tier.id}`,
+				width,
+				height,
+				depth,
+				position: { x: midpoint(tier.minX, tier.maxX), y: v1 + half(height), z: midpoint(tier.minZ, tier.maxZ) },
+			});
+		}
+
+		// Het grondbed ligt gelijk met de bakrand, met een strook steen eromheen: de
+		// bakrand is het loopvlak waar collision je op zet, dus daar hoort je voet.
+		const bak = atriumPlanterTiers().find((tier) => tier.id === 'planter');
+		if (!bak) return;
+		const bedThickness = ATRIUM_PLANTER_SPEC.planter.height - ATRIUM_PLANTER_SPEC.bench.height;
+		const inset = ATRIUM_PLANTER_SPEC.bedInset * 2;
+		addBoxMesh(this.group, soil, {
+			name: 'atrium-planter-soil',
+			width: span(bak.minX, bak.maxX) - inset,
+			height: bedThickness,
+			depth: span(bak.minZ, bak.maxZ) - inset,
+			position: { x: midpoint(bak.minX, bak.maxX), y: bak.topY - half(bedThickness), z: midpoint(bak.minZ, bak.maxZ) },
+		});
+		for (let index = 0; index < shrub.count; index++) {
+			const t = (index + 0.5) / shrub.count;
+			const bush = new THREE.Mesh(new THREE.SphereGeometry(shrub.radius, 10, 8), leaf);
+			bush.position.set(midpoint(bak.minX, bak.maxX), bak.topY, lerp(bak.minZ, bak.maxZ, t));
+			bush.scale.y = 0.8;
+			this.group.add(bush);
 		}
 	}
 

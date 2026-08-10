@@ -76,6 +76,7 @@ async function bouwWereld(): Promise<{
 		{ TravelAgency },
 		{ ScrubberBuggy },
 		{ Restrooms },
+		{ Entrance },
 	] = await Promise.all([
 		import('#/scene/Lighting'),
 		import('#/scene/Disco'),
@@ -93,6 +94,7 @@ async function bouwWereld(): Promise<{
 		import('#/scene/TravelAgency'),
 		import('#/scene/ScrubberBuggy'),
 		import('#/scene/Restrooms'),
+		import('#/scene/Entrance'),
 	]);
 
 	const daylight = setupLighting(scene, pool);
@@ -116,6 +118,7 @@ async function bouwWereld(): Promise<{
 		new TravelAgency(pool),
 		new ScrubberBuggy(world, pool),
 		new Restrooms(pool),
+		new Entrance(pool),
 	]) {
 		scene.add(feature.group);
 	}

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { levelAt } from '#/data/levels';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { fitText, labelCanvas, labelTexture, roundRect } from '#/util/label';
 import { tagLevelCulled } from '#/util/visibility';
 
 // ── booth ────────────────────────────────────────────────
@@ -420,13 +420,3 @@ export const BARTEK_LINES = {
 	],
 	crowdReact: ['BARTEK! BARTEK!', 'Squeak… drop… squeak!', 'Komunicare: banger detected', 'Thicc and thriving!'],
 };
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-	ctx.beginPath();
-	ctx.moveTo(x + r, y);
-	ctx.arcTo(x + w, y, x + w, y + h, r);
-	ctx.arcTo(x + w, y + h, x, y + h, r);
-	ctx.arcTo(x, y + h, x, y, r);
-	ctx.arcTo(x, y, x + w, y, r);
-	ctx.closePath();
-}

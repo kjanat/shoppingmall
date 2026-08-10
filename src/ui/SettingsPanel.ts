@@ -13,6 +13,8 @@ import {
 	writeFill,
 	writeLamps,
 	writeShine,
+	writeZoneCull,
+	zoneCullOn,
 } from '#/render/graphicsPrefs';
 import { booleanUrlPref, clearUrlPref, urlPref } from '#/render/urlPrefs';
 import { qs } from '#/util/dom';
@@ -89,6 +91,9 @@ export class SettingsPanel {
 	/** Dynamische resolutie: render lager als de framerate zakt */
 	private dynRes = loadDynRes();
 	private onDynRes: ((on: boolean) => void) | null = null;
+	/** Zone- en portaalculling: alleen tekenen en simuleren wat je kunt zien. */
+	private zoneCull = zoneCullOn();
+	private onZoneCull: ((on: boolean) => void) | null = null;
 	/** Zaallicht: leeft direct, de andere twee kunnen alleen bij het opbouwen. */
 	private onFill: ((scale: number) => void) | null = null;
 
@@ -111,6 +116,11 @@ export class SettingsPanel {
 	bindDynRes(fn: (on: boolean) => void): void {
 		this.onDynRes = fn;
 		fn(this.dynRes);
+	}
+
+	bindZoneCull(fn: (on: boolean) => void): void {
+		this.onZoneCull = fn;
+		fn(this.zoneCull);
 	}
 
 	constructor(root: HTMLElement, onChange: (s: ControlSettings) => void) {
@@ -267,6 +277,14 @@ export class SettingsPanel {
 
         <label class="settings-row">
           <span>
+            <b>Zone-culling</b>
+            <small>Tekent en simuleert alleen de dekken die je door een opening kunt zien. Uit = alles altijd, zodat je het verschil kunt meten.</small>
+          </span>
+          <input type="checkbox" id="set-zonecull" />
+        </label>
+
+        <label class="settings-row">
+          <span>
             <b>Binaural audio (HRTF)</b>
             <small>3D-geluid via koptelefoon: links/rechts/achter/hoogte. Speakers = soft stereo.</small>
           </span>
@@ -354,6 +372,15 @@ export class SettingsPanel {
 			this.onDynRes?.(this.dynRes);
 		});
 
+		const zoneCullCb = q<HTMLInputElement>('#set-zonecull');
+		zoneCullCb.checked = this.zoneCull;
+		zoneCullCb.addEventListener('change', () => {
+			this.zoneCull = zoneCullCb.checked;
+			clearUrlPref('zonecull');
+			writeZoneCull(this.zoneCull);
+			this.onZoneCull?.(this.zoneCull);
+		});
+
 		const binauralCb = q<HTMLInputElement>('#set-binaural');
 		binauralCb.checked = this.binaural;
 		binauralCb.addEventListener('change', () => {
@@ -425,6 +452,8 @@ export class SettingsPanel {
 		if (bin) bin.checked = this.binaural;
 		const dyn = this.host.querySelector<HTMLInputElement>('#set-dynres');
 		if (dyn) dyn.checked = this.dynRes;
+		const zones = this.host.querySelector<HTMLInputElement>('#set-zonecull');
+		if (zones) zones.checked = this.zoneCull;
 		// Sensitivity is meaningless without mouse look
 		q('#set-sens').closest('.settings-row')?.classList.toggle('settings-off', !this.settings.mouseLook);
 	}

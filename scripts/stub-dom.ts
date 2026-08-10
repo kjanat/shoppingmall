@@ -40,12 +40,23 @@ function zelfherhalendeStub(velden: Record<string | symbol, unknown> = {}): unkn
 }
 
 /**
+ * Wat de stub voor één teken teruggeeft. Ruimer dan een echte monospace op de maten
+ * die de kaart gebruikt (11 px geeft ~6,6), dus wie hier past, past in de browser ook.
+ */
+const STUB_GLYPH_WIDTH = 8;
+
+/** De tekstmeter van de stub, los, voor wie alleen wil weten of een label past. */
+export function stubTextMeasure(): { font: string; measureText: (tekst: string) => { width: number } } {
+	return { font: '', measureText: (tekst: string) => ({ width: tekst.length * STUB_GLYPH_WIDTH }) };
+}
+
+/**
  * Canvasstub. Onbekende methodes geven de stub zelf terug, zodat ketens als
  * createLinearGradient().addColorStop() niet op undefined stuklopen.
  */
 export function stubDocument(): void {
 	const ctx = zelfherhalendeStub({
-		measureText: (tekst: string) => ({ width: tekst.length * 8 }),
+		measureText: stubTextMeasure().measureText,
 	});
 	(globalThis as unknown as { document: unknown }).document = {
 		createElement: (tag: string) => (tag === 'canvas' ? { width: 1, height: 1, getContext: () => ctx } : {}),

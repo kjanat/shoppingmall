@@ -6,6 +6,7 @@ import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half } from '#/util/math';
+import { jitter } from '#/util/rand';
 
 // ── loot ─────────────────────────────────────────────────
 /** Floor mound: coins lie this high, scatter this much, and flatten toward the rim. */
@@ -272,7 +273,7 @@ export class BeardCave {
 			const a = Math.random() * Math.PI * 2;
 			const r = Math.random() * 0.38;
 			coin.position.set(-1.35 + Math.cos(a) * r, 0.72 + Math.random() * 0.35, 0.1 + Math.sin(a) * r * 0.7);
-			coin.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+			coin.rotation.x = Math.PI / 2 + jitter(0.4);
 			coin.rotation.z = Math.random() * Math.PI;
 			this.lootGroup.add(coin);
 		}
@@ -290,7 +291,7 @@ export class BeardCave {
 				MOUND_Y + Math.random() * MOUND_Y_SPREAD * (1 - r * MOUND_TAPER),
 				-0.9 + Math.sin(a) * r,
 			);
-			coin.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+			coin.rotation.x = Math.PI / 2 + jitter(0.6);
 			coin.rotation.z = Math.random() * Math.PI;
 			this.lootGroup.add(coin);
 		}
@@ -327,11 +328,7 @@ export class BeardCave {
 		// Gold chains (torus loops)
 		for (let i = 0; i < 6; i++) {
 			const chain = new THREE.Mesh(new THREE.TorusGeometry(0.14 + Math.random() * 0.06, 0.022, 6, 14), i % 2 ? gold : silver);
-			chain.position.set(
-				-1.2 + (Math.random() - 0.5) * 1.2,
-				CHAIN_Y + Math.random() * CHAIN_Y_SPREAD,
-				(Math.random() - 0.5) * 2.2,
-			);
+			chain.position.set(-1.2 + jitter(1.2), CHAIN_Y + Math.random() * CHAIN_Y_SPREAD, jitter(2.2));
 			chain.rotation.set(Math.random(), Math.random(), Math.random());
 			this.lootGroup.add(chain);
 		}
@@ -352,7 +349,7 @@ export class BeardCave {
 		for (let i = 0; i < 8; i++) {
 			const bar = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 0.14), goldSoft);
 			bar.position.set(-0.4 + (i % 3) * 0.12, 0.2 + Math.floor(i / 3) * 0.09, -1.55 + (i % 2) * 0.08);
-			bar.rotation.y = (Math.random() - 0.5) * 0.3;
+			bar.rotation.y = jitter(0.3);
 			this.lootGroup.add(bar);
 		}
 

@@ -30,6 +30,24 @@ export function addBoxMesh(
 	return place(new THREE.Mesh(new THREE.BoxGeometry(spec.width, spec.height, spec.depth), material), parent, spec);
 }
 
+/**
+ * Een neutraal achtervlak achter een bord dat je van twee kanten kunt naderen.
+ *
+ * Een enkelzijdig vlak is van achteren niet te zien en een dubbelzijdig vlak laat de
+ * tekst er spiegelbeeldig doorheen lezen. Een tweede vlak dat de andere kant op kijkt
+ * doet geen van beide, en dat is wat de achterkant van een verkeersbord ook is: een
+ * plaat. Het staat `gap` achter het bord, gemeten langs de kant waar het bord naar
+ * kijkt, en deelt zijn geometrie en schaal.
+ */
+export function addSignBack(parent: THREE.Object3D, sign: THREE.Mesh, material: THREE.Material, gap: number): THREE.Mesh {
+	const back = new THREE.Mesh(sign.geometry, material);
+	back.position.copy(sign.position).addScaledVector(new THREE.Vector3(0, 0, 1).applyEuler(sign.rotation), -gap);
+	back.rotation.set(sign.rotation.x, sign.rotation.y + Math.PI, sign.rotation.z);
+	back.scale.copy(sign.scale);
+	parent.add(back);
+	return back;
+}
+
 export function addPlaneMesh(
 	parent: THREE.Object3D,
 	material: THREE.Material,

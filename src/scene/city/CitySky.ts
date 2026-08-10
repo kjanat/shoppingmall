@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { half } from '#/util/math';
-import { at } from '#/util/rand';
+import { at, jitter, plusMinus } from '#/util/rand';
 
 /**
  * Lucht boven de 404-stad: twaalf wolkenclusters die gedwee met de wind mee
@@ -99,12 +99,12 @@ export class CitySky {
 					s * 0.42, // plat, zoals een wolk met ambitie maar zonder budget
 					s * (PUFF_BREEDTE_BASIS + Math.random() * PUFF_BREEDTE_SPREIDING),
 				);
-				puff.position.set((j - 1) * (2.6 + Math.random() * 1.6), (Math.random() - 0.5) * 1.4, (Math.random() - 0.5) * 3);
+				puff.position.set((j - 1) * (2.6 + Math.random() * 1.6), jitter(1.4), jitter(3));
 				cluster.add(puff);
 			}
 			const y = 40 + Math.random() * 18;
 			this.basisY.push(y);
-			cluster.position.set((Math.random() * 2 - 1) * WERELD_X, y, (Math.random() * 2 - 1) * WERELD_Z);
+			cluster.position.set(plusMinus(WERELD_X), y, plusMinus(WERELD_Z));
 			this.drift.push(0.6 + Math.random() * 0.9);
 			this.clusters.push(cluster);
 			this.group.add(cluster);
@@ -118,8 +118,8 @@ export class CitySky {
 			let z = 0;
 			// Buiten de mall blijven prikken — regen in de foodcourt is slecht voor de omzet.
 			do {
-				x = (Math.random() * 2 - 1) * (WERELD_X - 4);
-				z = (Math.random() * 2 - 1) * (WERELD_Z - 4);
+				x = plusMinus(WERELD_X - 4);
+				z = plusMinus(WERELD_Z - 4);
 			} while (Math.abs(x) < MALL_X && Math.abs(z) < MALL_Z);
 			this.regenPos[i * 3] = x;
 			this.regenPos[i * 3 + 1] = Math.random() * REGEN_TOP;
@@ -234,8 +234,8 @@ export class CitySky {
 		let x = 0;
 		let z = 0;
 		do {
-			x = (Math.random() * 2 - 1) * (WERELD_X - 8);
-			z = (Math.random() * 2 - 1) * (WERELD_Z - 8);
+			x = plusMinus(WERELD_X - 8);
+			z = plusMinus(WERELD_Z - 8);
 		} while (Math.abs(x) < MALL_X && Math.abs(z) < MALL_Z);
 		bolt.position.set(x, BOLT_TOP, z);
 		bolt.rotation.y = Math.random() * Math.PI * 2; // zelfde zigzag, andere kant op
@@ -260,7 +260,7 @@ export class CitySky {
 		const omhoog = new THREE.Vector3(0, 1, 0);
 		for (let i = 0; i < segs; i++) {
 			const dx = (i % 2 === 0 ? 1 : -1) * (0.9 + Math.random() * 1.6);
-			const dz = (Math.random() * 2 - 1) * 1.2;
+			const dz = plusMinus(1.2);
 			richting.set(dx, -stapY, dz);
 			const len = richting.length();
 			const seg = new THREE.Mesh(segGeo, mat);

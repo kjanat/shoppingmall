@@ -1,6 +1,15 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
-import { RESTROOMS_DIVIDER, RESTROOMS_INTERIOR, RESTROOMS_SHELL, RESTROOMS_SPEC } from '#/data/world';
+import {
+	BACK_TO_WALL_Y,
+	RESTROOMS_DIVIDER,
+	RESTROOMS_INTERIOR,
+	RESTROOMS_ROOMS,
+	RESTROOMS_SHELL,
+	RESTROOMS_SPEC,
+	WUDU_COLLIDER,
+} from '#/data/world';
+import type { RoomCollider } from '#/physics/Collision';
 import type { LightPool } from '#/render/LightPool';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
@@ -8,10 +17,20 @@ import { labelCanvas, labelTexture } from '#/util/label';
 import { half } from '#/util/math';
 
 /**
+ * Het blok kijkt naar het noorden, dus staat alles met een voorkant een halve slag
+ * om: de urinoirs, de hokjes, de wastafels en elk bordje. Zonder deze draai leest de
+ * hal de achterkant van de belettering en spoelt een urinoir de muur in.
+ */
+const FACING_NORTH_Y = Math.PI;
+
+/**
  * Mall toilets next to the gebedsruimte (not inside it).
  * - Heren: urinoirs + 1 hokje
  * - Dames: 2 hokjes
  * - Wudu/ablution niche between prayer room and WCs (foot-wash taps)
+ *
+ * De opening ligt op het noorden, aan de hal van de hoofdingang. Alles wat hier een
+ * kant op kijkt kijkt dus naar −z, en elke z-offset komt uit RESTROOMS_SPEC.
  */
 export class Restrooms {
 	readonly group = new THREE.Group();
@@ -26,18 +45,18 @@ export class Restrooms {
 		this.group.name = 'restrooms';
 		this.group.position.copy(this.pos);
 		this.buildShell();
-		this.buildMens(-RESTROOMS_INTERIOR.roomOffsetX);
-		this.buildWomens(RESTROOMS_INTERIOR.roomOffsetX);
+		this.buildMens(RESTROOMS_ROOMS.mensX);
+		this.buildWomens(RESTROOMS_ROOMS.womensX);
 		this.buildWudu();
 		this.buildCorridorSigns();
 	}
 
 	/** AABBs for CollisionWorld, read off the same walls the shell builds. */
-	getColliders(): { minX: number; maxX: number; minZ: number; maxZ: number; label: string }[] {
+	getColliders(): RoomCollider[] {
 		const cx = this.pos.x;
 		const cz = this.pos.z;
 		const { shell, wallThickness } = RESTROOMS_SPEC;
-		const { sideX, frontZ } = RESTROOMS_SHELL;
+		const { sideX, backZ } = RESTROOMS_SHELL;
 		const shellX = half(shell.width);
 		const shellZ = half(shell.depth);
 		const halfWall = half(wallThickness);
@@ -45,13 +64,24 @@ export class Restrooms {
 		return [
 			{ minX: cx - sideX - halfWall, maxX: cx - sideX + halfWall, minZ: cz - shellZ, maxZ: cz + shellZ, label: 'wc_wall_w' },
 			{ minX: cx + sideX - halfWall, maxX: cx + sideX + halfWall, minZ: cz - shellZ, maxZ: cz + shellZ, label: 'wc_wall_e' },
-			{ minX: cx - shellX, maxX: cx + shellX, minZ: cz - frontZ - halfWall, maxZ: cz - frontZ + halfWall, label: 'wc_wall_n' },
+			{ minX: cx - shellX, maxX: cx + shellX, minZ: cz + backZ - halfWall, maxZ: cz + backZ + halfWall, label: 'wc_wall_s' },
 			{
 				minX: cx - halfDivider,
 				maxX: cx + halfDivider,
 				minZ: cz + RESTROOMS_DIVIDER.minZ,
 				maxZ: cz + RESTROOMS_DIVIDER.maxZ,
 				label: 'wc_divider',
+			},
+			// De wudu-bank stond in geen enkele doos, dus je liep dwars door 38 cm zichtbaar
+			// meubel. Kniehoog, dus hij houdt een lichaam tegen en geen blik.
+			{
+				minX: WUDU_COLLIDER.minX,
+				maxX: WUDU_COLLIDER.maxX,
+				minZ: WUDU_COLLIDER.minZ,
+				maxZ: WUDU_COLLIDER.maxZ,
+				maxY: WUDU_COLLIDER.topY,
+				blocksSight: false,
+				label: 'wc_wudu_bench',
 			},
 		];
 	}
@@ -67,16 +97,16 @@ export class Restrooms {
 
 	private buildShell(): void {
 		const { shell, floorThickness, wallHeight, wallThickness, fascia, divider } = RESTROOMS_SPEC;
-		const { sideX, frontZ, fasciaZ } = RESTROOMS_SHELL;
+		const { sideX, backZ, fasciaZ } = RESTROOMS_SHELL;
 
 		const floor = new THREE.Mesh(new THREE.BoxGeometry(shell.width, floorThickness, shell.depth), this.tileMat(0xd5d0c8));
 		floor.position.y = half(floorThickness);
 		this.group.add(floor);
 
 		const wall = this.tileMat(0xece8e1);
-		// back wall (closed)
+		// back wall (closed) — zuid, met de rug naar ISLAND HOP
 		const back = new THREE.Mesh(new THREE.BoxGeometry(shell.width, wallHeight, wallThickness), wall);
-		back.position.set(0, half(wallHeight), -frontZ);
+		back.position.set(0, half(wallHeight), backZ);
 		this.group.add(back);
 		// side walls
 		for (const sign of [-1, 1] as const) {
@@ -90,9 +120,9 @@ export class Restrooms {
 		split.position.set(0, half(wallHeight), RESTROOMS_DIVIDER.centerZ);
 		this.group.add(split);
 
-		// front open with partial fascia
+		// front open with partial fascia — noord, aan de rode loper
 		const header = new THREE.Mesh(new THREE.BoxGeometry(shell.width, fascia.height, fascia.thickness), wall);
-		header.position.set(0, wallHeight - half(fascia.height), fasciaZ);
+		header.position.set(0, wallHeight - half(fascia.height), -fasciaZ);
 		this.group.add(header);
 
 		// ceiling strip lights
@@ -105,7 +135,7 @@ export class Restrooms {
 		});
 	}
 
-	/** Local-X offset for men's room (negative = left) */
+	/** Local-X offset for men's room (positive = east of the divider) */
 	private buildMens(ox: number): void {
 		const { zone: zoneSpec, urinalWall, urinals, mensStall, mensBasin } = RESTROOMS_INTERIOR;
 		const g = new THREE.Group();
@@ -142,7 +172,7 @@ export class Restrooms {
 		const divMat = this.track(lit({ color: 0x90a4ae, metalness: 0.2, roughness: 0.5 }));
 		for (const dx of [-half(urinals.spacing), half(urinals.spacing)]) {
 			const d = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, 0.45), divMat);
-			d.position.set(dx, 0.85, -2.35);
+			d.position.set(dx, 0.85, 2.35);
 			g.add(d);
 		}
 
@@ -153,7 +183,7 @@ export class Restrooms {
 		g.add(this.makeSink(mensBasin.offsetX, mensBasin.offsetZ));
 
 		// sign
-		g.add(this.makeDoorSign(-0.1, 3.0, 'HEREN', '♂ urinoirs + hokje', '#1565c0'));
+		g.add(this.makeDoorSign(0.1, -3.0, 'HEREN', '♂ urinoirs + hokje', '#1565c0'));
 	}
 
 	private buildWomens(ox: number): void {
@@ -188,22 +218,38 @@ export class Restrooms {
 				}),
 			),
 		);
-		mirror.position.set(0, 1.6, 2.55);
+		mirror.position.set(0, 1.6, -2.55);
 		g.add(mirror);
 
-		g.add(this.makeDoorSign(0.1, 3.0, 'DAMES', '♀ 2 hokjes', '#ad1457'));
+		g.add(this.makeDoorSign(-0.1, -3.0, 'DAMES', '♀ 2 hokjes', '#ad1457'));
 	}
 
-	/** Ablution / wudu taps — between prayer and toilets, not inside prayer mats */
+	/**
+	 * Ablution / wudu taps.
+	 *
+	 * Met zijn rug tegen de wand uit `wudu.against`, dus de hele nis staat een
+	 * kwartslag gedraaid ten opzichte van de rest van het blok. De maten hieronder
+	 * zijn daarom die van de nis zelf: `length` langs die wand, `depth` er vanaf.
+	 * Het wereldmodel draait hetzelfde grondvlak uit dezelfde twee.
+	 */
 	private buildWudu(): void {
-		const { offsetX, offsetZ, bench: benchSpec, basin: basinSpec } = RESTROOMS_INTERIOR.wudu;
+		const {
+			against,
+			offsetX,
+			offsetZ,
+			bench: benchSpec,
+			basin: basinSpec,
+			taps,
+			water: waterSpec,
+			sign: signSpec,
+		} = RESTROOMS_INTERIOR.wudu;
 		const g = new THREE.Group();
-		// sits slightly toward corridor front of WC block, center
 		g.position.set(offsetX, 0, offsetZ);
+		g.rotation.y = BACK_TO_WALL_Y[against];
 		this.group.add(g);
 
 		const bench = new THREE.Mesh(
-			new THREE.BoxGeometry(benchSpec.width, benchSpec.height, benchSpec.depth),
+			new THREE.BoxGeometry(benchSpec.length, benchSpec.height, benchSpec.depth),
 			this.track(lit({ color: 0x5d4037, roughness: 0.8 })),
 		);
 		bench.position.y = benchSpec.centerY;
@@ -211,7 +257,7 @@ export class Restrooms {
 
 		// low foot-wash basin
 		const basin = new THREE.Mesh(
-			new THREE.BoxGeometry(basinSpec.width, basinSpec.height, basinSpec.depth),
+			new THREE.BoxGeometry(basinSpec.length, basinSpec.height, basinSpec.depth),
 			this.track(
 				lit({
 					color: 0x78909c,
@@ -224,7 +270,7 @@ export class Restrooms {
 		g.add(basin);
 
 		const water = new THREE.Mesh(
-			new THREE.BoxGeometry(2.0, 0.04, 0.4),
+			new THREE.BoxGeometry(waterSpec.length, waterSpec.thickness, waterSpec.depth),
 			this.track(
 				lit({
 					color: 0x4fc3f7,
@@ -234,10 +280,10 @@ export class Restrooms {
 				}),
 			),
 		);
-		water.position.set(0, 0.5, 0);
+		water.position.set(0, waterSpec.y, 0);
 		g.add(water);
 
-		for (const dx of [-0.7, 0, 0.7]) {
+		for (let i = 0; i < taps.count; i++) {
 			const tap = new THREE.Mesh(
 				new THREE.CylinderGeometry(0.03, 0.03, 0.25, 8),
 				this.track(
@@ -248,7 +294,7 @@ export class Restrooms {
 					}),
 				),
 			);
-			tap.position.set(dx, 0.72, -0.15);
+			tap.position.set((i - half(taps.count - 1)) * taps.spacing, taps.height, taps.reach);
 			g.add(tap);
 		}
 
@@ -261,16 +307,18 @@ export class Restrooms {
 		ctx.fillText('WUDU / ABLUTIE', 128, 40);
 		const tex = labelTexture(c);
 		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.6, 0.4),
+			new THREE.PlaneGeometry(signSpec.width, signSpec.height),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		sign.position.set(0, 1.35, 0.2);
+		sign.position.set(0, signSpec.y, signSpec.reach);
+		sign.rotation.y = FACING_NORTH_Y;
 		g.add(sign);
 	}
 
 	private makeUrinal(x: number, z: number): THREE.Group {
 		const g = new THREE.Group();
 		g.position.set(x, 0, z);
+		g.rotation.y = FACING_NORTH_Y;
 		const ceramic = this.track(
 			lit({
 				color: 0xf5f5f5,
@@ -304,6 +352,7 @@ export class Restrooms {
 	private makeStall(x: number, z: number, doorColor: number): THREE.Group {
 		const g = new THREE.Group();
 		g.position.set(x, 0, z);
+		g.rotation.y = FACING_NORTH_Y;
 		const panel = this.track(lit({ color: 0xcfd8dc, roughness: 0.6 }));
 		// three walls of stall
 		const back = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.0, 0.06), panel);
@@ -337,6 +386,7 @@ export class Restrooms {
 	private makeSink(x: number, z: number): THREE.Group {
 		const g = new THREE.Group();
 		g.position.set(x, 0, z);
+		g.rotation.y = FACING_NORTH_Y;
 		const ceramic = this.track(lit({ color: 0xfafafa, roughness: 0.3 }));
 		const top = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 0.45), ceramic);
 		top.position.y = 0.9;
@@ -369,16 +419,17 @@ export class Restrooms {
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 		mesh.position.set(x, 2.5, z);
+		mesh.rotation.y = FACING_NORTH_Y;
 		return mesh;
 	}
 
 	private buildCorridorSigns(): void {
 		// Big wall-mounted WC bordjes on the facade (gendered, clear, boring mall energy)
-		this.group.add(this.wallBoard(-2.0, 3.05, 2.15, '♂ HEREN', 'urinoirs + toilet', '#0d47a1'));
-		this.group.add(this.wallBoard(2.0, 3.05, 2.15, '♀ DAMES', 'toiletten', '#880e4f'));
+		this.group.add(this.wallBoard(2.0, 3.05, -2.15, '♂ HEREN', 'urinoirs + toilet', '#0d47a1'));
+		this.group.add(this.wallBoard(-2.0, 3.05, -2.15, '♀ DAMES', 'toiletten', '#880e4f'));
 		// Classic square pictogram plates next to doors
-		this.group.add(this.pictogram(-2.0, 2.2, 2.95, '♂', '#1565c0'));
-		this.group.add(this.pictogram(2.0, 2.2, 2.95, '♀', '#c2185b'));
+		this.group.add(this.pictogram(2.0, 2.2, -2.95, '♂', '#1565c0'));
+		this.group.add(this.pictogram(-2.0, 2.2, -2.95, '♀', '#c2185b'));
 
 		// Overhead wayfinding strip
 		const { canvas: c, ctx } = labelCanvas(512, 96);
@@ -398,15 +449,16 @@ export class Restrooms {
 			new THREE.PlaneGeometry(3.6, 0.7),
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		strip.position.set(0, 2.95, 3.2);
+		strip.position.set(0, 2.95, -3.2);
+		strip.rotation.y = FACING_NORTH_Y;
 		this.group.add(strip);
 
 		// Extra wall plates on left/right outer walls facing corridor
-		this.group.add(this.sideWallPlate(-4.02, 1.8, 0.5, 'WC', '♂', '#0d47a1', 1));
-		this.group.add(this.sideWallPlate(4.02, 1.8, 0.5, 'WC', '♀', '#880e4f', -1));
+		this.group.add(this.sideWallPlate(4.02, 1.8, -0.5, 'WC', '♂', '#0d47a1', -1));
+		this.group.add(this.sideWallPlate(-4.02, 1.8, -0.5, 'WC', '♀', '#880e4f', 1));
 	}
 
-	/** Flat board on the front wall */
+	/** Flat board on the front (north) face */
 	private wallBoard(x: number, y: number, z: number, title: string, sub: string, color: string): THREE.Mesh {
 		const { canvas: c, ctx } = labelCanvas(320, 140);
 		ctx.fillStyle = color;
@@ -423,6 +475,7 @@ export class Restrooms {
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 		mesh.position.set(x, y, z);
+		mesh.rotation.y = FACING_NORTH_Y;
 		return mesh;
 	}
 
@@ -441,6 +494,7 @@ export class Restrooms {
 			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 		mesh.position.set(x, y, z);
+		mesh.rotation.y = FACING_NORTH_Y;
 		return mesh;
 	}
 

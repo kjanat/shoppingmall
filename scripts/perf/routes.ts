@@ -1,9 +1,27 @@
 import type { LevelId } from '#/data/levels';
 import { levelY } from '#/data/levels';
-import { PARKING_EXIT_RAMP } from '#/data/world';
+import { ENTRANCE_PORTAL, PARKING_EXIT_RAMP } from '#/data/world';
 import { EYE } from '#/player/constants';
 import { midpoint } from '#/util/math';
+import { mulberry32 } from '#/util/rand';
 import type { RoutePose } from './probe.ts';
+
+/**
+ * Waar de camera vandaan kijkt om de hoofdingang in beeld te krijgen: schuin van
+ * opzij, zodat de luifel diepte houdt, en met de blik iets omhoog naar de
+ * belettering boven het glas.
+ *
+ * Op de bestrating en niet op de rijbaan. Op zeventien meter stond hij vijf
+ * centimeter naast het hart van de buitenste rijstrook: een passerende auto van
+ * 4,2 meter dekte dan het onderste halve beeld af en het aantal draw calls van het
+ * enige buitenstandpunt dat het project heeft hing af van waar het verkeer net
+ * reed. `ingang` in de wereldcontrole meet deze pose tegen elke rijstrook en tegen
+ * de aftakking naar de garage.
+ *
+ * En naar het zuiden: ten noorden van de portaalas ligt de uitritgeul open en
+ * loopt de aftakking waarover auto's de garage in rijden.
+ */
+const ENTRANCE_STREET_VIEW = { back: 11, side: 9.5, aim: 6 } as const;
 
 export type ProfilePoint = { name: string; pose: RoutePose };
 export type ProfileRoute = { id: string; description: string; seed: number | null; points: readonly ProfilePoint[] };
@@ -73,6 +91,18 @@ const FULL_COURSE: readonly LevelCourse[] = [
 			point('v0-center', 0, eye('v0'), 0, 12, eye('v0'), 0),
 			point('v0-southwest', -14, eye('v0'), 10, 0, eye('v0'), 0),
 			point('v0-west-corridor', -26, eye('v0'), 0, -14, eye('v0'), 0),
+			// Van de stoep terug op de hoofdingang. Het enige standpunt buiten de
+			// gevel op dit dek: de luifel, het portaal en de belettering zijn van
+			// binnenuit onzichtbaar en op een plattegrond een streep.
+			point(
+				'v0-entrance-street',
+				ENTRANCE_PORTAL.outerX - ENTRANCE_STREET_VIEW.back,
+				eye('v0'),
+				ENTRANCE_PORTAL.centerZ + ENTRANCE_STREET_VIEW.side,
+				ENTRANCE_PORTAL.innerX,
+				ENTRANCE_STREET_VIEW.aim,
+				ENTRANCE_PORTAL.centerZ,
+			),
 			point('v0-northwest', -14, eye('v0'), -10, 0, eye('v0'), 0),
 		],
 		exit: point('v0-elevator-depart', 16, eye('v0'), -8, 0, eye('p1'), 0),
@@ -116,17 +146,6 @@ const FULL_COURSE: readonly LevelCourse[] = [
 	},
 ];
 
-function seededRandom(seed: number): () => number {
-	let state = seed >>> 0;
-	return (): number => {
-		state = (state + 0x6d2b79f5) >>> 0;
-		let value = state;
-		value = Math.imul(value ^ (value >>> 15), value | 1);
-		value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-		return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
-	};
-}
-
 function shuffled<T>(values: readonly T[], random: () => number): T[] {
 	const result = [...values];
 	for (let i = result.length - 1; i > 0; i--) {
@@ -141,7 +160,7 @@ function shuffled<T>(values: readonly T[], random: () => number): T[] {
 }
 
 export function fullMallRoute(seed: number | null = null): ProfileRoute {
-	const random = seed === null ? null : seededRandom(seed);
+	const random = seed === null ? null : mulberry32(seed);
 	const points: ProfilePoint[] = [];
 	for (const level of FULL_COURSE) {
 		points.push(level.entry);
