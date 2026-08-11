@@ -36,11 +36,15 @@ export type Rect = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: nu
  * achter zich heeft staan; zonder die ruimte klemt collision je de artiesteningang in.
  * East bound follows the fur-con lot so the clamp never cuts the halls short.
  */
+/**
+ * Walkable outdoor clamp + ground plate size.
+ * West room for Montanha/favela/park, south room for the colosseum, east follows the con lot.
+ */
 export const CITY_BOUNDS = {
-	minX: -95,
+	minX: -145,
 	maxX: CON_LOT.maxX + CON_CITY_MARGIN,
-	minZ: Math.min(-90, CON_LOT.minZ - CON_CITY_MARGIN),
-	maxZ: Math.max(80, CON_LOT.maxZ + CON_CITY_MARGIN),
+	minZ: Math.min(-115, CON_LOT.minZ - CON_CITY_MARGIN),
+	maxZ: Math.max(185, CON_LOT.maxZ + CON_CITY_MARGIN),
 } as const;
 
 /** Straatniveau. Buiten de mall ligt hier de vloer, tenzij een citySurface hoger komt. */
@@ -614,10 +618,76 @@ export type TowerSpec = Readonly<{ x: number; z: number; w: number; d: number; h
 export const CITY_KAVELS = {
 	theatre: { minX: 52, maxX: 90, minZ: -87, maxZ: -40 },
 	garage: { minX: 52, maxX: 90, minZ: 40, maxZ: 72 },
-	park: { minX: -94, maxX: -52, minZ: -74, maxZ: -36 },
+	/** NW park — more west/north now that the city plate reaches further. */
+	park: { minX: -140, maxX: -52, minZ: -100, maxZ: -36 },
 	/** Fur con lot (plaza + halls); numbers come from conPlan. */
 	con: { minX: CON_LOT.minX, maxX: CON_LOT.maxX, minZ: CON_LOT.minZ, maxZ: CON_LOT.maxZ },
+	/** SW Corcovado knock-off — towers stay off the rock. */
+	rio: { minX: -140, maxX: -58, minZ: 36, maxZ: 92 },
+	/** Favela on the mall-facing slope of the mountain (between rock and west ring). */
+	favela: { minX: -82, maxX: -48, minZ: 40, maxZ: 88 },
+	/** The Roman Mega Colosseum south of the ring road. */
+	colosseum: { minX: -42, maxX: 42, minZ: 68, maxZ: 178 },
 } as const satisfies Record<string, Rect>;
+
+export const COLOSSEUM_PLAN = {
+	x: 0,
+	z: 104,
+	radiusX: 34,
+	radiusZ: 40,
+	arenaRadiusX: 20,
+	arenaRadiusZ: 25,
+	wallHeight: 24,
+	levels: 4,
+	archesPerLevel: 36,
+	hypogeumDepth: 3.5,
+	label: 'MEGA COLOSSEUM ARENA',
+} as const;
+
+/**
+ * Montanha de Janeiro: green rock + white Redeemer overlooking the mall from the SW.
+ * Numbers are the one source for mesh, colliders and the kavel above.
+ */
+export const RIO_MOUNTAIN = {
+	x: midpoint(CITY_KAVELS.rio.minX, CITY_KAVELS.rio.maxX),
+	z: midpoint(CITY_KAVELS.rio.minZ, CITY_KAVELS.rio.maxZ),
+	/** Base footprint (metres). */
+	baseW: 48,
+	baseD: 40,
+	/** Rock peak under the pedestal. */
+	rockH: 48,
+	/** White figure height (toes to head). */
+	statueH: 20,
+	/** Arm span tip to tip. */
+	armSpan: 18,
+	label: 'MONTANHA DE JANEIRO',
+} as const;
+
+/**
+ * Sloppenwijk / favela climbing the east face of Montanha de Janeiro toward the ring.
+ * Footing height rises toward the mountain (lower x).
+ */
+export const FAVELA_PLAN = {
+	minX: CITY_KAVELS.favela.minX,
+	maxX: CITY_KAVELS.favela.maxX,
+	minZ: CITY_KAVELS.favela.minZ,
+	maxZ: CITY_KAVELS.favela.maxZ,
+	/** Lowest terrace (near the ring). */
+	yLow: 0.4,
+	/** Highest terrace (against the rock). */
+	yHigh: 28,
+	cols: 12,
+	rows: 14,
+	/** Deterministic layout seed. */
+	seed: 0xfa9e1a,
+	label: 'SLOPPENWIJK',
+} as const;
+
+/** Ground height under a favela cell: climbs west toward the mountain. */
+export function favelaGroundY(x: number, _z: number): number {
+	const t = inverseLerpClamped(FAVELA_PLAN.maxX, FAVELA_PLAN.minX, x);
+	return lerp(FAVELA_PLAN.yLow, FAVELA_PLAN.yHigh, t);
+}
 
 const KAVELS: readonly Rect[] = Object.values(CITY_KAVELS);
 
@@ -632,10 +702,10 @@ function opKavel(x: number, z: number, w: number, d: number): boolean {
 export function planTowers(rand: Rand): TowerSpec[] {
 	const specs: TowerSpec[] = [];
 	const bands: [number, () => [number, number]][] = [
-		[8, () => [lerp(-85, 85, rand()), -lerp(46, 67, rand())]], // noord
-		[8, () => [lerp(-85, 85, rand()), lerp(46, 67, rand())]], // zuid
-		[7, () => [lerp(60, 87, rand()), lerp(-64, 64, rand())]], // oost
-		[7, () => [-lerp(60, 87, rand()), lerp(-64, 64, rand())]], // west
+		[9, () => [lerp(-120, 100, rand()), -lerp(48, 95, rand())]], // noord
+		[9, () => [lerp(-120, 100, rand()), lerp(48, 95, rand())]], // zuid
+		[8, () => [lerp(60, 95, rand()), lerp(-80, 80, rand())]], // oost
+		[10, () => [-lerp(60, 130, rand()), lerp(-80, 80, rand())]], // west (extra land)
 	];
 
 	for (const [count, pick] of bands) {

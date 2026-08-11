@@ -50,7 +50,10 @@ const BOOM_SCHAAL_SPREIDING = 0.5;
  * pad volgt krijgt gegarandeerd eenden.
  */
 const PATH: readonly [number, number][] = [
-	[-90, -61],
+	[-128, -72],
+	[-118, -78],
+	[-105, -82],
+	[-92, -78],
 	[-83, -63.5],
 	[-75, -64],
 	[-68, -61.5],
@@ -58,10 +61,11 @@ const PATH: readonly [number, number][] = [
 	[-62.5, -49],
 	[-68, -45],
 	[-75, -44.2],
-	[-81, -46.5],
-	[-84.5, -51],
-	[-81, -55.5],
-	[-78.5, -56.5],
+	[-90, -48],
+	[-105, -55],
+	[-118, -62],
+	[-125, -68],
+	[-120, -74],
 ];
 
 export class CityPark {

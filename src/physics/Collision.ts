@@ -41,6 +41,8 @@ import {
 	theatreTreadZ,
 	VERTICAL_CONNECTORS,
 } from '#/data/world';
+import { favelaColliders, favelaSurfaces } from '#/scene/city/CityFavela';
+import { rioMountainColliders, rioMountainSurfaces } from '#/scene/city/CityRioMountain';
 import {
 	CITY_BOUNDS,
 	CITY_GROUND_Y,
@@ -728,6 +730,30 @@ export class CollisionWorld {
 		}
 		for (const surface of conSurfaces()) {
 			this.citySurfaces.push({ ...surface, label: `con_${surface.label}` });
+		}
+		for (const collider of rioMountainColliders()) {
+			this.add(
+				collider.minX,
+				collider.maxX,
+				collider.minZ,
+				collider.maxZ,
+				opaque({ minY: collider.minY, maxY: collider.maxY, label: collider.label, outdoor: true }),
+			);
+		}
+		for (const surface of rioMountainSurfaces()) {
+			this.citySurfaces.push({ ...surface, label: surface.label });
+		}
+		for (const collider of favelaColliders()) {
+			this.add(
+				collider.minX,
+				collider.maxX,
+				collider.minZ,
+				collider.maxZ,
+				opaque({ minY: collider.minY, maxY: collider.maxY, label: collider.label, outdoor: true }),
+			);
+		}
+		for (const surface of favelaSurfaces()) {
+			this.citySurfaces.push({ ...surface, label: surface.label });
 		}
 
 		// De toneelrand: een wand, geen val. Het zaaldek zakt trapsgewijs naar de voorste

@@ -23,6 +23,6 @@ export const ATRIUM_BARRIER = expanded(ATRIUM_VOID, 0.5);
 export const PARKING_FOOTPRINT = footprint(64, 42);
 /**
  * Far clip for authored city content.
- * Must clear the fur-con far corner (CON_LOT ~ x 500, z ±100) with headroom.
+ * Must clear the fur-con far corner (CON_LOT ~ x 500) and the expanded SW city (mountain/favela).
  */
-export const WORLD_VIEW_DISTANCE = 620;
+export const WORLD_VIEW_DISTANCE = 720;

@@ -17,13 +17,7 @@ import {
 import type { AABB, CollisionWorld } from '#/physics/Collision';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import {
-	ACCENT_COLORS,
-	BELLY_COLORS,
-	buildHeroSuit,
-	FUR_COLORS,
-	SPECIES,
-} from '#/scene/con/FursuitKit';
+import { ACCENT_COLORS, BELLY_COLORS, buildHeroSuit, FUR_COLORS, SPECIES } from '#/scene/con/FursuitKit';
 import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { midpoint, span } from '#/util/math';
 import { at, mulberry32, pickWith } from '#/util/rand';

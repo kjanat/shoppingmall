@@ -38,17 +38,22 @@ import { Atmosphere } from '#/scene/Atmosphere';
 import { BeardCave } from '#/scene/BeardCave';
 import { Catwalk } from '#/scene/Catwalk';
 import { CleaningCart } from '#/scene/CleaningCart';
+import { ColosseumFighters } from '#/scene/ColosseumFighters';
 import { Barriers } from '#/scene/city/Barriers';
 import { CityBirds } from '#/scene/city/CityBirds';
 import { CityBuildings } from '#/scene/city/CityBuildings';
+import { CityColosseum } from '#/scene/city/CityColosseum';
+import { CityFavela } from '#/scene/city/CityFavela';
 import { CityGarage } from '#/scene/city/CityGarage';
 import { CityPark } from '#/scene/city/CityPark';
 import { CityPlaza } from '#/scene/city/CityPlaza';
+import { CityRioMountain } from '#/scene/city/CityRioMountain';
 import { CityRoads } from '#/scene/city/CityRoads';
 import { CitySky } from '#/scene/city/CitySky';
 import { CityTheatre } from '#/scene/city/CityTheatre';
 import type { RoadObstacle } from '#/scene/city/CityTraffic';
 import { CityTraffic } from '#/scene/city/CityTraffic';
+import { ColosseumTransport } from '#/scene/city/ColosseumTransport';
 import { CITY_TRAFFIC_ZONES } from '#/scene/city/cityPlan';
 import { FurryCon } from '#/scene/con/FurryCon';
 import { DiscoParty } from '#/scene/Disco';
@@ -179,6 +184,11 @@ export class App {
 	private barriers = new Barriers(this.world);
 	private cityTraffic = new CityTraffic(() => this.cityRoads.lightPhase, this.barriers);
 	private cityPark = new CityPark();
+	private cityRio = new CityRioMountain();
+	private cityFavela = new CityFavela();
+	private cityColosseum: CityColosseum;
+	private colosseumFighters = new ColosseumFighters();
+	private colosseumTransport: ColosseumTransport;
 	private cityPlaza = new CityPlaza();
 	/** Het theater heeft zaallicht, dus het krijgt de pool en wordt in de ctor gebouwd. */
 	private cityTheatre: CityTheatre;
@@ -315,6 +325,7 @@ export class App {
 	private nearProtestHint = false;
 	private nearTravelHint = false;
 	private nearConHint = false;
+	private nearFavelaGangHint = false;
 	private lastConHint: string | null = null;
 	private nearPrayerHint = false;
 	private bartekSpeaking = false;
@@ -381,6 +392,9 @@ export class App {
 		this.alienProbe = new AlienProbe(this.pool);
 		this.cityTheatre = new CityTheatre(this.pool);
 		this.furryCon = new FurryCon(this.pool, this.world);
+		this.cityColosseum = new CityColosseum(this.world);
+		this.colosseumTransport = new ColosseumTransport(this.world);
+		this.colosseumFighters.bindColosseum(this.cityColosseum);
 
 		this.atmosphere = new Atmosphere(this.world);
 		this.thief = new BakerThief(this.world, this.beardCave);
@@ -474,6 +488,11 @@ export class App {
 		this.scene.add(this.cityTraffic.group);
 		this.scene.add(this.barriers.group);
 		this.scene.add(this.cityPark.group);
+		this.scene.add(this.cityRio.group);
+		this.scene.add(this.cityFavela.group);
+		this.scene.add(this.cityColosseum.group);
+		this.scene.add(this.colosseumFighters.group);
+		this.scene.add(this.colosseumTransport.group);
 		this.scene.add(this.cityTheatre.group);
 		this.scene.add(this.furryCon.group);
 		this.scene.add(this.cityGarage.group);
@@ -601,6 +620,8 @@ export class App {
 			// De armen draaien, dus de bomen zijn een dynamische wortel.
 			this.barriers.group,
 			this.cityPark.group,
+			this.cityRio.group,
+			this.cityFavela.group,
 			this.cityTheatre.group,
 			this.furryCon.group,
 			this.cityGarage.group,
@@ -947,6 +968,15 @@ export class App {
 						this.ui.setScore(this.score, this.metSims.size);
 					}
 					this.ui.setStatus(con.status);
+					return;
+				}
+				const gang = this.cityFavela.tryInteract(this.camera.position);
+				if (gang) {
+					if (gang.scoreDelta !== 0) {
+						this.score = Math.max(0, this.score + gang.scoreDelta);
+						this.ui.setScore(this.score, this.metSims.size);
+					}
+					this.ui.setStatus(gang.status);
 					return;
 				}
 				// Het liftpaneel wint één keer van uitstappen: rijdend in de cabine was E altijd
@@ -2189,6 +2219,7 @@ export class App {
 	private hasEInteraction(): boolean {
 		const p = this.camera.position;
 		if (this.furryCon.canInteract(p) || this.furryCon.onLot(p)) return true;
+		if (this.cityFavela.inGangRange(p)) return true;
 		const lift = this.elevatorAction();
 		if (lift !== null) return true;
 		if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car') return true;
@@ -2538,6 +2569,11 @@ export class App {
 			this.cityTraffic.update(cityDt, elapsed);
 			this.cityBuildings.update(cityDt, elapsed);
 			this.cityPark.update(cityDt, elapsed);
+			this.cityRio.update(elapsed);
+			this.cityFavela.update(cityDt, elapsed, this.camera.position);
+			this.cityColosseum.update(cityDt, elapsed);
+			this.colosseumFighters.update(cityDt, elapsed);
+			this.colosseumTransport.update(cityDt, elapsed);
 			this.citySky.update(cityDt, elapsed);
 			this.cityBirds.update(cityDt, elapsed);
 		}
@@ -2696,6 +2732,13 @@ export class App {
 				this.ui.setStatus('🐾 PRAIRIE FUR CON · pink glows = E · badge desk at doors first · dealers/stage/hotel/food');
 			} else if (dCon >= 55) {
 				this.nearConHint = false;
+			}
+
+			if (this.cityFavela.inGangRange(this.camera.position) && !this.nearFavelaGangHint) {
+				this.nearFavelaGangHint = true;
+				this.ui.setStatus('🔫 FAVELA · bendes + twinks met slop · E = praten / pedágio / share the bowl');
+			} else if (!this.cityFavela.inGangRange(this.camera.position)) {
+				this.nearFavelaGangHint = false;
 			}
 
 			// Protest picket — Wir schaffen das

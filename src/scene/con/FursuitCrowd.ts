@@ -33,6 +33,7 @@ import { at, mulberry32, pickWith } from '#/util/rand';
 const HIP_Y = CON_BODY * (0.92 / 1.9);
 const PATH_INSET = CON_BODY * 4;
 const SEED = 0xf47c0de;
+const IDLE_HEAD_YAW = 0.5;
 
 const PARTS: readonly BodyPartId[] = [
 	'pelvis',
@@ -299,7 +300,7 @@ export class FursuitCrowd {
 			if (shinR) shinR.rotation.x = 0;
 			if (armL) armL.rotation.x = 0;
 			if (armR) armR.rotation.x = 0;
-			if (skull) skull.rotation.set(0, Math.sin(a.phase * 0.5) * 0.12, 0);
+			if (skull) skull.rotation.set(0, Math.sin(a.phase * IDLE_HEAD_YAW) * 0.12, 0);
 		}
 
 		const tail = this.boneById.get('tail')?.node;
