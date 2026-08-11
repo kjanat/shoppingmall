@@ -38,21 +38,16 @@ export type PlanBox = Readonly<{ minX: number; maxX: number; minZ: number; maxZ:
 /** Twee lichamen op exact dezelfde plek hebben geen richting om uit elkaar te gaan; daaronder kiest de code er zelf een. */
 const DEGENERATE = 1e-6;
 
-/** Onder deze correctielengte ligt de snelheid al op de rand en verandert het halfvlak niets. */
-const NEGLIGIBLE = 1e-9;
-
 /** Ieder van twee lopers neemt de helft van de correctie. Een muur loopt niet mee en laat de volle correctie liggen. */
 export const RECIPROCAL_SHARE = half(1);
-
-function constraintFrom(vx: number, vz: number, ux: number, uz: number, share: number): VelocityConstraint | null {
-	const length = Math.hypot(ux, uz);
-	if (length < NEGLIGIBLE) return null;
-	return { px: vx + ux * share, pz: vz + uz * share, nx: ux / length, nz: uz / length };
-}
 
 /**
  * Het halfvlak dat `self` moet respecteren om `other` binnen `horizon` seconden
  * te missen, met `share` als het deel van de correctie dat `self` op zich neemt.
+ *
+ * De normaal komt van de rand van het snelheidsobstakel en niet van `u`: zodra
+ * de relatieve snelheid al buiten die rand ligt wijst `u` er juist naartoe, en
+ * dan zou een halfvlak op `u` een loper afremmen die al uit de weg gaat.
  *
  * `dt` telt alleen mee als de twee al in elkaar staan: dan is de horizon de
  * frametijd, want die overlap moet er nu uit en niet over een seconde.
@@ -71,79 +66,73 @@ export function agentConstraint(
 	const distSq = rx * rx + rz * rz;
 	const combined = self.radius + other.radius;
 	const combinedSq = combined * combined;
-
-	if (distSq > combinedSq) {
-		const invHorizon = 1 / horizon;
-		// Van de rand van de afgeknotte kegel naar de relatieve snelheid.
-		const wx = rvx - rx * invHorizon;
-		const wz = rvz - rz * invHorizon;
-		const wLengthSq = wx * wx + wz * wz;
-		const alongR = wx * rx + wz * rz;
-
-		if (alongR < 0 && alongR * alongR > combinedSq * wLengthSq) {
-			// Voorbij de mond van de kegel: projecteer op de cirkel.
-			const wLength = Math.sqrt(wLengthSq);
-			if (wLength < DEGENERATE) return null;
-			const reach = combined * invHorizon - wLength;
-			return constraintFrom(self.vx, self.vz, (wx / wLength) * reach, (wz / wLength) * reach, share);
-		}
-
-		// Anders op de dichtstbijzijnde flank. Beide vormen zijn al van lengte één,
-		// want de teller meet distSq.
-		const leg = Math.sqrt(distSq - combinedSq);
-		const left = rx * wz - rz * wx > 0;
-		const dirX = left ? (rx * leg - rz * combined) / distSq : -(rx * leg + rz * combined) / distSq;
-		const dirZ = left ? (rx * combined + rz * leg) / distSq : (rx * combined - rz * leg) / distSq;
-		const along = rvx * dirX + rvz * dirZ;
-		return constraintFrom(self.vx, self.vz, dirX * along - rvx, dirZ * along - rvz, share);
-	}
-
+	const inside = distSq <= combinedSq;
 	// Al in elkaar: dezelfde constructie met de frametijd als horizon.
-	const invStep = 1 / dt;
-	const wx = rvx - rx * invStep;
-	const wz = rvz - rz * invStep;
-	const wLength = Math.hypot(wx, wz);
-	if (wLength >= DEGENERATE) {
-		const reach = combined * invStep - wLength;
-		return constraintFrom(self.vx, self.vz, (wx / wLength) * reach, (wz / wLength) * reach, share);
+	const invHorizon = inside ? 1 / dt : 1 / horizon;
+
+	const wx = rvx - rx * invHorizon;
+	const wz = rvz - rz * invHorizon;
+	const wLengthSq = wx * wx + wz * wz;
+	const alongR = wx * rx + wz * rz;
+	const onCircle = inside || (alongR < 0 && alongR * alongR > combinedSq * wLengthSq);
+
+	if (onCircle) {
+		// Voorbij de mond van de kegel: de dichtstbijzijnde rand is de cirkel zelf.
+		const wLength = Math.sqrt(wLengthSq);
+		if (wLength < DEGENERATE) return null;
+		const nx = wx / wLength;
+		const nz = wz / wLength;
+		const reach = combined * invHorizon - wLength;
+		return { px: self.vx + nx * reach * share, pz: self.vz + nz * reach * share, nx, nz };
 	}
-	// Op elkaar én even snel: zonder eigen richting is er geen normaal, dus langs
-	// de verbindingslijn uit elkaar, en anders langs +x.
-	const dist = Math.sqrt(distSq);
-	const awayX = dist > DEGENERATE ? -rx / dist : 1;
-	const awayZ = dist > DEGENERATE ? -rz / dist : 0;
-	return constraintFrom(self.vx, self.vz, awayX * combined * invStep, awayZ * combined * invStep, share);
+
+	// Anders de dichtstbijzijnde flank van de kegel. Beide vormen hebben al lengte
+	// één, want de teller meet distSq.
+	const leg = Math.sqrt(distSq - combinedSq);
+	const left = rx * wz - rz * wx > 0;
+	const dirX = left ? (rx * leg - rz * combined) / distSq : -(rx * leg + rz * combined) / distSq;
+	const dirZ = left ? (rx * combined + rz * leg) / distSq : (rx * combined - rz * leg) / distSq;
+	const along = rvx * dirX + rvz * dirZ;
+	const ux = dirX * along - rvx;
+	const uz = dirZ * along - rvz;
+	return { px: self.vx + ux * share, pz: self.vz + uz * share, nx: -dirZ, nz: dirX };
 }
 
 /**
- * Het halfvlak dat `self` van een muur weghoudt: hij mag het gat naar de doos
- * in `horizon` seconden opmaken en niet sneller.
+ * Het halfvlak dat `self` van een muur weghoudt: hij mag het gat naar de doos in
+ * `horizon` seconden opmaken en niet sneller, en staat hij er al in, dan moet hij
+ * er deze frame uit.
  *
  * De normaal komt van het dichtstbijzijnde punt op de doos, en dat is bij een
  * vlakke wand exact de wandnormaal; bij een hoek staat hij schuiner en is de eis
  * strenger dan nodig. Een muur beweegt niet mee, dus de loper draagt de hele
  * correctie in plaats van de helft.
  */
-export function staticConstraint(self: OrcaBody, box: PlanBox, horizon: number, dt: number): VelocityConstraint | null {
-	let dx = self.x - clamp(self.x, box.minX, box.maxX);
-	let dz = self.z - clamp(self.z, box.minZ, box.maxZ);
-	let dist = Math.hypot(dx, dz);
-	if (dist < DEGENERATE) {
-		// Middelpunt in de doos: er uit langs de dichtstbijzijnde zijde.
+export function staticConstraint(self: OrcaBody, box: PlanBox, horizon: number, dt: number): VelocityConstraint {
+	const dx = self.x - clamp(self.x, box.minX, box.maxX);
+	const dz = self.z - clamp(self.z, box.minZ, box.maxZ);
+	const dist = Math.hypot(dx, dz);
+	let nx = 0;
+	let nz = 0;
+	let gap = 0;
+	if (dist >= DEGENERATE) {
+		nx = dx / dist;
+		nz = dz / dist;
+		gap = dist - self.radius;
+	} else {
+		// Middelpunt in de doos: eruit langs de dichtstbijzijnde zijde, en het gat
+		// is dan de weg naar die zijde plus de straal die er nog achteraan komt.
 		const toMinX = self.x - box.minX;
 		const toMaxX = box.maxX - self.x;
 		const toMinZ = self.z - box.minZ;
 		const toMaxZ = box.maxZ - self.z;
 		const nearest = Math.min(toMinX, toMaxX, toMinZ, toMaxZ);
-		dx = nearest === toMinX ? -1 : nearest === toMaxX ? 1 : 0;
-		dz = dx === 0 ? (nearest === toMinZ ? -1 : 1) : 0;
-		dist = 1;
+		nx = nearest === toMinX ? -1 : nearest === toMaxX ? 1 : 0;
+		nz = nx === 0 ? (nearest === toMinZ ? -1 : 1) : 0;
+		gap = -(nearest + self.radius);
 	}
-	const nx = dx / dist;
-	const nz = dz / dist;
-	const gap = dist - self.radius;
 	const approach = gap < 0 ? gap / dt : gap / horizon;
-	return { px: nx * approach, pz: nz * approach, nx, nz };
+	return { px: -nx * approach, pz: -nz * approach, nx, nz };
 }
 
 /**
@@ -182,7 +171,7 @@ export function solveVelocity(
 			vx = (vx / speed) * maxSpeed;
 			vz = (vz / speed) * maxSpeed;
 		}
-		if (worst < NEGLIGIBLE) break;
+		if (worst < DEGENERATE) break;
 	}
 	return { vx, vz };
 }

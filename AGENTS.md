@@ -418,9 +418,21 @@ run profile --compare before         # same route against a named saved artifact
 run profile --batch-mode spatial     # force one batching mode before page scripts
 run diagnose:headless                # no-GPU containers (remote agent envs, CI), see below
 
+run shots --list                     # every named viewpoint, the same names `run profile` uses
+run shots v0-entrance-street roof-middle          # screenshots to .perf/shots/
+run shots --pose 0,7.7,120,0,2,104 --name arena   # an ad-hoc viewpoint: x,y,z,lookX,lookY,lookZ
+run shots v0-center --hud --live --width 1600 --height 900
+
 CHROME_HEADFUL=1 run bench           # real window; the only Linux path measured without a pacing floor
 MALL_PERF_ANGLE=vulkan run diagnose  # pick the ANGLE backend: vulkan, gl or d3d11
 ```
+
+**Look at the build with [shots](scripts/shots.ts), never with a throwaway script.** Every visual check used to grow its
+own `_verify-*.ts`, which was deleted afterwards, so the next one rebuilt the same four traps: `ready` resolves before
+`#app-loading` is gone and the shot catches the loading screen; the first frame after a pose still holds the previous
+one; the HUD covers half a narrow viewport; and a SwiftShader screenshot needs minutes, not Playwright's 30-second
+default. `shots` holds all four. It takes the perf browser lock, so it queues behind a running `diagnose`, `bench` or
+`profile` instead of fighting it.
 
 **Backend and window mode are part of the measurement.** [playwright](scripts/perf/playwright.ts) picks Chrome's GPU
 flags from three inputs. `MALL_PERF_SOFTWARE=1` takes the SwiftShader path; otherwise `MALL_PERF_ANGLE` names the

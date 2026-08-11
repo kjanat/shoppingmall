@@ -1,19 +1,22 @@
 import * as THREE from 'three';
+import type { NodeId } from '#/data/graph';
 import type { LevelId } from '#/data/levels';
 import { levelAt, levelY } from '#/data/levels';
 import { getOwner } from '#/data/shopOwners';
 import type { StoreDef } from '#/data/stores';
 import { STORES } from '#/data/stores';
 import { Pathfinder } from '#/path/Pathfinder';
-import type { CollisionWorld } from '#/physics/Collision';
+import type { AABB, CollisionWorld } from '#/physics/Collision';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
+import type { OrcaBody, VelocityConstraint } from '#/sim/Orca';
+import { agentConstraint, RECIPROCAL_SHARE, solveVelocity, staticConstraint } from '#/sim/Orca';
 import type { SimPersona } from '#/sim/SimChat';
 import { fetchSimChat } from '#/sim/SimChat';
 
 import { fitText, labelCanvas, labelTexture, roundRect } from '#/util/label';
-import { clamp, clamp01, ease, easeFactor, half, lerp, shortestAngle } from '#/util/math';
-import { at, jitter, mulberry32, pick, pickWith } from '#/util/rand';
+import { clamp, ease, easeFactor, half, lerp, shortestAngle } from '#/util/math';
+import { at, jitter, mulberry32, pick, pickWith, plusMinusWith } from '#/util/rand';
 import { isOnViewerLevel, tagLevelCulled } from '#/util/visibility';
 
 export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
@@ -128,10 +131,22 @@ type Sim = {
 	velocity: THREE.Vector3;
 	/** Visible-body footprint used for walls and last-resort overlap repair. */
 	radius: number;
-	/** Reciprocal lateral velocity assigned before movement for this frame. */
-	avoidance: THREE.Vector3;
+	/** Velocity ORCA cleared for this frame: the goal direction with every conflict already taken out. */
+	steer: THREE.Vector3;
 	path: THREE.Vector3[];
 	pathI: number;
+	/** Route length measured when the path was planned, from where the sim stood. */
+	routeLength: number;
+	/** Furthest along that route this sim has been; progress is measured against this and never against a single frame. */
+	routeBest: number;
+	/** Seconds since `routeBest` last moved — the one clock that decides someone is stuck. */
+	sinceProgress: number;
+	/** Waypoints given up on during this route, because standing on them turned out to be impossible. */
+	skippedNodes: number;
+	/** Times this route was planned again after a stall. */
+	replans: number;
+	/** This sim's own lane, sideways off the shared waypoint line. */
+	laneOffset: number;
 	wait: number;
 	phase: number;
 	shopId: string;
@@ -139,7 +154,6 @@ type Sim = {
 	labelCtx: CanvasRenderingContext2D;
 	labelTex: THREE.CanvasTexture;
 	gibberCd: number;
-	stuckTime: number;
 	bubbleCd: number;
 	/** next squeak while speech bubble is open */
 	squeakT: number;
@@ -147,6 +161,15 @@ type Sim = {
 	coupleSide: number;
 	/** dt banked while throttled off-level, spent whole on the next real tick */
 	lag: number;
+	/**
+	 * Deze sim zijn eigen stroom voor alles wat hij onderweg trekt: welke winkel
+	 * hij kiest, wanneer zijn honger omslaat, hoe lang hij bij de kassa staat.
+	 *
+	 * Los van de stroom die zijn uiterlijk tekent, zodat een trekking erbij in de
+	 * ene de andere niet verschuift, en per sim zodat de volgorde waarin de lus
+	 * langs de menigte gaat niet meebepaalt wat er getrokken wordt.
+	 */
+	roll: () => number;
 };
 
 const FIRST = [
@@ -215,10 +238,50 @@ function shopEntrance(s: StoreDef): THREE.Vector3 {
  * True mall NPCs: shop → shop routes, velocity vector, legs+feet that walk hard,
  * head plates (destination / € spent / unhappiness), occasional farts + noises.
  */
-/** Distance at which reciprocal collision avoidance starts steering. */
-const SIM_COMFORT_DISTANCE = 2.05;
-const SIM_AVOIDANCE_HORIZON = 1.25;
-const SIM_MAX_LATERAL_SPEED = 1.2;
+/** How far ahead a walker resolves another walker. Two seconds is about the distance a mall shopper actually reads. */
+const SIM_AVOIDANCE_HORIZON = 2;
+/** A wall is answered later than a person: steering around it a second early puts everyone in the middle of the corridor. */
+const SIM_WALL_HORIZON = 0.9;
+/** Personal space on top of the two bodies. A couple walks without it; strangers do not. */
+const SIM_COMFORT_MARGIN = 0.35;
+/** Neighbours further than this cannot reach the sim inside the horizon, so the grid never hands them over. */
+const SIM_NEIGHBOUR_REACH = 4.5;
+/** Walls further than this are not in the way yet. */
+const SIM_WALL_REACH = 2.5;
+/** Height difference above which two sims are on different decks and do not see each other at all. */
+const SIM_DECK_BAND = 2.5;
+/** Passes of the projection solver over the half-planes. */
+const SIM_SOLVER_ROUNDS = 3;
+/** A frame shorter than this makes the collision term explode; the solver reads it as this long. */
+const SIM_MIN_STEP = 1 / 240;
+
+/** Width of the band of lanes guests spread their shared waypoints over. */
+const LANE_SPREAD = 1.8;
+/** Own seed, so a lane never shifts the draws that make a sim look like itself. */
+const LANE_SEED = 0x1a2e5;
+
+/** Movement that counts as getting somewhere: one stride, not one frame of jitter. */
+const PROGRESS_STRIDE = 0.35;
+/** No stride in this long and the guest is stuck, not slow. */
+const STUCK_SECONDS = 5;
+/** Standing this close to an unreachable waypoint is as close as the geometry allows; retire it and walk on. */
+const WAYPOINT_GIVE_UP = 3;
+/** Replans of one route before the guest gives up on the shop itself. */
+const MAX_REPLANS = 2;
+/** Skipped waypoints on one route before the same. */
+const MAX_SKIPS = 3;
+/** Clearance past the body radius for a corner walked around, so the detour is not tangent to the box it dodges. */
+const DETOUR_MARGIN = 0.2;
+/** Obstacles solved on one leg of the route. Beyond this the gap really is shut and the route itself has to change. */
+const MAX_DETOURS = 2;
+/** Nearby graph nodes tried as the start of a route before settling for the closest one. */
+const START_NODE_CANDIDATES = 6;
+/** How hard the follower of a couple is pulled into the lane beside its partner, per second. */
+const COUPLE_PULL = 7.2;
+/** Where the crowd is drawn from. One number decides who they are and where they walk. */
+const CROWD_SEED = 0xbadc0de;
+/** Offsets the behaviour stream from the one that draws a sim's looks, so the two never share a draw. */
+const BEHAVIOUR_SEED = 0x5eed1;
 
 // ── build ───────────────────────────────────────────────────
 /** Step length: pageant girls walk one fixed catwalk stride, everyone else rolls theirs. */
@@ -301,17 +364,37 @@ export class Americans {
 	private static readonly GOSSIP_RANGE = 12;
 	/** Sims on a deck the player is not on tick once every N frames */
 	private static readonly OFF_LEVEL_EVERY = 4;
+	/** Row length of the neighbour grid key; the mall is nowhere near this many cells wide. */
+	private static readonly GRID_STRIDE = 1024;
 	private frame = 0;
+	private readonly neighbourGrid = new Map<number, number[]>();
+	private readonly constraints: VelocityConstraint[] = [];
+	private readonly blockers: AABB[] = [];
+	private readonly desired = new THREE.Vector3();
 
-	constructor(world: CollisionWorld, count = 20) {
+	/**
+	 * @param seed Waar de menigte uit getrokken wordt. Vast, want een sim die er
+	 * elke sessie anders uitziet en anders loopt is niet te reproduceren: een
+	 * controle die hem betrapt kan hem dan niet terugvinden. Wie een andere
+	 * menigte wil, vraagt om een ander zaad.
+	 *
+	 * Het zaad dekt alles wat een sim uit zichzelf doet. Wat de speler uitlokt
+	 * (schrikken van een schot, juichen bij de dj, uitgescholden worden, een
+	 * gesprek dat om hem heen begint) trekt uit `Math.random`, want dat hangt al
+	 * af van waar hij loopt en wanneer, en is dus toch niet te herhalen. Stof,
+	 * munten en toonhoogtes ook: die verplaatsen niemand.
+	 */
+	constructor(
+		world: CollisionWorld,
+		count = 20,
+		private readonly seed = CROWD_SEED,
+	) {
 		this.world = world;
 		this.group.name = 'mallSims';
 		for (let i = 0; i < count; i++) {
 			const sim = this.spawn(i);
 			// snap start out of solid geometry
-			const fixed = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius);
-			sim.pos.x = fixed.x;
-			sim.pos.z = fixed.z;
+			this.settle(sim);
 			sim.root.position.copy(sim.pos);
 			this.sims.push(sim);
 			this.roster.push(sim.f);
@@ -619,7 +702,7 @@ export class Americans {
 			}
 		} else {
 			const viewer = this.listener ? levelAt(this.listener.y) : null;
-			this.assignCollisionAdvisories();
+			this.steerCrowd(dt);
 			for (const s of this.sims) {
 				s.lag += dt;
 				// Voor de throttle: een zichtbare plaat moet bijwerken, ook als deze
@@ -817,7 +900,7 @@ export class Americans {
 		if (sim.blinkT < 0.08) {
 			eyeY = Math.max(0.08, sim.blinkT / 0.08); // closing
 			if (sim.blinkT < 0) {
-				sim.blinkT = 1.8 + Math.random() * 3.5;
+				sim.blinkT = 1.8 + sim.roll() * 3.5;
 			}
 		} else if (sim.blinkT < 0.12) {
 			eyeY = (0.12 - sim.blinkT) / 0.04; // opening
@@ -845,7 +928,7 @@ export class Americans {
 			sim.squeakT -= dt;
 			if (sim.squeakT <= 0) {
 				this.playSqueak(sim);
-				sim.squeakT = 0.55 + Math.random() * 0.7;
+				sim.squeakT = 0.55 + sim.roll() * 0.7;
 			}
 		} else {
 			sim.mouth.scale.set(baseX, baseY, baseZ);
@@ -909,85 +992,133 @@ export class Americans {
 	}
 
 	/**
-	 * Give every conflicting pair equal and opposite lateral velocity before they
-	 * move. The stable pair-side choice prevents two walkers from repeatedly
-	 * changing their minds while approaching each other.
+	 * De snelheid waar deze sim heen wil: recht op zijn eigen volgende punt af, en
+	 * niets als hij staat te kijken of er geen punt meer is.
 	 */
-	private assignCollisionAdvisories(): void {
-		for (const sim of this.sims) sim.avoidance.set(0, 0, 0);
-
-		for (let i = 0; i < this.sims.length; i++) {
-			for (let j = i + 1; j < this.sims.length; j++) {
-				const a = this.sims[i];
-				const b = this.sims[j];
-				if (!a || !b || Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
-
-				const rx = b.pos.x - a.pos.x;
-				const rz = b.pos.z - a.pos.z;
-				const rvx = b.velocity.x - a.velocity.x;
-				const rvz = b.velocity.z - a.velocity.z;
-				const relativeSpeedSq = rvx * rvx + rvz * rvz;
-				const closestTime =
-					relativeSpeedSq > 1e-5 ? clamp(-(rx * rvx + rz * rvz) / relativeSpeedSq, 0, SIM_AVOIDANCE_HORIZON) : 0;
-				const closestX = rx + rvx * closestTime;
-				const closestZ = rz + rvz * closestTime;
-				const currentDistance = Math.hypot(rx, rz);
-				const predictedDistance = Math.hypot(closestX, closestZ);
-				const physicalDistance = a.radius + b.radius;
-				const couple = a.f.partnerId === b.f.id || b.f.partnerId === a.f.id;
-				const comfortDistance = couple ? physicalDistance + 0.2 : Math.max(SIM_COMFORT_DISTANCE, physicalDistance + 0.35);
-				if (currentDistance > comfortDistance * 1.2 && predictedDistance > comfortDistance) continue;
-
-				let forwardX = a.velocity.x + b.velocity.x;
-				let forwardZ = a.velocity.z + b.velocity.z;
-				let forwardLength = Math.hypot(forwardX, forwardZ);
-				if (forwardLength < 0.05) {
-					forwardX = a.velocity.x - b.velocity.x;
-					forwardZ = a.velocity.z - b.velocity.z;
-					forwardLength = Math.hypot(forwardX, forwardZ);
-				}
-				if (forwardLength < 0.05) {
-					forwardX = rx;
-					forwardZ = rz;
-					forwardLength = currentDistance;
-				}
-				if (forwardLength < 0.05) {
-					forwardX = 1;
-					forwardZ = 0;
-					forwardLength = 1;
-				}
-
-				const side = (a.f.id * 31 + b.f.id * 17) % 2 === 0 ? 1 : -1;
-				const lateralX = (-forwardZ / forwardLength) * side;
-				const lateralZ = (forwardX / forwardLength) * side;
-				const urgency = clamp01(1 - Math.min(currentDistance, predictedDistance) / comfortDistance);
-				const speed = 0.35 + urgency * 0.85;
-				a.avoidance.x += lateralX * speed;
-				a.avoidance.z += lateralZ * speed;
-				b.avoidance.x -= lateralX * speed;
-				b.avoidance.z -= lateralZ * speed;
-			}
+	private desiredVelocity(sim: Sim, out: THREE.Vector3): void {
+		const target = sim.wait > 0 ? undefined : sim.path[sim.pathI];
+		if (!target) {
+			out.set(0, 0, 0);
+			return;
 		}
-
-		for (const sim of this.sims) sim.avoidance.clampLength(0, SIM_MAX_LATERAL_SPEED);
+		const dx = target.x - sim.pos.x;
+		const dz = target.z - sim.pos.z;
+		const dist = Math.hypot(dx, dz);
+		if (dist < 1e-4) {
+			out.set(0, 0, 0);
+			return;
+		}
+		const speed = this.walkSpeed(sim);
+		out.set((dx / dist) * speed, 0, (dz / dist) * speed);
 	}
 
-	/** Static walls/stores + physical overlap repair after reciprocal avoidance. */
+	/** Mood decides the pace; it is asked twice per frame, so it lives in one place. */
+	private walkSpeed(sim: Sim): number {
+		const mood = sim.f.mood;
+		const factor = mood === 'hyped' ? 1.3 : mood === 'hangry' ? 1.2 : mood === 'chill' ? 0.8 : 1;
+		return sim.f.speed * factor;
+	}
+
+	/**
+	 * Elke sim in zijn ruit, zodat een buurvraag over negen ruiten gaat en niet
+	 * over de hele mall. Wie verder staat dan `SIM_NEIGHBOUR_REACH` kan hem binnen
+	 * de horizon niet raken.
+	 */
+	private rebuildNeighbourGrid(): void {
+		for (const bucket of this.neighbourGrid.values()) bucket.length = 0;
+		for (let i = 0; i < this.sims.length; i++) {
+			const sim = this.sims[i];
+			if (!sim) continue;
+			const key = this.cellKey(sim.pos.x, sim.pos.z);
+			const bucket = this.neighbourGrid.get(key);
+			if (bucket) bucket.push(i);
+			else this.neighbourGrid.set(key, [i]);
+		}
+	}
+
+	private cellKey(x: number, z: number): number {
+		return Math.floor(x / SIM_NEIGHBOUR_REACH) + Math.floor(z / SIM_NEIGHBOUR_REACH) * Americans.GRID_STRIDE;
+	}
+
+	/**
+	 * Wederkerige ontwijking voor de hele menigte, vóór iemand beweegt.
+	 *
+	 * Elk paar leidt hetzelfde snelheidsobstakel af en neemt er de helft van; een
+	 * wand levert hetzelfde soort halfvlak maar dan onwederkerig, want die stapt
+	 * niet opzij. Beide komen uit dezelfde oplosser, dus een sim die tussen een
+	 * muur en een tegenligger loopt weegt die twee tegen elkaar af in plaats van
+	 * eerst de een en na de stap de ander.
+	 */
+	private steerCrowd(dt: number): void {
+		const step = Math.max(dt, SIM_MIN_STEP);
+		this.rebuildNeighbourGrid();
+		for (const sim of this.sims) {
+			this.desiredVelocity(sim, this.desired);
+			const body: OrcaBody = { x: sim.pos.x, z: sim.pos.z, vx: sim.velocity.x, vz: sim.velocity.z, radius: sim.radius };
+			this.constraints.length = 0;
+			this.collectNeighbourConstraints(sim, body, step);
+			this.collectWallConstraints(sim, body, step);
+			const solved = solveVelocity(this.desired.x, this.desired.z, this.walkSpeed(sim), this.constraints, SIM_SOLVER_ROUNDS);
+			sim.steer.set(solved.vx, 0, solved.vz);
+		}
+	}
+
+	private collectNeighbourConstraints(sim: Sim, body: OrcaBody, step: number): void {
+		const cellX = Math.floor(sim.pos.x / SIM_NEIGHBOUR_REACH);
+		const cellZ = Math.floor(sim.pos.z / SIM_NEIGHBOUR_REACH);
+		for (let ox = -1; ox <= 1; ox++) {
+			for (let oz = -1; oz <= 1; oz++) {
+				const bucket = this.neighbourGrid.get(cellX + ox + (cellZ + oz) * Americans.GRID_STRIDE);
+				if (!bucket) continue;
+				for (const index of bucket) {
+					const other = this.sims[index];
+					if (!other || other === sim) continue;
+					if (Math.abs(other.pos.y - sim.pos.y) > SIM_DECK_BAND) continue;
+					if (Math.hypot(other.pos.x - sim.pos.x, other.pos.z - sim.pos.z) > SIM_NEIGHBOUR_REACH) continue;
+					// Een stel loopt hand in hand: die twee gunnen elkaar geen extra ruimte.
+					const couple = sim.f.partnerId === other.f.id;
+					const margin = couple ? 0 : SIM_COMFORT_MARGIN;
+					const neighbour: OrcaBody = {
+						x: other.pos.x,
+						z: other.pos.z,
+						vx: other.velocity.x,
+						vz: other.velocity.z,
+						radius: other.radius + margin,
+					};
+					const constraint = agentConstraint(body, neighbour, SIM_AVOIDANCE_HORIZON, step, RECIPROCAL_SHARE);
+					if (constraint) this.constraints.push(constraint);
+				}
+			}
+		}
+	}
+
+	private collectWallConstraints(sim: Sim, body: OrcaBody, step: number): void {
+		const reach = sim.radius + SIM_WALL_REACH;
+		this.world.blockersNear(
+			sim.pos.x - reach,
+			sim.pos.x + reach,
+			sim.pos.z - reach,
+			sim.pos.z + reach,
+			sim.pos.y,
+			true,
+			this.blockers,
+		);
+		for (const box of this.blockers) {
+			this.constraints.push(staticConstraint(body, box, SIM_WALL_HORIZON, step));
+		}
+	}
+
+	/** Physical overlap repair after everyone has moved: walls first, then bodies. */
 	private resolveAgents(): void {
 		// More passes = less clumping when a crowd packs a corridor
 		for (let pass = 0; pass < 4; pass++) {
-			for (const s of this.sims) {
-				s.pos.y = this.world.snapFloorY(s.pos.x, s.pos.z, s.pos.y);
-				const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, s.radius);
-				s.pos.x = r.x;
-				s.pos.z = r.z;
-			}
+			for (const s of this.sims) this.settle(s);
 			for (let i = 0; i < this.sims.length; i++) {
 				for (let j = i + 1; j < this.sims.length; j++) {
 					const a = this.sims[i];
 					const b = this.sims[j];
 					if (!a || !b) continue;
-					if (Math.abs(a.pos.y - b.pos.y) > 2.5) continue;
+					if (Math.abs(a.pos.y - b.pos.y) > SIM_DECK_BAND) continue;
 					const minD = a.radius + b.radius;
 					const sep = this.world.separate(a.pos.x, a.pos.z, b.pos.x, b.pos.z, minD);
 					a.pos.x = sep.ax;
@@ -998,16 +1129,26 @@ export class Americans {
 			}
 		}
 		for (const s of this.sims) {
-			s.pos.y = this.world.snapFloorY(s.pos.x, s.pos.z, s.pos.y);
-			const r = this.world.resolveCircle(s.pos.x, s.pos.z, s.pos.y, s.radius);
-			s.pos.x = r.x;
-			s.pos.z = r.z;
+			this.settle(s);
 			s.root.position.set(s.pos.x, s.pos.y, s.pos.z);
 		}
 	}
 
+	/**
+	 * Op de vloer en uit de muren. `climb` staat aan omdat een sim een voetganger
+	 * is: de roltrap, de trap en de lift zijn zijn route en geen wand, en zonder
+	 * dat recht stond hij anderhalve meter naast elke knoop die op zo'n doorgang
+	 * ligt en kwam hij er nooit.
+	 */
+	private settle(sim: Sim): void {
+		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, sim.pos.y);
+		const fixed = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius, 3, true);
+		sim.pos.x = fixed.x;
+		sim.pos.z = fixed.z;
+	}
+
 	private spawn(id: number): Sim {
-		const rng = mulberry32(0xbadc0de + id * 7919);
+		const rng = mulberry32(this.seed + id * 7919);
 		const isBrad = id === 0;
 		const isKid = !isBrad && id % 5 === 2;
 		// A few Miss USA / pageant types (incl. Eva G.)
@@ -1338,9 +1479,18 @@ export class Americans {
 			pos: start.clone(),
 			velocity: new THREE.Vector3(),
 			radius,
-			avoidance: new THREE.Vector3(),
+			steer: new THREE.Vector3(),
 			path: [],
 			pathI: 0,
+			routeLength: 0,
+			routeBest: 0,
+			sinceProgress: 0,
+			skippedNodes: 0,
+			replans: 0,
+			// Eigen trekking, want een strook mag de trekkingen die deze sim zijn
+			// uiterlijk geven niet verschuiven.
+			laneOffset: plusMinusWith(half(LANE_SPREAD), mulberry32(LANE_SEED + id)),
+			roll: mulberry32((this.seed ^ BEHAVIOUR_SEED) + id * 7919),
 			wait: rng() * 1.5,
 			phase: rng() * Math.PI * 2,
 			shopId: startShop.id,
@@ -1348,7 +1498,6 @@ export class Americans {
 			labelCtx,
 			labelTex,
 			gibberCd: 2 + rng() * 8,
-			stuckTime: 0,
 			bubbleCd: 1 + rng() * 4,
 			squeakT: 0,
 			coupleSide: 0,
@@ -1413,6 +1562,7 @@ export class Americans {
 				sim.path = lead.path.map((p) => p.clone());
 				sim.pathI = Math.min(lead.pathI, Math.max(0, lead.path.length - 1));
 				sim.shopId = lead.shopId;
+				this.measureRoute(sim);
 				return;
 			}
 		}
@@ -1425,28 +1575,9 @@ export class Americans {
 
 		sim.f.targetShop = next.name.replace('\n', ' ');
 		sim.f.targetShopId = next.id;
-
-		const fromNode = STORES.find((s) => s.id === sim.shopId)?.nodeId ?? 'f0_c';
-		const toNode = next.nodeId === 'spaceship' ? 's_kruidvat' : next.nodeId;
-		const fromStoreNode = fromNode === 'spaceship' ? 's_kruidvat' : fromNode;
-
-		const nodes = this.pathfinder.findPath(fromStoreNode, toNode);
-		if (nodes.length >= 2) {
-			sim.path = nodes.map((n) => {
-				const y = levelY(levelAt(n.y));
-				return new THREE.Vector3(n.x, y, n.z);
-			});
-			sim.path = sim.path.map((p) => {
-				if (levelAt(p.y) === 'v1' && Math.abs(p.x) < 8 && Math.abs(p.z) < 6) {
-					return new THREE.Vector3(p.x >= 0 ? 10 : -10, 6, p.z);
-				}
-				return p;
-			});
-			sim.path.push(shopEntrance(next));
-		} else {
-			sim.path = [sim.pos.clone(), shopEntrance(next)];
-		}
-		sim.pathI = 0;
+		sim.replans = 0;
+		sim.skippedNodes = 0;
+		this.planRoute(sim, next);
 		sim.shopId = next.id;
 
 		// Sync partner destination
@@ -1458,9 +1589,218 @@ export class Americans {
 				partner.path = sim.path.map((p) => p.clone());
 				partner.pathI = 0;
 				partner.shopId = sim.shopId;
+				this.measureRoute(partner);
 				this.paintLabel(partner);
 			}
 		}
+	}
+
+	/**
+	 * Een pad naar `store` vanaf waar de sim nu staat.
+	 *
+	 * Vanaf zijn eigen plek en niet vanaf de winkel waar hij vandaan kwam, want
+	 * opnieuw plannen gebeurt juist als hij ergens halverwege vastzit. Elk punt
+	 * gaat door `walkablePoint`: de graaf noemt plekken die de meubels sinds hun
+	 * plaatsing bezet houden — `f0_sw` ligt in de aperolbar, `f0_c` drie meter in
+	 * de plantenbak — en op zo'n punt gaan staan lukt niet, hoe lang je het ook
+	 * probeert.
+	 */
+	private planRoute(sim: Sim, store: StoreDef): void {
+		const here = this.startNode(sim);
+		const toNode = store.nodeId === 'spaceship' ? 's_kruidvat' : store.nodeId;
+		const nodes = here ? this.pathfinder.findPath(here.id, toNode) : [];
+		const points: THREE.Vector3[] = [];
+		for (const node of nodes) {
+			const y = levelY(levelAt(node.y));
+			// De vide op V1 is een gat, geen route: een knoop erboven schuift naar de rand.
+			const overVoid = levelAt(y) === 'v1' && Math.abs(node.x) < 8 && Math.abs(node.z) < 6;
+			const x = overVoid ? (node.x >= 0 ? 10 : -10) : node.x;
+			points.push(new THREE.Vector3(x, overVoid ? 6 : y, node.z));
+		}
+		points.push(shopEntrance(store));
+		sim.path = this.routeAround(sim, this.laneRoute(sim, points));
+		sim.pathI = 0;
+		this.measureRoute(sim);
+	}
+
+	/**
+	 * De knoop waar deze gast zijn route op begint: de dichtste waar hij in een
+	 * rechte lijn bij kan.
+	 *
+	 * De allerdichtste ligt soms achter het meubel waar hij tegenaan staat — bij de
+	 * kiosk is dat de knoop die er middenin staat — en een route die daar begint
+	 * begint met het stuk dat hem vasthield. Kan hij er geen enkele bereiken, dan
+	 * is de dichtste alsnog het antwoord: dan lost `unstickRoute` het verderop op.
+	 */
+	private startNode(sim: Sim): { id: NodeId } | null {
+		const candidates = this.pathfinder.nodesNear(sim.pos.x, sim.pos.y, sim.pos.z, START_NODE_CANDIDATES);
+		for (const node of candidates) {
+			const y = levelY(levelAt(node.y));
+			if (!this.world.blockedBy(sim.pos.x, sim.pos.z, node.x, node.z, y, sim.radius, true)) return node;
+		}
+		return candidates[0] ?? null;
+	}
+
+	/**
+	 * Hetzelfde pad, maar om de meubels heen die dwars op een stuk ervan staan.
+	 *
+	 * Een looproute belooft dat je van punt naar punt rechtdoor kunt en de graaf
+	 * hield zich daar bij het tekenen aan, maar de fontein, de kiosk, de aperolbar
+	 * en een parkeerpilaar staan sindsdien op veertien van die lijnen. Frontaal op
+	 * een wand aflopen is precies wat geen enkele sturing oplost: het halfvlak van
+	 * die wand laat alleen langsgaan toe en de gewenste richting wijst er recht
+	 * in, dus de sim remt af tot nul en blijft staan. Hier komt de hoek in het pad
+	 * te liggen waar hij anders zelf omheen had moeten raden.
+	 */
+	private routeAround(sim: Sim, points: readonly THREE.Vector3[]): THREE.Vector3[] {
+		const out: THREE.Vector3[] = [];
+		let fromX = sim.pos.x;
+		let fromZ = sim.pos.z;
+		for (const point of points) {
+			for (let guard = 0; guard < MAX_DETOURS; guard++) {
+				const box = this.world.blockedBy(fromX, fromZ, point.x, point.z, point.y, sim.radius, true);
+				if (!box) break;
+				const detour = this.cornerDetour(sim, fromX, fromZ, point, box);
+				if (detour.length === 0) break;
+				for (const corner of detour) {
+					out.push(corner);
+					fromX = corner.x;
+					fromZ = corner.z;
+				}
+			}
+			out.push(point);
+			fromX = point.x;
+			fromZ = point.z;
+		}
+		return out;
+	}
+
+	/**
+	 * De goedkoopste kant om deze doos heen, als punten waar de sim ook echt kan
+	 * staan. Eén hoek als dat genoeg is, twee als de doos tussen beide einden in
+	 * ligt, en niets als geen van de vier kanten begaanbaar is: dan is het gat
+	 * werkelijk dicht en moet de route zelf anders.
+	 */
+	private cornerDetour(sim: Sim, fromX: number, fromZ: number, to: THREE.Vector3, box: AABB): THREE.Vector3[] {
+		const margin = sim.radius + DETOUR_MARGIN;
+		const minX = box.minX - margin;
+		const maxX = box.maxX + margin;
+		const minZ = box.minZ - margin;
+		const maxZ = box.maxZ + margin;
+		const sides: readonly { ax: number; az: number; bx: number; bz: number }[] = [
+			{ ax: minX, az: minZ, bx: minX, bz: maxZ },
+			{ ax: maxX, az: minZ, bx: maxX, bz: maxZ },
+			{ ax: minX, az: minZ, bx: maxX, bz: minZ },
+			{ ax: minX, az: maxZ, bx: maxX, bz: maxZ },
+		];
+		let best: THREE.Vector3[] = [];
+		let bestCost = Infinity;
+		for (const side of sides) {
+			const first = this.standablePoint(side.ax, side.az, to.y, sim.radius);
+			const second = this.standablePoint(side.bx, side.bz, to.y, sim.radius);
+			if (!first || !second) continue;
+			const nearFirst = Math.hypot(first.x - fromX, first.z - fromZ) <= Math.hypot(second.x - fromX, second.z - fromZ);
+			const entry = nearFirst ? first : second;
+			const exit = nearFirst ? second : first;
+			const cost =
+				Math.hypot(entry.x - fromX, entry.z - fromZ) +
+				Math.hypot(exit.x - entry.x, exit.z - entry.z) +
+				Math.hypot(to.x - exit.x, to.z - exit.z);
+			if (cost >= bestCost) continue;
+			bestCost = cost;
+			// Eén hoek is genoeg zodra hij de doos al vrijgeeft; de tweede is er voor
+			// het geval de doos tussen beide einden in ligt.
+			if (!this.world.blockedBy(fromX, fromZ, exit.x, exit.z, to.y, sim.radius, true)) best = [exit];
+			else if (!this.world.blockedBy(entry.x, entry.z, to.x, to.z, to.y, sim.radius, true)) best = [entry];
+			else best = [entry, exit];
+		}
+		return best;
+	}
+
+	/** Het punt zelf als je er kunt staan, en anders niets: een hoek in een muur is geen hoek om langs te lopen. */
+	private standablePoint(x: number, z: number, y: number, radius: number): THREE.Vector3 | null {
+		const fixed = this.world.resolveCircle(x, z, y, radius, 3, true);
+		if (Math.hypot(fixed.x - x, fixed.z - z) > radius) return null;
+		return new THREE.Vector3(fixed.x, y, fixed.z);
+	}
+
+	/**
+	 * Hetzelfde pad, maar in de eigen strook van deze gast en op plekken waar hij
+	 * ook echt kan staan.
+	 *
+	 * Zonder de strook lopen twee sims met dezelfde bestemming exact dezelfde lijn
+	 * en staan ze de hele route achter elkaar aan te duwen. De verschuiving staat
+	 * loodrecht op het stuk waar hij vandaan komt en komt uit zijn id, dus hij is
+	 * elke sessie dezelfde.
+	 */
+	private laneRoute(sim: Sim, points: readonly THREE.Vector3[]): THREE.Vector3[] {
+		const out: THREE.Vector3[] = [];
+		let fromX = sim.pos.x;
+		let fromZ = sim.pos.z;
+		for (const point of points) {
+			const dx = point.x - fromX;
+			const dz = point.z - fromZ;
+			const run = Math.hypot(dx, dz);
+			const wantX = run > 1e-4 ? point.x + (-dz / run) * sim.laneOffset : point.x;
+			const wantZ = run > 1e-4 ? point.z + (dx / run) * sim.laneOffset : point.z;
+			const fixed = this.world.resolveCircle(wantX, wantZ, point.y, sim.radius, 3, true);
+			out.push(new THREE.Vector3(fixed.x, point.y, fixed.z));
+			fromX = point.x;
+			fromZ = point.z;
+		}
+		return out;
+	}
+
+	/** Hoeveel meter er van hier af nog te lopen is over het pad dat er ligt. */
+	private remainingRoute(sim: Sim): number {
+		let total = 0;
+		let fromX = sim.pos.x;
+		let fromZ = sim.pos.z;
+		for (let i = sim.pathI; i < sim.path.length; i++) {
+			const point = sim.path[i];
+			if (!point) continue;
+			total += Math.hypot(point.x - fromX, point.z - fromZ);
+			fromX = point.x;
+			fromZ = point.z;
+		}
+		return total;
+	}
+
+	/** De meetlat waar de voortgang van deze route tegenaan gehouden wordt. */
+	private measureRoute(sim: Sim): void {
+		sim.routeLength = this.remainingRoute(sim);
+		sim.routeBest = 0;
+		sim.sinceProgress = 0;
+	}
+
+	/**
+	 * Wat er gebeurt als een gast al `STUCK_SECONDS` geen stap dichter bij zijn
+	 * winkel is gekomen.
+	 *
+	 * Vlak bij het punt is de geometrie op: daar is dit zo dichtbij als het wordt,
+	 * dus het punt gaat eraf. Ergens anders is het pad zelf het probleem en wordt
+	 * er een nieuw pad gezocht vanaf waar hij nu staat. Blijft ook dat hangen, dan
+	 * ligt het aan de bestemming en kiest hij een andere winkel. `pathI++` als
+	 * enige antwoord zette hem dwars door de doos die hem tegenhield naar het
+	 * volgende punt, en daar stond hij dan opnieuw vast.
+	 */
+	private unstickRoute(sim: Sim): void {
+		sim.sinceProgress = 0;
+		const target = sim.path[sim.pathI];
+		const near = target !== undefined && Math.hypot(target.x - sim.pos.x, target.z - sim.pos.z) <= WAYPOINT_GIVE_UP;
+		if (near && sim.skippedNodes < MAX_SKIPS) {
+			sim.pathI++;
+			sim.skippedNodes++;
+			this.measureRoute(sim);
+			return;
+		}
+		const store = STORES.find((s) => s.id === sim.f.targetShopId);
+		if (store && sim.replans < MAX_REPLANS) {
+			sim.replans++;
+			this.planRoute(sim, store);
+			return;
+		}
+		this.assignNextShop(sim);
 	}
 
 	/** Life meaning steers where they shop — not pure random */
@@ -1476,22 +1816,22 @@ export class Americans {
 			create: ['apple', 'mediaworld', 'uniqlo', 'coolblue'],
 		};
 		// Hangry → food court first, always
-		if (sim.f.mood === 'hangry' && Math.random() < 0.72) {
-			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? pick(SHOPABLE);
+		if (sim.f.mood === 'hangry' && sim.roll() < 0.72) {
+			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? pickWith(SHOPABLE, sim.roll);
 		}
-		if (sim.f.isBrad && Math.random() < 0.55) {
-			return SHOPABLE.find((s) => s.id === 'kruidvat') ?? pick(SHOPABLE);
+		if (sim.f.isBrad && sim.roll() < 0.55) {
+			return SHOPABLE.find((s) => s.id === 'kruidvat') ?? pickWith(SHOPABLE, sim.roll);
 		}
 		// Extra thicc people also drift toward grease
-		if (sim.f.thicc > 0.7 && Math.random() < 0.35) {
-			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? pick(SHOPABLE);
+		if (sim.f.thicc > 0.7 && sim.roll() < 0.35) {
+			return SHOPABLE.find((s) => s.id === 'foodcourt') ?? pickWith(SHOPABLE, sim.roll);
 		}
 		const list = prefer[m];
-		if (Math.random() < 0.72) {
-			const id = pick(list);
-			return SHOPABLE.find((s) => s.id === id) ?? pick(SHOPABLE);
+		if (sim.roll() < 0.72) {
+			const id = pickWith(list, sim.roll);
+			return SHOPABLE.find((s) => s.id === id) ?? pickWith(SHOPABLE, sim.roll);
 		}
-		return pick(SHOPABLE);
+		return pickWith(SHOPABLE, sim.roll);
 	}
 
 	private tick(sim: Sim, dt: number): void {
@@ -1507,9 +1847,9 @@ export class Americans {
 		}
 
 		// Hunger climbs — hangry cascade
-		if (!f.isMiss && Math.random() < dt * 0.08) {
+		if (!f.isMiss && sim.roll() < dt * 0.08) {
 			f.unhappiness = Math.min(100, f.unhappiness + 0.4 + f.thicc * 0.3);
-			if (f.unhappiness > 60 && f.mood !== 'hangry' && Math.random() < 0.15) {
+			if (f.unhappiness > 60 && f.mood !== 'hangry' && sim.roll() < 0.15) {
 				f.mood = 'hangry';
 				f.lifeLine = 'Mag ik al eten? Nu. Nu. NU.';
 			}
@@ -1519,7 +1859,7 @@ export class Americans {
 		f.fartCd -= dt;
 		if (f.fartCd <= 0) {
 			this.doFart(sim);
-			f.fartCd = 8 + Math.random() * 22;
+			f.fartCd = 8 + sim.roll() * 22;
 			f.unhappiness = Math.min(100, f.unhappiness + 2);
 		}
 
@@ -1531,7 +1871,7 @@ export class Americans {
 			// antwoord een tweede keer opschrijven.
 			sim.speechLife -= dt;
 		} else if (sim.gibberCd <= 0) {
-			sim.gibberCd = 6 + Math.random() * 16;
+			sim.gibberCd = 6 + sim.roll() * 16;
 			if (this.isNearListener(sim, Americans.SPEECH_RANGE)) {
 				this.sayGibberish(sim);
 			}
@@ -1565,7 +1905,7 @@ export class Americans {
 
 		if (sim.pathI >= sim.path.length) {
 			// Arrived at OPEN shop — spend money + coin particles + happier (verkoper!)
-			const spend = 8 + Math.floor(Math.random() * 55);
+			const spend = 8 + Math.floor(sim.roll() * 55);
 			f.moneySpent += spend;
 			// Open shops: shopping usually helps mood a bit
 			if (sim.f.targetShopId === 'foodcourt') {
@@ -1579,7 +1919,7 @@ export class Americans {
 			} else if (sim.f.targetShopId === 'kruidvat') {
 				f.unhappiness = Math.max(0, f.unhappiness - 12);
 			} else {
-				f.unhappiness = Math.max(0, f.unhappiness + Math.floor(Math.random() * 8) - 6);
+				f.unhappiness = Math.max(0, f.unhappiness + Math.floor(sim.roll() * 8) - 6);
 			}
 
 			this.spawnCoins(sim.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), spend);
@@ -1608,16 +1948,17 @@ export class Americans {
 		const dist = to.length();
 
 		// ── THE VECTOR ──────────────────────────────────────
+		// Wat ORCA deze frame heeft vrijgegeven: de richting naar het volgende punt
+		// met de tegenliggers en de wanden er al uit gerekend.
 		const dir = to.normalize();
-		const spd = f.speed * (f.mood === 'hyped' ? 1.3 : f.mood === 'hangry' ? 1.2 : f.mood === 'chill' ? 0.8 : 1);
-
-		sim.velocity.set(dir.x * spd + sim.avoidance.x, 0, dir.z * spd + sim.avoidance.z).clampLength(0, spd);
+		sim.velocity.copy(sim.steer);
+		const pace = Math.hypot(sim.velocity.x, sim.velocity.z);
 		const prevX = sim.pos.x;
 		const prevZ = sim.pos.z;
 		// Never step past the waypoint. An off-level sim spends up to four frames
 		// of dt in one call, and at the 0.05 s dt ceiling that is further than the
 		// 0.4 m retire radius: it would stride over the node, turn, stride back.
-		const travelTime = Math.min(dt, dist / Math.max(spd, 1e-4));
+		const travelTime = pace > 1e-4 ? Math.min(dt, dist / pace) : dt;
 		sim.pos.x += sim.velocity.x * travelTime;
 		sim.pos.z += sim.velocity.z * travelTime;
 		// Climb only on escalator/stairs; otherwise hard floor snap
@@ -1628,33 +1969,32 @@ export class Americans {
 		// Floor snap — feet stay on slab (no through-floor / floating)
 		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, target.y);
 
-		const hit = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius);
+		const hit = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius, 3, true);
 		sim.pos.x = hit.x;
 		sim.pos.z = hit.z;
 		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, sim.pos.y);
 
-		const remaining = Math.hypot(target.x - sim.pos.x, target.z - sim.pos.z);
-		const routeProgress = dist - remaining;
-		if (routeProgress < spd * dt * 0.08 && dist > 0.8) {
-			sim.stuckTime += dt;
-			// Retire a genuinely blocked route node. A random shove here made a
-			// collision correction look like progress and slowly displaced crowds.
-			if (sim.stuckTime > 1.2) {
-				sim.pathI++;
-				sim.stuckTime = 0;
-			}
+		// Voortgang over de hele route, niet over deze ene frame. Wie tegen een doos
+		// aan schuurt gaat de ene frame een millimeter vooruit en de andere weer
+		// achteruit, en een klok die daarop reset telt nooit tot vastgelopen: zo
+		// liep een sim in vier minuten twee meter zonder dat iets ingreep.
+		const travelled = sim.routeLength - this.remainingRoute(sim);
+		if (travelled > sim.routeBest + PROGRESS_STRIDE) {
+			sim.routeBest = travelled;
+			sim.sinceProgress = 0;
 		} else {
-			sim.stuckTime = 0;
+			sim.sinceProgress += dt;
+			if (sim.sinceProgress > STUCK_SECONDS) this.unstickRoute(sim);
 		}
 
 		// Kids: rare quiet soap pop (was a constant bubble storm — no more)
 		if (f.isKid) {
 			sim.bubbleCd -= dt;
 			if (sim.bubbleCd <= 0) {
-				if (Math.random() < 0.25) {
+				if (sim.roll() < 0.25) {
 					this.spawnBubbles(sim.pos.clone().add(new THREE.Vector3(0, 0.9, 0)));
 				}
-				sim.bubbleCd = 6 + Math.random() * 10;
+				sim.bubbleCd = 6 + sim.roll() * 10;
 			}
 		}
 
@@ -1666,10 +2006,14 @@ export class Americans {
 				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(sim.coupleSide * spacing);
 				// Soft pull toward parallel lane next to partner lead path
 				if (f.id > f.partnerId) {
+					// Per seconde en niet per frame: als factor stond hier 0.12 per frame,
+					// en op de 0.05 s die het spel als stap aftopt trok dat drie keer zo
+					// hard als op 60 Hz. Het kind werd dan langs zijn eigen winkel
+					// gesleept en geen van beiden rekende ooit af.
 					const ideal = partner.pos.clone().add(side);
-					sim.pos.x = lerp(sim.pos.x, ideal.x, 0.12);
-					sim.pos.z = lerp(sim.pos.z, ideal.z, 0.12);
-					const fix = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius);
+					sim.pos.x = ease(sim.pos.x, ideal.x, COUPLE_PULL, dt);
+					sim.pos.z = ease(sim.pos.z, ideal.z, COUPLE_PULL, dt);
+					const fix = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius, 3, true);
 					sim.pos.x = fix.x;
 					sim.pos.z = fix.z;
 				}
@@ -1684,8 +2028,11 @@ export class Americans {
 			const face = Math.atan2(mx / mlen, mz / mlen);
 			const dy = shortestAngle(sim.root.rotation.y, face);
 			sim.root.rotation.y += dy * easeFactor(8, dt);
-			sim.velocity.set(mx / dt, 0, mz / dt);
 		}
+		// De werkelijke verplaatsing is de snelheid waarmee de buren volgende frame
+		// rekenen. Wie tegen een muur staat en niets aflegt heeft snelheid nul, en
+		// niet de snelheid die hij wilde hebben.
+		if (dt > 1e-4) sim.velocity.set(mx / dt, 0, mz / dt);
 
 		const speedNow = mlen / Math.max(dt, 1e-4);
 		// One half-cycle (π) = one step, so cadence follows actual ground speed
@@ -1872,7 +2219,7 @@ export class Americans {
 		sim.speechTex.needsUpdate = true;
 		sim.speech.visible = true;
 		(sim.speech.material as THREE.SpriteMaterial).visible = true;
-		sim.speechLife = 3.2 + Math.random() * 1.4;
+		sim.speechLife = 3.2 + sim.roll() * 1.4;
 		sim.squeakT = 0.5;
 		this.playSqueak(sim, 0);
 	}
@@ -1881,22 +2228,21 @@ export class Americans {
 		let line: string;
 		if (checkout) {
 			const owner = getOwner(sim.f.targetShopId || sim.shopId);
-			if (owner && owner.lines.length > 0 && Math.random() < 0.85) {
-				line = `${owner.name.split(' ')[0]}: ${pick(owner.lines)}`;
+			if (owner && owner.lines.length > 0 && sim.roll() < 0.85) {
+				line = `${owner.name.split(' ')[0]}: ${pickWith(owner.lines, sim.roll)}`;
 			} else if (sim.f.partnerName) {
-				line = pick([
-					`Voor ${sim.f.partnerName.split(' ')[0] ?? sim.f.partnerName} ❤️`,
-					'Wij samen, yallah!',
-					'Pecunia accepta, amore!',
-				]);
+				line = pickWith(
+					[`Voor ${sim.f.partnerName.split(' ')[0] ?? sim.f.partnerName} ❤️`, 'Wij samen, yallah!', 'Pecunia accepta, amore!'],
+					sim.roll,
+				);
 			} else {
-				line = pick(['Pecunia accepta!', 'Dankjewel, next!', 'Kassa done ✓']);
+				line = pickWith(['Pecunia accepta!', 'Dankjewel, next!', 'Kassa done ✓'], sim.roll);
 			}
-		} else if (sim.f.partnerName && Math.random() < 0.35) {
+		} else if (sim.f.partnerName && sim.roll() < 0.35) {
 			const p = sim.f.partnerName.split(' ')[0] ?? sim.f.partnerName;
-			line = pick([`${p}… even wachten ❤️`, 'Handje? Handje.', `Voor ons, ${p}.`, sim.f.lifeLine.slice(0, 26)]);
+			line = pickWith([`${p}… even wachten ❤️`, 'Handje? Handje.', `Voor ons, ${p}.`, sim.f.lifeLine.slice(0, 26)], sim.roll);
 		} else {
-			line = pick(GIBBER);
+			line = pickWith(GIBBER, sim.roll);
 		}
 		this.sayLine(sim, line, checkout);
 	}

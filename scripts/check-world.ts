@@ -15,7 +15,7 @@
  * MallBuilder) wordt uit de bron gelezen in plaats van hier overgeschreven:
  * een tweede kopie van een getal is nou juist het probleem.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import type { Mesh, Vector3 } from 'three';
 import type { PedestrianPosture } from '#/data/character';
 import { CROUCHING_PEDESTRIAN, postureHeadroom, STANDING_PEDESTRIAN } from '#/data/character';
@@ -1900,6 +1900,141 @@ async function controleBadgasten(): Promise<void> {
 			fout(
 				'badgasten',
 				`${plek} heeft ${nr(rimDistance(x, z))} m tot de rand, minder dan ${nr(rimClear)}: hij hangt half over de tegels`,
+			);
+		}
+	}
+}
+
+// ── 8b. doorstroming ───────────────────────────────────────────────────────
+
+/**
+ * Haalt iedere gast zijn winkel, of blijft er één ergens hangen?
+ *
+ * Een gemiddelde is hier geen antwoord: 47 van de 48 gasten die doorlopen zeggen
+ * niets over de ene die tegen de aperolbar aan staat te duwen, en juist die ene
+ * ziet de speler. Dus geldt elke eis per gast, en meldt deze controle wie, waar
+ * en hoe lang.
+ *
+ * De twee eisen zijn wat een bezoeker zelf zou merken. Iedereen komt binnen de
+ * looptijd minstens één keer ergens aan — dat is te zien aan zijn bestemming die
+ * verspringt — en niemand staat langer dan `DOORSTROOM_VENSTER` binnen
+ * `DOORSTROOM_METERS` van waar hij stond. Wachten bij een winkel duurt hooguit
+ * zeven seconden, dus dat venster raakt alleen wie werkelijk vastzit.
+ */
+const DOORSTROOM_SIMS = 20;
+/** De stap waarop het spel zelf aftopt; hier ook de grootste stap die de sturing te verwerken krijgt. */
+const DOORSTROOM_DT = 0.05;
+/**
+ * Ruim: de traagste gast loopt 0.56 m/s, de langste route loopt over drie dekken,
+ * en een stel wacht onderweg ook nog op elkaar. Over zestien zaden was de
+ * traagste eerste kassabon 221 s, dus wie hier iets aan looptempo of routelengte
+ * verandert kan deze grens raken; de melding draagt de afgelegde meters mee,
+ * zodat traag van vastgelopen te onderscheiden is.
+ */
+const DOORSTROOM_DUUR = 240;
+/** Wachten bij een winkel duurt hooguit zeven seconden; over zestien zaden bleef de langste stilstand op 22.9 s. */
+const DOORSTROOM_VENSTER = 40;
+const DOORSTROOM_METERS = 2;
+/**
+ * De menigte komt uit dit zaad, zodat dezelfde boom altijd dezelfde uitslag
+ * geeft. Ongezaaid was deze controle ongeveer één op vijf rood op een boom waar
+ * niets aan veranderd was, en een poort die soms faalt leert iedereen het rood
+ * te negeren.
+ */
+const DOORSTROOM_ZAAD = 0x0d005;
+
+type Doorstroomgast = {
+	naam: string;
+	besteed: number;
+	aankomsten: number;
+	eersteAankomst: number;
+	/** Meters over de vloer. Scheidt bij een rode melding de trage gast van de vastgelopen gast. */
+	afgelegd: number;
+	x: number;
+	z: number;
+	ankerX: number;
+	ankerZ: number;
+	stilstand: number;
+	langsteStilstand: number;
+	langsteX: number;
+	langsteZ: number;
+};
+
+async function controleDoorstroming(): Promise<void> {
+	stubDocument();
+	const [THREE, { Americans }] = await Promise.all([import('three'), import('#/scene/Americans')]);
+	const mall = new CollisionWorld();
+	const menigte = new Americans(mall, DOORSTROOM_SIMS, DOORSTROOM_ZAAD);
+	// Geen speler in beeld: dan tikt iedereen elk frame en meet dit de looproutes
+	// zelf, niet de throttle op een dek waar niemand kijkt.
+	const kijker = new THREE.Vector3(0, V0, 0);
+	const rijen = menigte.getPeopleSnapshot(kijker);
+	const gasten = new Map<number, Doorstroomgast>();
+	for (const rij of rijen) {
+		gasten.set(rij.id, {
+			naam: rij.name,
+			besteed: rij.moneySpent,
+			aankomsten: 0,
+			eersteAankomst: -1,
+			afgelegd: 0,
+			x: rij.x,
+			z: rij.z,
+			ankerX: rij.x,
+			ankerZ: rij.z,
+			stilstand: 0,
+			langsteStilstand: 0,
+			langsteX: rij.x,
+			langsteZ: rij.z,
+		});
+	}
+	if (gasten.size !== DOORSTROOM_SIMS) {
+		fout('doorstroming', `${gasten.size} gasten in de menigte in plaats van ${DOORSTROOM_SIMS}`);
+		return;
+	}
+
+	for (let tik = 0; tik * DOORSTROOM_DT < DOORSTROOM_DUUR; tik++) {
+		const tijd = tik * DOORSTROOM_DT;
+		menigte.update(DOORSTROOM_DT);
+		menigte.getPeopleSnapshot(kijker, rijen);
+		for (const rij of rijen) {
+			const gast = gasten.get(rij.id);
+			if (!gast) continue;
+			gast.afgelegd += Math.hypot(rij.x - gast.x, rij.z - gast.z);
+			gast.x = rij.x;
+			gast.z = rij.z;
+			// Aankomen is afrekenen. Een bestemming die verspringt zegt niets: die
+			// verspringt ook als een gast het opgeeft en een andere winkel kiest.
+			if (rij.moneySpent > gast.besteed) {
+				gast.besteed = rij.moneySpent;
+				gast.aankomsten++;
+				if (gast.eersteAankomst < 0) gast.eersteAankomst = tijd;
+			}
+			if (Math.hypot(rij.x - gast.ankerX, rij.z - gast.ankerZ) >= DOORSTROOM_METERS) {
+				gast.ankerX = rij.x;
+				gast.ankerZ = rij.z;
+				gast.stilstand = 0;
+			} else {
+				gast.stilstand += DOORSTROOM_DT;
+				if (gast.stilstand > gast.langsteStilstand) {
+					gast.langsteStilstand = gast.stilstand;
+					gast.langsteX = rij.x;
+					gast.langsteZ = rij.z;
+				}
+			}
+		}
+	}
+
+	for (const [id, gast] of gasten) {
+		if (gast.eersteAankomst < 0) {
+			fout(
+				'doorstroming',
+				`gast ${id} (${gast.naam}) rekende in ${DOORSTROOM_DUUR} s bij geen enkele winkel af, staat op (${nr(gast.x)}, ${nr(gast.z)}) en liep ${nr(gast.afgelegd)} m`,
+			);
+		}
+		if (gast.langsteStilstand > DOORSTROOM_VENSTER) {
+			fout(
+				'doorstroming',
+				`gast ${id} (${gast.naam}) kwam ${nr(gast.langsteStilstand)} s lang niet ${DOORSTROOM_METERS} m van (${nr(gast.langsteX)}, ${nr(gast.langsteZ)}) vandaan, en liep in de hele run ${nr(gast.afgelegd)} m`,
 			);
 		}
 	}
@@ -5328,6 +5463,25 @@ function kopietreffers(code: string, pad: string, hulpen: Map<string, string>): 
 }
 
 /**
+ * Een shebang belooft dat het bestand zelf te starten is; zonder x-bit is dat gelogen.
+ *
+ * `./scripts/dinges.ts` geeft dan "permission denied" en de shebang staat er puur voor
+ * de sier. Git bewaart het bit, dus het gaat ook mee naar een verse kloon.
+ */
+function controleStartbit(): void {
+	for (const map of ['scripts', 'src', 'server']) {
+		for (const pad of rekenBestanden(map)) {
+			const bron = readFileSync(new URL(`../${pad}`, import.meta.url), 'utf8');
+			if (!bron.startsWith('#!')) continue;
+			const bits = statSync(new URL(`../${pad}`, import.meta.url)).mode;
+			if ((bits & 0o111) === 0) {
+				fout('startbit', `${pad} begint met een shebang maar heeft geen uitvoerrecht: chmod +x ${pad}`);
+			}
+		}
+	}
+}
+
+/**
  * De greep naar tweede kopieën. Draait over dezelfde twee partities als de
  * rekenhulpen, want mulberry32 stond zowel in src/scene als in scripts/perf.
  */
@@ -7082,6 +7236,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'lezers', draai: controleLezers },
 	{ naam: 'batchbron', draai: controleBatchbron },
 	{ naam: 'badgasten', draai: controleBadgasten },
+	{ naam: 'doorstroming', draai: controleDoorstroming },
 	{ naam: 'platforms', draai: controlePlatforms },
 	{ naam: 'balustradesprong', draai: controleBalustradesprong },
 	{ naam: 'crouchsprong', draai: controleCrouchsprong },
@@ -7120,6 +7275,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'spiegeltekst', draai: controleSpiegeltekst },
 	{ naam: 'spiegelwand', draai: controleSpiegelwand },
 	{ naam: 'kopieen', draai: controleKopieen },
+	{ naam: 'startbit', draai: controleStartbit },
 ];
 
 for (const c of controles) {

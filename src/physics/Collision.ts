@@ -316,6 +316,13 @@ export const WALK_STEP = 0.5;
 /** Hoeveel de kerbdoos onder het loopvlak van een platform stopt, zodat je erop kunt staan. */
 const KERB_LIP = 0.04;
 
+/**
+ * Hoever een lichaam onder een doos mag staan en er nog tegenaan botst. Een
+ * drempel van deze hoogte loop je op; wie hem alleen na de stap toepast en niet
+ * bij het bijsturen ervoor, stuurt om een doos heen die hem niet tegenhoudt.
+ */
+const BOX_FOOT_SLACK = 0.3;
+
 /** Zo ver van zijn eigen twee einden af telt een vlucht als "je staat er middenop". */
 export const RAMP_BAND_MARGIN = 0.4;
 /** Speling naast een vlucht waarbinnen je er nog op staat: breedte en lengte apart. */
@@ -485,7 +492,89 @@ export class CollisionWorld {
 			tags: opts?.tags,
 		};
 		this.boxes.push(box);
+		this.boxIndex = null;
 		return box;
+	}
+
+	/**
+	 * Ruiten van de dozenindex. Vier meter is ruim een gangbreedte, dus wie in één
+	 * ruit staat kijkt met zijn buren mee naar de wanden die hij kan raken.
+	 */
+	private static readonly INDEX_CELL = 4;
+	/**
+	 * Een doos die meer ruiten beslaat dan dit komt in de lijst die altijd meedoet.
+	 * De gevelpanelen en de vloerplaten lopen over het hele gebouw; die in elke ruit
+	 * zetten maakt de index groter dan de lijst die hij moest vervangen.
+	 */
+	private static readonly INDEX_MAX_CELLS = 24;
+	/** Ruitsleutel: de rij past ruim binnen deze stap, want de stad meet geen 2 km. */
+	private static readonly INDEX_STRIDE = 1024;
+
+	private boxIndex: Map<number, AABB[]> | null = null;
+	private readonly boxIndexOversized: AABB[] = [];
+
+	private indexKey(cellX: number, cellZ: number): number {
+		return cellX + cellZ * CollisionWorld.INDEX_STRIDE;
+	}
+
+	private buildBoxIndex(): Map<number, AABB[]> {
+		const index = new Map<number, AABB[]>();
+		this.boxIndexOversized.length = 0;
+		for (const box of this.boxes) {
+			const minCellX = Math.floor(box.minX / CollisionWorld.INDEX_CELL);
+			const maxCellX = Math.floor(box.maxX / CollisionWorld.INDEX_CELL);
+			const minCellZ = Math.floor(box.minZ / CollisionWorld.INDEX_CELL);
+			const maxCellZ = Math.floor(box.maxZ / CollisionWorld.INDEX_CELL);
+			const cells = (maxCellX - minCellX + 1) * (maxCellZ - minCellZ + 1);
+			if (cells > CollisionWorld.INDEX_MAX_CELLS) {
+				this.boxIndexOversized.push(box);
+				continue;
+			}
+			for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
+				for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ++) {
+					const key = this.indexKey(cellX, cellZ);
+					const bucket = index.get(key);
+					if (bucket) bucket.push(box);
+					else index.set(key, [box]);
+				}
+			}
+		}
+		this.boxIndex = index;
+		return index;
+	}
+
+	/**
+	 * De dozen die een voetganger op hoogte `y` binnen dit vlak kan raken.
+	 *
+	 * Voor wie vóór de muur wil bijsturen in plaats van er na de stap uit geduwd te
+	 * worden. De filters zijn de voetgangersdoorsnede van `resolveCircle`: uit
+	 * staat uit, buiten telt niet mee binnen, en wat je met `climb` doorloopt is
+	 * voor hem geen wand.
+	 */
+	blockersNear(minX: number, maxX: number, minZ: number, maxZ: number, y: number, climb: boolean, out: AABB[]): AABB[] {
+		out.length = 0;
+		const index = this.boxIndex ?? this.buildBoxIndex();
+		const minCellX = Math.floor(minX / CollisionWorld.INDEX_CELL);
+		const maxCellX = Math.floor(maxX / CollisionWorld.INDEX_CELL);
+		const minCellZ = Math.floor(minZ / CollisionWorld.INDEX_CELL);
+		const maxCellZ = Math.floor(maxZ / CollisionWorld.INDEX_CELL);
+		const keep = (box: AABB): void => {
+			if (box.disabled || box.outdoor) return;
+			if (climb && box.climbable?.includes('walking')) return;
+			if (box.minY !== undefined && y + BOX_FOOT_SLACK < box.minY) return;
+			if (box.maxY !== undefined && y > box.maxY) return;
+			if (box.maxX < minX || box.minX > maxX || box.maxZ < minZ || box.minZ > maxZ) return;
+			if (!out.includes(box)) out.push(box);
+		};
+		for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
+			for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ++) {
+				const bucket = index.get(this.indexKey(cellX, cellZ));
+				if (!bucket) continue;
+				for (const box of bucket) keep(box);
+			}
+		}
+		for (const box of this.boxIndexOversized) keep(box);
+		return out;
 	}
 
 	/** Runtime colliders (WC walls, props added after construct). Returns the box so a gate can toggle its own. */
@@ -1306,6 +1395,48 @@ export class CollisionWorld {
 	}
 
 	/**
+	 * De doos die dit stuk vloer dichthoudt voor een lichaam van deze straal, of
+	 * niets als er in een rechte lijn langs te lopen valt.
+	 *
+	 * Een looproute belooft dat je van punt naar punt rechtdoor kunt; meubels die
+	 * ná de graaf op zo'n lijn zijn gezet breken die belofte, en dan loopt een sim
+	 * er frontaal tegenaan. Ligt er meer dan één in de weg, dan komt de dichtste
+	 * bij het vertrekpunt terug: die moet eerst opgelost.
+	 */
+	blockedBy(fromX: number, fromZ: number, toX: number, toZ: number, y: number, radius: number, climb: boolean): AABB | null {
+		const dx = toX - fromX;
+		const dz = toZ - fromZ;
+		this.blockersNear(
+			Math.min(fromX, toX) - radius,
+			Math.max(fromX, toX) + radius,
+			Math.min(fromZ, toZ) - radius,
+			Math.max(fromZ, toZ) + radius,
+			y,
+			climb,
+			this.segmentScratch,
+		);
+		let nearest: AABB | null = null;
+		let nearestDistance = Infinity;
+		for (const box of this.segmentScratch) {
+			const grown = {
+				minX: box.minX - radius,
+				maxX: box.maxX + radius,
+				minZ: box.minZ - radius,
+				maxZ: box.maxZ + radius,
+			};
+			if (!segmentCrossesBox(grown, fromX, fromZ, dx, dz)) continue;
+			const distance = Math.hypot(midpoint(box.minX, box.maxX) - fromX, midpoint(box.minZ, box.maxZ) - fromZ);
+			if (distance < nearestDistance) {
+				nearestDistance = distance;
+				nearest = box;
+			}
+		}
+		return nearest;
+	}
+
+	private readonly segmentScratch: AABB[] = [];
+
+	/**
 	 * Resolve a circle (radius r) at (x,z) with optional y for floor-filtered boxes.
 	 * Returns corrected position. Multi-pass for corners.
 	 *
@@ -1352,7 +1483,7 @@ export class CollisionWorld {
 				if (airborne && (b.label === 'void_f1' || b.label === 'catwalk')) continue;
 				// Cars outside: skip interior mall wall boxes that only exist for foot traffic
 				if (city && y > -1 && b.label?.startsWith('store')) continue;
-				if (b.minY !== undefined && y + 0.3 < b.minY) continue;
+				if (b.minY !== undefined && y + BOX_FOOT_SLACK < b.minY) continue;
 				if (b.maxY !== undefined && y > b.maxY) continue;
 
 				// Closest point on AABB to circle center

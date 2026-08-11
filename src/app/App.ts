@@ -28,6 +28,7 @@ import { GpuTimer } from '#/render/GpuTimer';
 import { lampCount, zoneCullOn } from '#/render/graphicsPrefs';
 import { LightPool } from '#/render/LightPool';
 import { SceneBatcher } from '#/render/SceneBatcher';
+import { ownerName } from '#/render/sceneOwner';
 import type { ZoneOwnerTally } from '#/render/ZoneCuller';
 import { ZoneCuller } from '#/render/ZoneCuller';
 import { ZoneVisibility } from '#/render/ZoneVisibility';
@@ -147,6 +148,16 @@ type ElevatorAction = { kind: 'menu' } | { kind: 'call'; level: LevelId };
 
 type PerfPose = { x: number; y: number; z: number; lookX: number; lookY: number; lookZ: number };
 type PerfCpuFrame = { logicMs: number; batchMs: number; submitMs: number; triangles: number };
+type PerfRayHit = {
+	owner: string;
+	name: string;
+	geometry: string;
+	material: string;
+	distance: number;
+	x: number;
+	y: number;
+	z: number;
+};
 type PerfZoneCull = {
 	zone: ZoneId;
 	enabled: boolean;
@@ -263,6 +274,7 @@ export class App {
 	private perfFrozen = false;
 	private perfFrozenElapsed = 0;
 	private readonly perfCpuFrame: PerfCpuFrame = { logicMs: 0, batchMs: 0, submitMs: 0, triangles: 0 };
+	private readonly raycaster = new THREE.Raycaster();
 	/** Hergebruikt voor de HUD-pose, zodat het paneel geen vector per tick alloceert. */
 	private readonly hudDirection = new THREE.Vector3();
 	/** Zaallicht-schaal en de discodim lopen allebei hierlangs. */
@@ -785,6 +797,47 @@ export class App {
 					if (frozen && !this.perfFrozen) this.perfFrozenElapsed = this.timer.getElapsed();
 					this.perfFrozen = frozen;
 					return true;
+				},
+				/**
+				 * Wat staat er op dit beeldpunt? Genormaliseerde beeldcoördinaten in,
+				 * de geraakte objecten uit.
+				 *
+				 * Een schermafdruk laat een vlak zien maar niet wát het is, en dat verschil
+				 * bepaalt of er een bug ligt: het bruine vlak boven de colosseumarena leek
+				 * nachtlucht en bleek een massieve schijf over het hele gebouw.
+				 */
+				readRaycast: (ndcX: unknown, ndcY: unknown, limit: unknown): PerfRayHit[] => {
+					if (typeof ndcX !== 'number' || typeof ndcY !== 'number') return [];
+					const wanted = typeof limit === 'number' && limit > 0 ? Math.floor(limit) : 1;
+					this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
+					const hits = this.raycaster.intersectObjects(this.scene.children, true);
+					// Eén per object: een puntenwolk levert een treffer per deeltje en zou
+					// anders alle plekken vullen met dezelfde wolk. En alleen wat getekend
+					// wordt: `Raycaster` slaat `visible = false` niet over, dus zonder deze
+					// test wijst hij de uitgeschakelde alienstraal aan als wat je ziet.
+					const gezien = new Set<string>();
+					const zichtbaar = (object: THREE.Object3D): boolean => {
+						for (let node: THREE.Object3D | null = object; node; node = node.parent) {
+							if (!node.visible) return false;
+						}
+						return true;
+					};
+					const uniek = hits.filter((hit) => {
+						if (gezien.has(hit.object.uuid) || !zichtbaar(hit.object)) return false;
+						gezien.add(hit.object.uuid);
+						return true;
+					});
+					return uniek.slice(0, wanted).map((hit) => ({
+						owner: ownerName(hit.object),
+						name: hit.object.name,
+						geometry: hit.object instanceof THREE.Mesh ? hit.object.geometry.type : hit.object.type,
+						material:
+							hit.object instanceof THREE.Mesh && !Array.isArray(hit.object.material) ? hit.object.material.type : '(meerdere)',
+						distance: hit.distance,
+						x: hit.point.x,
+						y: hit.point.y,
+						z: hit.point.z,
+					}));
 				},
 				readBatchOwners: () => this.sceneBatcher.stats.owners,
 				readCpuFrame: (): PerfCpuFrame => this.perfCpuFrame,

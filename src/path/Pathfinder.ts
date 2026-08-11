@@ -6,6 +6,9 @@ interface Link {
 	cost: number;
 }
 
+/** Wat een meter hoogteverschil kost tegenover een meter over de vloer, bij het zoeken van je vertrekpunt. */
+const LEVEL_PENALTY = 8;
+
 export class Pathfinder {
 	private nodes = new Map<string, GraphNode>();
 	private adj = new Map<string, Link[]>();
@@ -31,6 +34,27 @@ export class Pathfinder {
 
 	getNode(id: NodeId): GraphNode | undefined {
 		return this.nodes.get(id);
+	}
+
+	/**
+	 * De knopen waar iemand op deze plek vandaan zou kunnen vertrekken, dichtstbij
+	 * eerst.
+	 *
+	 * Hoogteverschil telt zwaarder dan afstand in het vlak, want de knoop recht
+	 * boven je hoofd op de volgende verdieping is geen begin van een route: daar
+	 * moet je eerst een trap voor nemen. Het zijn er meer dan één omdat de dichtste
+	 * knoop achter een meubel kan liggen, en een route die daar begint begint met
+	 * een stuk dat niet te lopen valt.
+	 */
+	nodesNear(x: number, y: number, z: number, count: number): (typeof NODES)[number][] {
+		return [...NODES]
+			.sort(
+				(a, b) =>
+					Math.hypot(a.x - x, a.z - z) +
+					Math.abs(a.y - y) * LEVEL_PENALTY -
+					(Math.hypot(b.x - x, b.z - z) + Math.abs(b.y - y) * LEVEL_PENALTY),
+			)
+			.slice(0, count);
 	}
 
 	findPath(startId: NodeId, goalId: NodeId): GraphNode[] {

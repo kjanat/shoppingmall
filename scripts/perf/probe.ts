@@ -160,6 +160,18 @@ export type Environment = {
 	shaderInfoLogCalls: number;
 };
 
+/** Eén object onder een beeldpunt: wie het gebouwd heeft en waar het staat. */
+export type RayHit = {
+	owner: string;
+	name: string;
+	geometry: string;
+	material: string;
+	distance: number;
+	x: number;
+	y: number;
+	z: number;
+};
+
 type ProbeApi = {
 	ready: (timeoutMs: number) => Promise<number>;
 	settle: (quietMs: number, maxWaitMs: number) => Promise<number>;
@@ -168,6 +180,7 @@ type ProbeApi = {
 	setPose: (pose: RoutePose) => void;
 	setFrozen: (frozen: boolean) => void;
 	waitFrames: (count: number) => Promise<void>;
+	raycast: (ndcX: number, ndcY: number, limit: number) => RayHit[];
 	environment: () => Environment;
 };
 
@@ -583,6 +596,34 @@ function installProbe(
 		const accepted = invokeControl('setFrozen', [frozen]);
 		if (accepted !== true) throw new Error('App rejected route-profiler freeze state');
 	};
+	/** Wat staat er op dit beeldpunt? Leeg als de straal niets raakt, dus lucht. */
+	const raycast = (ndcX: number, ndcY: number, limit: number): RayHit[] => {
+		const hits = invokeControl('readRaycast', [ndcX, ndcY, limit]);
+		if (!Array.isArray(hits)) return [];
+		const tekst = (row: object, key: string): string => {
+			const value = Reflect.get(row, key);
+			return typeof value === 'string' ? value : '';
+		};
+		const nummer = (row: object, key: string): number => {
+			const value = Reflect.get(row, key);
+			return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+		};
+		const uit: RayHit[] = [];
+		for (const row of hits) {
+			if (typeof row !== 'object' || row === null) continue;
+			uit.push({
+				owner: tekst(row, 'owner'),
+				name: tekst(row, 'name'),
+				geometry: tekst(row, 'geometry'),
+				material: tekst(row, 'material'),
+				distance: nummer(row, 'distance'),
+				x: nummer(row, 'x'),
+				y: nummer(row, 'y'),
+				z: nummer(row, 'z'),
+			});
+		}
+		return uit;
+	};
 	const move = (from: RoutePose, to: RoutePose, durationMs: number): Promise<void> => {
 		setPose(from);
 		return new Promise((resolve) => {
@@ -642,6 +683,7 @@ function installProbe(
 		setPose,
 		setFrozen,
 		waitFrames,
+		raycast,
 
 		sample: async (durationMs: number): Promise<Sample> => {
 			if (sampling) throw new Error('probe sample already in progress');
