@@ -4,6 +4,7 @@ import {
 	BACK_TO_WALL_Y,
 	RESTROOMS_DIVIDER,
 	RESTROOMS_INTERIOR,
+	RESTROOMS_MIRRORS,
 	RESTROOMS_ROOMS,
 	RESTROOMS_SHELL,
 	RESTROOMS_SPEC,
@@ -47,6 +48,7 @@ export class Restrooms {
 		this.buildShell();
 		this.buildMens(RESTROOMS_ROOMS.mensX);
 		this.buildWomens(RESTROOMS_ROOMS.womensX);
+		this.buildMirrors();
 		this.buildWudu();
 		this.buildCorridorSigns();
 	}
@@ -179,8 +181,8 @@ export class Restrooms {
 		// one sit toilet stall
 		g.add(this.makeStall(mensStall.offsetX, mensStall.offsetZ, 0x90caf9));
 
-		// sink
-		g.add(this.makeSink(mensBasin.offsetX, mensBasin.offsetZ));
+		// sink against the east wall, next to the urinals
+		g.add(this.makeSink(mensBasin.offsetX, mensBasin.offsetZ, BACK_TO_WALL_Y[mensBasin.wall]));
 
 		// sign
 		g.add(this.makeDoorSign(0.1, -3.0, 'HEREN', '♂ urinoirs + hokje', '#1565c0'));
@@ -203,25 +205,23 @@ export class Restrooms {
 		g.add(this.makeStall(-womensStall.offsetX, womensStall.offsetZ, 0xf48fb1));
 		g.add(this.makeStall(womensStall.offsetX, womensStall.offsetZ, 0xf48fb1));
 
-		// sinks
-		g.add(this.makeSink(-womensBasin.offsetX, womensBasin.offsetZ));
-		g.add(this.makeSink(womensBasin.offsetX, womensBasin.offsetZ));
-
-		// mirror strip
-		const mirror = new THREE.Mesh(
-			new THREE.BoxGeometry(3.0, 0.9, 0.04),
-			this.track(
-				lit({
-					color: 0xcfd8dc,
-					metalness: 0.85,
-					roughness: 0.15,
-				}),
-			),
-		);
-		mirror.position.set(0, 1.6, -2.55);
-		g.add(mirror);
+		// sinks against the south wall
+		const basinYaw = BACK_TO_WALL_Y[womensBasin.wall];
+		g.add(this.makeSink(-womensBasin.offsetX, womensBasin.offsetZ, basinYaw));
+		g.add(this.makeSink(womensBasin.offsetX, womensBasin.offsetZ, basinYaw));
 
 		g.add(this.makeDoorSign(-0.1, -3.0, 'DAMES', '♀ 2 hokjes', '#ad1457'));
+	}
+
+	/** Spiegels boven de wastafels, elk co-planair met een dichte wand uit RESTROOMS_MIRRORS. */
+	private buildMirrors(): void {
+		const glass = this.track(lit({ color: 0xcfd8dc, metalness: 0.85, roughness: 0.15 }));
+		for (const m of RESTROOMS_MIRRORS) {
+			const mesh = new THREE.Mesh(new THREE.BoxGeometry(m.width, m.height, m.thickness), glass);
+			mesh.position.set(m.x, m.y, m.z);
+			mesh.rotation.y = m.yaw;
+			this.group.add(mesh);
+		}
 	}
 
 	/**
@@ -383,10 +383,10 @@ export class Restrooms {
 		return g;
 	}
 
-	private makeSink(x: number, z: number): THREE.Group {
+	private makeSink(x: number, z: number, yaw: number = FACING_NORTH_Y): THREE.Group {
 		const g = new THREE.Group();
 		g.position.set(x, 0, z);
-		g.rotation.y = FACING_NORTH_Y;
+		g.rotation.y = yaw;
 		const ceramic = this.track(lit({ color: 0xfafafa, roughness: 0.3 }));
 		const top = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 0.45), ceramic);
 		top.position.y = 0.9;

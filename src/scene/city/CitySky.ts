@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { coversColumn } from '#/data/zones';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { half } from '#/util/math';
@@ -17,9 +18,13 @@ import { at, jitter, plusMinus } from '#/util/rand';
 // ── wereldmaten ──────────────────────────────────────────
 const WERELD_X = 95;
 const WERELD_Z = 75;
-/** Mall-voetafdruk + marge: hierbinnen geen regen of inslagen — binnen is het droog. */
-const MALL_X = 44;
-const MALL_Z = 30;
+/**
+ * Hoeveel droog het rond elk gebouw houdt. Onder een dak valt geen regen en slaat geen
+ * bliksem; welke daken er staan leest `coversColumn` uit de gebouwschillen, zodat het
+ * theater vanzelf meedoet en er niet een tweede voetafdruk naast de eerste ligt. De
+ * marge dekt de dakrand die een stuk voorbij de gevel uitsteekt.
+ */
+const DROOG_MARGE = 7;
 
 // ── wolken ───────────────────────────────────────────────
 const N_CLUSTERS = 12;
@@ -116,11 +121,11 @@ export class CitySky {
 		for (let i = 0; i < N_DRUPPELS; i++) {
 			let x = 0;
 			let z = 0;
-			// Buiten de mall blijven prikken — regen in de foodcourt is slecht voor de omzet.
+			// Onder geen enkel dak prikken — regen in de foodcourt of op de eerste rij is slecht voor de omzet.
 			do {
 				x = plusMinus(WERELD_X - 4);
 				z = plusMinus(WERELD_Z - 4);
-			} while (Math.abs(x) < MALL_X && Math.abs(z) < MALL_Z);
+			} while (coversColumn(x, z, DROOG_MARGE));
 			this.regenPos[i * 3] = x;
 			this.regenPos[i * 3 + 1] = Math.random() * REGEN_TOP;
 			this.regenPos[i * 3 + 2] = z;
@@ -160,6 +165,13 @@ export class CitySky {
 	/** Staat het te onweren? Voor wie donder wil afspelen of de was binnenhalen. */
 	get storming(): boolean {
 		return this.state === 'storm';
+	}
+
+	/** De grondkolommen waar de druppels vallen: de wereldcontrole toetst dat er geen onder een dak zit. */
+	precipitationColumns(): readonly Readonly<{ x: number; z: number }>[] {
+		const kolommen: { x: number; z: number }[] = [];
+		for (let i = 0; i < N_DRUPPELS; i++) kolommen.push({ x: this.regenPos[i * 3] ?? 0, z: this.regenPos[i * 3 + 2] ?? 0 });
+		return kolommen;
 	}
 
 	update(dt: number, t: number): void {
@@ -236,7 +248,7 @@ export class CitySky {
 		do {
 			x = plusMinus(WERELD_X - 8);
 			z = plusMinus(WERELD_Z - 8);
-		} while (Math.abs(x) < MALL_X && Math.abs(z) < MALL_Z);
+		} while (coversColumn(x, z, DROOG_MARGE));
 		bolt.position.set(x, BOLT_TOP, z);
 		bolt.rotation.y = Math.random() * Math.PI * 2; // zelfde zigzag, andere kant op
 		bolt.visible = true;

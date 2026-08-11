@@ -11,7 +11,7 @@
  */
 import type { LevelId } from '#/data/levels';
 import { geometryBounds } from '#/data/spatial';
-import { ENTRANCE_MOTORCYCLE_SPOTS, PARKED_MOTORCYCLE_SPOTS, WORLD_ENTITIES } from '#/data/world';
+import { PARKED_MOTORCYCLE_SPOTS, WORLD_ENTITIES } from '#/data/world';
 import { stubDocument } from './stub-dom.ts';
 
 type Doos = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; wie: string };
@@ -75,16 +75,10 @@ const casts: { naam: string; level: LevelId; eigen: readonly string[]; group: In
 	{ naam: 'PoolPeople', level: 'roof', eigen: [], group: new PoolPeople().group },
 	{ naam: 'TravelAgency', level: 'v0', eigen: ['shop-island_hop'], group: new TravelAgency(pool).group },
 	{ naam: 'DJBartek', level: 'v0', eigen: [], group: new DJBartek(pool).group },
-	// De motoren staan tussen kolommen en in de hal van de hoofdingang: allebei plekken
-	// waar een vaste plaatsing net zo goed een meter mis kan zitten als de crew-man dat
-	// deed. De volumes die ze zelf in het model hebben tellen niet als vreemd.
+	// De motoren staan tussen de kolommen op P1, waar een vaste plaatsing net zo goed een
+	// meter mis kan zitten als de crew-man dat deed. De volumes die ze zelf in het model
+	// hebben tellen niet als vreemd.
 	{ naam: 'Motorcycles P1', level: 'p1', eigen: ['parking-motorcycles'], group: new Motorcycles(PARKED_MOTORCYCLE_SPOTS).group },
-	{
-		naam: 'Motorcycles entree',
-		level: 'v0',
-		eigen: ['entrance-motorcycles'],
-		group: new Motorcycles(ENTRANCE_MOTORCYCLE_SPOTS).group,
-	},
 	// Het theaterpubliek zit op stoelen die het wereldmodel uitdeelt, dus in zijn eigen
 	// stoel zitten is containment. Elke andere doos in de zaal telt wel: de foyerwand,
 	// de kassa en het doek staan er allemaal binnen handbereik.

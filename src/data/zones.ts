@@ -20,7 +20,7 @@
 
 import { MALL_FOOTPRINT } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
-import { LEVELS, LEVELS_BOTTOM_UP, levelAt, levelBand, levelElevationIndex } from '#/data/levels';
+import { LEVELS, LEVELS_BOTTOM_UP, levelAt, levelBand, levelElevationIndex, levelY } from '#/data/levels';
 import type { Bounds2, Bounds3, CardinalSide, SpatialVolume, WorldEntity } from '#/data/spatial';
 import { GLASS_TAG, geometryBounds, NOT_A_PORTAL_TAG } from '#/data/spatial';
 import type { FacadePanel } from '#/data/world';
@@ -34,6 +34,7 @@ import {
 	theatreOpeningWithin,
 	WORLD_ENTITIES,
 } from '#/data/world';
+import { poolFloorY } from '#/scene/RoofIsland';
 import { half, span } from '#/util/math';
 
 export const ZONES = ['stad', 'p1', 'mall-v0', 'mall-v1', 'roof', 'theatre'] as const;
@@ -107,6 +108,32 @@ type Enclosure = Readonly<{
 
 const UNBOUNDED: Band = { minY: Number.NEGATIVE_INFINITY, maxY: Number.POSITIVE_INFINITY };
 
+/**
+ * Elke zone waarvan de luchtruimband — van zijn eigen dek tot het dek erboven —
+ * de hoogteband `minY..maxY` overlapt: inclusief op het eigen dekvlak, strikt onder
+ * het plafond.
+ *
+ * Inclusief onderaan omdat een dekplaat op de grens ligt: zijn bovenkant is de vloer
+ * van de zone erboven, zijn onderkant het plafond van de zone eronder, en hij hoort
+ * dus bij allebei. `levelAt` telde `DECK_SLACK` bij de ondergrens op en tilde een
+ * plaat die een paar centimeter onder een dek hangt volledig in de zone erboven: de
+ * dakplaat las alleen `roof` en verdween vanaf V1 zodra geen portaalkegel de
+ * roof-zone dekte, terwijl je er van onderaf recht tegenaan keek. Strikt bovenaan
+ * omdat iets dat met zijn onderkant op een dek rúst er niet doorheen breekt: het
+ * atrium staat op de V0-plaat en mag daarom p1 niet claimen.
+ */
+function mallZonesOfSpan(minY: number, maxY: number): number {
+	let mask = 0;
+	for (let index = 0; index < LEVELS_BOTTOM_UP.length; index++) {
+		const entry = LEVELS_BOTTOM_UP[index];
+		if (!entry) continue;
+		const lo = LEVELS_BOTTOM_UP[index - 1] ? entry.y : Number.NEGATIVE_INFINITY;
+		const hi = LEVELS_BOTTOM_UP[index + 1]?.y ?? Number.POSITIVE_INFINITY;
+		if (maxY >= lo && minY < hi) mask |= ZONE_BIT_BY_ELEVATION[index] ?? 0;
+	}
+	return mask;
+}
+
 const MALL_PLAN: Bounds2 = {
 	minX: -half(MALL_FOOTPRINT.width),
 	maxX: half(MALL_FOOTPRINT.width),
@@ -124,13 +151,7 @@ const ENCLOSURES: readonly Enclosure[] = [
 		band: UNBOUNDED,
 		zones: LEVELS_BOTTOM_UP.map((entry) => zoneOfLevel(entry.id)),
 		zoneOfY: (y) => zoneOfLevel(levelAt(y)),
-		zonesOfY: (minY, maxY) => {
-			let mask = 0;
-			const from = levelElevationIndex(levelAt(minY));
-			const to = levelElevationIndex(levelAt(maxY));
-			for (let index = from; index <= to; index++) mask |= ZONE_BIT_BY_ELEVATION[index] ?? 0;
-			return mask;
-		},
+		zonesOfY: mallZonesOfSpan,
 		openingWithin: facadeOpeningWithin,
 	},
 	{
@@ -164,6 +185,19 @@ export const ZONE_ENCLOSURES: readonly Readonly<{ id: 'mall' | 'theatre'; plan: 
 		band: enclosure.band,
 	}));
 
+/**
+ * Staat deze grondkolom onder een gebouw, met `margin` extra rondom?
+ *
+ * Afgeleid uit dezelfde schillen als de zonegraaf: wie wil weten of het hier droog is
+ * leest de gebouwen die er staan, niet een tweede rechthoek naast de eerste. De marge
+ * dekt de dakrand die een halve winkel voorbij de gevel uitsteekt.
+ */
+export function coversColumn(x: number, z: number, margin = 0): boolean {
+	return ZONE_ENCLOSURES.some(
+		({ plan }) => x >= plan.minX - margin && x <= plan.maxX + margin && z >= plan.minZ - margin && z <= plan.maxZ + margin,
+	);
+}
+
 function planOverlaps(plan: Bounds2, bounds: Bounds3): boolean {
 	return bounds.minX <= plan.maxX && bounds.maxX >= plan.minX && bounds.minZ <= plan.maxZ && bounds.maxZ >= plan.minZ;
 }
@@ -183,9 +217,39 @@ function enclosureAt(x: number, y: number, z: number): Enclosure | null {
 	return null;
 }
 
+const ROOF_DECK_Y = levelY('roof');
+
+/**
+ * Staat dit punt in de kuip van het dakzwembad?
+ *
+ * De badbodem ligt tot 1,05 m onder het dek en dus onder de dakdrempel van `levelAt`:
+ * wie in het diepe zwemt of daar hurkt zakt met zijn camera onder die drempel en leest
+ * dan V1 terwijl hij op het dak staat, waarna de zonecull het interieur eronder tekent
+ * en je dwars door het gebouw kijkt. De kuip is afgeleid uit haar eigen waterlijn
+ * (`poolFloorY` geeft alleen binnen de waterlijn een bodem), geen ingetikte doos: waar
+ * die een bodem teruggeeft hoort de kolom tot het dek erboven.
+ */
+function inRoofBasin(x: number, y: number, z: number): boolean {
+	const floor = poolFloorY(x, z);
+	if (floor === null) return false;
+	return y >= floor && y < ROOF_DECK_Y;
+}
+
 /** Binnen een gebouw telt zijn eigen dek, erbuiten is er geen gebouw en dus alleen stad. */
 export function zoneAt(x: number, y: number, z: number): ZoneId {
+	if (inRoofBasin(x, y, z)) return 'roof';
 	return enclosureAt(x, y, z)?.zoneOfY(y) ?? 'stad';
+}
+
+/**
+ * Welk dek een lichaam op deze plek toebehoort, de zwembadkuip meegerekend.
+ *
+ * `levelAt` kent alleen hoogte en legt een zwemmer in het diepe een verdieping te laag;
+ * de HUD en de zonekeuze horen hem op het dak te tellen, waar hij ook zwemt.
+ */
+export function deckAt(x: number, y: number, z: number): LevelId {
+	if (inRoofBasin(x, y, z)) return 'roof';
+	return levelAt(y);
 }
 
 /**

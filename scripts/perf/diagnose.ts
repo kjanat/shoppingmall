@@ -155,7 +155,18 @@ function sweepSample(label: string, sample: Sample): string {
 // De helft van een A-B-A: dezelfde build, dezelfde machine, alleen de zonecull uit.
 const zoneCullFlag = flagValue('--zone-cull');
 const zoneCullOverride = zoneCullFlag === undefined ? undefined : zoneCullFlag !== 'off' && zoneCullFlag !== '0';
-const session = await openGame(WIDTH, HEIGHT, argv.includes('--fresh-profile'), targetUrl, batchOverride, zoneCullOverride);
+// De andere A-B-A: werpt de gebouwschil (gevel, dak, garage, torens) zelf schaduw?
+const shellShadowFlag = flagValue('--shell-shadow');
+const shellShadowOverride = shellShadowFlag === undefined ? undefined : shellShadowFlag !== 'off' && shellShadowFlag !== '0';
+const session = await openGame(
+	WIDTH,
+	HEIGHT,
+	argv.includes('--fresh-profile'),
+	targetUrl,
+	batchOverride,
+	zoneCullOverride,
+	shellShadowOverride,
+);
 try {
 	const { readyMs, settleMs } = await session.boot();
 	const pointName = flagValue('--point') ?? (sweep ? 'v1-elevator-arrive' : undefined);
@@ -191,6 +202,7 @@ try {
 	console.log(bar('GPU timer queries', env.timerQuery ? 'yes' : 'NO — no per-pass timing'));
 	console.log(bar('time to playable', `${(readyMs / 1000).toFixed(1)} s (+${(settleMs / 1000).toFixed(1)} s to settle)`));
 	console.log(bar('batch mode', env.batchMode));
+	if (shellShadowOverride !== undefined) console.log(bar('shell shadow', shellShadowOverride ? 'on' : 'off'));
 	if (pointName) console.log(bar('fixed point', `${pointName}, simulation frozen`));
 
 	if (/(Intel|AMD).*(Graphics|Vega|Radeon\(TM\) Graphics)/i.test(env.renderer) && !/RTX|GTX|Arc/i.test(env.renderer)) {

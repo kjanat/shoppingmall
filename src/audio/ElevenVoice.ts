@@ -3,6 +3,8 @@
  * Browser TTS is OFF by default — user hated the bubbel/robot fallback.
  */
 
+import { isRecord, readString } from '#/util/values.ts';
+
 export type SpeakResult = {
 	source: 'elevenlabs' | 'file' | 'browser' | 'silent';
 	error?: string;
@@ -11,6 +13,56 @@ export type SpeakResult = {
 
 let audioEl: HTMLAudioElement | null = null;
 let objectUrl: string | null = null;
+
+/**
+ * ElevenLabs credits do not reset inside a session, so a quota_exceeded is
+ * terminal. Every further call is then a wasted request and a wasted frame. A
+ * rate limit is temporary, so it backs off and reopens. Without this breaker
+ * each voice subsystem kept hammering /api/tts on its own cadence after the
+ * quota ran out, 135 requests in two minutes at 0 credits.
+ */
+type VoiceState = 'ok' | 'cooling' | 'open' | 'quota-dead';
+let voiceState: VoiceState = 'ok';
+let rateFailures = 0;
+let coolUntil = 0;
+
+const RATE_BACKOFF_BASE_MS = 2_000;
+const RATE_BACKOFF_CAP_MS = 60_000;
+const BREAKER_TRIP_FAILURES = 4;
+const BREAKER_OPEN_MS = 120_000;
+
+type FailKind = 'quota' | 'rate' | 'param' | 'transient';
+
+function classifyFail(status: number, code: string): FailKind {
+	if (code === 'quota_exceeded' || code === 'no_key' || code === 'auth') return 'quota';
+	if (status === 401 || status === 402 || status === 403) return 'quota';
+	if (code === 'rate_limited' || status === 429) return 'rate';
+	if (code === 'bad_request' || status === 400) return 'param';
+	return 'transient';
+}
+
+function setVoiceState(next: VoiceState, note: string): void {
+	if (voiceState === next) return;
+	voiceState = next;
+	console.warn(`[ElevenVoice] ${note}`);
+}
+
+/** Update the breaker after a failed call: one log line per state change, never per attempt. */
+function noteFailure(status: number, code: string, detail: string): void {
+	if (classifyFail(status, code) === 'quota') {
+		setVoiceState('quota-dead', `stemquota op, stemmen uit voor deze sessie (${detail.slice(0, 80)})`);
+		return;
+	}
+	rateFailures++;
+	const backoff = Math.min(RATE_BACKOFF_CAP_MS, RATE_BACKOFF_BASE_MS * 2 ** (rateFailures - 1));
+	if (rateFailures >= BREAKER_TRIP_FAILURES) {
+		coolUntil = performance.now() + BREAKER_OPEN_MS;
+		setVoiceState('open', `stem-API blijft falen, circuit ${Math.round(BREAKER_OPEN_MS / 1000)}s dicht`);
+	} else {
+		coolUntil = performance.now() + backoff;
+		setVoiceState('cooling', `stem-API traag of gelimiteerd, backoff ${Math.round(backoff / 1000)}s`);
+	}
+}
 
 function stopCurrent(): void {
 	if (audioEl) {
@@ -68,11 +120,9 @@ export async function playBoothFile(file: string, volume = 0.95): Promise<SpeakR
 	return { source: ms > 0 ? 'file' : 'silent', durationMs: ms };
 }
 
-async function fetchTts(
-	text: string,
-	voiceId?: string,
-	lang?: string,
-): Promise<{ ok: true; buf: ArrayBuffer } | { ok: false; error: string; status: number }> {
+type FetchTtsResult = { ok: true; buf: ArrayBuffer } | { ok: false; error: string; status: number; code: string };
+
+async function fetchTts(text: string, voiceId?: string, lang?: string): Promise<FetchTtsResult> {
 	const res = await fetch('/api/tts', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -80,11 +130,13 @@ async function fetchTts(
 	});
 	const ct = (res.headers.get('content-type') || '').toLowerCase();
 	if (!res.ok) {
-		const err = await res.json().catch(() => ({}));
+		const err: unknown = await res.json().catch(() => ({}));
+		const body = isRecord(err) ? err : {};
 		return {
 			ok: false,
 			status: res.status,
-			error: (err as { error?: string }).error ?? `tts ${res.status}`,
+			error: readString(body, 'error', `tts ${res.status}`),
+			code: readString(body, 'code'),
 		};
 	}
 	const buf = await res.arrayBuffer();
@@ -93,15 +145,16 @@ async function fetchTts(
 		if (ct.includes('json')) {
 			// actually json body with 200? parse
 			try {
-				const j = JSON.parse(new TextDecoder().decode(buf)) as { error?: string };
-				return { ok: false, status: 200, error: j.error ?? 'json_body' };
+				const j: unknown = JSON.parse(new TextDecoder().decode(buf));
+				const body = isRecord(j) ? j : {};
+				return { ok: false, status: 200, error: readString(body, 'error', 'json_body'), code: readString(body, 'code') };
 			} catch {
 				/* treat as audio */
 			}
 		}
 		return { ok: true, buf };
 	}
-	return { ok: false, status: res.status, error: `bad_audio ct=${ct} bytes=${buf.byteLength}` };
+	return { ok: false, status: res.status, error: `bad_audio ct=${ct} bytes=${buf.byteLength}`, code: 'bad_audio' };
 }
 
 /**
@@ -119,19 +172,25 @@ export async function speakLine(
 	} = {},
 ): Promise<SpeakResult> {
 	const volume = opts.volume ?? 0.95;
+
+	// The breaker gates every call before it touches the network, so a dead quota
+	// or an open circuit costs nothing.
+	if (voiceState === 'quota-dead') return { source: 'silent', error: 'quota_dead', durationMs: 0 };
+	if (voiceState !== 'ok' && performance.now() < coolUntil) {
+		return { source: 'silent', error: 'voice_cooldown', durationMs: 0 };
+	}
+
 	if (opts.interrupt !== false) stopCurrent();
 
 	try {
-		// 1) with lang  2) without lang (if first fails)  3) default voice
 		let result = await fetchTts(text, opts.voiceId, opts.lang);
-		if (!result.ok && opts.lang) {
-			result = await fetchTts(text, opts.voiceId, undefined);
-		}
-		if (!result.ok && opts.voiceId) {
-			result = await fetchTts(text, undefined, opts.lang);
+		// A bad voiceId or lang is the only failure a different request can fix.
+		// Quota, rate and auth cannot, so they never fan out into futile retries.
+		if (!result.ok && classifyFail(result.status, result.code) === 'param') {
+			result = await fetchTts(text, undefined, undefined);
 		}
 		if (!result.ok) {
-			console.warn('[ElevenVoice] TTS failed:', result.error);
+			noteFailure(result.status, result.code, result.error);
 			if (opts.allowBrowser) {
 				const browser = speakBrowser(text, volume);
 				return {
@@ -142,6 +201,9 @@ export async function speakLine(
 			}
 			return { source: 'silent', error: result.error, durationMs: 0 };
 		}
+
+		if (voiceState !== 'ok') setVoiceState('ok', 'stem-API hersteld, stemmen weer aan');
+		rateFailures = 0;
 
 		objectUrl = URL.createObjectURL(new Blob([result.buf], { type: 'audio/mpeg' }));
 		audioEl = new Audio(objectUrl);
@@ -161,7 +223,7 @@ export async function speakLine(
 		}
 		return { source: 'elevenlabs', durationMs: ms };
 	} catch (e) {
-		console.warn('[ElevenVoice] exception:', e);
+		noteFailure(0, '', String(e));
 		if (opts.allowBrowser) {
 			const browser = speakBrowser(text, volume);
 			return {

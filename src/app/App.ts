@@ -13,7 +13,7 @@ import { level, levelAt, levelY } from '#/data/levels';
 import { SIGHT_BLOCKING_TAG } from '#/data/spatial';
 import type { StoreDef } from '#/data/stores';
 import { getKruidvat, getStore, shopStores } from '#/data/stores';
-import { ELEVATOR_ENTITY, ENTRANCE_MOTORCYCLE_SPOTS, PARKED_MOTORCYCLE_SPOTS } from '#/data/world';
+import { ELEVATOR_ENTITY, PARKED_MOTORCYCLE_SPOTS } from '#/data/world';
 import type { ZoneId } from '#/data/zones';
 import { zoneAt, zoneBit } from '#/data/zones';
 import { Pathfinder } from '#/path/Pathfinder';
@@ -221,7 +221,6 @@ export class App {
 	private scrubber!: ScrubberBuggy;
 	private driveCars!: DriveableCars;
 	private readonly motorcycles: Motorcycles;
-	private readonly showMotorcycles: Motorcycles;
 	private nearDroneHint = false;
 	private nearScrubberHint = false;
 	private nearCarHint = false;
@@ -380,7 +379,6 @@ export class App {
 		});
 		this.driveCars = new DriveableCars(this.world, this.barriers);
 		this.motorcycles = new Motorcycles(PARKED_MOTORCYCLE_SPOTS, 'motorcycles_p1');
-		this.showMotorcycles = new Motorcycles(ENTRANCE_MOTORCYCLE_SPOTS, 'motorcycles_entrance');
 		this.protest = new ProtestGroupies(this.world);
 		this.security = new SecurityGuards(this.world, this.pool);
 		this.penguins = new Penguins(this.world, 12);
@@ -438,7 +436,6 @@ export class App {
 		this.scene.add(this.scrubber.group);
 		this.scene.add(this.driveCars.group);
 		this.scene.add(this.motorcycles.group);
-		this.scene.add(this.showMotorcycles.group);
 		this.scene.add(this.security.group);
 		this.scene.add(this.prayer.group);
 		this.scene.add(this.penguins.group);
@@ -492,13 +489,14 @@ export class App {
 				tags: c.blocksSight === false ? [] : [SIGHT_BLOCKING_TAG],
 			});
 		}
-		// Elevator shaft: full height P1→dak; climbable so player enters, sims bounce
+		// Elevator shaft: full height P1→dak; climbable draagt de lift-poortmodi, dus de
+		// speler loopt de cabine in en de schoonmaakkar rijdt hem in; sims botsen.
 		for (const c of this.elevator.getColliders()) {
 			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
 				minY: c.minY ?? -7.5,
 				maxY: c.maxY ?? 16.5,
 				label: c.label,
-				climbable: c.climbable ?? false,
+				climbable: c.climbable,
 			});
 		}
 		this.scene.add(this.pathMesh.group);
@@ -572,6 +570,9 @@ export class App {
 			this.elevator.group,
 			// De schuifbladen bewegen, dus de entree is een dynamische wortel.
 			this.entrance.group,
+			// Het luikblad draait; statisch gebatcht bleef de bevroren kopie dicht
+			// liggen terwijl het echte mesh onzichtbaar openzwaaide.
+			this.helipad.group,
 			this.cityBuildings.group,
 			this.cityRoads.group,
 			this.cityTraffic.group,
@@ -2725,11 +2726,15 @@ export class App {
 		if (!feature('NO_PERF_HUD')) {
 			const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
 			const blik = this.camera.getWorldDirection(this.hudDirection);
+			// Rijdend of vliegend staat de voetganger-feetY bevroren op zijn laatste
+			// stap; een kar die 7,5 m zweefde rapporteerde vrolijk "0.0 · V0" en
+			// verborg daarmee precies die bug. De camera liegt nooit.
+			const hudVoeten = this.player.driving || this.player.flying ? this.camera.position.y - EYE : this.player.feetHeight;
 			this.perfHud?.update({
 				eyeX: this.camera.position.x,
 				eyeY: this.camera.position.y,
 				eyeZ: this.camera.position.z,
-				feetY: this.player.feetHeight,
+				feetY: hudVoeten,
 				dirX: blik.x,
 				dirY: blik.y,
 				dirZ: blik.z,

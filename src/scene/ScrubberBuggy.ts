@@ -284,8 +284,11 @@ export class ScrubberBuggy {
 		// Op straatniveau geldt dezelfde vrijstelling als voor de speler te voet:
 		// zonder `outside` hield de footprint-klem het karretje 1,2 m vóór de open
 		// schuifdeuren tegen.
+		// Op wielen, niet te voet: hij botst op de voetgangerstrap en de roltrap en rijdt
+		// alleen door wat ook `wheeled` toelaat, zoals de lift. Zonder dat reed hij als een
+		// voetganger de geheime trap op en parkeerde de verticale solver hem in de lucht.
 		const buiten = outsideMallFootprint(feetY);
-		const hit = this.world.resolveCircle(nx, nz, feetY + 0.5, RADIUS, 4, true, !this.ground.grounded, buiten);
+		const hit = this.world.resolveCircle(nx, nz, feetY + 0.5, RADIUS, 4, false, !this.ground.grounded, buiten, true);
 		// Wall scrape kills speed
 		const scraped = Math.hypot(hit.x - nx, hit.z - nz) > 0.02;
 		if (scraped) this.speed *= 0.55;

@@ -3,7 +3,8 @@ import { speakLine } from '#/audio/ElevenVoice';
 import type { LevelId } from '#/data/levels';
 import { LEVELS, level, levelAt, levelAtElevationIndex, levelElevationIndex, levelY } from '#/data/levels';
 import { planBounds, rectanglePlan } from '#/data/spatial';
-import { ELEVATOR_SHAFT_POSTS, ELEVATOR_SHAFT_WALLS, ELEVATOR_SPEC } from '#/data/world';
+import type { ClimbMode } from '#/data/world';
+import { ELEVATOR_CLIMB_MODES, ELEVATOR_SHAFT_POSTS, ELEVATOR_SHAFT_WALLS, ELEVATOR_SPEC } from '#/data/world';
 import { EYE } from '#/player/constants';
 import type { LightPool } from '#/render/LightPool';
 import type { LitMaterial } from '#/render/material';
@@ -280,8 +281,9 @@ export class GlassElevator {
 
 	/**
 	 * Shaft volume for CollisionWorld.
-	 * climbable: true → player (climb) can walk in; sims (no climb) bounce off all floors.
-	 * No solid Hans — he's pure mesh so you don't clip-fight the liftman.
+	 * climbable draagt de verplaatsingswijzen uit de lift-poort: de speler loopt de
+	 * cabine in en de schoonmaakkar rijdt hem in (`wheeled`), sims botsen. No solid
+	 * Hans — he's pure mesh so you don't clip-fight the liftman.
 	 */
 	getColliders(): {
 		minX: number;
@@ -289,7 +291,7 @@ export class GlassElevator {
 		minZ: number;
 		maxZ: number;
 		label: string;
-		climbable?: boolean;
+		climbable?: readonly ClimbMode[];
 		minY?: number;
 		maxY?: number;
 	}[] {
@@ -310,7 +312,7 @@ export class GlassElevator {
 				minY,
 				maxY,
 				label: 'elev_shaft_sim_gate',
-				climbable: true,
+				climbable: ELEVATOR_CLIMB_MODES,
 			},
 			...ELEVATOR_SHAFT_WALLS.map((wall) => ({
 				...planBounds(rectanglePlan(wall)),

@@ -27,7 +27,7 @@
  * when the canvas was created.
  */
 
-import { BATCH_KEY, isBatchMode, ZONE_CULL_KEY } from '#/render/graphicsPrefs';
+import { BATCH_KEY, isBatchMode, SHELL_SHADOW_KEY, ZONE_CULL_KEY } from '#/render/graphicsPrefs';
 
 /** One render target + viewport size, e.g. the main pass or the shadow map. */
 export type PassTiming = {
@@ -177,15 +177,22 @@ declare global {
 }
 
 /** The probe source, ready to hand to Page.addScriptToEvaluateOnNewDocument. */
-export function probeSource(batchOverride?: string, zoneCull?: boolean): string {
+export function probeSource(batchOverride?: string, zoneCull?: boolean, shellShadow?: boolean): string {
 	const mode = isBatchMode(batchOverride) ? batchOverride : undefined;
-	return `(${installProbe.toString()})(${JSON.stringify(BATCH_KEY)}, ${JSON.stringify(mode)}, ${JSON.stringify(ZONE_CULL_KEY)}, ${JSON.stringify(zoneCull)});`;
+	return `(${installProbe.toString()})(${JSON.stringify(BATCH_KEY)}, ${JSON.stringify(mode)}, ${JSON.stringify(ZONE_CULL_KEY)}, ${JSON.stringify(zoneCull)}, ${JSON.stringify(SHELL_SHADOW_KEY)}, ${JSON.stringify(shellShadow)});`;
 }
 
 // Everything below runs in the browser. It must stay self-contained: it is
 // stringified, so a reference to anything outside this function will not exist
 // at the other end.
-function installProbe(batchKey: string, batchOverride: string | undefined, zoneCullKey: string, zoneCull?: boolean): void {
+function installProbe(
+	batchKey: string,
+	batchOverride: string | undefined,
+	zoneCullKey: string,
+	zoneCull: boolean | undefined,
+	shellShadowKey: string,
+	shellShadow?: boolean,
+): void {
 	// App uses its own GPU query for the HUD. Two TIME_ELAPSED_EXT queries cannot
 	// overlap on one context, so announce the external probe before App starts.
 	Object.defineProperty(globalThis, '__mallPerfProbeActive', { value: true, configurable: true });
@@ -199,6 +206,9 @@ function installProbe(batchKey: string, batchOverride: string | undefined, zoneC
 		// Dezelfde reden: de zonecull moet vaststaan voordat App hem uitleest, want
 		// de helft van een A-B-A is een run met hem uit.
 		if (zoneCull !== undefined) localStorage.setItem(zoneCullKey, zoneCull ? '1' : '0');
+		// En de schilschaduw: castShadow wordt bij het opbouwen gelezen, dus de stand
+		// moet vaststaan voordat de wereld gebouwd wordt.
+		if (shellShadow !== undefined) localStorage.setItem(shellShadowKey, shellShadow ? '1' : '0');
 	} catch {
 		// Storage blocked. The run is still valid as long as nobody turned the
 		// setting on in this profile.

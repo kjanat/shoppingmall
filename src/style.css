@@ -78,6 +78,7 @@ body {
 
 .boot-inner {
 	text-align: center;
+	padding-inline: 16px;
 	animation: floatIn 1s ease both;
 }
 
@@ -89,7 +90,8 @@ body {
 }
 
 .boot-sub {
-	margin-top: 0.5rem;
+	margin: 0.5rem auto 0;
+	max-width: min(90vw, 30rem);
 	font-family: var(--mono);
 	font-size: 0.75rem;
 	letter-spacing: 0.35em;
@@ -343,6 +345,13 @@ body {
 		inset 0 1px 0 rgba(255, 255, 255, 0.04);
 	scrollbar-width: thin;
 	scrollbar-color: rgba(0, 255, 200, 0.3) transparent;
+	transition: max-height 0.25s ease;
+}
+
+/* De in-/uitklapknop van de gids bestaat alleen op kleine schermen (zie onder);
+   op de desktop staat de gids altijd open. */
+.panel-toggle {
+	display: none;
 }
 
 .panel-head h1 {
@@ -730,6 +739,11 @@ body {
 
 .settings-card {
 	width: min(340px, calc(100vw - 32px));
+	/* Zonder deze cap groeit de kaart via column-reverse boven de viewport uit en
+	   zijn de bovenste rijen onbereikbaar op een laag scherm (landscape telefoon). */
+	max-height: calc(100dvh - 88px);
+	overflow-y: auto;
+	overscroll-behavior: contain;
 	padding: 14px;
 	border-radius: 14px;
 	background: var(--panel);
@@ -1295,37 +1309,215 @@ body {
 	}
 }
 
-@media (max-width: 720px) {
-	.panel {
-		top: auto;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		width: 100%;
-		max-height: 42vh;
-		border-radius: 20px 20px 0 0;
+/* ── Telefoon (staand) ────────────────────────────────
+   De winkelgids wordt een zwevende bottom sheet; de vaste knoppen (⚙ besturing
+   en de DJ-widget) vormen een rij eronder zodat er niets bovenop de sheet
+   stapelt. De hint-balk en het merkje wijken; op 390px is elke pixel er een. */
+@media (max-width: 820px) {
+	.topbar {
+		top: 8px;
+		left: 8px;
+		/* Laat rechtsboven ruimte voor de minimap zodat de topbalk-knoppen er niet
+		   onder wegvallen als ze afbreken. */
+		right: 184px;
+		flex-wrap: wrap;
+		justify-content: flex-start;
+		gap: 8px;
+	}
+
+	.brand {
+		padding: 8px 12px;
+	}
+
+	.brand-tag {
+		display: none;
+	}
+
+	.topbar-right {
+		justify-content: flex-start;
+	}
+
+	.status-chip {
+		max-width: 52vw;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.minimap-wrap {
-		top: 84px;
+		top: 60px;
 		bottom: auto;
-		right: 12px;
+		right: 8px;
 		transform: scale(0.8);
 		transform-origin: top right;
+	}
+
+	/* De gids is een zwevende bottom sheet boven de knoppenrij, standaard
+	   ingeklapt tot kop plus snelknop zodat ze niet het halve scherm opeet. */
+	.panel {
+		top: auto;
+		bottom: 56px;
+		left: 8px;
+		right: 8px;
+		width: auto;
+		max-height: min(44dvh, 400px);
+		padding: 14px;
+		border-radius: 16px;
+		overscroll-behavior: contain;
+	}
+
+	.panel.collapsed {
+		max-height: 180px;
+		overflow: hidden;
+	}
+
+	.panel-toggle {
+		display: grid;
+		place-items: center;
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		width: 40px;
+		height: 40px;
+		border-radius: 10px;
+		border: 1px solid var(--panel-border);
+		background: rgba(15, 23, 42, 0.06);
+		color: var(--text);
+		font-size: 1.2rem;
+		line-height: 1;
+		cursor: pointer;
+		transition: transform 0.2s ease;
+	}
+
+	.panel:not(.collapsed) .panel-toggle {
+		transform: rotate(180deg);
+	}
+
+	.settings-host {
+		left: 8px;
+		right: auto;
+		bottom: 8px;
+	}
+
+	.dj-widget {
+		left: auto;
+		right: 8px;
+		bottom: 8px;
+		max-width: min(58vw, 240px);
+	}
+
+	.dj-widget input[type="range"] {
+		display: none;
 	}
 
 	.hint-bar {
 		display: none;
 	}
 
+	.bigmap {
+		padding: 12px;
+	}
+
 	.bigmap-card {
 		width: 96vw;
 		padding: 12px;
 	}
+}
+
+/* ── Telefoon (liggend) en korte schermen ─────────────
+   844×390: te breed voor de staande breakpoint, te laag voor de desktoplayout.
+   De gids wordt een linkerkolom over de volle hoogte, de vaste knoppen stapelen
+   rechtsonder, de minimap krimpt rechtsboven en de topbalk schuift ertussen. */
+@media (orientation: landscape) and (max-height: 520px) {
+	.panel {
+		top: 8px;
+		bottom: 8px;
+		left: 8px;
+		right: auto;
+		width: min(300px, 46vw);
+		max-height: none;
+		padding: 12px;
+		border-radius: 14px;
+		overscroll-behavior: contain;
+	}
+
+	.panel.collapsed {
+		bottom: auto;
+		max-height: 168px;
+		overflow: hidden;
+	}
+
+	.panel-toggle {
+		display: grid;
+		place-items: center;
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		width: 36px;
+		height: 36px;
+		border-radius: 9px;
+		border: 1px solid var(--panel-border);
+		background: rgba(15, 23, 42, 0.06);
+		color: var(--text);
+		font-size: 1.1rem;
+		line-height: 1;
+		cursor: pointer;
+		transition: transform 0.2s ease;
+	}
+
+	.panel:not(.collapsed) .panel-toggle {
+		transform: rotate(180deg);
+	}
+
+	.brand {
+		display: none;
+	}
 
 	.topbar {
-		flex-direction: column;
-		align-items: flex-start;
+		top: 8px;
+		left: calc(min(300px, 46vw) + 16px);
+		right: 148px;
+		gap: 8px;
+	}
+
+	.topbar-right {
+		justify-content: flex-start;
+	}
+
+	.status-chip {
+		max-width: 40vw;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.minimap-wrap {
+		top: 8px;
+		bottom: auto;
+		right: 8px;
+		transform: scale(0.66);
+		transform-origin: top right;
+	}
+
+	.settings-host {
+		left: auto;
+		right: 8px;
+		bottom: 8px;
+	}
+
+	.dj-widget {
+		left: auto;
+		right: 8px;
+		bottom: 54px;
+		max-width: min(46vw, 260px);
+	}
+
+	.dj-widget input[type="range"] {
+		display: none;
+	}
+
+	.hint-bar {
+		display: none;
 	}
 }
 
@@ -1670,6 +1862,56 @@ body {
 	font-size: 0.7rem;
 	color: #64748b;
 	text-align: center;
+}
+
+/* ── Duimformaat op aanraakschermen ───────────────────
+   Elke tikbare knop naar minstens ~40px. Op breedte (≤900px) én op elke
+   coarse-pointer, zodat een touch-tablet boven 900px ook meekomt. Staat na alle
+   componentregels: gelijke specificiteit, dus laatste in bronvolgorde wint. */
+@media (max-width: 900px), (pointer: coarse) {
+	.minimap-zoom button {
+		width: 32px;
+		height: 32px;
+		font-size: 0.9rem;
+	}
+
+	.settings-close {
+		width: 34px;
+		height: 34px;
+	}
+
+	.dj-widget button {
+		width: 38px;
+		height: 38px;
+	}
+
+	.dj-x {
+		width: 40px;
+		height: 40px;
+	}
+
+	.pd-follow {
+		width: 40px;
+		height: 40px;
+		font-size: 1rem;
+	}
+
+	.settings-btn,
+	.btn-home {
+		padding: 11px 16px;
+	}
+
+	.cat {
+		padding: 9px 14px;
+	}
+
+	.bigmap-tab {
+		padding: 10px 16px;
+	}
+
+	.btn.tile {
+		min-height: 54px;
+	}
 }
 
 /* ── Click-through ────────────────────────────────── */

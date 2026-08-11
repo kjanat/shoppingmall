@@ -17,6 +17,7 @@ import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { OpenRouter } from '@openrouter/sdk';
 import { env } from 'bun';
+import { isRecord, readNumber, readString } from '#/util/values.ts';
 import { clientIp, isOurs } from './net.ts';
 
 const BOOT = Date.now();
@@ -174,6 +175,52 @@ type TtsResult = {
 /** Characters billed since boot — surfaced on /api/dj/status */
 let ttsCharacters = 0;
 let elevenClient: ElevenLabsClient | null = null;
+
+/**
+ * A parsed ElevenLabs failure: a stable `code` the browser can act on without
+ * grepping the raw exception text, plus the HTTP status to answer with.
+ */
+type TtsErrorInfo = { status: number; code: string; message: string };
+
+function classifyTtsError(e: unknown): TtsErrorInfo {
+	const rec = isRecord(e) ? e : {};
+	const statusCode = readNumber(rec, 'statusCode', 0);
+	const body = rec['body'];
+	const detail = isRecord(body) ? body['detail'] : undefined;
+	const detailStatus = isRecord(detail) ? readString(detail, 'status') : '';
+	const message = readString(rec, 'message') || String(e);
+	const hay = `${detailStatus} ${message}`.toLowerCase();
+	if (detailStatus === 'quota_exceeded' || hay.includes('quota')) return { status: 402, code: 'quota_exceeded', message };
+	if (statusCode === 429 || hay.includes('rate limit') || hay.includes('too many requests')) {
+		return { status: 429, code: 'rate_limited', message };
+	}
+	if (statusCode === 401 || statusCode === 403 || hay.includes('api key') || hay.includes('unauthorized')) {
+		return { status: 401, code: 'auth', message };
+	}
+	if (statusCode === 400) return { status: 400, code: 'bad_request', message };
+	return { status: 502, code: 'unknown', message };
+}
+
+/**
+ * Server-side twin of the browser breaker: once ElevenLabs reports the quota is
+ * gone (or the key is bad), stop spending on doomed calls for every client, not
+ * just the one that hit it. Time-boxed so a monthly reset reopens without a
+ * restart. Quota backs off long, a rate limit briefly.
+ */
+const TTS_QUOTA_COOLDOWN_MS = 10 * 60_000;
+const TTS_RATE_COOLDOWN_MS = 30_000;
+let ttsBreakerUntil = 0;
+let ttsBreakerInfo: TtsErrorInfo | null = null;
+
+function tripTtsBreaker(info: TtsErrorInfo): void {
+	if (info.code === 'quota_exceeded' || info.code === 'auth') {
+		ttsBreakerUntil = Date.now() + TTS_QUOTA_COOLDOWN_MS;
+		ttsBreakerInfo = info;
+	} else if (info.code === 'rate_limited') {
+		ttsBreakerUntil = Date.now() + TTS_RATE_COOLDOWN_MS;
+		ttsBreakerInfo = info;
+	}
+}
 
 async function elevenLabsTts(text: string, voiceId?: string, lang?: string): Promise<TtsResult | null> {
 	if (!env['ELEVENLABS_API_KEY']) return null;
@@ -693,11 +740,15 @@ export async function handleApi(req: Request, peer: string): Promise<Response> {
 			}>(req);
 			const text = (body.text ?? '').trim();
 			if (!text) return json(400, { error: 'text required' });
+			if (Date.now() < ttsBreakerUntil && ttsBreakerInfo) {
+				return json(ttsBreakerInfo.status, { error: ttsBreakerInfo.message, code: ttsBreakerInfo.code, breaker: 'open' });
+			}
 			try {
 				const tts = await elevenLabsTts(text, body.voiceId, body.lang);
 				if (!tts) {
 					return json(503, {
 						error: 'no_elevenlabs_key',
+						code: 'no_key',
 						hint: 'envctl set .env ELEVENLABS_API_KEY sk_…',
 					});
 				}
@@ -713,7 +764,9 @@ export async function handleApi(req: Request, peer: string): Promise<Response> {
 					},
 				});
 			} catch (e) {
-				return json(502, { error: String(e) });
+				const info = classifyTtsError(e);
+				tripTtsBreaker(info);
+				return json(info.status, { error: info.message, code: info.code });
 			}
 		}
 

@@ -40,6 +40,7 @@ import type { StoreDef } from '#/data/stores';
 import { requireStore, shopStores } from '#/data/stores';
 import type { BoxStructureSpec, CardinalBoxStructureSpec } from '#/data/structure';
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
+import { RUN_SPEED } from '#/player/constants';
 import { unreachable } from '#/util/invariant';
 import { half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
@@ -1734,17 +1735,22 @@ export const HELIPAD_HATCH_FRAME_RAILS = cardinalWallPanels({
 	thickness: HATCH_FRAME_THICKNESS,
 });
 
+const HATCH_OPEN_SECONDS = 1.1;
+
 /**
  * Het luik zelf: de plaat in het gat, en de strook waarop hij opengaat.
  *
  * `reachDown` kijkt de trap in, want wie van V1 omhoog klimt staat onder het dek
- * en zou anders tegen een dicht luik aan lopen.
+ * en zou anders tegen een dicht luik aan lopen. `approach` dekt wat de snelste
+ * nadering in de openingstijd aflegt: met een vaste 2.2 m stond een dakloper op
+ * twee meter naar een dicht luik te kijken en liep een renner op een half open
+ * blad.
  */
 export const HELIPAD_HATCH_SPEC = {
 	lidThickness: 0.06,
-	approach: 2.2,
+	approach: RUN_SPEED * HATCH_OPEN_SECONDS,
 	reachDown: 2.4,
-	openSeconds: 1.1,
+	openSeconds: HATCH_OPEN_SECONDS,
 	/** Vanaf deze stand is het blad ver genoeg weg om erlangs te kunnen. */
 	clearFraction: 0.55,
 } as const;
@@ -1994,6 +2000,35 @@ function connectorEntity(connector: VerticalConnector): MallWorldEntity {
 export const CONNECTOR_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTORS.map(connectorEntity);
 
 /**
+ * Wie een verticale doorgang lópend of op wielen neemt, in plaats van erin te botsen.
+ *
+ * Een voertuig is geen voetganger: het rijdt de uitritramp en de lift op (die staan
+ * `wheeled` toe) maar niet de roltrap of de trap (alleen `walking`). Dat verschil
+ * staat al op de poorten van elke entiteit; de collision-doos leest het daar uit in
+ * plaats van dat elk voertuig een eigen lijst trappen bijhoudt.
+ */
+export type ClimbMode = 'walking' | 'wheeled';
+
+function entityClimbModes(entity: MallWorldEntity): readonly ClimbMode[] {
+	const modes = new Set<ClimbMode>();
+	for (const port of entity.ports) {
+		for (const mode of port.allows) {
+			if (mode === 'walking' || mode === 'wheeled') modes.add(mode);
+		}
+	}
+	return [...modes];
+}
+
+const CONNECTOR_CLIMB_MODES = new Map(CONNECTOR_ENTITIES.map((entity) => [entity.id, entityClimbModes(entity)]));
+
+/** De verplaatsingswijzen waarvoor een verticale verbinding een doorgang is, uit zijn poorten. */
+export function connectorClimbModes(id: string): readonly ClimbMode[] {
+	const modes = CONNECTOR_CLIMB_MODES.get(id);
+	if (!modes) throw new Error(`no connector '${id}'`);
+	return modes;
+}
+
+/**
  * Hoever de uitrit voorbij de westgevel de stad in loopt.
  *
  * Hij hoort daar: de mond ligt tien meter buiten het gebouw en de geul eromheen ook.
@@ -2165,6 +2200,9 @@ export const ELEVATOR_ENTITY: MallWorldEntity = {
 	map: map('circulation', elevatorStore.name, 95),
 	tags: ['circulation', 'elevator', 'moving-platform'],
 };
+
+/** De verplaatsingswijzen die de liftschacht doorlaat: lopend én op wielen, uit de lift-poort. */
+export const ELEVATOR_CLIMB_MODES = entityClimbModes(ELEVATOR_ENTITY);
 
 const CONNECTOR_OPENING_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTORS.map((connector) =>
 	openingEntity(
@@ -2675,6 +2713,13 @@ export const RESTROOMS_SHELL = {
 const RESTROOMS_WALL_TOP = V0_Y + RESTROOMS_SPEC.wallHeight;
 const RESTROOMS_HALF_DEPTH = half(RESTROOMS_SPEC.shell.depth);
 
+// Binnenvlakken van de schil: het wandvlak waar een wastafel of spiegel met zijn
+// rug tegenaan komt. De schil geeft wandharten, de rug staat een halve dikte de
+// ruimte in. Wastafels en spiegels lezen deze twee zodat ze op een echte wand
+// staan en niet op de open noordzijde.
+const RESTROOMS_SOUTH_INNER_Z = RESTROOMS_SHELL.backZ - half(RESTROOMS_SPEC.wallThickness);
+const RESTROOMS_EAST_INNER_X = RESTROOMS_SHELL.sideX - half(RESTROOMS_SPEC.wallThickness);
+
 // De ruime kier hoort bij de opening en de krappe bij de dichte wand, dus de
 // frontGap ligt op het noorden en de backGap op het zuiden.
 const RESTROOMS_DIVIDER_MIN_Z = -RESTROOMS_HALF_DEPTH + RESTROOMS_SPEC.divider.frontGap;
@@ -2689,23 +2734,37 @@ export const RESTROOMS_DIVIDER = {
 	thickness: RESTROOMS_SPEC.divider.thickness,
 } as const;
 
+const RESTROOMS_ROOM_OFFSET_X = 2;
+const RESTROOMS_BASIN = { width: 0.7, depth: 0.45, height: 0.98 } as const;
+const RESTROOMS_MIRROR = { height: 0.9, thickness: 0.04, y: 1.6 } as const;
+
 /**
  * Wat er ín het blok staat. De hokjes, de urinoirwand en de wastafels bestonden
  * alleen als meubels in Restrooms.ts, dus tekende de plattegrond een lege doos
  * van acht bij zes meter met een streep in het midden.
+ *
+ * Elke wastafel staat met zijn rug tegen een dichte wand uit de schil (`wall`) en
+ * niet meer bij de open noordzijde: de dames tegen de zuidwand, de heren tegen de
+ * oostwand naast de urinoirs. De spiegel hing eerder aan die opening; nu hangt hij
+ * boven de wastafels op diezelfde wand (zie RESTROOMS_MIRRORS).
  */
 export const RESTROOMS_INTERIOR = {
 	/** Afstand van de scheidingswand tot het hart van elk van de twee ruimtes. */
-	roomOffsetX: 2,
+	roomOffsetX: RESTROOMS_ROOM_OFFSET_X,
 	zone: { width: 3.6, depth: 5.6, thickness: 0.02, centerY: 0.09 },
 	urinalWall: { width: 3.2, height: 1.4, thickness: 0.08, centerY: 0.9, offsetZ: 2.6 },
 	urinals: { count: 3, spacing: 1.1, offsetZ: 2.45 },
 	stall: { width: 1.1, depth: 1.4, height: 2 },
 	mensStall: { offsetX: -1.15, offsetZ: -1.1 },
 	womensStall: { offsetX: 1, offsetZ: -0.2 },
-	basin: { width: 0.7, depth: 0.45, height: 0.98 },
-	mensBasin: { offsetX: 1.2, offsetZ: -2.2 },
-	womensBasin: { offsetX: 1, offsetZ: -2.3 },
+	basin: RESTROOMS_BASIN,
+	mirror: RESTROOMS_MIRROR,
+	mensBasin: {
+		offsetX: RESTROOMS_EAST_INNER_X - half(RESTROOMS_BASIN.depth) - RESTROOMS_ROOM_OFFSET_X,
+		offsetZ: -0.5,
+		wall: 'east',
+	},
+	womensBasin: { offsetX: 1, offsetZ: RESTROOMS_SOUTH_INNER_Z - half(RESTROOMS_BASIN.depth), wall: 'south' },
 	/**
 	 * De wudu-nis staat in de nutstrook tussen het blok en de westgevel.
 	 *
@@ -2936,6 +2995,50 @@ export const BACK_TO_WALL_Y: Readonly<Record<CardinalSide, number>> = {
 export function alongZAgainst(side: CardinalSide): boolean {
 	return side === 'west' || side === 'east';
 }
+
+export type RestroomMirror = Readonly<{
+	id: string;
+	/** De dichte wand van de schil waar hij co-planair op hangt. */
+	wall: CardinalSide;
+	x: number;
+	z: number;
+	y: number;
+	width: number;
+	height: number;
+	thickness: number;
+	yaw: number;
+}>;
+
+/**
+ * De spiegels boven de wastafels. Elk hangt met zijn rug tegen een dichte wand uit
+ * de schil, niet op de open noordzijde waar hij eerder in de deur zweefde: de dames
+ * op de zuidwand, de heren op de oostwand. Blok-lokaal, dus de mesh hangt ze in de
+ * groep en de check leest ze met RESTROOMS_SPEC.center erbij.
+ */
+export const RESTROOMS_MIRRORS: readonly RestroomMirror[] = [
+	{
+		id: 'mirror-womens',
+		wall: 'south',
+		x: RESTROOMS_ROOMS.womensX,
+		z: RESTROOMS_SOUTH_INNER_Z - half(RESTROOMS_INTERIOR.mirror.thickness),
+		y: RESTROOMS_INTERIOR.mirror.y,
+		width: 2.6,
+		height: RESTROOMS_INTERIOR.mirror.height,
+		thickness: RESTROOMS_INTERIOR.mirror.thickness,
+		yaw: BACK_TO_WALL_Y.south,
+	},
+	{
+		id: 'mirror-mens',
+		wall: 'east',
+		x: RESTROOMS_EAST_INNER_X - half(RESTROOMS_INTERIOR.mirror.thickness),
+		z: RESTROOMS_INTERIOR.mensBasin.offsetZ,
+		y: RESTROOMS_INTERIOR.mirror.y,
+		width: 1,
+		height: RESTROOMS_INTERIOR.mirror.height,
+		thickness: RESTROOMS_INTERIOR.mirror.thickness,
+		yaw: BACK_TO_WALL_Y.east,
+	},
+];
 
 const WUDU_ALONG_Z = alongZAgainst(RESTROOMS_INTERIOR.wudu.against);
 
@@ -4682,8 +4785,9 @@ export const PARKED_MOTORCYCLE_SPOTS: readonly MotorcycleSpot[] = [
 ];
 
 /**
- * De twee showmotoren in de hal van de hoofdingang, met hun achterwiel tegen de
- * noordrand van de hardstenen vloer en hun neus de hal in.
+ * De twee motoren in de hal van de hoofdingang, met hun achterwiel tegen de noordrand
+ * van de hardstenen vloer en hun neus de hal in: een showmodel en de rode motor die de
+ * speler met E wegrijdt.
  *
  * Ze staan naast elkaar aan één kant en niet aan weerszijden van de loper, want de
  * zuidkant van de hal is de puistrook van de toiletten: daar neergezet stond de
@@ -4694,22 +4798,36 @@ const ENTRANCE_MOTORCYCLE_X = ENTRANCE_PORTAL.innerX + half(ENTRANCE_SPEC.hall.d
 const ENTRANCE_MOTORCYCLE_PITCH = 1;
 const ENTRANCE_MOTORCYCLE_MARGIN = 0.1;
 /**
- * Een kwartslag, zodat de neus de diepte van de hal in wijst.
+ * Een kwartslag met de neus naar de deuren (−x), zodat je op W de straat op rijdt en
+ * niet het atrium in.
  *
- * De mesh-neus is lokaal +z en de hal loopt in x, dus op yaw 0 stonden ze dwars: je
- * keek er vanaf de deuren tegen de flank van aan en ze wezen de puistrook van de
- * toiletten in. De plattegrondrechthoek draait mee, want die leest dezelfde yaw.
+ * De mesh-neus is lokaal +z en de hal loopt in x, dus op yaw 0 stonden ze dwars en
+ * wezen ze de puistrook van de toiletten in; op +½π wees de neus de hal in en reed W
+ * het atrium in. De plattegrondrechthoek draait mee, want die leest dezelfde yaw.
  */
-const ENTRANCE_MOTORCYCLE_YAW = half(Math.PI);
+const ENTRANCE_MOTORCYCLE_YAW = -half(Math.PI);
 /** De noordelijke van de twee; de tweede staat er een steek naast. */
 const ENTRANCE_MOTORCYCLE_FIRST_Z = ENTRANCE_PORTAL.minZ + half(MOTORCYCLE_SPEC.body.width) + ENTRANCE_MOTORCYCLE_MARGIN;
 
-export const ENTRANCE_MOTORCYCLE_SPOTS: readonly MotorcycleSpot[] = [0, 1].map((slot) => ({
-	x: ENTRANCE_MOTORCYCLE_X,
-	y: V0_Y + ENTRANCE_SPEC.hall.thickness + MOTORCYCLE_SPEC.standY,
-	z: ENTRANCE_MOTORCYCLE_FIRST_Z + slot * ENTRANCE_MOTORCYCLE_PITCH,
-	yaw: ENTRANCE_MOTORCYCLE_YAW,
-}));
+function entranceMotorcycleSpot(slot: number): MotorcycleSpot {
+	return {
+		x: ENTRANCE_MOTORCYCLE_X,
+		y: V0_Y + ENTRANCE_SPEC.hall.thickness + MOTORCYCLE_SPEC.standY,
+		z: ENTRANCE_MOTORCYCLE_FIRST_Z + slot * ENTRANCE_MOTORCYCLE_PITCH,
+		yaw: ENTRANCE_MOTORCYCLE_YAW,
+	};
+}
+
+/**
+ * De twee motoren op het rode tapijt zijn allebei bestuurbaar: elk een slot dat
+ * DriveableCars bouwt en dat de speler met E bestijgt. Ze horen niet in een decor-mesh
+ * en niet in een solid volume, want dan stonden ze dubbel en met een collider eronder
+ * waar je juist naast moet kunnen staan om in te stappen.
+ */
+export const ENTRANCE_RIDEABLE_MOTORCYCLES: readonly (MotorcycleSpot & Readonly<{ color: number; name: string }>)[] = [
+	{ ...entranceMotorcycleSpot(0), color: 0xb71c1c, name: 'RODE MOTOR' },
+	{ ...entranceMotorcycleSpot(1), color: 0x1565c0, name: 'BLAUWE MOTOR' },
+];
 
 function motorcycleVolume(spot: MotorcycleSpot, index: number): SpatialVolume {
 	return solidPrism(
@@ -4733,18 +4851,6 @@ export const PARKED_MOTORCYCLES_ENTITY: MallWorldEntity = roomEntity({
 	volumes: PARKED_MOTORCYCLE_SPOTS.map(motorcycleVolume),
 	map: map('clutter', 'MOTOREN', 44),
 	tags: ['parking', 'motorcycles', 'static'],
-});
-
-export const ENTRANCE_MOTORCYCLES_ENTITY: MallWorldEntity = roomEntity({
-	id: 'entrance-motorcycles',
-	label: 'Show motorcycles in the entrance hall',
-	category: 'prop',
-	level: 'v0',
-	center: { x: ENTRANCE_MOTORCYCLE_X, z: ENTRANCE_MOTORCYCLE_FIRST_Z + half(ENTRANCE_MOTORCYCLE_PITCH) },
-	placementClass: 'clutter',
-	volumes: ENTRANCE_MOTORCYCLE_SPOTS.map(motorcycleVolume),
-	map: map('clutter', 'SHOWMOTOREN', 40),
-	tags: ['prop', 'motorcycles', 'static'],
 });
 
 // ── wat de speler wegrijdt ─────────────────────────────────────────────────
@@ -4831,6 +4937,7 @@ export const RIDEABLE_MOTORCYCLE_SPOTS: readonly (MotorcycleSpot & Readonly<{ co
 export const DRIVEABLE_SPOTS: readonly DriveableSpot[] = [
 	...RENTAL_CAR_SPOTS.map((spot): DriveableSpot => ({ ...spot, kind: 'car', y: PARKING_DECK_Y + RENTAL_CAR_LIFT })),
 	...RIDEABLE_MOTORCYCLE_SPOTS.map((spot): DriveableSpot => ({ ...spot, kind: 'motorcycle' })),
+	...ENTRANCE_RIDEABLE_MOTORCYCLES.map((spot): DriveableSpot => ({ ...spot, kind: 'motorcycle' })),
 ];
 
 export type WorldCollider = Readonly<{
@@ -5234,7 +5341,7 @@ const THEATRE_CEILING_Y = THEATRE_PLAN.hallHeight - THEATRE_PLAN.roofThickness;
 /** Zuidgrens van het zaaldek: de achterkant van de foyerwand. */
 const THEATRE_HOUSE_BACK_Z = THEATRE_INTERIOR.maxZ - THEATRE_PLAN.foyer.depth - THEATRE_PLAN.foyer.wallThickness;
 /** Voorkant van het toneel, waar het zaaldek begint. */
-const THEATRE_STAGE_FRONT_Z = THEATRE_INTERIOR.minZ + THEATRE_PLAN.stage.depth;
+export const THEATRE_STAGE_FRONT_Z = THEATRE_INTERIOR.minZ + THEATRE_PLAN.stage.depth;
 
 /** Rug van rij `r`, geteld vanaf de achterste rij bij de foyer. */
 function theatreRowBackZ(row: number): number {
@@ -6396,7 +6503,6 @@ export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 	PARKING_BAYS_ENTITY,
 	PARKED_CARS_ENTITY,
 	PARKED_MOTORCYCLES_ENTITY,
-	ENTRANCE_MOTORCYCLES_ENTITY,
 	ROOF_TERRACE_ENTITY,
 	TIKI_BAR_ENTITY,
 	ROOF_FURNITURE_ENTITY,

@@ -8,10 +8,12 @@ import {
 	isBatchMode,
 	LAMP_CHOICES,
 	lampCount,
+	shellShadowOn,
 	shineOn,
 	writeBatchMode,
 	writeFill,
 	writeLamps,
+	writeShellShadow,
 	writeShine,
 	writeZoneCull,
 	zoneCullOn,
@@ -285,6 +287,14 @@ export class SettingsPanel {
 
         <label class="settings-row">
           <span>
+            <b>Schil werpt schaduw</b>
+            <small>Gevel, dak, garage en stadstorens houden de zon zelf tegen. Uit tekenden winkelwanden hun schaduw dwars door de gevel op de stoep. Herlaadt.</small>
+          </span>
+          <input type="checkbox" id="set-shellshadow" />
+        </label>
+
+        <label class="settings-row">
+          <span>
             <b>Binaural audio (HRTF)</b>
             <small>3D-geluid via koptelefoon: links/rechts/achter/hoogte. Speakers = soft stereo.</small>
           </span>
@@ -379,6 +389,16 @@ export class SettingsPanel {
 			clearUrlPref('zonecull');
 			writeZoneCull(this.zoneCull);
 			this.onZoneCull?.(this.zoneCull);
+		});
+
+		// castShadow zit in de shaders en de batch-sleutel, dus dit kan alleen bij het
+		// opbouwen: net als glans en lampen herladen we meteen.
+		const shellShadowCb = q<HTMLInputElement>('#set-shellshadow');
+		shellShadowCb.checked = shellShadowOn();
+		shellShadowCb.addEventListener('change', () => {
+			clearUrlPref('shellshadow');
+			writeShellShadow(shellShadowCb.checked);
+			location.reload();
 		});
 
 		const binauralCb = q<HTMLInputElement>('#set-binaural');

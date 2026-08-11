@@ -1,8 +1,18 @@
 import * as THREE from 'three';
+import { levelY } from '#/data/levels';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { lerp } from '#/util/math';
+import { lerp, midpoint } from '#/util/math';
 import type { Americans } from './Americans';
+
+/** Hoe hoog de schotel boven de vloer van zijn slachtoffers hangt. */
+const HOVER_HEIGHT = 7;
+
+/** Marge onder het dak: de koepel steekt tot ~0.9 boven het schotelmidden uit. */
+const SAUCER_CEILING_CLEARANCE = 1.2;
+
+/** De lengte waarop de kegel gebouwd is; update() schaalt hem naar vloer-tot-schotel. */
+const BEAM_LENGTH = 7;
 
 /**
  * Aliens probe the fat Americans: UFO beam + lift + abductions vibes.
@@ -13,12 +23,15 @@ export class AlienProbe {
 	private materials: THREE.Material[] = [];
 	private saucer: THREE.Group;
 	private beam: THREE.Mesh;
+	private beamMat: THREE.MeshBasicMaterial;
 	private active = false;
 	private t = 0;
 	private duration = 0;
 	private targetPos = new THREE.Vector3();
 	private probeCd = 25;
 	private victims: { id: number; baseY: number }[] = [];
+	/** De vloer van de slachtoffers; de straal eindigt daar en niet een dek lager. */
+	private floorY = 0;
 	private americans: Americans | null = null;
 	private glow: LightHandle;
 
@@ -36,6 +49,15 @@ export class AlienProbe {
 			offset: new THREE.Vector3(0, -0.5, 0),
 		});
 		this.group.add(this.saucer);
+		this.beamMat = this.track(
+			new THREE.MeshBasicMaterial({
+				color: 0x69f0ae,
+				transparent: true,
+				opacity: 0.2,
+				side: THREE.DoubleSide,
+				depthWrite: false,
+			}),
+		);
 		this.beam = this.buildBeam();
 		this.group.add(this.beam);
 		this.group.visible = false;
@@ -63,11 +85,14 @@ export class AlienProbe {
 		// Hover over target cluster
 		this.saucer.position.x = lerp(this.saucer.position.x, this.targetPos.x, dt * 2);
 		this.saucer.position.z = lerp(this.saucer.position.z, this.targetPos.z, dt * 2);
-		this.saucer.position.y = 7 + Math.sin(this.t * 3) * 0.35;
+		this.saucer.position.y = this.hoverY() + Math.sin(this.t * 3) * 0.35;
 		this.saucer.rotation.y += dt * 1.8;
-		this.beam.position.set(this.saucer.position.x, 3.5, this.saucer.position.z);
-		const mat = this.beam.material as THREE.MeshBasicMaterial;
-		mat.opacity = 0.15 + Math.sin(this.t * 12) * 0.1;
+		// De straal loopt van de schotel tot de vloer van de slachtoffers. Met een vast
+		// midden op 3.5 stak hij boven een V1-cluster dwars door het dek en hing hij
+		// zichtbaar boven V0.
+		this.beam.scale.y = (this.saucer.position.y - this.floorY) / BEAM_LENGTH;
+		this.beam.position.set(this.saucer.position.x, midpoint(this.floorY, this.saucer.position.y), this.saucer.position.z);
+		this.beamMat.opacity = 0.15 + Math.sin(this.t * 12) * 0.1;
 
 		// Lift victims slightly (probe)
 		if (this.americans && this.victims.length) {
@@ -102,10 +127,17 @@ export class AlienProbe {
 			this.victims.push({ id: c.id, baseY: c.pos.y });
 		}
 		this.targetPos.multiplyScalar(1 / near.length);
-		this.saucer.position.set(this.targetPos.x + 4, 9, this.targetPos.z - 3);
+		// Een gemengd cluster krijgt de laagste vloer, zodat de straal iedereen haalt.
+		this.floorY = Math.min(...this.victims.map((v) => v.baseY));
+		this.saucer.position.set(this.targetPos.x + 4, this.hoverY(), this.targetPos.z - 3);
 
 		// Mood: unhappiness spike (probed!)
 		this.americans.applyProbeShock(this.victims.map((v) => v.id));
+	}
+
+	/** Boven een V1-cluster raakt vloer + zweefhoogte het dak; het plafond wint dan. */
+	private hoverY(): number {
+		return Math.min(this.floorY + HOVER_HEIGHT, levelY('roof') - SAUCER_CEILING_CLEARANCE);
 	}
 
 	private endProbe(): void {
@@ -159,18 +191,7 @@ export class AlienProbe {
 	}
 
 	private buildBeam(): THREE.Mesh {
-		const mesh = new THREE.Mesh(
-			new THREE.ConeGeometry(1.8, 7, 24, 1, true),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					color: 0x69f0ae,
-					transparent: true,
-					opacity: 0.2,
-					side: THREE.DoubleSide,
-					depthWrite: false,
-				}),
-			),
-		);
+		const mesh = new THREE.Mesh(new THREE.ConeGeometry(1.8, BEAM_LENGTH, 24, 1, true), this.beamMat);
 		mesh.rotation.x = Math.PI;
 		return mesh;
 	}

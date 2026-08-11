@@ -226,41 +226,73 @@ export function zebraBounds(plek: RoadCrossing): Bounds2 {
 }
 
 /**
- * De strepen van de middenstreep op de vier rechte stukken, elk als eigen rechthoek en
- * met de zebrapaden eruit gesneden, net als de garagebelijning om de kolomvoeten heen.
- * Een onderbroken middenstreep die een oversteek kruist tekent een ononderbroken plus
- * over de zebra; die verdween in de vorige opzet in een doorlopende texture-tegel.
- *
- * Elke strook krijgt een heel aantal tegels zodat hij halverwege een gat eindigt, en de
- * streeplengte rekt met de tegel mee: op een strook die niet precies op de tegel uitkomt
- * blijft het ritme zo gelijk aan dat van de bocht erachter.
+ * De doorgetrokken kantstreep, in meters: het hart van de streep ligt zoveel van de
+ * wegrand af, en zo breed is hij. Twee ervan lopen de strook af, een aan elke rand.
  */
-export function roadDashPatches(): readonly Bounds2[] {
+export const ROAD_EDGE = { inset: 0.355, width: 0.164 } as const;
+
+/** Eén recht stuk van de ringweg: langs welke as het loopt, op welke middellijn, en hoe ver naar weerskanten. */
+type RoadStrip = Readonly<{ axis: 'x' | 'z'; fixed: number; reach: number }>;
+
+const ROAD_STRIPS: readonly RoadStrip[] = [
+	{ axis: 'x', fixed: LANE_Z, reach: ROAD_INNER_X },
+	{ axis: 'x', fixed: -LANE_Z, reach: ROAD_INNER_X },
+	{ axis: 'z', fixed: LANE_X, reach: ROAD_INNER_Z },
+	{ axis: 'z', fixed: -LANE_X, reach: ROAD_INNER_Z },
+];
+
+/**
+ * Een rechthoek op een strook: `along` is het hart langs de strookas met `halfAlong` naar
+ * weerskanten, `across` de zijwaartse verschuiving vanaf de middellijn met `halfAcross`.
+ */
+function stripRect(strip: RoadStrip, along: number, halfAlong: number, across: number, halfAcross: number): Bounds2 {
+	if (strip.axis === 'x') {
+		const z = strip.fixed + across;
+		return { minX: along - halfAlong, maxX: along + halfAlong, minZ: z - halfAcross, maxZ: z + halfAcross };
+	}
+	const x = strip.fixed + across;
+	return { minX: x - halfAcross, maxX: x + halfAcross, minZ: along - halfAlong, maxZ: along + halfAlong };
+}
+
+/** Wat er op de rijbaan geschilderd staat: de onderbroken middenstreep en de doorgetrokken kantstrepen. */
+export type RoadPaintKind = 'dash' | 'edge';
+export type RoadPaintPatch = Readonly<{ kind: RoadPaintKind; rect: Bounds2 }>;
+
+/**
+ * Alle wegmarkering op de rechte stukken, elk als eigen rechthoek en met de zebrapaden
+ * eruit gesneden, net als de garagebelijning om de kolomvoeten heen. Een streep die een
+ * oversteek kruist tekent er anders een doorlopende lijn overheen: de middenstreep een
+ * plus door het midden, de kantstreep een balk dwars over de uiteinden van de zebra. Beide
+ * verdwenen in de vorige opzet in de doorlopende texture-tegel van de strook.
+ *
+ * De middenstreep krijgt per strook een heel aantal tegels zodat hij halverwege een gat
+ * eindigt en zijn ritme aansluit op de bocht; de streeplengte rekt met de tegel mee. De
+ * kantstrepen lopen als één streep de strook af en breken alleen waar een zebra ligt.
+ */
+export function roadPaintPatches(): readonly RoadPaintPatch[] {
 	const holes = ROAD_CROSSINGS.map(zebraBounds);
-	const halfWidth = half(ROAD_DASH.width);
-	const strips = [
-		{ axis: 'x', fixed: LANE_Z, reach: ROAD_INNER_X },
-		{ axis: 'x', fixed: -LANE_Z, reach: ROAD_INNER_X },
-		{ axis: 'z', fixed: LANE_X, reach: ROAD_INNER_Z },
-		{ axis: 'z', fixed: -LANE_X, reach: ROAD_INNER_Z },
-	] as const;
-	const dashes: Bounds2[] = [];
-	for (const strip of strips) {
+	const patches: RoadPaintPatch[] = [];
+	const cut = (kind: RoadPaintKind, rect: Bounds2): void => {
+		for (const piece of boundsMinusHoles(rect, holes)) patches.push({ kind, rect: piece });
+	};
+
+	const halfDashWidth = half(ROAD_DASH.width);
+	const edgeAcross = half(ROAD_PLAN.width) - ROAD_EDGE.inset;
+	const halfEdgeWidth = half(ROAD_EDGE.width);
+	for (const strip of ROAD_STRIPS) {
 		const length = span(-strip.reach, strip.reach);
 		const tiles = Math.max(1, Math.round(length / ROAD_DASH_TILE));
 		const step = length / tiles;
 		const halfDash = half(ROAD_DASH.length * (step / ROAD_DASH_TILE));
 		for (let i = 0; i < tiles; i++) {
 			const tileStart = -strip.reach + i * step;
-			const center = midpoint(tileStart, tileStart + step);
-			const rect: Bounds2 =
-				strip.axis === 'x'
-					? { minX: center - halfDash, maxX: center + halfDash, minZ: strip.fixed - halfWidth, maxZ: strip.fixed + halfWidth }
-					: { minX: strip.fixed - halfWidth, maxX: strip.fixed + halfWidth, minZ: center - halfDash, maxZ: center + halfDash };
-			dashes.push(...boundsMinusHoles(rect, holes));
+			cut('dash', stripRect(strip, midpoint(tileStart, tileStart + step), halfDash, 0, halfDashWidth));
+		}
+		for (const side of [-1, 1] as const) {
+			cut('edge', stripRect(strip, 0, strip.reach, side * edgeAcross, halfEdgeWidth));
 		}
 	}
-	return dashes;
+	return patches;
 }
 
 /**

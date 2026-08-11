@@ -820,6 +820,7 @@ export class KioskOverlay {
 	private elCrosshair!: HTMLElement;
 	private elSteps!: HTMLElement;
 	private elHud!: HTMLElement;
+	private elPanel!: HTMLElement;
 	private elScore!: HTMLElement;
 	private elNearby!: HTMLElement;
 	private elPossessBanner!: HTMLElement;
@@ -872,7 +873,8 @@ export class KioskOverlay {
           </div>
         </header>
 
-        <aside class="panel">
+        <aside class="panel collapsed" id="panel">
+          <button type="button" class="panel-toggle" id="panel-toggle" aria-label="Winkelgids in- of uitklappen" aria-expanded="false">⌄</button>
           <div class="panel-head">
             <h1>Waar wil je heen?</h1>
             <p class="panel-sub"><b>Klik</b> = muis vangen · <b>WASD</b> lopen · <b>M</b> kaart · <b>B</b> bewoners</p>
@@ -973,6 +975,7 @@ export class KioskOverlay {
 
 		this.elBoot = qs(this.root, '#boot');
 		this.elHud = qs(this.root, '#hud');
+		this.elPanel = qs(this.root, '#panel');
 		this.elSearch = qs<HTMLInputElement>(this.root, '#search');
 		this.elList = qs(this.root, '#store-list');
 		this.elDetail = qs(this.root, '#detail');
@@ -996,6 +999,12 @@ export class KioskOverlay {
 		this.elSearch.addEventListener('input', () => {
 			this.filter = this.elSearch.value.trim().toLowerCase();
 			this.renderList();
+		});
+
+		const panelToggle = qs<HTMLButtonElement>(this.root, '#panel-toggle');
+		panelToggle.addEventListener('click', () => {
+			const collapsed = this.elPanel.classList.toggle('collapsed');
+			panelToggle.setAttribute('aria-expanded', String(!collapsed));
 		});
 
 		qs(this.root, '#btn-kruidvat').addEventListener('click', () => {

@@ -51,7 +51,8 @@ export function tagZoneSpan(object: THREE.Object3D, mask: number): void {
 	zoneSpans.set(object, (zoneSpans.get(object) ?? 0) | mask);
 }
 
-function zoneSpanOf(object: THREE.Object3D): number {
+/** De zones die dit object bovenop zijn doos verklaart; 0 als het niets verklaarde. */
+export function zoneSpanOf(object: THREE.Object3D): number {
 	return zoneSpans.get(object) ?? 0;
 }
 

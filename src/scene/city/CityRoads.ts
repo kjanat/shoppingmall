@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { lit } from '#/render/material';
+import type { RoadPaintKind, RoadPaintPatch } from '#/scene/city/cityPlan';
 import {
 	EXIT_APRON,
 	EXIT_APRON_TOP_Y,
@@ -8,10 +9,11 @@ import {
 	ROAD_CROSSINGS,
 	ROAD_DASH,
 	ROAD_DASH_TILE,
+	ROAD_EDGE,
 	ROAD_INNER_X,
 	ROAD_INNER_Z,
 	ROAD_PLAN,
-	roadDashPatches,
+	roadPaintPatches,
 	ZEBRA_PLAN,
 } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -50,15 +52,16 @@ const EW_LEN = 2 * ROAD_INNER_X;
 const NS_LEN = 2 * ROAD_INNER_Z;
 
 // ── verf, in texels ────────────────────────────────────────
-// De dwarsmaat geldt voor beide tegels, dus kantlijn en middenstreep zijn op de
-// rechte stukken en in de bocht even dik en zitten op dezelfde afstand van de
-// rand. Alleen de langsmaat van de strooktegel is grover: die wordt herhaald.
+// Alleen de hoektegel schildert nog kantlijn en middenstreep; op de rechte stukken
+// staan die als losse rechthoeken uit het wegenplan (roadPaintPatches). De texels
+// hieronder komen uit de metermaten van dat plan, dus bocht en recht stuk zijn even
+// dik en liggen even ver van de rand.
 const ROAD_PX = 128;
 const TILE_PX = 256;
 const M_TO_ROAD_PX = ROAD_PX / ROAD_W;
-/** Kantlijn: hoever van de rand af, en hoe dik. */
-const EDGE_INSET_PX = 5;
-const EDGE_PX = 3;
+/** Kantlijn in texels, uit de metermaat van het wegenplan: hoever van de rand af, en hoe dik. */
+const EDGE_INSET_PX = (ROAD_EDGE.inset - half(ROAD_EDGE.width)) * M_TO_ROAD_PX;
+const EDGE_PX = ROAD_EDGE.width * M_TO_ROAD_PX;
 /** Streepdikte in texels, uit de metermaat van het wegenplan: één bron voor bocht en recht stuk. */
 const DASH_PX = ROAD_DASH.width * M_TO_ROAD_PX;
 const SPECKLE_PX = 2;
@@ -111,7 +114,7 @@ export class CityRoads {
 	private textures: THREE.Texture[] = [];
 	private heads: Head[] = [];
 	private zebras!: THREE.InstancedMesh;
-	private dashes!: THREE.InstancedMesh;
+	private paint: THREE.InstancedMesh[] = [];
 
 	// Lampmaterialen — gedeeld over alle koppen, we wisselen alleen referenties
 	private redOn!: THREE.Material;
@@ -128,7 +131,7 @@ export class CityRoads {
 		this.group.name = 'city_roads';
 		this.buildLampMaterials();
 		this.buildStrips();
-		this.buildDashes();
+		this.buildPaint();
 		this.buildZebras();
 		this.buildApron();
 		this.buildTrafficLights();
@@ -156,7 +159,7 @@ export class CityRoads {
 
 	dispose(): void {
 		this.zebras.dispose();
-		this.dashes.dispose();
+		for (const mesh of this.paint) mesh.dispose();
 		for (const m of this.materials) m.dispose();
 		for (const g of this.geometries) g.dispose();
 		for (const t of this.textures) t.dispose();
@@ -177,17 +180,14 @@ export class CityRoads {
 	}
 
 	/**
-	 * Asfalt-tegel voor een recht stuk: alleen doorgetrokken kantlijnen. De
-	 * middenstreep zit niet meer in de tegel maar staat als losse rechthoekjes uit
-	 * `roadDashPatches`, zodat de zebrapaden er als gaten uit gesneden zijn; een
-	 * doorlopende texture-dash tekende een ononderbroken plus over de oversteek.
+	 * Asfalt-tegel voor een recht stuk: alleen asfalt. Kantlijn en middenstreep zitten
+	 * niet meer in de tegel maar staan als losse rechthoekjes uit `roadPaintPatches`,
+	 * zodat de zebrapaden er als gaten uit gesneden zijn; in de doorlopende texture-tegel
+	 * liep de kantstreep dwars over de zebra en de middenstreep als plus door het midden.
 	 */
 	private makeAsphaltTexture(len: number): THREE.Texture {
 		const { canvas: c, ctx } = labelCanvas(TILE_PX, ROAD_PX);
 		this.paveAsphalt(ctx, TILE_PX, ROAD_PX);
-		ctx.fillStyle = PAINT_EDGE;
-		ctx.fillRect(0, EDGE_INSET_PX, TILE_PX, EDGE_PX);
-		ctx.fillRect(0, ROAD_PX - EDGE_INSET_PX - EDGE_PX, TILE_PX, EDGE_PX);
 		const tex = labelTexture(c);
 		tex.wrapS = THREE.RepeatWrapping;
 		tex.repeat.set(Math.max(1, Math.round(len / TILE_LEN)), 1);
@@ -286,30 +286,39 @@ export class CityRoads {
 		}
 	}
 
-	// ── middenstreep ───────────────────────────────────────
+	// ── wegmarkering ───────────────────────────────────────
 
 	/**
-	 * De losse strepen van de middenstreep uit `roadDashPatches`, één InstancedMesh voor
-	 * alle strepen: een eenheidsvlak dat per streep op zijn eigen rechthoek geschaald
-	 * wordt. Ze zijn er als aparte rechthoekjes uit gesneden waar een zebrapad de rijbaan
-	 * kruist; in de texture liep de streep er nog dwars doorheen.
+	 * De losse wegmarkering uit `roadPaintPatches`: de onderbroken middenstreep en de twee
+	 * doorgetrokken kantstrepen per strook, elk als rechthoekje met de zebrapaden eruit
+	 * gesneden. Eén InstancedMesh per kleur, een gedeeld eenheidsvlak dat per streep op zijn
+	 * eigen rechthoek geschaald wordt. In de striptexture liep de middenstreep als plus door
+	 * de zebra en de kantstreep als balk dwars over de balkeinden.
 	 */
-	private buildDashes(): void {
-		const patches = roadDashPatches();
+	private buildPaint(): void {
+		const patches = roadPaintPatches();
 		const geo = new THREE.PlaneGeometry(1, 1);
 		geo.rotateX(-Math.PI / 2);
 		this.geometries.push(geo);
-		const mat = this.track(lit({ color: PAINT_DASH, roughness: 0.9 }));
-		this.dashes = new THREE.InstancedMesh(geo, mat, patches.length);
+		this.paintLayer(geo, patches, 'dash', PAINT_DASH);
+		this.paintLayer(geo, patches, 'edge', PAINT_EDGE);
+	}
+
+	/** Alle strepen van één soort als één InstancedMesh, elk instantievlak op zijn eigen rechthoek geschaald. */
+	private paintLayer(geo: THREE.PlaneGeometry, patches: readonly RoadPaintPatch[], kind: RoadPaintKind, color: string): void {
+		const rects = patches.filter((patch) => patch.kind === kind).map((patch) => patch.rect);
+		const mat = this.track(lit({ color, roughness: 0.9 }));
+		const mesh = new THREE.InstancedMesh(geo, mat, rects.length);
 		const dummy = new THREE.Object3D();
-		patches.forEach((patch, index) => {
-			dummy.position.set(midpoint(patch.minX, patch.maxX), DASH_Y, midpoint(patch.minZ, patch.maxZ));
-			dummy.scale.set(span(patch.minX, patch.maxX), 1, span(patch.minZ, patch.maxZ));
+		rects.forEach((rect, index) => {
+			dummy.position.set(midpoint(rect.minX, rect.maxX), DASH_Y, midpoint(rect.minZ, rect.maxZ));
+			dummy.scale.set(span(rect.minX, rect.maxX), 1, span(rect.minZ, rect.maxZ));
 			dummy.updateMatrix();
-			this.dashes.setMatrixAt(index, dummy.matrix);
+			mesh.setMatrixAt(index, dummy.matrix);
 		});
-		this.dashes.instanceMatrix.needsUpdate = true;
-		this.group.add(this.dashes);
+		mesh.instanceMatrix.needsUpdate = true;
+		this.paint.push(mesh);
+		this.group.add(mesh);
 	}
 
 	// ── zebrapaden ─────────────────────────────────────────

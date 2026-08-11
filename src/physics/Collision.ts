@@ -3,30 +3,34 @@ import type { VerticalConnector } from '#/data/connectors';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { LEVELS, levelY } from '#/data/levels';
 import type { Bounds2, Occlusion, Vec3 } from '#/data/spatial';
-import { SIGHT_BLOCKING_TAG } from '#/data/spatial';
+import { planBounds, SIGHT_BLOCKING_TAG } from '#/data/spatial';
 import { STORES } from '#/data/stores';
+import type { ClimbMode } from '#/data/world';
 import {
 	atriumPlanterTiers,
 	BACKSTAGE_LANDING,
 	backstageLandingTreadY,
 	backstageLandingTreadZ,
 	CATWALK_DECK,
+	connectorClimbModes,
 	ENTRANCE_PORTAL,
 	ENTRANCE_SPEC,
 	FOUNTAIN_SPEC,
-	HELIPAD_DECK_BOUNDS,
 	KIOSK_SPEC,
 	PARKING_EXIT_RAMP,
 	PARKING_EXIT_WALL_GAP,
 	parkingDeckColliders,
 	parkingExitRampY,
 	parkingExitTrenchColliders,
-	SECRET_STAIRS_OPENING_BOUNDS,
 	SLAB_SPEC_BY_LEVEL,
 	shopRoomDepth,
 	slabOpeningWithin,
+	THEATRE_INTERIOR,
 	THEATRE_PLAN,
+	THEATRE_STAGE_FRONT_Z,
+	THEATRE_STAGE_TOP_Y,
 	theatreColliders,
+	theatreRowY,
 	theatreSurfaces,
 	theatreTreadY,
 	theatreTreadZ,
@@ -65,8 +69,12 @@ export type AABB = {
 	minY?: number;
 	maxY?: number;
 	label?: string;
-	/** Climbers (the player) walk ON this instead of into it — see `ramps`. */
-	climbable?: boolean;
+	/**
+	 * Wie deze doorgang doorlóópt in plaats van erin te botsen, per verplaatsingswijze.
+	 * Een voetganger neemt de trap en de roltrap (`walking`); een voertuig alleen wat
+	 * ook `wheeled` toelaat, zoals de lift. Afwezig is massief voor iedereen.
+	 */
+	climbable?: readonly ClimbMode[];
 	/** Stands outside the mall; only tested for agents that are allowed out there. */
 	outdoor?: boolean;
 	/**
@@ -86,7 +94,7 @@ type BoxOptions = {
 	minY?: number;
 	maxY?: number;
 	label?: string;
-	climbable?: boolean;
+	climbable?: readonly ClimbMode[];
 	outdoor?: boolean;
 	disabled?: boolean;
 	tags?: readonly string[];
@@ -319,6 +327,58 @@ const SHELL_TOP_Y = ROOF_H - 0.35;
 /** Dikte van een kerbdoos rond een stadsdek. */
 const KERB_T = 0.25;
 
+/** Onder deze breedte is een reststrook geen loopvlak meer, maar rekenruis van de knip. */
+const ROOF_PAD_MIN = 1e-6;
+
+/**
+ * Rechthoekige dekking van `outer` minus de rechthoekige `holes`, met de strip-methode:
+ * de x-randen van de gaten knippen `outer` in kolommen, en per kolom knippen de z-randen
+ * van de daar kruisende gaten hem in stukken die buiten elk gat vallen.
+ */
+function coverMinusHoles(outer: Bounds2, holes: readonly Bounds2[]): Bounds2[] {
+	const xEdges = new Set<number>([outer.minX, outer.maxX]);
+	for (const h of holes) {
+		if (h.maxX <= outer.minX || h.minX >= outer.maxX) continue;
+		xEdges.add(Math.max(outer.minX, h.minX));
+		xEdges.add(Math.min(outer.maxX, h.maxX));
+	}
+	const xs = [...xEdges].sort((a, b) => a - b);
+	const rects: Bounds2[] = [];
+	for (let i = 0; i < xs.length - 1; i++) {
+		const x0 = xs[i];
+		const x1 = xs[i + 1];
+		if (x0 === undefined || x1 === undefined || x1 - x0 < ROOF_PAD_MIN) continue;
+		const xMid = midpoint(x0, x1);
+		const crossing = holes.filter((h) => h.minX < xMid && h.maxX > xMid && h.minZ < outer.maxZ && h.maxZ > outer.minZ);
+		const zEdges = new Set<number>([outer.minZ, outer.maxZ]);
+		for (const h of crossing) {
+			zEdges.add(Math.max(outer.minZ, h.minZ));
+			zEdges.add(Math.min(outer.maxZ, h.maxZ));
+		}
+		const zs = [...zEdges].sort((a, b) => a - b);
+		for (let j = 0; j < zs.length - 1; j++) {
+			const z0 = zs[j];
+			const z1 = zs[j + 1];
+			if (z0 === undefined || z1 === undefined || z1 - z0 < ROOF_PAD_MIN) continue;
+			const zMid = midpoint(z0, z1);
+			if (crossing.some((h) => h.minZ < zMid && h.maxZ > zMid)) continue;
+			rects.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1 });
+		}
+	}
+	return rects;
+}
+
+/**
+ * De loopbare dakplaat, uit dezelfde plaat-spec die de tekenaar snijdt: de dakslab minus
+ * zijn eigen gaten (atrium, het geheime-trapgat en de dakliftschacht). Zo draagt elk punt
+ * van het getekende dak op dakhoogte, blijft het atrium open voor de drone door de skylight,
+ * en blijft het luik een gat; het geheime-trapgat werd hiervoor met de hand rond geknipt.
+ */
+const ROOF_DECK_PADS: readonly RoofPad[] = coverMinusHoles(
+	planBounds(SLAB_SPEC_BY_LEVEL['roof'].plan),
+	SLAB_SPEC_BY_LEVEL['roof'].holes.map(planBounds),
+).map((r) => ({ ...r, y: ROOF_H, label: 'roof_deck' }));
+
 /**
  * Tredesnelheid van de roltrap langs de helling (m/s). Staat hier omdat de
  * fysica hem nodig heeft om je te vervoeren en MallBuilder om de treden ermee te
@@ -352,56 +412,12 @@ export class CollisionWorld {
 	];
 
 	/**
-	 * Flat walkable roof patches (deck clipped clear of the atrium skylight).
-	 * Het SE-dek is opgeknipt rond het gedeelde secret-stairs-trapgat. Een los
-	 * getal hier legde dat gat eerder met een onzichtbare collisionplaat dicht.
+	 * Het loopbare dak, exact de getekende dakplaat: de dakslab minus zijn eigen gaten.
+	 * Stopte de dekking eerder vóór de gevel, dan liep je aan de rand over kale slab die
+	 * `groundHeightAt` niet droeg en zakte je door het dak het gebouw in. `poolFloorY` gaat
+	 * voor deze dekking, dus in het dakbad waad je nog steeds in plaats van erop te staan.
 	 */
-	readonly roofPads: RoofPad[] = [
-		// Helipad SE deck, in vier stukken om het trapgat heen
-		{
-			minX: HELIPAD_DECK_BOUNDS.minX,
-			maxX: SECRET_STAIRS_OPENING_BOUNDS.minX,
-			minZ: HELIPAD_DECK_BOUNDS.minZ,
-			maxZ: HELIPAD_DECK_BOUNDS.maxZ,
-			y: ROOF_H,
-		},
-		{
-			minX: SECRET_STAIRS_OPENING_BOUNDS.maxX,
-			maxX: HELIPAD_DECK_BOUNDS.maxX,
-			minZ: HELIPAD_DECK_BOUNDS.minZ,
-			maxZ: HELIPAD_DECK_BOUNDS.maxZ,
-			y: ROOF_H,
-		},
-		{
-			minX: SECRET_STAIRS_OPENING_BOUNDS.minX,
-			maxX: SECRET_STAIRS_OPENING_BOUNDS.maxX,
-			minZ: HELIPAD_DECK_BOUNDS.minZ,
-			maxZ: SECRET_STAIRS_OPENING_BOUNDS.minZ,
-			y: ROOF_H,
-		},
-		{
-			minX: SECRET_STAIRS_OPENING_BOUNDS.minX,
-			maxX: SECRET_STAIRS_OPENING_BOUNDS.maxX,
-			minZ: SECRET_STAIRS_OPENING_BOUNDS.maxZ,
-			maxZ: HELIPAD_DECK_BOUNDS.maxZ,
-			y: ROOF_H,
-		},
-		// Glass elevator roof hatch (16, −8) + corridor toward helipad
-		{ minX: 12, maxX: 28, minZ: -12, maxZ: 8, y: ROOF_H },
-		// De gang naar de helipad, in drie stukken om hetzelfde trapgat heen als
-		// hierboven. In één stuk (14..30, 4..18) legde hij het gat weer dicht dat
-		// de vier pads erboven juist openhouden, en liep je erover in plaats van
-		// de trap af.
-		{ minX: 14, maxX: SECRET_STAIRS_OPENING_BOUNDS.minX, minZ: 4, maxZ: 18, y: ROOF_H },
-		{ minX: SECRET_STAIRS_OPENING_BOUNDS.maxX, maxX: 30, minZ: 4, maxZ: 18, y: ROOF_H },
-		{
-			minX: SECRET_STAIRS_OPENING_BOUNDS.minX,
-			maxX: SECRET_STAIRS_OPENING_BOUNDS.maxX,
-			minZ: 4,
-			maxZ: SECRET_STAIRS_OPENING_BOUNDS.minZ,
-			y: ROOF_H,
-		},
-	];
+	readonly roofPads: RoofPad[] = [...ROOF_DECK_PADS];
 
 	/** Low platforms you can hop onto (deck top is the walkable surface). */
 	readonly platforms: Platform[] = [
@@ -573,7 +589,7 @@ export class CollisionWorld {
 		for (const connector of VERTICAL_CONNECTORS) {
 			this.add(connector.collision.minX, connector.collision.maxX, connector.collision.minZ, connector.collision.maxZ, {
 				label: connector.id,
-				climbable: true,
+				climbable: connectorClimbModes(connector.id),
 			});
 		}
 
@@ -691,6 +707,19 @@ export class CollisionWorld {
 		for (const surface of theatreSurfaces()) {
 			this.citySurfaces.push({ ...surface, label: `theatre_${surface.label}` });
 		}
+
+		// De toneelrand: een wand, geen val. Het zaaldek zakt trapsgewijs naar de voorste
+		// rij en het toneel staat er ruim een stap boven; het toneel is een loopvlak zonder
+		// doos, dus wie van de voorste rij de rand overliep vond geen bereikbare vloer en
+		// zakte door naar straatniveau, klem tussen de stoelen. Deze kerb staat op de
+		// toneelkant van de rand, zodat een stoel op het voorste dek er niet uit geduwd
+		// wordt, en houdt zowel de zaal- als de toneelkant van de sprong tegen.
+		this.add(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX, THEATRE_STAGE_FRONT_Z - KERB_T, THEATRE_STAGE_FRONT_Z, {
+			minY: theatreRowY(THEATRE_PLAN.seating.rows - 1),
+			maxY: THEATRE_STAGE_TOP_Y,
+			label: 'theatre_stage_front',
+			outdoor: true,
+		});
 
 		// Podium en treden zijn loopvlakken; de kerbdozen eromheen dwingen je de
 		// trap op in plaats van tegen de zijkant omhoog.
@@ -951,16 +980,18 @@ export class CollisionWorld {
 			const surface = pathRampSurface(ramp, x, z, 0.2);
 			if (surface !== null && Math.abs(surface - currentY) <= step + 0.2) return surface;
 		}
-		// Platforms and flights that sit ABOVE a roof pad go first. The pads span
-		// whole decks and answer unconditionally up here (`currentY > FLOOR_H + 2`),
-		// so anything standing on one is unreachable if the pad is asked first.
-		// Both are gated on already being at that height, so nothing below changes.
+		// Platforms and flights that reach the roof go first. The pads span whole decks
+		// and answer unconditionally up here (`currentY > FLOOR_H + 2`), so anything on
+		// one is unreachable if the pad is asked first. Both are gated on already being
+		// at that height, so nothing below changes. `snapFloorY` asks ramps before pads
+		// for the same reason; the guard is `< ROOF_H` (not `<=`) so the secret stairs,
+		// whose top sits at ROOF_H under the hatch lid, is not shadowed by that lid.
 		for (const p of this.platforms) {
 			if (!this.platformCovers(p, x, z)) continue;
 			if (currentY >= p.y - 0.35 && currentY < p.y + 2) return p.y;
 		}
 		for (const r of this.ramps) {
-			if (r.yTop <= ROOF_H) continue;
+			if (r.yTop < ROOF_H) continue;
 			if (x < r.minX || x > r.maxX) continue;
 			const zLo = Math.min(r.zBottom, r.zTop) - 1.2;
 			const zHi = Math.max(r.zBottom, r.zTop) + 1.2;
@@ -1146,12 +1177,16 @@ export class CollisionWorld {
 		) {
 			return true;
 		}
-		return (
-			y > 0.6 &&
-			y < FLOOR_H - 0.6 &&
-			this.ramps.some(
-				(r) => x >= r.minX && x <= r.maxX && z >= Math.min(r.zBottom, r.zTop) - 1.2 && z <= Math.max(r.zBottom, r.zTop) + 1.2,
-			)
+		// De band is per vlucht: een vaste 0.6..FLOOR_H−0.6 kende alleen V0→V1 en
+		// verklaarde de geheime trap (6..13.95) en de glijbaanladder tot vlakke vloer.
+		return this.ramps.some(
+			(r) =>
+				y > Math.min(r.yBottom, r.yTop) + 0.6 &&
+				y < Math.max(r.yBottom, r.yTop) - 0.6 &&
+				x >= r.minX &&
+				x <= r.maxX &&
+				z >= Math.min(r.zBottom, r.zTop) - 1.2 &&
+				z <= Math.max(r.zBottom, r.zTop) + 1.2,
 		);
 	}
 
@@ -1167,7 +1202,11 @@ export class CollisionWorld {
 	/**
 	 * Resolve a circle (radius r) at (x,z) with optional y for floor-filtered boxes.
 	 * Returns corrected position. Multi-pass for corners.
-	 * `climb` skips the escalator/stairs volumes — the player walks up those.
+	 *
+	 * `climb` loopt te voet door een climbable doorgang (trap, roltrap, lift) heen in
+	 * plaats van erin; `wheeled` doet dat op wielen en dan alleen door wat ook `wheeled`
+	 * toelaat. Zo botst een voertuig op de voetgangerstrap en rijdt het de lift wél in,
+	 * afgeleid uit de poorten van elke doorgang in plaats van uit een lijst hier.
 	 *
 	 * `outside` is de speler-vrijstelling, en staat los van `boundsMode`: die is
 	 * een veld op de gedeelde wereld, dus zodra hij op 'city' staat mag élke sim
@@ -1184,6 +1223,7 @@ export class CollisionWorld {
 		climb = false,
 		airborne = false,
 		outside = false,
+		wheeled = false,
 	): { x: number; z: number } {
 		let px = x;
 		let pz = z;
@@ -1197,7 +1237,9 @@ export class CollisionWorld {
 			for (const b of this.boxes) {
 				if (b.disabled) continue;
 				if (b.outdoor && !unbounded) continue;
-				if (climb && b.climbable) continue;
+				if (b.climbable && ((climb && b.climbable.includes('walking')) || (wheeled && b.climbable.includes('wheeled')))) {
+					continue;
+				}
 				// Mid-jump the void barrier doesn't exist — that's how you clear
 				// the balustrade. Gravity takes it from there.
 				if (airborne && (b.label === 'void_f1' || b.label === 'catwalk')) continue;
@@ -1245,8 +1287,17 @@ export class CollisionWorld {
 			const m = 1.2;
 			const limitX = half(MALL_FOOTPRINT.width) - m;
 			const limitZ = half(MALL_FOOTPRINT.depth) - m;
+			const voorX = px;
+			const voorZ = pz;
 			px = clamp(px, -limitX, limitX);
 			pz = clamp(pz, -limitZ, limitZ);
+			// INSTRUMENTATIE dismount-teleport (#11), wordt na diagnose verwijderd.
+			if (Math.hypot(px - voorX, pz - voorZ) > 2) {
+				console.warn(
+					`voetafdrukklem: (${voorX.toFixed(1)}, ${voorZ.toFixed(1)}) → (${px.toFixed(1)}, ${pz.toFixed(1)}) bij y=${y.toFixed(2)}, boundsMode=${this.boundsMode}, outside=${outside}`,
+					new Error('herkomst').stack,
+				);
+			}
 		}
 
 		// Floor-1 void eject — only when standing/walking (not cars at basement).

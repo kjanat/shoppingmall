@@ -1,4 +1,5 @@
-import { level, levelAt } from '#/data/levels';
+import { level } from '#/data/levels';
+import { deckAt } from '#/data/zones';
 import { booleanUrlPref, clearUrlPref } from '#/render/urlPrefs';
 import { ctx2d, qs } from '#/util/dom';
 import { clamp } from '#/util/math';
@@ -292,7 +293,9 @@ export class PerfOverlay {
 			return text === '-0.0' ? '0.0' : text;
 		};
 		const feetY = frame.feetY;
-		const dek = level(levelAt(feetY)).code;
+		// Dek uit x/z/y en niet uit hoogte alleen: in het dakbad hangen je voeten onder
+		// de dakdrempel, maar je zwemt op het dak. Zie deckAt.
+		const dek = level(deckAt(frame.eyeX, feetY, frame.eyeZ)).code;
 		this.setValue('pos', `${co(frame.eyeX)} ${co(feetY)} ${co(frame.eyeZ)} · ${dek}`);
 		this.setValue('cam', `${co(frame.eyeX)} ${co(frame.eyeY)} ${co(frame.eyeZ)}`);
 		const heading = (Math.atan2(frame.dirX, -frame.dirZ) * DEGREES_PER_RADIAN + 360) % 360;

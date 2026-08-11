@@ -23,6 +23,7 @@ import {
 	parkingPillarCenters,
 	parkingStalls,
 } from '#/data/world';
+import { shellShadowOn } from '#/render/graphicsPrefs';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { addBoxMesh, addSignBack } from '#/render/meshFactory';
@@ -97,6 +98,8 @@ export class ParkingGarage {
 	private materials: THREE.Material[] = [];
 	private backMat: THREE.Material | null = null;
 	private pool: LightPool;
+	/** Werpt de garageschil schaduw? Grotendeels ondergronds, dus zon-effect is klein. */
+	private readonly shellCasts = shellShadowOn();
 
 	constructor(pool: LightPool) {
 		this.pool = pool;
@@ -122,6 +125,7 @@ export class ParkingGarage {
 		addExtrudedXZMesh(this.group, concrete, {
 			...PARKING_SLAB_SPEC,
 			topY: PARKING_SLAB_SPEC.topY - GARAGE_Y,
+			castShadow: this.shellCasts,
 			receiveShadow: true,
 		});
 
@@ -132,6 +136,7 @@ export class ParkingGarage {
 			...PARKING_CEILING_SPEC,
 			name: 'parking-ceiling',
 			topY: PARKING_CEILING_SPEC.topY - GARAGE_Y,
+			castShadow: this.shellCasts,
 		});
 
 		// Perimeter walls. Only the exit mouth is an opening, and its lintel is the
@@ -144,6 +149,7 @@ export class ParkingGarage {
 				height: span(base, clearHeight),
 				depth: panel.size.depth,
 				position: { x: panel.center.x, y: midpoint(base, clearHeight), z: panel.center.z },
+				castShadow: this.shellCasts,
 			});
 		}
 
@@ -165,6 +171,7 @@ export class ParkingGarage {
 		const slab = new THREE.Mesh(new THREE.BoxGeometry(PARKING_EXIT_RAMP_LENGTH, thickness, width), concrete);
 		slab.position.set(centerX + Math.sin(angle) * slabNormalOffset, surfaceCenterY - Math.cos(angle) * slabNormalOffset, 0);
 		slab.rotation.z = angle;
+		slab.castShadow = this.shellCasts;
 		slab.receiveShadow = true;
 		this.group.add(slab);
 
@@ -188,6 +195,7 @@ export class ParkingGarage {
 					y: midpoint(head.minY, head.maxY) - GARAGE_Y,
 					z: midpoint(head.minZ, head.maxZ),
 				},
+				castShadow: this.shellCasts,
 			});
 		}
 
@@ -207,6 +215,7 @@ export class ParkingGarage {
 					y: midpoint(onder, boven),
 					z: midpoint(muur.minZ, muur.maxZ),
 				},
+				castShadow: this.shellCasts,
 			});
 		}
 		// En de kop erboven: tussen het parkeerdak en de begane-grondplaat zat een
@@ -221,6 +230,7 @@ export class ParkingGarage {
 				y: midpoint(PARKING_EXIT_TRENCH_HEAD.minY, PARKING_EXIT_TRENCH_HEAD.maxY) - GARAGE_Y,
 				z: midpoint(PARKING_EXIT_TRENCH_HEAD.minZ, PARKING_EXIT_TRENCH_HEAD.maxZ),
 			},
+			castShadow: this.shellCasts,
 		});
 		this.buildExitChevrons();
 
@@ -330,6 +340,7 @@ export class ParkingGarage {
 		for (const { x, z } of parkingPillarCenters()) {
 			const p = new THREE.Mesh(new THREE.BoxGeometry(pillar.width, clearHeight, pillar.width), mat);
 			p.position.set(x, half(clearHeight), z);
+			p.castShadow = this.shellCasts;
 			this.group.add(p);
 		}
 	}

@@ -260,7 +260,9 @@ export class DriveableCars {
 		// de boom en niet hier.
 		this.barriers.approach(nx, nz, 'player-vehicle');
 
-		const hit = this.world.resolveCircle(nx, nz, gy + 0.6, handling.radius, 4, true, !this.ground.grounded, true);
+		// Op wielen, niet te voet: de trap en de roltrap houden hem tegen, de lift en de
+		// uitritramp laten hem door, uit de poorten van elke doorgang.
+		const hit = this.world.resolveCircle(nx, nz, gy + 0.6, handling.radius, 4, false, !this.ground.grounded, true, true);
 		const scraped = Math.hypot(hit.x - nx, hit.z - nz) > 0.04;
 		if (scraped) this.speed *= 0.55;
 		nx = hit.x;

@@ -8,6 +8,7 @@ import {
 	AIR_STEP,
 	CROUCH_EYE,
 	CROUCH_HEADROOM,
+	CROUCH_LEG_TUCK,
 	CROUCH_RATE,
 	CROUCH_SPEED,
 	EYE,
@@ -503,12 +504,17 @@ export class PlayerControls {
 		this.jumpQueued = false;
 
 		// ── Horizontal move + collision ──────────────────────
+		// In de lucht gehurkt trekt de benen in: de onderkant van het lichaam telt
+		// `airLift` hoger mee, dus je haalt over een kerb die staand net te hoog is en
+		// landt er bovenop. Op de grond nul, en staand blijft het nul, dus de gewone
+		// sprong en de balustradesprong veranderen niet.
+		const airLift = this.grounded ? 0 : this.stance * CROUCH_LEG_TUCK;
 		const wantX = p.x + this.vel.x * dt;
 		const wantZ = p.z + this.vel.z * dt;
 		const solved = this.world.resolveCircle(
 			wantX,
 			wantZ,
-			this.feetY,
+			this.feetY + airLift,
 			PLAYER_RADIUS,
 			3,
 			true,
@@ -538,15 +544,19 @@ export class PlayerControls {
 		} else {
 			// Airborne gets a looser step so hopping on the escalator doesn't snap you
 			// onto the deck above.
-			const ground = this.world.groundHeightAt(p.x, p.z, this.feetY, this.grounded ? WALK_STEP : AIR_STEP);
+			const ground = this.world.groundHeightAt(p.x, p.z, this.feetY + airLift, this.grounded ? WALK_STEP : AIR_STEP);
 
 			if (this.grounded) {
-				// Follow the surface: snappy on ramps, instant on flat ground
-				const near = Math.abs(ground - this.feetY);
-				this.feetY = near < 0.02 ? ground : ease(this.feetY, ground, 22, dt);
-				if (this.feetY - ground > 0.9) {
+				// Van een rand aflopen is een val, geen ease-glijbaan: zakt de grond verder weg
+				// dan een loopstap, laat dan eerst los en laat de zwaartekracht het doen. Deed de
+				// ease dat, dan rukte hij je in één frame omlaag en schoof de sub-dakhoge muur je
+				// het gebouw in. Binnen een stap volgt hij het vlak nog wel: snappy op hellingen.
+				if (this.feetY - ground > WALK_STEP) {
 					this.grounded = false;
 					this.vy = 0;
+				} else {
+					const near = Math.abs(ground - this.feetY);
+					this.feetY = near < 0.02 ? ground : ease(this.feetY, ground, 22, dt);
 				}
 			} else {
 				this.vy -= GRAVITY * dt;

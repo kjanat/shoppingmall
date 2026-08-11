@@ -1,5 +1,5 @@
 import { CROUCHING_PEDESTRIAN, STANDING_PEDESTRIAN } from '#/data/character';
-import { half } from '#/util/math';
+import { half, span } from '#/util/math';
 
 const { eyeHeight, bodyHeight, radius } = STANDING_PEDESTRIAN;
 
@@ -20,6 +20,12 @@ export const STAND_HEADROOM = STANDING_PEDESTRIAN.requiredHeadroom;
 
 /** Idem gehurkt: hieronder past er geen lichaam meer en loop je er dus ook niet in. */
 export const CROUCH_HEADROOM = CROUCHING_PEDESTRIAN.requiredHeadroom;
+
+/**
+ * Hoeveel korter het lichaam wordt op gebogen knieën. In de lucht net zoveel hoger
+ * tellen de voeten mee, zodat een gehurkte sprong een richel haalt die staand te hoog is.
+ */
+export const CROUCH_LEG_TUCK = span(CROUCHING_PEDESTRIAN.bodyHeight, STANDING_PEDESTRIAN.bodyHeight);
 
 /**
  * Gehurkte loopsnelheid (m/s). Door de knieën haalt een volwassene ongeveer een

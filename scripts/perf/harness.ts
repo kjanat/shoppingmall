@@ -119,6 +119,7 @@ export async function openGame(
 	url?: string,
 	batchOverride?: string,
 	zoneCull?: boolean,
+	shellShadow?: boolean,
 ): Promise<GameSession> {
 	const server: StaticServer = url ? { url, stop: async () => {} } : await serveGame();
 	// A little taller than the viewport: Chrome's own chrome eats some of it, and
@@ -131,7 +132,7 @@ export async function openGame(
 		throw error;
 	}
 	try {
-		await browser.page.addInitScript({ content: probeSource(batchOverride, zoneCull) });
+		await browser.page.addInitScript({ content: probeSource(batchOverride, zoneCull, shellShadow) });
 	} catch (error) {
 		try {
 			await browser.close();

@@ -5,6 +5,7 @@ import type { BatchMode } from '#/render/graphicsPrefs';
 import { batchMode } from '#/render/graphicsPrefs';
 import { ownerName } from '#/render/sceneOwner';
 import type { ZoneCuller, ZoneOwnerTally } from '#/render/ZoneCuller';
+import { zoneSpanOf } from '#/render/ZoneVisibility';
 import { span } from '#/util/math';
 
 type ColorMaterial = THREE.Material & { color?: THREE.Color };
@@ -25,6 +26,12 @@ type SourceInstance = {
 	radius: number;
 	/** Which zones this instance currently stands in. */
 	zoneMask: number;
+	/**
+	 * Zones die de bron verklaart bovenop zijn doos (`tagZoneSpan`), zodat een
+	 * grensobject als het roltrapbord zijn tweede dek houdt ook nadat de batcher zijn
+	 * twee vlakken samenvoegt en de losse-occupantweg het niet meer ziet.
+	 */
+	declared: number;
 };
 
 /**
@@ -406,6 +413,7 @@ export class SceneBatcher {
 				// drawing the source without destroying its visible state.
 				mesh.layers.mask = 0;
 				const radius = sourceRadius(mesh);
+				const declared = zoneSpanOf(mesh);
 				sources.push({
 					mesh,
 					instanceId,
@@ -415,7 +423,8 @@ export class SceneBatcher {
 					visible: isVisible(mesh),
 					streak: 0,
 					radius,
-					zoneMask: boxZoneMask(mesh),
+					zoneMask: boxZoneMask(mesh) | declared,
+					declared,
 				});
 				const source = sources[sources.length - 1];
 				if (source) {
@@ -512,8 +521,9 @@ export class SceneBatcher {
 					growBounds(batch.mesh, source);
 					// A mover can cross a deck edge or walk out of the building, and the
 					// batch's zone set has to follow it there. Everything else stands
-					// still, so nothing else is asked.
-					const zoneMask = instanceZoneMask(world, source.radius);
+					// still, so nothing else is asked. De verklaarde span reist mee, zoals
+					// bij het opbouwen.
+					const zoneMask = instanceZoneMask(world, source.radius) | source.declared;
 					if (zoneMask !== source.zoneMask) {
 						countZones(batch, source.zoneMask, -1);
 						countZones(batch, zoneMask, 1);

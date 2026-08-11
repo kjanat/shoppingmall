@@ -19,13 +19,14 @@ import {
 	shopRoomDepth,
 } from '#/data/world';
 import { zoneBit, zoneOfLevel } from '#/data/zones';
+import { shellShadowOn } from '#/render/graphicsPrefs';
 import { lit } from '#/render/material';
 import { addBoxMesh, addPlaneMesh } from '#/render/meshFactory';
 import { addExtrudedXZMesh } from '#/render/xzShape';
 import { tagZoneSpan } from '#/render/ZoneVisibility';
 import type { EscalatorGeometry } from '#/scene/escalatorGeometry';
 import { deriveEscalatorGeometry } from '#/scene/escalatorGeometry';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { clamp, half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
@@ -281,11 +282,15 @@ export class MallBuilder {
 				roughness: 0.9,
 			}),
 		);
+		// De schil werpt alleen schaduw als de instelling aan staat. Uit tekenden de
+		// winkelwanden binnen hun schaduw dwars door deze dichte gevel op de stoep.
+		const shellCasts = shellShadowOn();
 		for (const wall of MALL_WALL_SPECS) {
 			addBoxMesh(this.group, wallMat, {
 				name: `mall-wall-${wall.id}`,
 				...wall.size,
 				position: wall.position,
+				castShadow: shellCasts,
 				receiveShadow: true,
 			});
 		}
@@ -299,7 +304,7 @@ export class MallBuilder {
 				side: THREE.DoubleSide,
 			}),
 		);
-		addExtrudedXZMesh(this.group, ceilMat, MALL_SLAB_SPECS.roof);
+		addExtrudedXZMesh(this.group, ceilMat, { ...MALL_SLAB_SPECS.roof, castShadow: shellCasts });
 
 		// Skylight — simple transparent (no transmission black-hole)
 		const glassMat = this.track(
@@ -807,17 +812,22 @@ export class MallBuilder {
 		// er bovenin, zodat je er onderdoor loopt en niet tegenaan.
 		const gantryH = geometry.sign.gantryHeight;
 		const signW = geometry.skirt.centerX * 2 + geometry.sign.widthMargin;
-		const sign = new THREE.Mesh(
+		// Twee vlakken rug aan rug: van de trap terugkijkend zag je anders de achterkant
+		// van een enkelzijdig vlak en was het bord weg.
+		const sign = backToBackLabel(
 			new THREE.PlaneGeometry(signW, (signW * sh) / sw),
 			this.track(new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false })),
 		);
 		const signZ = z0 - dir * apron;
 		sign.position.set(x, gantryH - half((signW * sh) / sw) - geometry.sign.verticalGap, signZ);
-		sign.name = `${spec.id}-sign`;
+		const signFace = sign.children[0];
+		if (signFace) signFace.name = `${spec.id}-sign`;
 		// Het bord staat op V0 maar hoort bij een connector die twee dekken bedient, dus
 		// het is vanaf beide te zien; zonder deze span cullt de zonecull het weg zodra je
-		// bovenaan de rit de V1-zone in klapt.
-		tagZoneSpan(sign, zoneBit(zoneOfLevel(spec.from)) | zoneBit(zoneOfLevel(spec.to)));
+		// bovenaan de rit de V1-zone in klapt. Beide vlakken dragen de span, ook nadat de
+		// batcher ze samenvoegt.
+		const signSpan = zoneBit(zoneOfLevel(spec.from)) | zoneBit(zoneOfLevel(spec.to));
+		for (const face of sign.children) tagZoneSpan(face, signSpan);
 		g.add(sign);
 		for (const side of [-1, 1] as const) {
 			const post = new THREE.Mesh(

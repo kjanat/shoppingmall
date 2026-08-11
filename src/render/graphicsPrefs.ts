@@ -15,6 +15,7 @@ const LAMPS_KEY = 'mallsim.lamps.v1';
 const FILL_KEY = 'mallsim.fill.v1';
 export const BATCH_KEY = 'mallsim.batch.v1';
 export const ZONE_CULL_KEY = 'mallsim.zonecull.v1';
+export const SHELL_SHADOW_KEY = 'mallsim.shellshadow.v1';
 
 export type BatchMode = 'global' | 'spatial' | 'spatial-dynamic' | 'spatial-sort';
 export const BATCH_CHOICES: readonly BatchMode[] = ['global', 'spatial', 'spatial-dynamic', 'spatial-sort'];
@@ -96,6 +97,33 @@ export function zoneCullOn(): boolean {
 export function writeZoneCull(on: boolean): void {
 	try {
 		localStorage.setItem(ZONE_CULL_KEY, on ? '1' : '0');
+	} catch {
+		/* private mode */
+	}
+}
+
+/**
+ * Werpt de gebouwschil (gevel, dak, garage, stadstorens) zelf schaduw in de zon?
+ * Standaard uit.
+ *
+ * `castShadow` wordt bij het opbouwen gelezen en zit in de batch-sleutel, dus een
+ * wissel herlaadt net als glans en lampen. Uit is de bestaande stand: de schil werpt
+ * niets en alleen losse binnenobjecten werpen, waardoor winkelwanden hun schaduw dwars
+ * door de dichte gevel op de stoep en het plein tekenden.
+ */
+export function shellShadowOn(): boolean {
+	const override = booleanUrlPref('shellshadow');
+	if (override !== undefined) return override;
+	try {
+		return localStorage.getItem(SHELL_SHADOW_KEY) === '1';
+	} catch {
+		return false;
+	}
+}
+
+export function writeShellShadow(on: boolean): void {
+	try {
+		localStorage.setItem(SHELL_SHADOW_KEY, on ? '1' : '0');
 	} catch {
 		/* private mode */
 	}

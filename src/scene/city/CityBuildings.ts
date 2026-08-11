@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { shellShadowOn } from '#/render/graphicsPrefs';
 import { lit } from '#/render/material';
 import type { Rand, TowerSpec } from '#/scene/city/cityPlan';
 import { planTowers, TOWER_SEED } from '#/scene/city/cityPlan';
@@ -100,6 +101,9 @@ export class CityBuildings {
 		// anders kijkt de drone op verlichte plafonds neer.
 		const mesh = new THREE.InstancedMesh(this.unitBox, [facade, facade, roof, roof, facade, facade], specs.length);
 		mesh.name = 'city_towers';
+		// Buiten de zon-schaduwcamera (±55/±45 rond de oorsprong), dus dit werpt pas
+		// iets zodra die camera de torens omvat; hier voor de volledigheid van de schil.
+		mesh.castShadow = shellShadowOn();
 
 		const tint = new THREE.Color();
 		specs.forEach((s, i) => {

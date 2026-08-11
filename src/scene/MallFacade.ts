@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CARDINAL_OUTWARD } from '#/data/spatial';
 import type { FacadeReliefKind, FacadeReliefPiece } from '#/data/world';
 import { FACADE_SIGN_SPEC, MALL_FACADE_RELIEF, MALL_FACADE_SIGNS } from '#/data/world';
+import { shellShadowOn } from '#/render/graphicsPrefs';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { half, midpoint, span } from '#/util/math';
@@ -76,6 +77,7 @@ export class MallFacade {
 		const stone = this.track(lit({ color: 0xffffff, roughness: 0.9, metalness: 0.02 }));
 		const mesh = new THREE.InstancedMesh(this.unitBox, stone, pieces.length);
 		mesh.name = 'facade_relief';
+		mesh.castShadow = shellShadowOn();
 		mesh.receiveShadow = true;
 		const tint = new THREE.Color();
 		pieces.forEach((piece, index) => {
