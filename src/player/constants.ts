@@ -37,6 +37,12 @@ export const CROUCH_SPEED = 0.9;
 /** Hoe snel de knieën buigen en strekken (1/s); met STANCE_SETTLE eronder is dat een halve seconde. */
 export const CROUCH_RATE = 9;
 
+/** Hoe snel de voeten binnen een loopstap het grondvlak volgen (1/s). */
+export const GROUND_FOLLOW_RATE = 22;
+
+/** Binnen deze marge ís de grond bereikt; verder easen is alleen nog ruis. */
+export const GROUND_SNAP_EPSILON = 0.02;
+
 /**
  * Waaronder de knik af is en op zijn eindwaarde klapt.
  *

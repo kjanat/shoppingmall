@@ -5776,6 +5776,28 @@ async function controleZonecull(): Promise<void> {
 			fout('zonecull', `${omhoog.naam}: de dakplaat wordt weggecullt terwijl je er van onderaf recht tegenaan kijkt`);
 		}
 	}
+
+	// De spiegel: vanaf V1 door het atriumgat omlaag blijft de begane grond staan. De
+	// V0-plaat draagt mall-v0 (mallZonesOfSpan), dus de portaalkegel door het gat houdt
+	// hem — anders verdween de vloer naar beneden zodra je eroverheen leunde.
+	const omlaag: Standpunt = {
+		naam: 'op V1, door het atriumgat omlaag kijkend',
+		van: { x: 0, y: V1 + 1.6, z: 7 },
+		naar: { x: 0, y: V0, z: 0 },
+		zone: 'mall-v1',
+	};
+	kijk(omlaag);
+	if (!culler.seesZone('mall-v0')) {
+		fout('zonecull', `${omlaag.naam}: V0 heet onzichtbaar terwijl je door het atriumgat naar beneden kijkt`);
+	}
+	const v0Volume = WORLD_ENTITIES.find((e) => e.id === MALL_SLAB_SPECS.v0.id)?.volumes[0];
+	if (v0Volume) {
+		const v0Doos = geometryBounds(v0Volume.geometry);
+		const v0Bol = new THREE.Sphere(new THREE.Vector3(0, midpoint(v0Doos.minY, v0Doos.maxY), 0), 2);
+		if (!culler.accepts(zoneMaskOfBounds(v0Doos), v0Bol)) {
+			fout('zonecull', `${omlaag.naam}: de begane grond wordt weggecullt terwijl je er door het gat op neerkijkt`);
+		}
+	}
 }
 
 /** Stappen over de rit: fijn genoeg om het cull-venster onder de bovenplaat te raken. */
@@ -6132,17 +6154,51 @@ async function controleLuik(): Promise<void> {
 }
 
 /**
- * De vlucht op- en aflopen raakt nooit airborne.
+ * `onRamp` kent elke vlucht over zijn hele hoogte, ongeacht welke kant hij op klimt.
+ *
+ * Een vaste band 0.6..FLOOR_H−0.6 kende alleen een V0→V1-vlucht en verklaarde de geheime
+ * trap (6..13.95) en de glijbaanladder tot vlakke vloer; de band is nu per vlucht uit
+ * min/max van zijn eigen twee einden. Deze arm loopt elke vlucht: midden op de trede is
+ * `onRamp` waar, onder de voet en boven de kop niet. De twee steile vluchten (geheime trap,
+ * glijbaanladder) klimmen met zBottom < zTop, de twee andere met zBottom > zTop, dus beide
+ * richtingen komen langs.
+ */
+function controleHellingband(): void {
+	for (const r of wereld.ramps) {
+		const hart = midpoint(r.minX, r.maxX);
+		const midY = midpoint(r.yBottom, r.yTop);
+		const midZ = lerp(r.zBottom, r.zTop, (midY - r.yBottom) / (r.yTop - r.yBottom));
+		if (!wereld.onRamp(hart, midZ, midY)) {
+			fout(
+				'hellingband',
+				`${r.label}: midden op de vlucht (${nr(hart)}, ${nr(midZ)}, y ${nr(midY)}) zegt onRamp dat je op vlakke vloer staat`,
+			);
+		}
+		const voetY = Math.min(r.yBottom, r.yTop);
+		const voetZ = r.yBottom < r.yTop ? r.zBottom : r.zTop;
+		if (wereld.onRamp(hart, voetZ, voetY - 1)) {
+			fout('hellingband', `${r.label}: een meter onder de voet (y ${nr(voetY - 1)}) telt onRamp je nog op de vlucht`);
+		}
+		const kopY = Math.max(r.yBottom, r.yTop);
+		const kopZ = r.yBottom < r.yTop ? r.zTop : r.zBottom;
+		if (wereld.onRamp(hart, kopZ, kopY + 1)) {
+			fout('hellingband', `${r.label}: een meter boven de kop (y ${nr(kopY + 1)}) telt onRamp je nog op de vlucht`);
+		}
+	}
+}
+
+/**
+ * De vlucht op- en aflopen raakt nooit airborne, en mid-kanaal is de grond nooit het dak.
  *
  * Controls laat de speler los zodra de vloer onder zijn voeten meer dan WALK_STEP
  * wegzakt: dat is de schone dakrandval van #22. Op een trap mag dat nooit gebeuren,
  * en op de geheime trap gebeurde het: het luik boven het trapgat is een dakplaat die
  * met zijn stand mee aan- en uitgaat, en die plaat overschaduwde de vlucht in
  * `groundHeightAt`. Sta je klimmend onder een dicht luik, dan gaf de wereld het dek
- * (13.95) in plaats van de trede eronder; ging het luik open, dan zakte de vloer in
- * één frame terug naar de vlucht en liet de klifcheck je los. `snapFloorY` (de sim)
- * vroeg de vlucht al vóór de plaat; deze arm eist dat `groundHeightAt` (de speler)
- * hetzelfde doet, mét het luik open én dicht.
+ * (13.95) in plaats van de trede eronder — een stap omhoog op het dek — en zodra het luik
+ * openging zakte de vloer terug naar de vlucht en liet de klifcheck je los: de snap-loop.
+ * `snapFloorY` (de sim) vroeg de vlucht al vóór de plaat; deze arm eist dat `groundHeightAt`
+ * (de speler) hetzelfde doet, mét het luik open én dicht, in beide looprichtingen.
  */
 type Loopvlucht = Readonly<{
 	minX: number;
@@ -6180,6 +6236,12 @@ function loopVluchtLos(
 		const grond = world.groundHeightAt(hart, z, feetY, WALK_STEP);
 		if (feetY - grond > WALK_STEP) {
 			return `${r.label} ${richting}: op (${nr(hart)}, ${nr(z)}) zakt de vloer van ${nr(feetY)} naar ${nr(grond)}, ${nr(feetY - grond)} m in één stap terwijl WALK_STEP ${nr(WALK_STEP)} is, en de klifcheck laat je los van de trap`;
+		}
+		// Mid-kanaal mag de grond nooit het dak zijn zolang de vlucht eronder loopt: springt hij
+		// een hele stap omhoog, dan overschaduwt het luik of de dakplaat de trede en plakt hij je
+		// op het dek in plaats van je op de trap te dragen.
+		if (grond - feetY > WALK_STEP) {
+			return `${r.label} ${richting}: op (${nr(hart)}, ${nr(z)}) springt de vloer van ${nr(feetY)} naar ${nr(grond)}, ${nr(grond - feetY)} m omhoog terwijl WALK_STEP ${nr(WALK_STEP)} is, en de plaat plakt je van de trap op het dak`;
 		}
 		feetY = grond;
 	}
@@ -6397,6 +6459,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'dakdek', draai: controleDakdek },
 	{ naam: 'ladder', draai: controleLadder },
 	{ naam: 'luik', draai: controleLuik },
+	{ naam: 'hellingband', draai: controleHellingband },
 	{ naam: 'trapklim', draai: controleTrapklim },
 	{ naam: 'glijbaan', draai: controleGlijbaan },
 	{ naam: 'glazendak', draai: controleGlazenDak },

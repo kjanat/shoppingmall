@@ -13,6 +13,8 @@ import {
 	CROUCH_SPEED,
 	EYE,
 	GRAVITY,
+	GROUND_FOLLOW_RATE,
+	GROUND_SNAP_EPSILON,
 	JUMP_V,
 	PLAYER_RADIUS,
 	RUN_SPEED,
@@ -556,7 +558,12 @@ export class PlayerControls {
 					this.vy = 0;
 				} else {
 					const near = Math.abs(ground - this.feetY);
-					this.feetY = near < 0.02 ? ground : ease(this.feetY, ground, 22, dt);
+					const gevolgd = near < GROUND_SNAP_EPSILON ? ground : ease(this.feetY, ground, GROUND_FOLLOW_RATE, dt);
+					// Een staande stap is hoogstens WALK_STEP hoog. Antwoordt de grond in één frame
+					// meters hoger — een dakplaat of dicht luik dat de vlucht eronder overschaduwt —
+					// dan plak je er niet bovenop: dat was de snap-loop op de geheime trap. Omlaag
+					// blijft ongemoeid, dat is de klifval hierboven.
+					this.feetY = Math.min(gevolgd, this.feetY + WALK_STEP);
 				}
 			} else {
 				this.vy -= GRAVITY * dt;

@@ -2078,6 +2078,18 @@ export class App {
 		// Dak has a second call pedestal ~12 m toward the helipad — wider radius
 		const nearShaft = distXZ < (here === 'roof' ? 14 : 4.5);
 
+		// Op de schoonmaakkar in de cabine ligt de blik vast aan de rijkoers, dus Hans of
+		// het paneel aankijken lukt niet altijd; dan viel E door naar uitstappen en leek
+		// het menu onbereikbaar. Binnen de cabine op de kar is E het verdiepingenmenu, net
+		// als te voet. De kar zit op de cabinevloer (CabinCarrier), dus dat is het teken.
+		if (
+			this.vehicle === 'scrubber' &&
+			this.elevator.contains(this.scrubber.pos.x, this.scrubber.pos.z, 0.05) &&
+			Math.abs(this.scrubber.pos.y - this.elevator.cabinFloorY) < 0.6
+		) {
+			return { kind: 'menu' };
+		}
+
 		// Inside Hans / panel → menu
 		if (hit?.kind === 'hans' || hit?.kind === 'panel' || (inCab && hit?.kind === 'call')) return { kind: 'menu' };
 
