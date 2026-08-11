@@ -50,7 +50,7 @@
 		"@types/three": "^0.185",
 		"biome": "npm:@biomejs/biome@^2.5.6",
 		"dprint": "^0.55",
-		"dreamcli": "https://pkg.pr.new/@kjanat/dreamcli@118",
+		"dreamcli": "https://pkg.pr.new/@kjanat/dreamcli@b0467356628bf845111f2716eaf435396fcba65c",
 		"playwright": "^1.62.1",
 		"runner-run": "^0.24.0",
 		"typescript": "^7",
