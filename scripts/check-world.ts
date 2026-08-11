@@ -6955,9 +6955,9 @@ function controleUfoplafond(): void {
 // juist niet.
 
 async function controleColosseum(): Promise<void> {
-	const { x: cx, z: cz, radiusX, radiusZ, arenaRadiusX } = COLOSSEUM_PLAN;
+	const { x: cx, z: cz, radiusX, radiusZ, arenaRadiusX, arenaRadiusZ, wallHeight } = COLOSSEUM_PLAN;
 	stubDocument();
-	const { CityColosseum } = await import('#/scene/city/CityColosseum');
+	const [THREE, { CityColosseum }] = await Promise.all([import('three'), import('#/scene/city/CityColosseum')]);
 	const colo = new CollisionWorld();
 	const bouwwerk = new CityColosseum(colo);
 
@@ -7024,6 +7024,33 @@ async function controleColosseum(): Promise<void> {
 	const zand = colo.groundHeightAt(cx, cz, CITY_GROUND_Y, WALK_STEP);
 	if (!bijna(zand, CITY_GROUND_Y, WALK_STEP)) {
 		fout('colosseum', `de arenavloer ligt op ${nr(zand)} in plaats van op zandniveau (${nr(CITY_GROUND_Y)})`);
+	}
+
+	// 3. De kolom recht boven het zand is vrij tot boven de kroon. Een amfitheater
+	// is open naar de lucht; een gesloten CylinderGeometry legt zijn dekvlak als een
+	// schijf over de volle diameter en zo lag er een deksel op 7,65 m over de arena.
+	// Een straal recht omhoog uit het hart en een paar arenapunten mag geen enkel
+	// mesh van het bouwwerk raken onder kroonhoogte; een open ring laat hem door.
+	bouwwerk.group.updateMatrixWorld(true);
+	const omhoog = new THREE.Vector3(0, 1, 0);
+	const straalOmhoog = new THREE.Raycaster();
+	straalOmhoog.near = 0;
+	straalOmhoog.far = wallHeight + 5;
+	for (const [px, pz] of [
+		[cx, cz],
+		[cx + half(arenaRadiusX), cz],
+		[cx - half(arenaRadiusX), cz],
+		[cx, cz + half(arenaRadiusZ)],
+		[cx, cz - half(arenaRadiusZ)],
+	] as [number, number][]) {
+		straalOmhoog.set(new THREE.Vector3(px, 1, pz), omhoog);
+		const deksel = straalOmhoog.intersectObject(bouwwerk.group, true).find((h) => h.point.y < wallHeight - 0.01);
+		if (deksel) {
+			fout(
+				'colosseum',
+				`boven de arena op (${nr(px)}, ${nr(pz)}) ligt een deksel op y ${nr(deksel.point.y)} (${deksel.object.name || deksel.object.type}); de kolom naar de hemel is dicht onder de kroon (${nr(wallHeight)})`,
+			);
+		}
 	}
 
 	bouwwerk.dispose();

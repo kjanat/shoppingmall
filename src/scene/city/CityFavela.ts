@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { lit } from '#/render/material';
-import { FAVELA_PLAN, favelaGroundY } from '#/scene/city/cityPlan';
+import { FAVELA_PLAN, favelaContourXs, favelaGroundY, favelaIsStreet, RIO_MOUNTAIN } from '#/scene/city/cityPlan';
 import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { half, lerp, midpoint, span } from '#/util/math';
 import { at, mulberry32, pickWith, plusMinusWith } from '#/util/rand';
@@ -37,6 +37,12 @@ const ROOF_COLORS = [0x6a5040, 0x8a7060, 0x4a4a48, 0x5a3a28, 0x707068, 0x3a3830]
 
 /** Upper shack sits this far up the lower box (fraction of lower height). */
 const UPPER_STACK_Y = 0.55;
+/** Cell jitter: house sits this fraction into the grid cell from the edge. */
+const CELL_INSET = 0.25;
+/** Cell jitter span inside a cell (1 − 2×inset). */
+const CELL_JITTER = 1 - CELL_INSET * 2;
+/** Extra storey height noise on stacked rooms. */
+const UPPER_H_NOISE = 0.5;
 
 /** Window glow pulse mix. */
 const WINDOW_PULSE_BASE = 0.55;
@@ -323,51 +329,82 @@ export class CityFavela {
 
 	private buildTerrain(): void {
 		const dirt = lit({ color: 0x4a3a28, roughness: 0.98 });
-		const path = lit({ color: 0x5a4a38, roughness: 0.97 });
+		const path = lit({ color: 0x5c4a38, roughness: 0.96 });
 		const fill = lit({ color: 0x3a2a1c, roughness: 0.98 });
 		this.materials.push(dirt, path, fill);
-		const { minX, maxX, minZ, maxZ } = FAVELA_PLAN;
+		const { minX, maxX, minZ, maxZ, alleyHalf, streetHalf, yLow, yHigh, contours, plazaR } = FAVELA_PLAN;
 		const depth = span(minZ, maxZ) + 2;
 		const zc = midpoint(minZ, maxZ);
-		// Solid fill under each strip from y=0 up to terrace — kills the “floating hill” look.
-		const strips = 16;
+		const strips = 28;
 		for (let i = 0; i < strips; i++) {
 			const u0 = i / strips;
 			const u1 = (i + 1) / strips;
 			const x0 = lerp(maxX, minX, u0);
 			const x1 = lerp(maxX, minX, u1);
 			const top = favelaGroundY(midpoint(x0, x1), zc);
-			const w = Math.abs(x1 - x0) + 0.35;
-			const h = Math.max(0.4, top + 0.25);
+			const w = Math.abs(x1 - x0) + 0.45;
+			const h = Math.max(0.5, top + 0.4);
 			const bulk = new THREE.Mesh(this.unit, fill);
 			bulk.scale.set(w, h, depth);
-			bulk.position.set(midpoint(x0, x1), half(h) - 0.15, zc);
+			bulk.position.set(midpoint(x0, x1), half(h) - 0.25, zc);
 			bulk.receiveShadow = true;
 			bulk.castShadow = true;
 			this.group.add(bulk);
-			// Walk plate on top
 			const deck = new THREE.Mesh(this.unit, dirt);
-			deck.scale.set(w + 0.1, 0.2, depth - 0.4);
-			deck.position.set(midpoint(x0, x1), top + 0.08, zc);
+			deck.scale.set(w + 0.2, 0.2, depth - 0.4);
+			deck.position.set(midpoint(x0, x1), top + 0.04, zc);
 			deck.receiveShadow = true;
 			this.group.add(deck);
 		}
-		// Stair alley climbing west (visible steps)
-		const alleySteps = 28;
-		for (let i = 0; i < alleySteps; i++) {
-			const u = (i + 0.5) / alleySteps;
-			const x = lerp(maxX + 1.5, minX + 1, u);
-			const y = favelaGroundY(x, zc);
-			const step = new THREE.Mesh(this.unit, path);
-			step.scale.set(1.35, 0.28, 3.6);
-			step.position.set(x, y + 0.12, zc);
-			step.receiveShadow = true;
-			this.group.add(step);
+		// Continuous sloping streets from ring to Redeemer (one mesh per spine).
+		const peakX = RIO_MOUNTAIN.x;
+		const run = peakX - maxX;
+		const rise = yHigh - yLow;
+		const rampLen = Math.hypot(run, rise);
+		const rampAngle = Math.atan2(rise, run);
+		const spines = [zc - 12, zc, zc + 12];
+		for (const az of spines) {
+			const lane = new THREE.Mesh(this.unit, path);
+			lane.scale.set(rampLen, 0.12, alleyHalf * 2 - 0.2);
+			lane.position.set(midpoint(maxX, peakX), midpoint(yLow, yHigh) + 0.08, az);
+			lane.rotation.z = rampAngle;
+			lane.receiveShadow = true;
+			this.group.add(lane);
 		}
-		// Approach pad from the ring road (no gap under the first houses)
+		// Switchback flanks between contours.
+		for (let i = 0; i < contours; i++) {
+			const x0 = lerp(maxX, minX, i / contours);
+			const x1 = lerp(maxX, minX, (i + 1) / contours);
+			const y0 = favelaGroundY(x0, zc);
+			const y1 = favelaGroundY(x1, zc);
+			const segRun = x1 - x0;
+			const segRise = y1 - y0;
+			const segLen = Math.hypot(segRun, segRise);
+			const az = i % 2 === 0 ? minZ + alleyHalf * 2.2 : maxZ - alleyHalf * 2.2;
+			const lane = new THREE.Mesh(this.unit, path);
+			lane.scale.set(segLen, 0.11, alleyHalf * 2 - 0.25);
+			lane.position.set(midpoint(x0, x1), midpoint(y0, y1) + 0.07, az);
+			lane.rotation.z = Math.atan2(segRise, segRun);
+			lane.receiveShadow = true;
+			this.group.add(lane);
+		}
+		// Contour streets (level N–S lanes).
+		for (const bandX of favelaContourXs()) {
+			const y = favelaGroundY(bandX, zc);
+			const street = new THREE.Mesh(this.unit, path);
+			street.scale.set(streetHalf * 2, 0.12, depth - 1.2);
+			street.position.set(bandX, y + 0.07, zc);
+			street.receiveShadow = true;
+			this.group.add(street);
+		}
+		const peak = new THREE.Mesh(this.unit, path);
+		peak.scale.set(plazaR * 2, 0.18, plazaR * 2);
+		peak.position.set(RIO_MOUNTAIN.x, RIO_MOUNTAIN.rockH + 0.1, RIO_MOUNTAIN.z);
+		peak.receiveShadow = true;
+		this.group.add(peak);
 		const apron = new THREE.Mesh(this.unit, path);
-		apron.scale.set(6, 0.35, depth * 0.85);
-		apron.position.set(maxX + 2.5, 0.15, zc);
+		apron.scale.set(8, 0.26, depth * 0.92);
+		apron.position.set(maxX + 3, 0.11, zc);
 		apron.receiveShadow = true;
 		this.group.add(apron);
 	}
@@ -514,7 +551,7 @@ export class CityFavela {
 		ctx.fillStyle = '#ffcc66';
 		fitText(ctx, FAVELA_PLAN.label, { x: 12, y: 10, w: 496, h: 50 }, { size: 36, maxLines: 1 });
 		ctx.fillStyle = '#ffffff';
-		fitText(ctx, 'FAVELA PRAIRIE · WATCH YOUR STEP', { x: 12, y: 58, w: 496, h: 32 }, { size: 18, maxLines: 1 });
+		fitText(ctx, 'FOLLOW THE STREETS UP', { x: 12, y: 58, w: 496, h: 32 }, { size: 18, maxLines: 1 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
 		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
@@ -1035,47 +1072,59 @@ export class CityFavela {
 	}
 }
 
+/** House footprint must stay off free streets (margin clears the walk corridor). */
+function shackFoulsStreet(x: number, z: number, hw: number, hd: number): boolean {
+	const m = 0.2;
+	if (favelaIsStreet(x, z)) return true;
+	if (favelaIsStreet(x - hw - m, z)) return true;
+	if (favelaIsStreet(x + hw + m, z)) return true;
+	if (favelaIsStreet(x, z - hd - m)) return true;
+	if (favelaIsStreet(x, z + hd + m)) return true;
+	if (Math.hypot(x - RIO_MOUNTAIN.x, z - RIO_MOUNTAIN.z) < FAVELA_PLAN.plazaR + 1.5) return true;
+	return false;
+}
+
 function planShacks(): Shack[] {
 	const rand = mulberry32(FAVELA_PLAN.seed);
 	const out: Shack[] = [];
 	const { cols, rows, minX, maxX, minZ, maxZ } = FAVELA_PLAN;
 	for (let row = 0; row < rows; row++) {
 		for (let col = 0; col < cols; col++) {
-			// Skip some cells for alleys / density holes.
-			if (rand() < 0.12) continue;
-			const u = (col + 0.15 + rand() * 0.7) / cols;
-			const v = (row + 0.15 + rand() * 0.7) / rows;
+			if (rand() < 0.08) continue;
+			const u = (col + CELL_INSET + rand() * CELL_JITTER) / cols;
+			const v = (row + CELL_INSET + rand() * CELL_JITTER) / rows;
 			const x = lerp(maxX, minX, u);
 			const z = lerp(minZ, maxZ, v);
-			// Leave a climbing alley near z mid.
-			if (Math.abs(z - midpoint(minZ, maxZ)) < 1.6 && u > 0.15 && u < 0.9) continue;
+			// Smaller houses so they fit between contour streets.
+			const w = 1.9 + rand() * 1.5;
+			const d = 1.8 + rand() * 1.4;
+			const hw = half(w);
+			const hd = half(d);
+			if (shackFoulsStreet(x, z, hw, hd)) continue;
 			const y = favelaGroundY(x, z);
-			const w = 2.4 + rand() * 2.2;
-			const d = 2.2 + rand() * 2;
-			const storeys = rand() < 0.35 ? 2 : rand() < 0.12 ? 3 : 1;
-			const h = (2.2 + rand() * 0.8) * storeys;
-			// Stack a second shack on some roofs for favela density.
+			const storeys = rand() < 0.4 ? 2 : rand() < 0.12 ? 3 : 1;
+			const h = (2.1 + rand() * 0.7) * storeys;
 			out.push({
-				x: x + plusMinusWith(0.3, rand),
-				z: z + plusMinusWith(0.3, rand),
+				x,
+				z,
 				y,
 				w,
 				d,
 				h,
-				rot: plusMinusWith(0.22, rand),
+				rot: plusMinusWith(0.3, rand),
 				wall: pickWith(WALL_COLORS, rand),
 				roof: pickWith(ROOF_COLORS, rand),
 			});
 			if (storeys >= 2 && rand() < 0.55) {
 				const upperScale = 0.7 + rand() * 0.2;
 				out.push({
-					x: x + plusMinusWith(0.2, rand),
-					z: z + plusMinusWith(0.2, rand),
+					x: x + plusMinusWith(0.1, rand),
+					z: z + plusMinusWith(0.1, rand),
 					y: y + h * UPPER_STACK_Y,
 					w: w * upperScale,
 					d: d * upperScale,
-					h: 2.1 + rand() * 0.6,
-					rot: plusMinusWith(0.25, rand),
+					h: 1.95 + rand() * UPPER_H_NOISE,
+					rot: plusMinusWith(0.28, rand),
 					wall: pickWith(WALL_COLORS, rand),
 					roof: pickWith(ROOF_COLORS, rand),
 				});
@@ -1085,24 +1134,23 @@ function planShacks(): Shack[] {
 	return out;
 }
 
-/** Solid bodies for alley walking — every shack, outdoor. */
 export function favelaColliders(): readonly BoxCollider[] {
 	return planShacks().map((s, i) => {
-		const hw = half(s.w) + 0.1;
-		const hd = half(s.d) + 0.1;
+		const hw = half(s.w) + 0.08;
+		const hd = half(s.d) + 0.08;
 		return {
 			minX: s.x - hw,
 			maxX: s.x + hw,
 			minZ: s.z - hd,
 			maxZ: s.z + hd,
 			minY: s.y,
-			maxY: s.y + s.h + 0.35,
+			maxY: s.y + s.h + 0.3,
 			label: `favela_shack_${i}`,
 		};
 	});
 }
 
-/** Walkable terraces + stair alley + road apron. */
+/** Walkable village ground: dense slope carpet (rise ≤ WALK_STEP per segment) + plaza. */
 export function favelaSurfaces(): readonly Readonly<{
 	minX: number;
 	maxX: number;
@@ -1111,73 +1159,98 @@ export function favelaSurfaces(): readonly Readonly<{
 	y: number;
 	label: string;
 }>[] {
-	const { minX, maxX, minZ, maxZ } = FAVELA_PLAN;
+	const { minX, maxX, minZ, maxZ, alleyHalf, streetHalf, yLow, yHigh, plazaR } = FAVELA_PLAN;
 	const zc = midpoint(minZ, maxZ);
 	const out: { minX: number; maxX: number; minZ: number; maxZ: number; y: number; label: string }[] = [];
-	const strips = 16;
-	for (let i = 0; i < strips; i++) {
-		const u0 = i / strips;
-		const u1 = (i + 1) / strips;
-		const x0 = lerp(maxX, minX, u0);
-		const x1 = lerp(maxX, minX, u1);
+	const segs = Math.max(140, Math.ceil((yHigh - yLow) / 0.32) + 8);
+
+	for (let i = 0; i < segs; i++) {
+		const u0 = i / segs;
+		const u1 = (i + 1) / segs;
+		const x0 = lerp(maxX + 3, minX - 1.5, u0);
+		const x1 = lerp(maxX + 3, minX - 1.5, u1);
 		const y = favelaGroundY(midpoint(x0, x1), zc);
 		out.push({
-			minX: Math.min(x0, x1) - 0.15,
-			maxX: Math.max(x0, x1) + 0.15,
-			minZ: minZ - 0.4,
-			maxZ: maxZ + 0.4,
-			y: y + 0.14,
-			label: `favela_terrace_${i}`,
+			minX: Math.min(x0, x1) - 0.06,
+			maxX: Math.max(x0, x1) + 0.06,
+			minZ: minZ - 0.5,
+			maxZ: maxZ + 0.5,
+			y: y + 0.09,
+			label: `vila_ground_${i}`,
 		});
 	}
-	// Climb alley center
-	const alleySteps = 28;
-	for (let i = 0; i < alleySteps; i++) {
-		const u = (i + 0.5) / alleySteps;
-		const x = lerp(maxX + 1.5, minX + 1, u);
-		const y = favelaGroundY(x, zc);
+
+	const spines = [zc - 12, zc, zc + 12];
+	const peakX = RIO_MOUNTAIN.x;
+	for (let ai = 0; ai < spines.length; ai++) {
+		const az = spines[ai] ?? zc;
+		for (let i = 0; i < segs; i++) {
+			const u = (i + 0.5) / segs;
+			const x = lerp(maxX + 2, peakX, u);
+			const y = favelaGroundY(x, az);
+			out.push({
+				minX: x - 1.15,
+				maxX: x + 1.15,
+				minZ: az - alleyHalf,
+				maxZ: az + alleyHalf,
+				y: y + 0.12,
+				label: `vila_spine_${ai}_${i}`,
+			});
+		}
+	}
+
+	for (const bandX of favelaContourXs()) {
+		const y = favelaGroundY(bandX, zc);
 		out.push({
-			minX: x - 0.75,
-			maxX: x + 0.75,
-			minZ: zc - 2,
-			maxZ: zc + 2,
-			y: y + 0.22,
-			label: `favela_stair_${i}`,
+			minX: bandX - streetHalf,
+			maxX: bandX + streetHalf,
+			minZ: minZ + 0.3,
+			maxZ: maxZ - 0.3,
+			y: y + 0.11,
+			label: `vila_contour_${bandX.toFixed(0)}`,
 		});
 	}
-	// Street apron
+
+	out.push({
+		minX: RIO_MOUNTAIN.x - plazaR,
+		maxX: RIO_MOUNTAIN.x + plazaR,
+		minZ: RIO_MOUNTAIN.z - plazaR,
+		maxZ: RIO_MOUNTAIN.z + plazaR,
+		y: RIO_MOUNTAIN.rockH + 0.14,
+		label: 'vila_peak_plaza',
+	});
 	out.push({
 		minX: maxX,
-		maxX: maxX + 6,
-		minZ: minZ - 0.5,
-		maxZ: maxZ + 0.5,
-		y: 0.22,
-		label: 'favela_apron',
+		maxX: maxX + 9,
+		minZ: minZ - 0.6,
+		maxZ: maxZ + 0.6,
+		y: 0.14,
+		label: 'vila_apron',
 	});
 	return out;
 }
 
-/** Fill colliders under the slope so you cannot walk under a “floating” hill. */
 export function favelaFillColliders(): readonly BoxCollider[] {
 	const { minX, maxX, minZ, maxZ } = FAVELA_PLAN;
 	const zc = midpoint(minZ, maxZ);
 	const depth = span(minZ, maxZ);
 	const out: BoxCollider[] = [];
-	const strips = 16;
+	// Dense strips; maxY uses the LOW end of each strip so fill never pokes through the walk surface.
+	const strips = 40;
 	for (let i = 0; i < strips; i++) {
 		const u0 = i / strips;
 		const u1 = (i + 1) / strips;
 		const x0 = lerp(maxX, minX, u0);
 		const x1 = lerp(maxX, minX, u1);
-		const top = favelaGroundY(midpoint(x0, x1), zc);
+		const top = Math.min(favelaGroundY(x0, zc), favelaGroundY(x1, zc));
 		out.push({
 			minX: Math.min(x0, x1),
 			maxX: Math.max(x0, x1),
 			minZ: zc - half(depth),
 			maxZ: zc + half(depth),
 			minY: -0.5,
-			maxY: top - 0.05,
-			label: `favela_fill_${i}`,
+			maxY: top - 0.12,
+			label: `vila_fill_${i}`,
 		});
 	}
 	return out;

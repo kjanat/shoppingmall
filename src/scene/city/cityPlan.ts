@@ -624,10 +624,10 @@ export const CITY_KAVELS = {
 	con: { minX: CON_LOT.minX, maxX: CON_LOT.maxX, minZ: CON_LOT.minZ, maxZ: CON_LOT.maxZ },
 	/** SW Corcovado knock-off — towers stay off the rock. */
 	rio: { minX: -140, maxX: -58, minZ: 36, maxZ: 92 },
-	/** Favela on the mall-facing slope — overlaps mountain east stairs so the climb is continuous. */
-	favela: { minX: -92, maxX: -46, minZ: 40, maxZ: 90 },
+	/** Village covers the mountain east face up to the Redeemer yard. */
+	favela: { minX: -108, maxX: -46, minZ: 38, maxZ: 92 },
 	/** The Roman Mega Colosseum south of the ring road; the lot follows its grown ellipse so no tower lands on it. */
-	colosseum: { minX: -47, maxX: 47, minZ: 50, maxZ: 160 },
+	colosseum: { minX: -45, maxX: 45, minZ: 50, maxZ: 160 },
 } as const satisfies Record<string, Rect>;
 
 export const COLOSSEUM_PLAN = {
@@ -637,9 +637,9 @@ export const COLOSSEUM_PLAN = {
 	// is (Rome: ~51 m of stand against ~43 m arena half-width): the seating carries
 	// the view from inside, not the empty sand. The arena radii stay put — fighters,
 	// gates and the hypogeum all read them — so only the outer ring and its height
-	// grow. The ellipse clears the ring road (south edge z 52 against the road at
-	// ~41), the favela (west edge x −46 against its x −48) and CITY_BOUNDS.
-	radiusX: 46,
+	// grow. The ellipse clears the ring road (north edge z 52 against the road at
+	// ~41), the favela (west edge x −44 against its x −46) and CITY_BOUNDS.
+	radiusX: 44,
 	radiusZ: 52,
 	arenaRadiusX: 20,
 	arenaRadiusZ: 25,
@@ -670,34 +670,83 @@ export const RIO_MOUNTAIN = {
 } as const;
 
 /**
- * Sloppenwijk / favela climbing the east face of Montanha de Janeiro toward the ring.
- * Footing height rises toward the mountain (lower x).
+ * Mini mountain village (Vila do Monte) draped on Montanha de Janeiro.
+ * Houses terrace the slope; free space is contour streets + switchback alleys.
  */
 export const FAVELA_PLAN = {
 	minX: CITY_KAVELS.favela.minX,
 	maxX: CITY_KAVELS.favela.maxX,
 	minZ: CITY_KAVELS.favela.minZ,
 	maxZ: CITY_KAVELS.favela.maxZ,
-	/** Lowest terrace (near the ring) — street level, no float. */
+	/** Street at the ring. */
 	yLow: 0.05,
-	/** Highest terrace (against the rock mid-slope). */
-	yHigh: 32,
-	cols: 12,
-	rows: 14,
-	/** Deterministic layout seed. */
+	/** Peak plaza under the Redeemer. */
+	yHigh: RIO_MOUNTAIN.rockH + 0.05,
+	cols: 18,
+	rows: 20,
 	seed: 0xfa9e1a,
-	label: 'SLOPPENWIJK',
+	label: 'VILA DO MONTE',
+	/** Half-width of climbing alleys (metres). */
+	alleyHalf: 1.5,
+	/** Half-width of contour streets (N–S along the hill). */
+	streetHalf: 1.2,
+	/** Contour count between ring and peak (switchbacks hang off these). */
+	contours: 8,
+	/** Peak plaza keep-out radius for shacks. */
+	plazaR: 10,
 } as const;
 
-/**
- * Ground height under a favela cell: climbs west toward the mountain.
- * Matches the Montanha east-face climb so houses sit on the rock, not in the air.
- */
+/** Ground height of the village: climbs from the ring to the Redeemer, plateau west of him. */
 export function favelaGroundY(x: number, _z: number): number {
-	const t = inverseLerpClamped(FAVELA_PLAN.maxX, FAVELA_PLAN.minX, x);
-	// Ease in so the road edge stays near street level (no floating skirt).
-	const eased = t * t;
-	return lerp(FAVELA_PLAN.yLow, FAVELA_PLAN.yHigh, eased);
+	const { maxX, minX, yLow, yHigh } = FAVELA_PLAN;
+	const peakX = RIO_MOUNTAIN.x;
+	if (x <= peakX) {
+		// West of Jesus: stay near peak height (slight fall toward the west cliff).
+		const t = inverseLerpClamped(peakX, minX, x);
+		return lerp(yHigh, yHigh * 0.94, t);
+	}
+	const t = inverseLerpClamped(maxX, peakX, x);
+	return lerp(yLow, yHigh, t);
+}
+
+/** Contour street X positions (east → west up the hill). */
+export function favelaContourXs(): readonly number[] {
+	const { minX, maxX, contours } = FAVELA_PLAN;
+	const xs: number[] = [];
+	for (let i = 1; i < contours; i++) {
+		xs.push(lerp(maxX, minX, i / contours));
+	}
+	return xs;
+}
+
+/**
+ * Free street cells: contour lanes (N–S), switchback ramps between them (E–W at
+ * alternating ends), a centre spine, the peak plaza, and the road apron.
+ */
+export function favelaIsStreet(x: number, z: number): boolean {
+	const { minX, maxX, minZ, maxZ, alleyHalf, streetHalf, contours, plazaR } = FAVELA_PLAN;
+	const zc = midpoint(minZ, maxZ);
+	if (x > maxX - 1.5) return true;
+	if (Math.hypot(x - RIO_MOUNTAIN.x, z - RIO_MOUNTAIN.z) < plazaR) return true;
+	for (const bandX of favelaContourXs()) {
+		if (Math.abs(x - bandX) < streetHalf) return true;
+	}
+	// Switchback ramps: between contour i and i+1, free only on alternating flank.
+	for (let i = 0; i < contours; i++) {
+		const x0 = lerp(maxX, minX, i / contours);
+		const x1 = lerp(maxX, minX, (i + 1) / contours);
+		const lo = Math.min(x0, x1) - alleyHalf * 0.25;
+		const hi = Math.max(x0, x1) + alleyHalf * 0.25;
+		if (x < lo || x > hi) continue;
+		const rampZ = i % 2 === 0 ? minZ + alleyHalf * 2.2 : maxZ - alleyHalf * 2.2;
+		if (Math.abs(z - rampZ) < alleyHalf) return true;
+	}
+	// Centre spine up the mountain (main village street).
+	if (Math.abs(z - zc) < alleyHalf) return true;
+	// Two side spines so the village has three ways up.
+	if (Math.abs(z - (zc - 12)) < alleyHalf * 0.9) return true;
+	if (Math.abs(z - (zc + 12)) < alleyHalf * 0.9) return true;
+	return false;
 }
 
 const KAVELS: readonly Rect[] = Object.values(CITY_KAVELS);

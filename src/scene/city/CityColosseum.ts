@@ -107,7 +107,9 @@ export class CityColosseum {
 		mat: THREE.Material,
 		opts: { openEnded?: boolean; radialTop?: number } = {},
 	): THREE.Mesh {
-		const geo = new THREE.CylinderGeometry(opts.radialTop ?? rx, rx, height, 56, 1, opts.openEnded ?? false);
+		// Open by default: a ring wall is a band, and a capped cylinder would lay a
+		// solid disc across the whole ellipse — a lid over the arena at that height.
+		const geo = new THREE.CylinderGeometry(opts.radialTop ?? rx, rx, height, 56, 1, opts.openEnded ?? true);
 		const ring = this.addMesh(geo, mat);
 		ring.scale.set(1, 1, this.aspect);
 		ring.position.set(COLOSSEUM_PLAN.x, yCenter, COLOSSEUM_PLAN.z);
@@ -310,8 +312,8 @@ export class CityColosseum {
 				this.buildArch(a, pierRx, openingHalf, yBase + tierH * 0.66, pierMat);
 			}
 
-			// Entablature: a continuous cornice band capping the tier.
-			this.ringWall(radiusX + 0.5, yBase + tierH, 0.7, corniceMat, { openEnded: false });
+			// Entablature: a continuous open cornice band round the tier.
+			this.ringWall(radiusX + 0.5, yBase + tierH, 0.7, corniceMat);
 		}
 
 		// The attic: a solid closed ring, tall and unbroken, with shallow pilasters
