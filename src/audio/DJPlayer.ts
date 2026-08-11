@@ -29,6 +29,9 @@ function clock(seconds: number): string {
 
 const PERSIST_KEY = 'mallsim.dj.v1';
 
+/** Kwadratische afstands-falloff van de DJ-booth: 1/(1+k·d²). Het audio-pad en de fader-compensatie in App delen hem, zodat ze dezelfde vorm volgen. */
+export const BOOTH_FALLOFF_K = 0.012;
+
 type PersistState = {
 	file: string;
 	title: string;
@@ -100,7 +103,7 @@ export class DJPlayer {
 		spatial.ensure();
 		this.spatialEl = spatial.attachElementAt(this.audio, pos, {
 			volume: this.baseVolume,
-			k: 0.012,
+			k: BOOTH_FALLOFF_K,
 			maxDistance: 55,
 			refDistance: 3.5,
 		});

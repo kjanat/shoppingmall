@@ -8,6 +8,7 @@
  * reloads the page; that is honest and instant enough for a setting nobody
  * touches twice a session.
  */
+import { LIGHT_POOL_SLOTS } from '#/render/LightPool';
 import { booleanUrlPref, urlPref } from '#/render/urlPrefs';
 
 const SHINE_KEY = 'mallsim.shine.v1';
@@ -53,7 +54,7 @@ export function shineOn(): boolean {
 }
 
 export function lampCount(): number {
-	return readNumberPref(LAMPS_KEY, 'lamps', LAMP_CHOICES, 16);
+	return readNumberPref(LAMPS_KEY, 'lamps', LAMP_CHOICES, LIGHT_POOL_SLOTS);
 }
 
 export function fillScale(): number {

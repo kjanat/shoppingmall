@@ -1,7 +1,9 @@
 import { STANDING_PEDESTRIAN } from '#/data/character';
 import type { VerticalConnector } from '#/data/connectors';
+import { conColliders, conSurfaces } from '#/data/conWorld';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { LEVELS, levelY } from '#/data/levels';
+import { POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY } from '#/data/pool';
 import type { Bounds2, Occlusion, Vec3 } from '#/data/spatial';
 import { planBounds, SIGHT_BLOCKING_TAG } from '#/data/spatial';
 import { STORES } from '#/data/stores';
@@ -23,6 +25,9 @@ import {
 	parkingExitRampY,
 	parkingExitTrenchColliders,
 	SLAB_SPEC_BY_LEVEL,
+	SLIDE_LADDER_CLIMB,
+	SLIDE_PLATFORM,
+	SLIDE_PLATFORM_TOP_Y,
 	shopRoomDepth,
 	slabOpeningWithin,
 	THEATRE_INTERIOR,
@@ -47,14 +52,6 @@ import {
 	PLAZA_TRENCH_GAP,
 	TOWER_SPECS,
 } from '#/scene/city/cityPlan';
-import {
-	POOL_FLOOR_Y,
-	POOL_WATER_Y,
-	poolFloorY,
-	SLIDE_LADDER_CLIMB,
-	SLIDE_PLATFORM,
-	SLIDE_PLATFORM_TOP_Y,
-} from '#/scene/RoofIsland';
 import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
 import { clamp, half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 
@@ -226,7 +223,11 @@ export type Ramp = {
 	 * Ontbreekt hij, dan is het een gewone trap en vervoert hij niemand.
 	 */
 	carrySpeed?: number;
+	/** Dikte onder het loopvlak wanneer de ruimte onder deze vlucht open is. */
+	openUndersideThickness?: number;
 };
+
+export type BodyClearance = Readonly<{ feetY: number; height: number }>;
 
 /**
  * Een vlak dakstuk. `disabled` betekent hier hetzelfde als op een AABB: een luik is
@@ -293,6 +294,7 @@ function connectorRamp(connector: VerticalConnector): Ramp {
 		openMinZ: connector.collision.openMinZ,
 		openMaxZ: connector.collision.openMaxZ,
 		...(connector.collision.carrySpeed === undefined ? {} : { carrySpeed: connector.collision.carrySpeed }),
+		...(connector.kind === 'stairs' ? { openUndersideThickness: connector.appearance.step.treadThickness } : {}),
 	};
 }
 
@@ -410,6 +412,8 @@ export class CollisionWorld {
 		// noordwaarts tegenaan en je klautert naar het platform (arcade-klimmen)
 		{ ...SLIDE_LADDER_CLIMB, yBottom: ROOF_H, yTop: SLIDE_PLATFORM_TOP_Y, label: 'slide_ladder' },
 	];
+	/** De connector bij zijn collisionlabel; onderdoor rijden vraagt dit in de frameloop. */
+	private readonly rampByLabel = new Map(this.ramps.map((ramp) => [ramp.label, ramp]));
 
 	/**
 	 * Het loopbare dak, exact de getekende dakplaat: de dakslab minus zijn eigen gaten.
@@ -576,12 +580,22 @@ export class CollisionWorld {
 			const roomDepth = shopRoomDepth(s);
 			const backCx = s.x - Math.sin(s.rotation) * roomDepth;
 			const backCz = s.z - Math.cos(s.rotation) * roomDepth;
-			const storeCollisionExtent = s.width * 0.48;
+			// De achterwand draait mee met de winkel. Alleen zijn middelpunt draaien en
+			// daarna altijd X als breedte nemen legde bij de oost- en westwinkels een
+			// onzichtbare dwarswand over de buitenroute (onder meer bij GAME MANIA,
+			// SAUCY en DOUGLAS). `planBounds` leest dezelfde yaw-afspraak als de mesh.
+			const backWall = planBounds({
+				kind: 'rectangle',
+				center: { x: backCx, z: backCz },
+				width: s.width * 0.96,
+				depth: 0.8,
+				yaw: s.rotation,
+			});
 			this.add(
-				backCx - storeCollisionExtent,
-				backCx + storeCollisionExtent,
-				backCz - 0.4,
-				backCz + 0.4,
+				backWall.minX,
+				backWall.maxX,
+				backWall.minZ,
+				backWall.maxZ,
 				opaque({ minY: y0 - 0.5, maxY: y1, label: `store_back_${s.id}` }),
 			);
 		}
@@ -706,6 +720,14 @@ export class CollisionWorld {
 		}
 		for (const surface of theatreSurfaces()) {
 			this.citySurfaces.push({ ...surface, label: `theatre_${surface.label}` });
+		}
+
+		for (const collider of conColliders()) {
+			const doos = { minY: collider.minY, maxY: collider.maxY, label: collider.label, outdoor: true };
+			this.add(collider.minX, collider.maxX, collider.minZ, collider.maxZ, collider.seeThrough ? doos : opaque(doos));
+		}
+		for (const surface of conSurfaces()) {
+			this.citySurfaces.push({ ...surface, label: `con_${surface.label}` });
 		}
 
 		// De toneelrand: een wand, geen val. Het zaaldek zakt trapsgewijs naar de voorste
@@ -952,9 +974,27 @@ export class CollisionWorld {
 			return y;
 		}
 		if (y >= 10) {
+			// Het dakbad is een kuil in de dakplaat: op dakhoogte is de badbodem de vloer,
+			// net als groundHeightAt en headroomAt al lezen. Zonder dit belooft snapFloorY het
+			// dek (13.95) waar een sim op de badbodem (~12.9) hoort, en loopt hij op het water.
+			const pool = poolFloorY(x, z);
+			if (pool !== null) return pool;
 			for (const p of this.roofPads) {
 				if (p.disabled) continue;
 				if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) return p.y;
+			}
+			// Geen dakpad hier maar wél boven het gat van een dak-reikende vlucht: het dak is
+			// daar niet de vloer, dus laat de vlucht eronder het antwoord geven, net als
+			// groundHeightAt (de regel met openMinZ/openMaxZ). Zonder dit beloofde snapFloorY
+			// ROOF_H en zweefde een sim boven het trapgat.
+			for (const r of this.ramps) {
+				if (Math.max(r.yBottom, r.yTop) < 10) continue;
+				if (x < r.minX - RAMP_PLAN_MARGIN_X || x > r.maxX + RAMP_PLAN_MARGIN_X) continue;
+				if (z < r.openMinZ || z > r.openMaxZ) continue;
+				const raw = (z - r.zBottom) / (r.zTop - r.zBottom);
+				const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
+				const h = r.yBottom + (r.yTop - r.yBottom) * t;
+				if (y > h) return h;
 			}
 		}
 		// Buiten de voetafdruk ligt er op hoogte geen plaat: daar is alleen de stad.
@@ -1114,6 +1154,13 @@ export class CollisionWorld {
 			const slab = SLAB_SPEC_BY_LEVEL[level.id];
 			const bottom = slab.topY - slab.thickness;
 			if (bottom <= feetY || bottom >= underside) continue;
+			// Het dakbad is door de dakplaat uitgegraven en staat open naar de lucht:
+			// wie in het diepe waadt heeft water boven zich, geen dak. Zonder deze
+			// uitzondering meldt de dakplaat een plafond van 0,6 m boven de badbodem,
+			// klemt `fits()` een staand lichaam vast en kom je het bad niet meer uit.
+			// Dezelfde special-case als in `groundHeightAt`, waar `poolFloorY` vóór de
+			// dakpads gaat.
+			if (level.id === 'roof' && poolFloorY(x, z) !== null) continue;
 			if (slabOpeningWithin(level.id, head) === null) underside = bottom;
 		}
 		return span(feetY, underside);
@@ -1200,6 +1247,30 @@ export class CollisionWorld {
 	boundsMode: 'mall' | 'city' = 'mall';
 
 	/**
+	 * Past een lichaam onder de open onderzijde van deze trapvlucht?
+	 *
+	 * De gewone connector-AABB beslaat de hele vlucht in XZ en heeft geen hoogte. Dat
+	 * is goed voor wie de trap probeert op te rijden, maar maakte ook de metershoge
+	 * vrije ruimte onder het bovenste deel massief. De laagste trede boven de volledige
+	 * cirkel bepaalt de doorgang; één lage hoek is genoeg om hem te blokkeren.
+	 */
+	private clearsOpenFlight(label: string | undefined, z: number, radius: number, body: BodyClearance): boolean {
+		if (!label) return false;
+		const ramp = this.rampByLabel.get(label);
+		const thickness = ramp?.openUndersideThickness;
+		if (!ramp || thickness === undefined) return false;
+		const flightMinZ = Math.min(ramp.zBottom, ramp.zTop);
+		const flightMaxZ = Math.max(ramp.zBottom, ramp.zTop);
+		const minZ = Math.max(flightMinZ, z - radius);
+		const maxZ = Math.min(flightMaxZ, z + radius);
+		if (minZ > maxZ) return false;
+		const minSurface = ramp.yBottom + (ramp.yTop - ramp.yBottom) * inverseLerpClamped(ramp.zBottom, ramp.zTop, minZ);
+		const maxSurface = ramp.yBottom + (ramp.yTop - ramp.yBottom) * inverseLerpClamped(ramp.zBottom, ramp.zTop, maxZ);
+		const underside = Math.min(minSurface, maxSurface) - thickness;
+		return body.feetY + body.height <= underside;
+	}
+
+	/**
 	 * Resolve a circle (radius r) at (x,z) with optional y for floor-filtered boxes.
 	 * Returns corrected position. Multi-pass for corners.
 	 *
@@ -1224,6 +1295,7 @@ export class CollisionWorld {
 		airborne = false,
 		outside = false,
 		wheeled = false,
+		bodyClearance: BodyClearance | null = null,
 	): { x: number; z: number } {
 		let px = x;
 		let pz = z;
@@ -1254,6 +1326,7 @@ export class CollisionWorld {
 				const dx = px - cx;
 				const dz = pz - cz;
 				const d2 = dx * dx + dz * dz;
+				if (d2 < radius * radius && bodyClearance && this.clearsOpenFlight(b.label, pz, radius, bodyClearance)) continue;
 
 				// Center inside box → push to nearest face
 				if (d2 < 1e-8) {

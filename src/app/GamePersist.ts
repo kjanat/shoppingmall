@@ -55,6 +55,8 @@ export type PersistedGame = {
 	disco: boolean;
 	/** De rit die liep, of null als je te voet was. */
 	ride: PersistedRide | null;
+	/** Het laatst geparkeerde voertuig, zodat een HMR-herbouw het op die plek terugzet. */
+	parkedVehicle: PersistedRide | null;
 };
 
 /**
@@ -126,6 +128,7 @@ export function loadGame(): PersistedGame | null {
 			thiefFiredAt: readNumber(parsed, 'thiefFiredAt'),
 			disco: readBoolean(parsed, 'disco'),
 			ride: readRide(parsed['ride']),
+			parkedVehicle: readRide(parsed['parkedVehicle']),
 		};
 	} catch {
 		return null;

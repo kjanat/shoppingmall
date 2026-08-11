@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { STANDING_PEDESTRIAN } from '#/data/character';
 import type { InteractionReceiver } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
 import type { VehicleGroundState } from '#/physics/VehicleGround';
@@ -165,11 +166,26 @@ export class ScrubberBuggy {
 
 	/** Zet een onderbroken rit terug: dezelfde plek, dezelfde koers, dezelfde vaart. */
 	resume(state: VehicleRide): boolean {
-		this.pos.set(state.x, state.y, state.z);
-		this.mesh.position.copy(this.pos);
-		this.yaw = state.yaw;
+		this.restoreParked(state);
 		this.board();
 		this.speed = state.speed;
+		return true;
+	}
+
+	/** Zet de geparkeerde buggy na HMR terug zonder de rijstand te activeren. */
+	restoreParked(state: VehicleRide): boolean {
+		this.ridden = false;
+		this.speed = 0;
+		this.yaw = state.yaw;
+		this.pitch = 0;
+		this.pos.set(state.x, state.y, state.z);
+		this.parkPos.copy(this.pos);
+		this.mesh.position.copy(this.pos);
+		this.mesh.rotation.set(0, this.yaw + Math.PI, 0);
+		this.ground.y = state.y;
+		this.ground.vy = 0;
+		this.ground.grounded = true;
+		if (this.label) this.paintLabel('SCHOONMAAK BUGGY · E', '#1565c0');
 		return true;
 	}
 
@@ -288,7 +304,10 @@ export class ScrubberBuggy {
 		// alleen door wat ook `wheeled` toelaat, zoals de lift. Zonder dat reed hij als een
 		// voetganger de geheime trap op en parkeerde de verticale solver hem in de lucht.
 		const buiten = outsideMallFootprint(feetY);
-		const hit = this.world.resolveCircle(nx, nz, feetY + 0.5, RADIUS, 4, false, !this.ground.grounded, buiten, true);
+		const hit = this.world.resolveCircle(nx, nz, feetY + 0.5, RADIUS, 4, false, !this.ground.grounded, buiten, true, {
+			feetY,
+			height: STANDING_PEDESTRIAN.requiredHeadroom,
+		});
 		// Wall scrape kills speed
 		const scraped = Math.hypot(hit.x - nx, hit.z - nz) > 0.02;
 		if (scraped) this.speed *= 0.55;

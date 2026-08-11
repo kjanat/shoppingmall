@@ -65,6 +65,13 @@ export type SceneBatchStats = {
 	owners: readonly BatchOwnerStats[];
 };
 
+/** Eén batch zoals de wereldcontrole hem naleest: zijn zonemasker, bol en bronnen. */
+export type BatchAudit = {
+	zoneMask: number;
+	sphere: THREE.Sphere | null;
+	sources: readonly THREE.Object3D[];
+};
+
 export type BatchOwnerStats = {
 	name: string;
 	sources: number;
@@ -548,6 +555,18 @@ export class SceneBatcher {
 				source.streak = changed ? 0 : source.streak + 1;
 			}
 		}
+	}
+
+	/**
+	 * De batches read-only, voor de wereldcontrole: haar masker en bol horen die van al
+	 * haar bronnen te dekken, anders valt een grensobject uit beeld zodra het gemergd is.
+	 */
+	auditBatches(): readonly BatchAudit[] {
+		return this.batches.map((batch) => ({
+			zoneMask: batch.zoneMask,
+			sphere: batch.mesh.boundingSphere,
+			sources: batch.sources.map((source) => source.mesh),
+		}));
 	}
 
 	/**

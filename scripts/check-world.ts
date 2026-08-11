@@ -104,6 +104,7 @@ import {
 	PARKING_EXIT_RAMP_ENTITY,
 	PARKING_EXIT_TRENCH,
 	PARKING_EXIT_TRENCH_ENTITY,
+	PARKING_EXIT_TRENCH_GUARDS,
 	PARKING_EXIT_TRENCH_WALLS,
 	PARKING_EXIT_WALL_GAP,
 	PARKING_WALL_PANELS,
@@ -174,6 +175,7 @@ import {
 	JUMP_V,
 	PLAYER_RADIUS,
 	STANCE_SETTLE,
+	STAND_HEADROOM,
 	WALK_SPEED,
 } from '#/player/constants';
 import { PARK_LAWN } from '#/scene/city/CityPark';
@@ -224,7 +226,7 @@ import {
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
 import { BIG_MAP_MIN_WIDTH, deckLabelPlan, minimapLabelPlan } from '#/ui/KioskOverlay';
 import { distanceToSegment2 } from '#/util/geometry2';
-import { ease, half, lerp, midpoint, span } from '#/util/math';
+import { clamp, ease, half, lerp, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 import { profilePoint } from './perf/routes.ts';
 import { stubDocument, stubTextMeasure } from './stub-dom.ts';
@@ -755,6 +757,53 @@ function controleUitritleuning(): void {
 			);
 		}
 	}
+}
+
+/**
+ * Bij de noordrand van de open uitritgeul staat een zichtbaar hek dat ook een
+ * springende speler tegenhoudt. Op de gemelde pose hield eerst alleen een vrijwel
+ * maaiveldhoge keermuur de wandelaar tegen; tijdens een sprong verdween die collision
+ * en viel je zonder zichtbare waarschuwing de geul in.
+ */
+function controleUitrithek(): void {
+	const pose = { x: -37.2, z: -3.6, richting: 181 } as const;
+	const guard = PARKING_EXIT_TRENCH_GUARDS.find(
+		(candidate) => candidate.centerZ < 0 && pose.x >= candidate.minX && pose.x <= candidate.maxX,
+	);
+	if (!guard) {
+		fout('uitrithek', `op de gemelde pose (${nr(pose.x)}, ${nr(pose.z)}) staat geen noordelijk hek langs de geul`);
+		return;
+	}
+	if (guard.maxY < V0 + JUMP_RISE) {
+		fout(
+			'uitrithek',
+			`het hek reikt tot ${nr(guard.maxY)} en een gewone sprong tot ${nr(V0 + JUMP_RISE)}; je springt eroverheen`,
+		);
+	}
+	const yaw = (pose.richting * Math.PI) / 180;
+	for (const feetY of [V0, V0 + JUMP_RISE]) {
+		let x: number = pose.x;
+		let z: number = pose.z;
+		for (let i = 0; i < 20; i++) {
+			const solved = wereld.resolveCircle(
+				x - Math.sin(yaw) * POLYLIJN_STAP,
+				z - Math.cos(yaw) * POLYLIJN_STAP,
+				feetY,
+				PLAYER_RADIUS,
+				3,
+				true,
+				feetY > V0,
+				true,
+			);
+			x = solved.x;
+			z = solved.z;
+		}
+		if (z > guard.centerZ) {
+			fout('uitrithek', `${feetY > V0 ? 'springend' : 'lopend'} steek je op (${nr(x)}, ${nr(z)}) door het noordelijke hek`);
+		}
+	}
+	eist(bron('scene/ParkingGarage.ts'), 'PARKING_EXIT_TRENCH_GUARDS', 'de zichtbare hekken boven de open uitritgeul');
+	eist(bron('scene/ParkingGarage.ts'), "'← PARKING'", 'de PARKING-zijde van het CITY RING-bord');
 }
 
 // ── 5a. de schil om P1 en de geul waar de uitrit in ligt ───────────────────
@@ -2787,6 +2836,38 @@ function controlePuien(): void {
 	}
 }
 
+/**
+ * De buitenroute langs de oost- en westgevel blijft vrij bij winkelachterwanden.
+ *
+ * De achterwand-collider draaide alleen zijn middelpunt mee en hield zijn breedte
+ * altijd op X. Voor de kwartslagwinkels werd dat een onzichtbare dwarswand op Z.
+ * Deze drie gemelde poses lopen één meter recht vooruit langs de gevel; elke stap
+ * moet zijn gewenste positie houden.
+ */
+function controleWinkelachterwanden(): void {
+	const poses = [
+		{ naam: 'GAME MANIA', x: 37.5, z: -0.8, richting: 182 },
+		{ naam: 'SAUCY', x: 37.2, z: -10.8, richting: 184 },
+		{ naam: 'DOUGLAS', x: -37.2, z: -8.8, richting: 169 },
+	] as const;
+	for (const pose of poses) {
+		const yaw = (pose.richting * Math.PI) / 180;
+		const verslag = volgPolylijn(
+			[
+				[pose.x, pose.z],
+				[pose.x - Math.sin(yaw), pose.z - Math.cos(yaw)],
+			],
+			V0,
+		);
+		if (verslag.klacht !== null) {
+			fout(
+				'winkelachterwanden',
+				`${pose.naam}: vanaf (${nr(pose.x)}, ${nr(pose.z)}) richting ${pose.richting} graden kun je niet vooruit: ${verslag.klacht}`,
+			);
+		}
+	}
+}
+
 // ── 13d. geen auto in een betonnen kolom ───────────────────────────────────
 
 /**
@@ -3932,6 +4013,8 @@ async function controleUitstappen(): Promise<void> {
 
 /** Zoveel meter boven zijn startdek mag een geblokkeerd voertuig niet uitkomen. */
 const KARKLIM_SPELING = 0.35;
+/** Vooruitgang vanaf de gemelde pose die bewijst dat de hoge trap geen zijwand is. */
+const KARKLIM_ONDERDOOR = 0.5;
 
 /**
  * Een voertuig klimt alleen wat zijn verkeersklasse toelaat.
@@ -3954,24 +4037,26 @@ async function controleKarklim(): Promise<void> {
 		fout('karklim', `de lift laat geen wielen toe (${ELEVATOR_CLIMB_MODES.join(', ')}); de schoonmaakkar hoort erin te kunnen`);
 	}
 
-	const [THREE, { LightPool }, { ScrubberBuggy }, { GlassElevator }, { Barriers }] = await Promise.all([
+	const [THREE, { LightPool }, { ScrubberBuggy }, { GlassElevator }, { Barriers }, { CleaningCart }] = await Promise.all([
 		import('three'),
 		import('#/render/LightPool'),
 		import('#/scene/ScrubberBuggy'),
 		import('#/scene/GlassElevator'),
 		import('#/scene/city/Barriers'),
+		import('#/scene/CleaningCart'),
 	]);
 
 	function rijKar(
 		dek: CollisionWorld,
 		start: { x: number; y: number; z: number; yaw: number },
 		frames: number,
+		throttle = 1,
 	): { maxY: number; eind: { x: number; y: number; z: number } } {
 		const kar = new ScrubberBuggy(dek, new LightPool(new THREE.Scene()), new Barriers(dek));
 		kar.resume({ id: '', x: start.x, y: start.y, z: start.z, yaw: start.yaw, speed: 0 });
 		let maxY = start.y;
 		for (let f = 0; f < frames; f++) {
-			kar.update(RIT_DT, { throttle: 1, steer: 0, boost: false });
+			kar.update(RIT_DT, { throttle, steer: 0, boost: false });
 			if (kar.pos.y > maxY) maxY = kar.pos.y;
 		}
 		return { maxY, eind: { x: kar.pos.x, y: kar.pos.y, z: kar.pos.z } };
@@ -3983,6 +4068,31 @@ async function controleKarklim(): Promise<void> {
 	const trap = rijKar(new CollisionWorld(), { x: 26, y: trapVoetY, z: 12.5, yaw: Math.PI }, 180);
 	if (trap.maxY > trapVoetY + KARKLIM_SPELING) {
 		fout('karklim', `de kar klimt de geheime trap tot y ${nr(trap.maxY)}, terwijl zijn voet op ${nr(trapVoetY)} ligt`);
+	}
+
+	// Westtrap, exact de gemelde pose: op z=-11 hangt de vlucht bijna vijf meter
+	// boven V0. De connector-AABB maakte die vrije ruimte vroeger tot een oneindig
+	// hoge wand en schrapte elke oostelijke component uit de beweging op x=-24,4.
+	const onderStart = { x: -24.4, y: levelY('v0'), z: -11, yaw: (-119 * Math.PI) / 180 } as const;
+	const onderTrap = rijKar(new CollisionWorld(), onderStart, 30);
+	if (onderTrap.eind.x < onderStart.x + KARKLIM_ONDERDOOR) {
+		fout(
+			'karklim',
+			`onder de hoge westtrap komt de kar vanaf (${nr(onderStart.x)}, ${nr(onderStart.z)}) maar tot x ${nr(onderTrap.eind.x)}`,
+		);
+	}
+
+	// En een kar die tóch halverwege de trap in de lucht hangt (een oude save-toestand
+	// van vóór de klasse-scheiding) hoort terug te zakken naar de vloer, niet de laatst
+	// geaccepteerde hoogte vast te houden: de verticale solver liet hem anders op ~7,99 m
+	// staan omdat de dakplaat boven het plafond antwoordde en hij die hoogte vasthield.
+	const zweefY = trapVoetY + 1.55;
+	const zweef = rijKar(new CollisionWorld(), { x: 25.91, y: zweefY, z: 15, yaw: Math.PI }, 180, 0);
+	if (Math.abs(zweef.eind.y - trapVoetY) > KARKLIM_SPELING) {
+		fout(
+			'karklim',
+			`een kar die op y ${nr(zweefY)} halverwege de trap hangt blijft op y ${nr(zweef.eind.y)} in plaats van terug te zakken naar ${nr(trapVoetY)}`,
+		);
 	}
 
 	// Uitritramp: van P1 naar V0. Die laat wielen toe, dus hier hoort hij wél te klimmen.
@@ -4013,6 +4123,40 @@ async function controleKarklim(): Promise<void> {
 			`de kar komt de lift niet in: hij botst op de instapzijde bij z ${nr(inLift.eind.z)}, de mond ligt op ${nr(instapZ)}`,
 		);
 	}
+
+	// Wei's NPC-kar botst op álles wat climbable is: een route-waypoint ligt in de
+	// east-escalator en zijn pad kruist de liftschacht, en met climb=true reed hij daar
+	// dwars doorheen. Hij gebruikt de lift nooit, dus anders dan de spelerskar (wheeled)
+	// hoort ook de glazen schacht hem tegen te houden. Getest tegen liftDek, dus elke
+	// climbable box inclusief de lift: Wei (geen klim) wordt eruit geduwd, de spelerskar
+	// (wheeled) alleen uit de voetganger-only boxen, en een voetganger loopt overal door.
+	const weiRadius = new CleaningCart(liftDek).radius;
+	const binnen = (box: { minX: number; maxX: number; minZ: number; maxZ: number }, p: { x: number; z: number }): boolean =>
+		p.x >= box.minX && p.x <= box.maxX && p.z >= box.minZ && p.z <= box.maxZ;
+	for (const box of liftDek.boxes) {
+		const modi = box.climbable;
+		if (!modi) continue;
+		const cx = midpoint(box.minX, box.maxX);
+		const cz = midpoint(box.minZ, box.maxZ);
+		const label = box.label ?? 'een climbable box';
+
+		const wei = liftDek.resolveCircle(cx, cz, 0.5, weiRadius, 4, false);
+		if (binnen(box, wei)) {
+			fout('karklim', `${label} houdt Wei's NPC-kar niet tegen; die hoort door geen enkele climbable geometrie te rijden`);
+		}
+
+		const speler = liftDek.resolveCircle(cx, cz, 0.5, weiRadius, 4, false, false, false, true);
+		if (modi.includes('wheeled') && !binnen(box, speler)) {
+			fout('karklim', `${label} laat wielen toe, maar duwt de spelerskar eruit`);
+		} else if (!modi.includes('wheeled') && binnen(box, speler)) {
+			fout('karklim', `${label} is voetganger-only, maar laat de spelerskar er middenin staan`);
+		}
+
+		const teVoet = liftDek.resolveCircle(cx, cz, 0.5, weiRadius, 4, true);
+		if (!binnen(box, teVoet)) {
+			fout('karklim', `${label} duwt een voetganger eruit terwijl die er juist doorheen loopt`);
+		}
+	}
 }
 
 // ── 15b3b. de motor die de speler wegrijdt ─────────────────────────────────
@@ -4025,15 +4169,28 @@ const MOTORRIT_RENDEMENT = 0.9;
 const MOTORRIT_KOERS = 1e-3;
 /** Hoever het zadel na een herbouw van de motor zelf mag liggen: de stoel staat achter het hart. */
 const MOTORRIT_ZADEL = 1;
+/** Deelgas voor de balansproef: genoeg vaart voor een echte bocht, en de balanshoek blijft ruim onder de klem. */
+const MOTORRIT_LEUN_GAS = 0.1;
+/** Kruipgas voor de stapvoetsproef: bijna geen zijversnelling, dus bijna geen leun. */
+const MOTORRIT_KRUIP_GAS = 0.03;
+/** Zoveel frames rijdt elke leunproef tot vaart, koers en leun stil staan. */
+const MOTORRIT_LEUN_STAPPEN = 90;
+/** Zoveel frames de bocht in op volle snelheid, kort genoeg voor de schrapende bocht de vaart weghaalt. */
+const MOTORRIT_INZET = 4;
+/** Speling tussen de gemeten leun en de balanshoek die de proef narekent. */
+const MOTORRIT_LEUN_EPS = 0.02;
+/** Onder deze hoek heet de motor bij stapvoets sturen zo goed als recht. */
+const MOTORRIT_KRUIP_LEUN = 0.06;
 
 /**
  * Waarin de motor de huurauto voorbij hoort te gaan, elk cijfer op zijn eigen regel.
  *
  * Twee regels met drie voorwaarden erin drukten altijd hetzelfde paar getallen af.
  * Een `boostSpeed` die terugliep meldde zich dan met een zin over `accel` en
- * `maxSpeed`, en met `leanPerSteerSpeed` op nul verscheen "hij hangt tot 0.55 rad en
- * legt zich daarmee niet verder in dan de huurauto (0.12 rad)" — 0.55 is meer dan
- * 0.12, dus die zin sprak zichzelf tegen en wees de lezer de verkeerde constante.
+ * `maxSpeed`, dus elke eigenschap staat los, met haar eigen getal en eenheid. De leun
+ * staat er als `maxLean`: hoever de motor de bocht in mag hangen, waar de auto op zijn
+ * veren rolt. Hoe hij daar naartoe leunt (balanshoek, niet stuur maal vaart) toetst de
+ * leunproef verderop.
  */
 const SCHERPER_DAN_DE_AUTO: readonly {
 	wat: string;
@@ -4044,7 +4201,6 @@ const SCHERPER_DAN_DE_AUTO: readonly {
 	{ wat: 'loopt', eenheid: 'm/s', lees: (r) => r.maxSpeed },
 	{ wat: 'sprint tot', eenheid: 'm/s', lees: (r) => r.boostSpeed },
 	{ wat: 'hangt in de bocht tot', eenheid: 'rad', lees: (r) => r.maxLean },
-	{ wat: 'legt zich per stuur en vaart in met', eenheid: 'rad·s/m', lees: (r) => r.leanPerSteerSpeed },
 ];
 
 /**
@@ -4136,14 +4292,67 @@ async function controleMotorrit(): Promise<void> {
 		);
 	}
 
-	// En hangen: vol stuur legt hem in de bocht, tot niet verder dan zijn eigen hoek.
-	voertuigen.update(RIT_DT, { throttle: 1, steer: 1, boost: false });
-	const helling = slot.mesh.rotation.z;
-	if (helling <= 0) {
-		fout('motorrit', `met vol stuur naar één kant hangt de motor ${nr(helling)} rad, dus de andere kant op of niet`);
+	// En hangen: de leun komt uit de zijwaartse versnelling, niet uit de stuuruitslag. Elke
+	// eigenschap apart, want een || over drie voorwaarden drukt bij een terugval het verkeerde
+	// getal af.
+	const rijLeun = (gas: number): { v: number; omega: number; helling: number } => {
+		const wereld = new CollisionWorld();
+		const rit = new DriveableCars(wereld, new Barriers(wereld));
+		const zadel = rit.nearestCar(new THREE.Vector3(plek.x, plek.y + 1, plek.z), 1);
+		if (!zadel || !rit.board(zadel)) {
+			fout('motorrit', `de leunproef kan bij ${plek.name} niet instappen`);
+			return { v: 0, omega: 0, helling: 0 };
+		}
+		let yawVoor = rit.heading;
+		for (let stap = 0; stap < MOTORRIT_LEUN_STAPPEN; stap++) {
+			yawVoor = rit.heading;
+			rit.update(RIT_DT, { throttle: gas, steer: 1, boost: false });
+		}
+		return { v: rit.speedKmh / 3.6, omega: (rit.heading - yawVoor) / RIT_DT, helling: zadel.mesh.rotation.z };
+	};
+
+	// Gestage bocht op deelgas, ruim onder de klemhoek: de motor hangt op de balanshoek
+	// atan(v·ω/g). Een steer-maal-vaart-model haalde hier 0.06 rad waar de balans 0.32 vroeg.
+	const bocht = rijLeun(MOTORRIT_LEUN_GAS);
+	const balans = clamp(Math.atan2(bocht.v * bocht.omega, GRAVITY), -motor.maxLean, motor.maxLean);
+	if (bocht.helling <= 0) {
+		fout('motorrit', `in de bocht hangt de motor ${nr(bocht.helling)} rad, dus de andere kant op of niet`);
 	}
-	if (Math.abs(helling) > motor.maxLean + EPS) {
-		fout('motorrit', `de motor hangt ${nr(helling)} rad, voorbij de ${nr(motor.maxLean)} rad die op hem staat`);
+	if (balans >= motor.maxLean) {
+		fout(
+			'motorrit',
+			`de balansproef zit bij ${nr(bocht.v)} m/s met ${nr(balans)} rad al tegen de klemhoek ${nr(motor.maxLean)} rad en toetst zo de klem in plaats van de formule`,
+		);
+	}
+	if (Math.abs(bocht.helling - balans) > MOTORRIT_LEUN_EPS) {
+		fout(
+			'motorrit',
+			`de motor hangt ${nr(bocht.helling)} rad waar de balanshoek atan(v·ω/g) ${nr(balans)} rad vraagt bij ${nr(bocht.v)} m/s en ${nr(bocht.omega)} rad/s`,
+		);
+	}
+
+	// Stapvoets vol sturen: de zijversnelling is verwaarloosbaar, dus de motor staat bijna recht.
+	const kruip = rijLeun(MOTORRIT_KRUIP_GAS);
+	if (Math.abs(kruip.helling) > MOTORRIT_KRUIP_LEUN) {
+		fout(
+			'motorrit',
+			`bij stapvoets (${nr(kruip.v)} m/s) vol sturen hangt de motor ${nr(kruip.helling)} rad, meer dan de ${nr(MOTORRIT_KRUIP_LEUN)} rad die zo goed als recht toestaat`,
+		);
+	}
+
+	// Nooit voorbij zijn eigen hoek, ook niet vol op snelheid: hij rijdt hier al zijn topsnelheid
+	// recht, dan een paar frames de bocht in, waar de balanshoek ver boven de klem uitkomt en de
+	// klem hem moet vangen.
+	for (let stap = 0; stap < MOTORRIT_INZET; stap++) voertuigen.update(RIT_DT, { throttle: 1, steer: 1, boost: false });
+	const volHelling = slot.mesh.rotation.z;
+	if (volHelling <= 0) {
+		fout('motorrit', `met vol stuur op snelheid hangt de motor ${nr(volHelling)} rad, dus de andere kant op of niet`);
+	}
+	if (Math.abs(volHelling) > motor.maxLean + EPS) {
+		fout(
+			'motorrit',
+			`vol op snelheid hangt de motor ${nr(volHelling)} rad, voorbij de ${nr(motor.maxLean)} rad die op hem staat`,
+		);
 	}
 
 	// Een edit tijdens het rijden bouwt de wereld en elk voertuig erin opnieuw op, en
@@ -4170,6 +4379,22 @@ async function controleMotorrit(): Promise<void> {
 			'motorrit',
 			`na een herbouw zit je op (${nr(zadel.x)}, ${nr(zadel.z)}) terwijl de motor op (${nr(onderweg.x)}, ${nr(onderweg.z)}) staat`,
 		);
+	}
+
+	// Uitgestapt is `ride` leeg, dus de actieve-ritroute kan de geparkeerde motor
+	// niet herstellen. De aparte parkeerstand moet hetzelfde slot op dezelfde plek
+	// terugzetten en de speler te voet laten, waarna E hem daar weer vindt.
+	const refreshWereld = new CollisionWorld();
+	const naRefresh = new DriveableCars(refreshWereld, new Barriers(refreshWereld));
+	if (!naRefresh.restoreParked(onderweg)) {
+		fout('motorrit', `na uitstappen en refresh is ${onderweg.id} niet terug te zetten`);
+	} else {
+		if (naRefresh.activeKind !== null)
+			fout('motorrit', 'de geparkeerde motor zet de speler na refresh vanzelf weer in de rijstand');
+		const teruggevonden = naRefresh.nearestCar(new THREE.Vector3(onderweg.x, onderweg.y + 1, onderweg.z), 1);
+		if (!teruggevonden || teruggevonden.name !== onderweg.id) {
+			fout('motorrit', `na uitstappen en refresh staat ${onderweg.id} niet meer op zijn parkeerplek`);
+		}
 	}
 }
 
@@ -5530,6 +5755,54 @@ async function controleTheater(): Promise<void> {
 		);
 	}
 
+	// 7c. En uit elke kleedkamer rechtstreeks de coulisse op. De gang leidt via de
+	// centrale toneeldeur naar het midden van het toneel, maar een artiest hoort ook
+	// door de zijwand het toneel op te kunnen, langs de vleugel naast het doek. Die
+	// doorgang lag in de strook naast het toneeldoek — even breed als de doekmarge en
+	// vrij van de kaptafel die middenin de kamer staat — en ontbrak: de tussenwand
+	// stond daar massief, dus wie niet de gang terug nam kwam het toneel niet op.
+	const vleugelBreedte = THEATRE_PLAN.stage.set.margin;
+	const coulisseZ = midpoint(THEATRE_INTERIOR.minZ, THEATRE_STAGE_FRONT_Z);
+	const kamerZ = BACKSTAGE_INTERIOR.maxZ - vleugelBreedte;
+	for (const [naam, deurX] of [
+		['de westkleedkamer', THEATRE_INTERIOR.minX + half(vleugelBreedte)],
+		['de oostkleedkamer', THEATRE_INTERIOR.maxX - half(vleugelBreedte)],
+	] as [string, number][]) {
+		const naarToneel = volgPolylijn(
+			[
+				[deurX, kamerZ],
+				[deurX, coulisseZ],
+			],
+			BACKSTAGE_FLOOR_Y,
+		);
+		if (naarToneel.klacht !== null) {
+			fout('theater', `vanuit ${naam} strandt de wandeling naar het toneel: ${naarToneel.klacht}`);
+		} else if (
+			zoneAt(naarToneel.x, naarToneel.y, naarToneel.z) !== 'theatre' ||
+			!bijna(naarToneel.y, THEATRE_STAGE_TOP_Y, WALK_STEP)
+		) {
+			fout(
+				'theater',
+				`vanuit ${naam} eindigt de wandeling op (${nr(naarToneel.x)}, ${nr(naarToneel.z)}) y ${nr(naarToneel.y)}, niet op het toneel`,
+			);
+		}
+	}
+
+	// De collisionvloer tussen backstage en toneel bestond al, maar de tekenaar sloeg
+	// de twee dorpels over. Daardoor liep je bij de toneeldeur over een zichtbaar gat.
+	stubDocument();
+	const [THREE, { LightPool }, { CityTheatre }] = await Promise.all([
+		import('three'),
+		import('#/render/LightPool'),
+		import('#/scene/city/CityTheatre'),
+	]);
+	const getekend = new CityTheatre(new LightPool(new THREE.Scene()));
+	for (const id of ['stage-door-sill', 'wing-door-sill-west', 'wing-door-sill-east', 'artist-door-sill'] as const) {
+		if (getekend.group.getObjectByName(`theatre_${id}`)) continue;
+		fout('theater', `collision kent ${id}, maar de theaterbouwer tekent dat loopvlak niet`);
+	}
+	getekend.dispose();
+
 	await controleZaalcull(stoelMasker);
 	controleZaallabel();
 }
@@ -6415,6 +6688,185 @@ async function controleGlijbaan(): Promise<void> {
 }
 
 /**
+ * Uit het dakbad kom je er weer uit.
+ *
+ * Het bad is een kuil in de dakplaat en staat open naar de lucht. `groundHeightAt`
+ * weet dat (`poolFloorY` gaat vóór de dakpads), maar `headroomAt` las de dakplaat als
+ * een plafond van 0,6 m boven de badbodem. `fits()` eist staande vrije hoogte, dus op
+ * de hele diepe bodem kon je geen stap zetten en zat je muurvast. Overal waar je in het
+ * bad kunt staan hoort een staand lichaam te passen.
+ */
+function controleUitzwembad(): void {
+	const STAP = 0.75;
+	let diepste = Number.POSITIVE_INFINITY;
+	let gemeten = 0;
+	let klem: string | null = null;
+	for (let x = POOL_CENTER.x - 8; x <= POOL_CENTER.x + 8; x += STAP) {
+		for (let z = POOL_CENTER.z - 5; z <= POOL_CENTER.z + 5; z += STAP) {
+			const bodem = poolFloorY(x, z);
+			if (bodem === null) continue;
+			gemeten++;
+			if (bodem < diepste) diepste = bodem;
+			const vrij = wereld.headroomAt(x, z, bodem);
+			if (vrij < STAND_HEADROOM && klem === null) {
+				klem = `(${nr(x)}, ${nr(z)}) op badbodem ${nr(bodem)} heeft ${nr(vrij)} m vrije hoogte, minder dan de ${nr(STAND_HEADROOM)} m die staand nodig is`;
+			}
+		}
+	}
+	if (gemeten === 0) {
+		fout('uitzwembad', 'geen enkel punt binnen de waterlijn bemonsterd: de controle raakt het bad niet');
+		return;
+	}
+	if (Math.abs(diepste - POOL_FLOOR_Y) > STAP) {
+		fout(
+			'uitzwembad',
+			`het diepste bemonsterde punt is ${nr(diepste)}, niet de badbodem ${nr(POOL_FLOOR_Y)}: het diepe wordt niet geraakt`,
+		);
+	}
+	if (klem) fout('uitzwembad', `je komt het bad niet uit: ${klem}`);
+}
+
+/**
+ * De speler- en de sim-vloerlezer zijn het overal eens.
+ *
+ * `groundHeightAt` (speler) en `snapFloorY` (sims) horen dezelfde vloer te geven. Ze
+ * liepen uiteen waar de dakplaat een eigen kennis miste: in het dakbad beloofde
+ * `snapFloorY` het dek (13.95) waar de bodem op ~12.9 ligt, en boven een dak-reikend
+ * trapgat beloofde het het dek waar de vlucht eronder de vloer is. Zo liep een sim op
+ * het water of zweefde hij boven het gat. `poolFloorY` uit de datalaag is nu de ene
+ * bron; deze controle eist dat beide lezers hem — en de vlucht onder een gat — gelijk
+ * lezen, en dat de sweep zowel een bad- als een gatpunt raakt zodat ze iets bewijst.
+ */
+function controleLezers(): void {
+	const hw = half(MALL_FOOTPRINT.width);
+	const hd = half(MALL_FOOTPRINT.depth);
+	const oog = DAK + RAMP_BAND_MARGIN;
+	let bad = 0;
+	let gat = 0;
+	let oneens: string | null = null;
+	for (let x = -hw; x <= hw; x += 1) {
+		for (let z = -hd; z <= hd; z += 1) {
+			const grond = wereld.groundHeightAt(x, z, oog, WALK_STEP);
+			const sim = wereld.snapFloorY(x, z, oog);
+			// Alleen waar de vloer óp of ónder het dek ligt: dáár beloofde snapFloorY het
+			// dek (13.95) terwijl de bodem lager zat en zette hij een sim op het luchtledige.
+			// Een dak-reikende helling (glijbaanladder) ligt bóven het dek en heeft een eigen
+			// mid-helling-semantiek; die valt hier buiten.
+			if (grond > DAK + EPS) continue;
+			if (poolFloorY(x, z) !== null) bad++;
+			else if (grond > V1 && grond < DAK) gat++;
+			if (Math.abs(grond - sim) > EPS && oneens === null) {
+				oneens = `(${nr(x)}, ${nr(z)}): groundHeightAt=${nr(grond)} maar snapFloorY=${nr(sim)}`;
+			}
+		}
+	}
+	if (bad === 0) fout('lezers', 'geen bad-punt op dakhoogte bemonsterd: de bad-consistentie wordt niet geraakt');
+	if (gat === 0) fout('lezers', 'geen dak-reikend gat bemonsterd: de gat-consistentie wordt niet geraakt');
+	if (oneens) fout('lezers', `speler- en sim-vloer zijn het oneens: ${oneens}`);
+}
+
+/**
+ * Geen batch verliest het dek van een van zijn bronnen.
+ *
+ * De batcher voegt gelijkgekleurde vlakken per cel samen, en de cel-sleutel leest de
+ * mesh-translatie-y — niet de vertex-y — dus twee platen op verschillende dekken met
+ * gebakken vertices op de oorsprong delen een cel en dus een batch. Statische batches
+ * slaan `update()` over, dus een fout in het opbouwmasker is definitief. Zo verdween
+ * Kajs vloerbatch: het masker miste het tweede dek en geen kegel dekte hem. Deze
+ * controle bouwt zo'n grensgeval — een bord dat V1 verklaart bovenop zijn V0-doos, naast
+ * een gewoon vlak — en eist dat het batchmasker (en de bol) alle bron-dekken dekt.
+ */
+async function controleBatchbron(): Promise<void> {
+	stubDocument();
+	const winkel = new Map<string, string>();
+	(globalThis as unknown as { localStorage: unknown }).localStorage = {
+		getItem: (k: string) => winkel.get(k) ?? null,
+		setItem: (k: string, v: string) => winkel.set(k, v),
+		removeItem: (k: string) => winkel.delete(k),
+	};
+	const [THREE, { SceneBatcher }, { tagZoneSpan, zoneSpanOf }] = await Promise.all([
+		import('three'),
+		import('#/render/SceneBatcher'),
+		import('#/render/ZoneVisibility'),
+	]);
+	// De echte plaat eindigt door de Float32-posities van ExtrudeGeometry een
+	// fractie onder y=6. Toch is haar bovenvlak de V1-vloer en moet haar masker
+	// dus V1 dragen. Anders verdwijnt ze op Kajs positie zodra hij van het atrium
+	// naar de dichte zuidwand draait en geen V1→V0-portaalkegel haar meer redt.
+	const v1Bovenvlak = levelY('v1') - 1.2e-8;
+	const v1PlaatMasker = zoneMaskOfBounds({
+		minX: -half(MALL_FOOTPRINT.width),
+		maxX: half(MALL_FOOTPRINT.width),
+		minY: v1Bovenvlak - MALL_SLAB_SPECS.v1.thickness,
+		maxY: v1Bovenvlak,
+		minZ: -half(MALL_FOOTPRINT.depth),
+		maxZ: half(MALL_FOOTPRINT.depth),
+	});
+	if ((v1PlaatMasker & zoneBit('mall-v1')) === 0) {
+		fout('batchbron', 'de gerenderde V1-plaat verliest V1 door Float32-afronding aan de dekgrens');
+	}
+	const scene = new THREE.Scene();
+	const mat = new THREE.MeshLambertMaterial({ color: 0x808080 });
+	const geo = new THREE.BoxGeometry(4, 0.2, 4);
+	const vloer = new THREE.Mesh(geo, mat);
+	vloer.position.set(0, 0, 0.5);
+	scene.add(vloer);
+	const bord = new THREE.Mesh(geo, mat);
+	bord.position.set(0, 0, -0.5);
+	// Grensobject: verklaart V1 bovenop zijn V0-doos, zoals het roltrapbord.
+	tagZoneSpan(bord, zoneBit('mall-v1'));
+	scene.add(bord);
+
+	const batcher = new SceneBatcher(scene);
+	const doos = new THREE.Box3();
+	const hoek = new THREE.Vector3();
+	let bordGedekt = false;
+	for (const batch of batcher.auditBatches()) {
+		for (const bron of batch.sources) {
+			const span = zoneSpanOf(bron);
+			if ((batch.zoneMask & span) !== span) {
+				fout(
+					'batchbron',
+					`een batch mist de verklaarde span ${zonesOfMask(span)} van een bron (masker ${zonesOfMask(batch.zoneMask)})`,
+				);
+			}
+			doos.setFromObject(bron);
+			const boxMasker = doos.isEmpty()
+				? 0
+				: zoneMaskOfBounds({
+						minX: doos.min.x,
+						maxX: doos.max.x,
+						minY: doos.min.y,
+						maxY: doos.max.y,
+						minZ: doos.min.z,
+						maxZ: doos.max.z,
+					});
+			if ((batch.zoneMask & boxMasker) !== boxMasker) {
+				fout(
+					'batchbron',
+					`een batch mist het dek ${zonesOfMask(boxMasker)} van een bron-doos (masker ${zonesOfMask(batch.zoneMask)})`,
+				);
+			}
+			if (batch.sphere) {
+				for (const bx of [doos.min.x, doos.max.x]) {
+					for (const by of [doos.min.y, doos.max.y]) {
+						for (const bz of [doos.min.z, doos.max.z]) {
+							if (!batch.sphere.containsPoint(hoek.set(bx, by, bz))) {
+								fout('batchbron', 'de batch-bol dekt de doos van een bron niet');
+							}
+						}
+					}
+				}
+			}
+			if (bron === bord && (batch.zoneMask & zoneBit('mall-v1')) !== 0) bordGedekt = true;
+		}
+	}
+	if (!bordGedekt) {
+		fout('batchbron', 'het grensbord landde niet in een batch met zijn verklaarde V1: deze controle bewijst niets');
+	}
+}
+
+/**
  * Het weer valt buiten, niet binnen. Het onweersfront strooit regen en bliksem over de
  * stad; onder een dak hoort het droog te blijven. De uitsluiting komt uit de
  * gebouwschillen (`coversColumn`) en niet uit een tweede voetafdruk, dus een nieuw
@@ -6452,6 +6904,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'vloergat', draai: controleVloergat },
 	{ naam: 'hellinglijn', draai: controleHellinglijn },
 	{ naam: 'parkeeruitrit', draai: controleParkeeruitrit },
+	{ naam: 'uitrithek', draai: controleUitrithek },
 	{ naam: 'parkeerschil', draai: controleParkeerschil },
 	{ naam: 'ingang', draai: controleIngang },
 	{ naam: 'hurken', draai: controleHurken },
@@ -6464,6 +6917,9 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'glijbaan', draai: controleGlijbaan },
 	{ naam: 'glazendak', draai: controleGlazenDak },
 	{ naam: 'zwembad', draai: controleZwembad },
+	{ naam: 'uitzwembad', draai: controleUitzwembad },
+	{ naam: 'lezers', draai: controleLezers },
+	{ naam: 'batchbron', draai: controleBatchbron },
 	{ naam: 'badgasten', draai: controleBadgasten },
 	{ naam: 'platforms', draai: controlePlatforms },
 	{ naam: 'balustradesprong', draai: controleBalustradesprong },
@@ -6475,6 +6931,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'gevel', draai: controleGevel },
 	{ naam: 'buitenwerk', draai: controleBuitenwerk },
 	{ naam: 'puien', draai: controlePuien },
+	{ naam: 'winkelachterwanden', draai: controleWinkelachterwanden },
 	{ naam: 'parkeerplekken', draai: controleParkeerplekken },
 	{ naam: 'parkeerverf', draai: controleParkeerverf },
 	{ naam: 'kioskcoordinaten', draai: controleKioskCoordinaten },

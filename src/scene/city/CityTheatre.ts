@@ -1029,6 +1029,18 @@ export class CityTheatre {
 		vloer.position.set(midX, BACKSTAGE_FLOOR_Y + CARPET_LIFT, midZ);
 		vloer.receiveShadow = true;
 		this.group.add(vloer);
+		// De gangvloer en het toneel raken elkaar door de halve meter dikke tussenwand.
+		// Collision had daar al een stage-door-sill, maar alleen het grote backstage-vlak
+		// werd getekend: je liep dus over een zichtbaar gat. De artiesteningang en de twee
+		// coulissedeuren hebben dezelfde drempel. Alle komen uit het vloerrecord dat
+		// collision leest.
+		for (const id of ['stage-door-sill', 'wing-door-sill-west', 'wing-door-sill-east', 'artist-door-sill'] as const) {
+			const volume = THEATRE_HALL_ENTITY.volumes.find((candidate) => candidate.id === id);
+			if (!volume) throw new Error(`theater mist loopvlak ${id}`);
+			const sill = this.boxOf(vloerMat, geometryBounds(volume.geometry));
+			sill.name = `theatre_${id}`;
+			sill.receiveShadow = true;
+		}
 
 		const plafond = new THREE.Mesh(this.unitPlane, plafondMat);
 		plafond.scale.set(breedte, diepte, 1);

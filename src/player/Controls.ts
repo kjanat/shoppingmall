@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MALL_SHELL } from '#/data/layout';
+import { ATRIUM_VOID, MALL_SHELL } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
@@ -52,6 +52,61 @@ const STICK_MAX = 64;
 /** keyboard turning, rad/s */
 const TURN_SPEED = 2.2;
 const PITCH_SPEED = 1.2;
+/** Rennend draai je sneller: keer de toets-draaisnelheid hiermee. */
+const SPRINT_TURN_SCALE = 1.5;
+/** Rijdend kijk je minder ver omlaag en omhoog dan lopend, als fractie van PITCH_MAX. */
+const DRIVE_PITCH_DOWN = 0.7;
+const DRIVE_PITCH_UP = 0.55;
+
+/** Analoge kijkstick: kleiner dan dit is trillen, geen duw. */
+const LOOK_STICK_DEADZONE = 0.15;
+/** Toetsen-stuur onder dit niveau telt als geen stuur, en de stick neemt het over. */
+const KEY_STEER_EPSILON = 0.05;
+/** Onder deze wenslengte sta je stil; erboven loopt de bob en telt de looprichting. */
+const MOVE_EPSILON = 0.01;
+/** Loop je op de analoge stick, dan is dit de minimale duw zodat half indrukken niet kruipt. */
+const MIN_ANALOG_PUSH = 0.4;
+/** Touch: het linkerdeel van het scherm is de rijstick, de rest kijkt rond. */
+const TOUCH_DRIVE_ZONE = 0.4;
+
+/** Landingsknik: hoe diep de camera zakt per m/s inslag, en de bovengrens eraan (m). */
+const LAND_DIP_PER_SPEED = 0.014;
+const LAND_DIP_MAX = 0.16;
+/** Loop-bob: hieronder geen bob (m/s), basisfrequentie en hoeveel de pas hem versnelt (1/s), en de uitslag (m). */
+const BOB_MIN_SPEED = 0.3;
+const BOB_BASE_FREQ = 5.5;
+const BOB_SPEED_FREQ = 1.15;
+const BOB_AMPLITUDE = 0.055;
+/** Hoe snel bob, landingsknik, zijhelling en het wegzakken in water terugveren (1/s). */
+const BOB_SETTLE_RATE = 8;
+const DIP_SETTLE_RATE = 7;
+const LEAN_RATE = 6;
+const SINK_RATE = 8;
+/** Zijwaartse helling tijdens strafen, rennend en lopend (rad). */
+const LEAN_SPRINT = 0.02;
+const LEAN_WALK = 0.013;
+
+/** Drone en heli: topsnelheid (m/s), hoe traag ze die halen (1/s), en de stijg/daalsnelheid (m/s). */
+const FLIGHT_DRONE = { speed: 9, accel: 3.5, vSpeed: 6 } as const;
+const FLIGHT_HELI = { speed: 15, accel: 1.6, vSpeed: 7.5 } as const;
+/** Boven deze voethoogte ben je vrij van de mall en geldt alleen de wereldrand (m). */
+const FLIGHT_ABOVE_MALL_Y = 14.2;
+/** Botsingsstraal van het vliegende stoeltje (m). */
+const FLIGHT_RADIUS = 0.7;
+/** Zoveel smaller dan het atriumgat blijft de drone eronder vrij van de rand (m). */
+const VOID_INSET = 0.6;
+/** Binnen de mall onder deze hoogte drukt het plafond je omlaag; het atriumgat en buiten laten je door (m). */
+const FLIGHT_CEILING_TRIGGER_Y = 13.4;
+const FLIGHT_MALL_CEILING = 12.6;
+const FLIGHT_SKY_CEILING = 55;
+/** Grove grondstap terwijl je vliegt (m). */
+const FLIGHT_GROUND_STEP = 2.5;
+/** Zo hoog blijf je boven de vloer of de waterspiegel zweven (m). */
+const FLIGHT_FLOOR_CLEARANCE = 0.45;
+/** Ooghoogte in het stoeltje (m). */
+const FLIGHT_EYE = 0.55;
+/** Het stoeltje rolt mee met de zijsnelheid (rad per m/s). */
+const FLIGHT_BANK = 0.004;
 
 /**
  * How you steer. `turnWithKeys` is the no-mouse mode: A/D (and ←/→) swing the
@@ -361,7 +416,7 @@ export class PlayerControls {
 			steer -= 1;
 		}
 		// stick X as steer when no keys
-		if (Math.abs(steer) < 0.05) steer = -this.axisX;
+		if (Math.abs(steer) < KEY_STEER_EPSILON) steer = -this.axisX;
 		return {
 			throttle: clamp(throttle, -1, 1),
 			steer: clamp(steer, -1, 1),
@@ -381,7 +436,7 @@ export class PlayerControls {
 		if (this.keys.has('KeyR')) tilt += 1;
 		if (this.keys.has('KeyF')) tilt -= 1;
 		if (tilt !== 0) {
-			this.pitch = clamp(this.pitch + tilt * PITCH_SPEED * dt, -PITCH_MAX * 0.7, PITCH_MAX * 0.55);
+			this.pitch = clamp(this.pitch + tilt * PITCH_SPEED * dt, -PITCH_MAX * DRIVE_PITCH_DOWN, PITCH_MAX * DRIVE_PITCH_UP);
 		}
 		// Mouse look still adjusts pitch via pointermove (yaw ignored while driving)
 		this.cam.rotation.order = 'YXZ';
@@ -447,7 +502,7 @@ export class PlayerControls {
 		}
 
 		if (turn !== 0) {
-			this.yaw += turn * TURN_SPEED * (sprint ? 1.5 : 1) * dt;
+			this.yaw += turn * TURN_SPEED * (sprint ? SPRINT_TURN_SCALE : 1) * dt;
 			this.wrapYaw();
 		}
 		// R/F tilt, for people who never touch the mouse
@@ -470,14 +525,14 @@ export class PlayerControls {
 		wx = -sin * fwd + cos * strafe;
 		wz = -cos * fwd - sin * strafe;
 		const wishLen = Math.hypot(wx, wz);
-		const moving = wishLen > 0.01;
+		const moving = wishLen > MOVE_EPSILON;
 		if (moving) {
 			wx /= wishLen;
 			wz /= wishLen;
 		}
 
 		const gait = this.crouched ? CROUCH_SPEED : sprint ? RUN_SPEED : WALK_SPEED;
-		const speed = gait * clamp(wishLen, moving ? 0.4 : 0, 1) * (1 - (1 - WADE_SPEED) * wadeT);
+		const speed = gait * clamp(wishLen, moving ? MIN_ANALOG_PUSH : 0, 1) * (1 - (1 - WADE_SPEED) * wadeT);
 		const tx = wx * speed;
 		const tz = wz * speed;
 		const rate = (moving ? (this.grounded ? ACCEL : AIR_ACCEL) : FRICTION) * dt;
@@ -569,7 +624,7 @@ export class PlayerControls {
 				this.vy -= GRAVITY * dt;
 				this.feetY += this.vy * dt;
 				if (this.feetY <= ground) {
-					this.dip = Math.min(0.16, Math.abs(this.vy) * 0.014);
+					this.dip = Math.min(LAND_DIP_MAX, Math.abs(this.vy) * LAND_DIP_PER_SPEED);
 					this.feetY = ground;
 					this.vy = 0;
 					this.grounded = true;
@@ -579,16 +634,16 @@ export class PlayerControls {
 
 		// ── Head bob / landing dip / strafe lean ─────────────
 		const sp = Math.hypot(this.vel.x, this.vel.z);
-		if (this.grounded && sp > 0.3) {
-			this.bobT += dt * (5.5 + sp * 1.15);
-			const amp = Math.min(1, sp / RUN_SPEED) * 0.055;
+		if (this.grounded && sp > BOB_MIN_SPEED) {
+			this.bobT += dt * (BOB_BASE_FREQ + sp * BOB_SPEED_FREQ);
+			const amp = Math.min(1, sp / RUN_SPEED) * BOB_AMPLITUDE;
 			this.bob = Math.sin(this.bobT * 2) * amp;
 		} else {
-			this.bob = ease(this.bob, 0, 8, dt);
+			this.bob = ease(this.bob, 0, BOB_SETTLE_RATE, dt);
 		}
-		this.dip = ease(this.dip, 0, 7, dt);
-		this.lean = ease(this.lean, strafe * (sprint ? 0.02 : 0.013), 6, dt);
-		this.sink = ease(this.sink, wadeT * WADE_SINK, 8, dt);
+		this.dip = ease(this.dip, 0, DIP_SETTLE_RATE, dt);
+		this.lean = ease(this.lean, strafe * (sprint ? LEAN_SPRINT : LEAN_WALK), LEAN_RATE, dt);
+		this.sink = ease(this.sink, wadeT * WADE_SINK, SINK_RATE, dt);
 
 		p.y = this.feetY + this.eyeHeight + this.bob - this.dip - this.sink;
 
@@ -634,7 +689,7 @@ export class PlayerControls {
 
 		if (e.pointerType === 'touch') {
 			// Left third drives, the rest looks around
-			if (e.clientX < window.innerWidth * 0.4 && this.stickId === -1) {
+			if (e.clientX < window.innerWidth * TOUCH_DRIVE_ZONE && this.stickId === -1) {
 				this.stickId = e.pointerId;
 				this.stickOx = e.clientX;
 				this.stickOz = e.clientY;
@@ -682,8 +737,8 @@ export class PlayerControls {
 		if (e.pointerId === this.stickId) {
 			const dx = clamp((e.clientX - this.stickOx) / STICK_MAX, -1, 1);
 			const dy = clamp((e.clientY - this.stickOz) / STICK_MAX, -1, 1);
-			this.axisX = Math.abs(dx) < 0.15 ? 0 : dx;
-			this.axisY = Math.abs(dy) < 0.15 ? 0 : -dy;
+			this.axisX = Math.abs(dx) < LOOK_STICK_DEADZONE ? 0 : dx;
+			this.axisY = Math.abs(dy) < LOOK_STICK_DEADZONE ? 0 : -dy;
 			return;
 		}
 
@@ -754,26 +809,24 @@ export class PlayerControls {
 
 		// Heli: hogere topsnelheid maar trage respons (massa); drone: direct
 		const heli = this.flightProfile === 'heli';
-		const speed = heli ? 15 : 9;
-		const accel = heli ? 1.6 : 3.5;
-		const vSpeed = heli ? 7.5 : 6;
-		const tx = (-sin * fwd + cos * strafe) * speed;
-		const tz = (-cos * fwd - sin * strafe) * speed;
-		this.vel.x = ease(this.vel.x, tx, accel, dt);
-		this.vel.z = ease(this.vel.z, tz, accel, dt);
-		this.vy = ease(this.vy, vert * vSpeed, accel, dt);
+		const fp = heli ? FLIGHT_HELI : FLIGHT_DRONE;
+		const tx = (-sin * fwd + cos * strafe) * fp.speed;
+		const tz = (-cos * fwd - sin * strafe) * fp.speed;
+		this.vel.x = ease(this.vel.x, tx, fp.accel, dt);
+		this.vel.z = ease(this.vel.z, tz, fp.accel, dt);
+		this.vy = ease(this.vy, vert * fp.vSpeed, fp.accel, dt);
 
 		const p = this.cam.position;
 		const wantX = p.x + this.vel.x * dt;
 		const wantZ = p.z + this.vel.z * dt;
 
-		const aboveMall = this.feetY > 14.2;
+		const aboveMall = this.feetY > FLIGHT_ABOVE_MALL_Y;
 		if (aboveMall) {
 			// Vrije stadslucht — geen mall-collision, wel de wereldrand
 			p.x = clamp(wantX, CITY_BOUNDS.minX, CITY_BOUNDS.maxX);
 			p.z = clamp(wantZ, CITY_BOUNDS.minZ, CITY_BOUNDS.maxZ);
 		} else {
-			const solved = this.world.resolveCircle(wantX, wantZ, this.feetY, 0.7, 3, true, true, true);
+			const solved = this.world.resolveCircle(wantX, wantZ, this.feetY, FLIGHT_RADIUS, 3, true, true, true);
 			p.x = solved.x;
 			p.z = solved.z;
 		}
@@ -782,17 +835,17 @@ export class PlayerControls {
 		// atrium-gat of buiten de muren — daar mag je omhoog de stad in.
 		this.feetY += this.vy * dt;
 		const insideMall = Math.abs(p.x) < half(MALL_SHELL.width) && Math.abs(p.z) < half(MALL_SHELL.depth);
-		const overVoid = Math.abs(p.x) < 7.4 && Math.abs(p.z) < 5.4;
-		const ceiling = insideMall && !overVoid && this.feetY < 13.4 ? 12.6 : 55;
-		const g = this.world.groundHeightAt(p.x, p.z, this.feetY, 2.5);
+		const overVoid = Math.abs(p.x) < half(ATRIUM_VOID.width) - VOID_INSET && Math.abs(p.z) < half(ATRIUM_VOID.depth) - VOID_INSET;
+		const ceiling = insideMall && !overVoid && this.feetY < FLIGHT_CEILING_TRIGGER_Y ? FLIGHT_MALL_CEILING : FLIGHT_SKY_CEILING;
+		const g = this.world.groundHeightAt(p.x, p.z, this.feetY, FLIGHT_GROUND_STEP);
 		// Boven het dakbad is de waterspiegel de bodem: de badbodem ligt onder de
 		// dekplaat, dus daarop klemmen zet de drone middenin het dakbeton.
-		const floor = g + this.world.waterDepthAt(p.x, p.z, g) + 0.45;
+		const floor = g + this.world.waterDepthAt(p.x, p.z, g) + FLIGHT_FLOOR_CLEARANCE;
 		this.feetY = clamp(this.feetY, floor, ceiling);
 
-		p.y = this.feetY + 0.55; // ooghoogte in het stoeltje
+		p.y = this.feetY + FLIGHT_EYE; // ooghoogte in het stoeltje
 		this.cam.rotation.order = 'YXZ';
-		this.cam.rotation.set(this.pitch, this.yaw, -this.vel.x * 0.004);
+		this.cam.rotation.set(this.pitch, this.yaw, -this.vel.x * FLIGHT_BANK);
 		this.grounded = false;
 		this.wade = 0;
 		this.stance = 0;

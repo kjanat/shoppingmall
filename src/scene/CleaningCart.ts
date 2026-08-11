@@ -135,8 +135,12 @@ export class CleaningCart {
 			}
 		}
 
-		// Wall / store collision for the scrubber body
-		const r = this.world.resolveCircle(p.x, p.z, 0.5, this.radius, 4, true);
+		// Wall / store collision for the scrubber body. Niet te voet en niet klimmend: hij
+		// botst op alles wat climbable is — trap, roltrap én de glazen liftschacht. Een
+		// route-waypoint ligt in de east-escalator en zijn pad kruist de lift, en met
+		// climb=true reed hij daar dwars doorheen; hij gebruikt de lift nooit, dus de
+		// wheeled-doorlaat van de spelerskar hoort hier niet.
+		const r = this.world.resolveCircle(p.x, p.z, 0.5, this.radius, 4, false);
 		p.x = r.x;
 		p.z = r.z;
 
@@ -152,7 +156,7 @@ export class CleaningCart {
 				p.z += pushZ;
 				// Stall while blocked so he keeps yelling in place
 				this.t = Math.max(0, this.t - dt * BLOCKED_REWIND);
-				const wr = this.world.resolveCircle(p.x, p.z, 0.5, this.radius, 2, true);
+				const wr = this.world.resolveCircle(p.x, p.z, 0.5, this.radius, 2, false);
 				p.x = wr.x;
 				p.z = wr.z;
 			}

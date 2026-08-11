@@ -21,5 +21,8 @@ export const ATRIUM_VOID = footprint(16, 12);
 export const ATRIUM_BARRIER = expanded(ATRIUM_VOID, 0.5);
 /** Underground parking shell centered under the mall. */
 export const PARKING_FOOTPRINT = footprint(64, 42);
-/** Everything authored in the city must fit inside the gameplay camera. */
-export const WORLD_VIEW_DISTANCE = 200;
+/**
+ * Far clip for authored city content.
+ * Must clear the fur-con far corner (CON_LOT ~ x 500, z ±100) with headroom.
+ */
+export const WORLD_VIEW_DISTANCE = 620;

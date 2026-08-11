@@ -59,13 +59,17 @@ export function stepVehicleGround(
 	}
 	if (state.grounded) {
 		const surface = world.groundHeightAt(x, z, state.y + FALLING_STEP, STANDING_STEP);
-		const ground = surface < options.ceiling ? surface : state.y;
-		if (state.y - ground > DROP_STEP) {
+		// Een loopvlak boven het plafond hoort niet bij dit voertuig: het dak, of een
+		// steile voetgangertrap die het nooit had mogen raken. Dan niet de laatste hoogte
+		// vasthouden en in de lucht blijven hangen (de kar bleef zo op 7,99 m halverwege
+		// de geheime trap staan), maar loslaten en met dezelfde GRAVITY naar de echte
+		// vloer eronder vallen, net als van een rand af.
+		if (surface >= options.ceiling || state.y - surface > DROP_STEP) {
 			state.grounded = false;
 			state.vy = 0;
 			return false;
 		}
-		state.y = ground;
+		state.y = surface;
 		return false;
 	}
 	state.vy -= GRAVITY * dt;

@@ -204,6 +204,8 @@ export type SpatialVolume = Readonly<{
 	protrusion?: Protrusion;
 	/** Declared gap behind this volume's back; absent means it has to meet what stands there. */
 	standoff?: Standoff;
+	/** For a room shell, the faces that must meet structure behind them; absent means the single face its yaw points away from. */
+	backs?: readonly CardinalSide[];
 	/** Visual and physical obstruction are separate. Opaque visual geometry can block a route without a collider. */
 	clearance:
 		| Readonly<{ kind: 'clear' }>
@@ -1472,49 +1474,58 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 	for (const entity of entities) {
 		for (const volume of entity.volumes) {
 			if (!volume.tags.includes(ROOM_SHELL_TAG)) continue;
-			const side = backSide(entity.transform.rotation.yaw);
-			if (side === null) {
-				problems.push({
-					code: 'detached-backing',
-					message: `${entity.id}.${volume.id} is turned off the quarter turns, so which face is its back cannot be read`,
-					entities: [entity.id],
-				});
-				continue;
+			let sides: readonly CardinalSide[];
+			if (volume.backs && volume.backs.length > 0) {
+				sides = volume.backs;
+			} else {
+				const back = backSide(entity.transform.rotation.yaw);
+				if (back === null) {
+					problems.push({
+						code: 'detached-backing',
+						message: `${entity.id}.${volume.id} is turned off the quarter turns, so which face is its back cannot be read`,
+						entities: [entity.id],
+					});
+					continue;
+				}
+				sides = [back];
 			}
-			const gap = backingGap(geometryBounds(volume.geometry), side, entities, entity);
 			const permit = volume.standoff;
-			if (permit && permit.side !== side) {
+			if (permit && !sides.includes(permit.side)) {
 				problems.push({
 					code: 'unused-standoff',
-					message: `${entity.id}.${volume.id} declares its standoff on the ${permit.side} face while its back is the ${side} face`,
+					message: `${entity.id}.${volume.id} declares its standoff on the ${permit.side} face, which is not one of its backing faces`,
 					entities: [entity.id],
 				});
 				continue;
 			}
-			if (gap === null) {
-				problems.push({
-					code: 'detached-backing',
-					message: `${entity.id}.${volume.id} has no structure behind its ${side} face at all`,
-					entities: [entity.id],
-				});
-				continue;
-			}
-			const allowed = permit ? permit.depth : 0;
-			if (gap > allowed + STANDOFF_MARGIN) {
-				problems.push({
-					code: 'detached-backing',
-					message: `${entity.id}.${volume.id} stands ${gap.toFixed(3)} m clear of the structure behind its ${side} face and declares ${allowed.toFixed(3)} m`,
-					entities: [entity.id],
-				});
-			} else if (permit && gap < permit.depth - STANDOFF_MARGIN) {
-				// Dezelfde helft als bij een ongebruikte protrusion: een verklaring die
-				// ruimer is dan het gat dat er ligt houdt een vergunning open voor
-				// geometrie die allang teruggeschoven is.
-				problems.push({
-					code: 'unused-standoff',
-					message: `${entity.id}.${volume.id} declares ${permit.depth.toFixed(3)} m of standoff and keeps only ${gap.toFixed(3)} m`,
-					entities: [entity.id],
-				});
+			const shellBounds = geometryBounds(volume.geometry);
+			for (const side of sides) {
+				const gap = backingGap(shellBounds, side, entities, entity);
+				const allowed = permit && permit.side === side ? permit.depth : 0;
+				if (gap === null) {
+					problems.push({
+						code: 'detached-backing',
+						message: `${entity.id}.${volume.id} has no structure behind its ${side} face at all`,
+						entities: [entity.id],
+					});
+					continue;
+				}
+				if (gap > allowed + STANDOFF_MARGIN) {
+					problems.push({
+						code: 'detached-backing',
+						message: `${entity.id}.${volume.id} stands ${gap.toFixed(3)} m clear of the structure behind its ${side} face and declares ${allowed.toFixed(3)} m`,
+						entities: [entity.id],
+					});
+				} else if (permit && permit.side === side && gap < permit.depth - STANDOFF_MARGIN) {
+					// Dezelfde helft als bij een ongebruikte protrusion: een verklaring die
+					// ruimer is dan het gat dat er ligt houdt een vergunning open voor
+					// geometrie die allang teruggeschoven is.
+					problems.push({
+						code: 'unused-standoff',
+						message: `${entity.id}.${volume.id} declares ${permit.depth.toFixed(3)} m of standoff and keeps only ${gap.toFixed(3)} m`,
+						entities: [entity.id],
+					});
+				}
 			}
 		}
 	}

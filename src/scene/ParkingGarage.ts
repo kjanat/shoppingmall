@@ -15,6 +15,8 @@ import {
 	PARKING_EXIT_RAMP_ANGLE,
 	PARKING_EXIT_RAMP_LENGTH,
 	PARKING_EXIT_TRENCH,
+	PARKING_EXIT_TRENCH_GUARD,
+	PARKING_EXIT_TRENCH_GUARDS,
 	PARKING_EXIT_TRENCH_HEAD,
 	PARKING_EXIT_TRENCH_WALLS,
 	PARKING_SLAB_SPEC,
@@ -218,6 +220,37 @@ export class ParkingGarage {
 				castShadow: this.shellCasts,
 			});
 		}
+		// Een zichtbaar straathek boven de open geul. De keermuur zelf eindigt maar
+		// vijf centimeter boven het maaiveld en verklaarde de collision dus niet aan
+		// de speler; met twee regels en staanders leest de rand nu als een echte val.
+		for (const guard of PARKING_EXIT_TRENCH_GUARDS) {
+			const lengte = span(guard.minX, guard.maxX);
+			for (const y of [
+				guard.minY + PARKING_EXIT_TRENCH_GUARD.height * 0.55,
+				guard.maxY - half(PARKING_EXIT_TRENCH_GUARD.railThickness),
+			]) {
+				addBoxMesh(this.group, dark, {
+					name: `parking-trench-${guard.id}-rail`,
+					width: lengte,
+					height: PARKING_EXIT_TRENCH_GUARD.railThickness,
+					depth: guard.thickness,
+					position: { x: midpoint(guard.minX, guard.maxX), y: y - GARAGE_Y, z: guard.centerZ },
+					castShadow: this.shellCasts,
+				});
+			}
+			const vakken = Math.ceil(lengte / PARKING_EXIT_TRENCH_GUARD.postPitch);
+			for (let i = 0; i <= vakken; i++) {
+				const x = guard.minX + (lengte * i) / vakken;
+				addBoxMesh(this.group, dark, {
+					name: `parking-trench-${guard.id}-post`,
+					width: PARKING_EXIT_TRENCH_GUARD.postSize,
+					height: PARKING_EXIT_TRENCH_GUARD.height,
+					depth: PARKING_EXIT_TRENCH_GUARD.postSize,
+					position: { x, y: midpoint(guard.minY, guard.maxY) - GARAGE_Y, z: guard.centerZ },
+					castShadow: this.shellCasts,
+				});
+			}
+		}
 		// En de kop erboven: tussen het parkeerdak en de begane-grondplaat zat een
 		// spouw van bijna een meter waar de geul met zijn volle hoogte in uitkwam.
 		addBoxMesh(this.group, concrete, {
@@ -250,8 +283,14 @@ export class ParkingGarage {
 		citySign.position.set(citySignX, citySignY, CITY_SIGN.centerZ);
 		citySign.rotation.y = Math.PI / 2;
 		this.group.add(citySign);
-		// Hij staat vrij op de stoep, dus van het plein af kijk je tegen zijn rug aan.
-		this.backSign(citySign);
+		// Wie van de ring terugkomt kijkt naar de andere kant van dezelfde plaat. Daar
+		// staat de bestemming van de terugweg in plaats van een grijze achterkant.
+		const parkingSign = this.makeTextPlane('← PARKING', CITY_SIGN.width, CITY_SIGN.height, '#0d47a1', '#fff');
+		parkingSign.position
+			.copy(citySign.position)
+			.addScaledVector(new THREE.Vector3(0, 0, 1).applyEuler(citySign.rotation), -SIGN_BACK_GAP);
+		parkingSign.rotation.set(citySign.rotation.x, citySign.rotation.y + Math.PI, citySign.rotation.z);
+		this.group.add(parkingSign);
 		const postTop = citySignY + half(CITY_SIGN.height);
 		const postBase = CITY_GROUND_Y - GARAGE_Y;
 		const postMat = this.track(lit({ color: 0x9aa2a8, roughness: 0.5, metalness: 0.6 }));

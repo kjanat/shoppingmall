@@ -18,9 +18,12 @@
  * weg, en dat zijn nu juist de gaten waar dit over gaat.
  */
 
+import { CON_ENVELOPE, CON_FOOTPRINT, CON_ZONE_VOLUME } from '#/data/conPlan';
+import { conOpeningWithin } from '#/data/conWorld';
 import { MALL_FOOTPRINT } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt, levelBand, levelElevationIndex, levelY } from '#/data/levels';
+import { poolFloorY } from '#/data/pool';
 import type { Bounds2, Bounds3, CardinalSide, SpatialVolume, WorldEntity } from '#/data/spatial';
 import { GLASS_TAG, geometryBounds, NOT_A_PORTAL_TAG } from '#/data/spatial';
 import type { FacadePanel } from '#/data/world';
@@ -34,10 +37,9 @@ import {
 	theatreOpeningWithin,
 	WORLD_ENTITIES,
 } from '#/data/world';
-import { poolFloorY } from '#/scene/RoofIsland';
 import { half, span } from '#/util/math';
 
-export const ZONES = ['stad', 'p1', 'mall-v0', 'mall-v1', 'roof', 'theatre'] as const;
+export const ZONES = ['stad', 'p1', 'mall-v0', 'mall-v1', 'roof', 'theatre', 'con'] as const;
 
 export type ZoneId = (typeof ZONES)[number];
 
@@ -93,7 +95,7 @@ type Band = Readonly<{ minY: number; maxY: number }>;
  * en is een dorpel die dat vlak doorsnijdt herkenbaar als doorsnijding.
  */
 type Enclosure = Readonly<{
-	id: 'mall' | 'theatre';
+	id: 'mall' | 'theatre' | 'con';
 	plan: Bounds2;
 	/** De omhullende van zijn wandkasten: de huid waar de gevelcontrole tegen meet. */
 	envelope: Bounds2;
@@ -123,13 +125,18 @@ const UNBOUNDED: Band = { minY: Number.NEGATIVE_INFINITY, maxY: Number.POSITIVE_
  * atrium staat op de V0-plaat en mag daarom p1 niet claimen.
  */
 function mallZonesOfSpan(minY: number, maxY: number): number {
+	// ExtrudeGeometry bewaart zijn posities als Float32. Een plaat met topY 6
+	// komt daardoor na de wereldtransformatie uit op 5.999999988 en miste zonder
+	// speling het dek waarvan hij de vloer is. Richting een portaal bleef zo'n
+	// fout gemaskeerd; richting een dichte wand verdween de hele vloerbatch.
+	const boundarySlack = 1e-5;
 	let mask = 0;
 	for (let index = 0; index < LEVELS_BOTTOM_UP.length; index++) {
 		const entry = LEVELS_BOTTOM_UP[index];
 		if (!entry) continue;
 		const lo = LEVELS_BOTTOM_UP[index - 1] ? entry.y : Number.NEGATIVE_INFINITY;
 		const hi = LEVELS_BOTTOM_UP[index + 1]?.y ?? Number.POSITIVE_INFINITY;
-		if (maxY >= lo && minY < hi) mask |= ZONE_BIT_BY_ELEVATION[index] ?? 0;
+		if (maxY >= lo - boundarySlack && minY < hi) mask |= ZONE_BIT_BY_ELEVATION[index] ?? 0;
 	}
 	return mask;
 }
@@ -164,6 +171,16 @@ const ENCLOSURES: readonly Enclosure[] = [
 		zonesOfY: (minY, maxY) => (maxY > THEATRE_BAND.minY && minY < THEATRE_BAND.maxY ? zoneBit('theatre') : 0),
 		openingWithin: theatreOpeningWithin,
 	},
+	{
+		id: 'con',
+		plan: CON_ENVELOPE,
+		envelope: CON_FOOTPRINT,
+		band: { minY: CON_ZONE_VOLUME.minY, maxY: CON_ZONE_VOLUME.maxY },
+		zones: ['con'],
+		zoneOfY: () => 'con',
+		zonesOfY: (minY, maxY) => (maxY > CON_ZONE_VOLUME.minY && minY < CON_ZONE_VOLUME.maxY ? zoneBit('con') : 0),
+		openingWithin: conOpeningWithin,
+	},
 ];
 
 const ENCLOSURE_BY_ZONE: ReadonlyMap<ZoneId, Enclosure> = new Map(
@@ -177,13 +194,17 @@ const ENCLOSURE_BY_ZONE: ReadonlyMap<ZoneId, Enclosure> = new Map(
  * staat. Zonder deze lijst kende ze er maar één en stak het hele theater honderd
  * meter voorbij de oostgevel van de mall uit.
  */
-export const ZONE_ENCLOSURES: readonly Readonly<{ id: 'mall' | 'theatre'; plan: Bounds2; envelope: Bounds2; band: Band }>[] =
-	ENCLOSURES.map((enclosure) => ({
-		id: enclosure.id,
-		plan: enclosure.plan,
-		envelope: enclosure.envelope,
-		band: enclosure.band,
-	}));
+export const ZONE_ENCLOSURES: readonly Readonly<{
+	id: 'mall' | 'theatre' | 'con';
+	plan: Bounds2;
+	envelope: Bounds2;
+	band: Band;
+}>[] = ENCLOSURES.map((enclosure) => ({
+	id: enclosure.id,
+	plan: enclosure.plan,
+	envelope: enclosure.envelope,
+	band: enclosure.band,
+}));
 
 /**
  * Staat deze grondkolom onder een gebouw, met `margin` extra rondom?

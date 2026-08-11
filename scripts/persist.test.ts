@@ -35,6 +35,7 @@ const HELE_SESSIE: Omit<PersistedGame, 'v' | 'savedAt'> = {
 	thiefFiredAt: 12,
 	disco: true,
 	ride: { kind: 'car', id: 'huurauto-1', x: 5, y: 0, z: 6, yaw: 1, speed: 3 },
+	parkedVehicle: { kind: 'car', id: 'ZWARTE MOTOR', x: 73, y: 0, z: -45, yaw: 0.8, speed: 0 },
 };
 
 describe('een opgeslagen sessie wordt aan de grens gelezen', () => {
@@ -47,6 +48,7 @@ describe('een opgeslagen sessie wordt aan de grens gelezen', () => {
 		const terug = loadGame();
 		assert.ok(terug);
 		assert.deepEqual(terug.ride, HELE_SESSIE.ride);
+		assert.deepEqual(terug.parkedVehicle, HELE_SESSIE.parkedVehicle);
 		assert.deepEqual(terug.path, HELE_SESSIE.path);
 		assert.equal(terug.score, 7);
 		assert.equal(terug.storeId, 'kruidvat');
@@ -98,6 +100,7 @@ describe('een opgeslagen sessie wordt aan de grens gelezen', () => {
 		assert.equal(terug.storeId, null);
 		assert.equal(terug.disco, false);
 		assert.equal(terug.ride, null);
+		assert.equal(terug.parkedVehicle, null);
 	});
 
 	test('een route houdt alleen de knopen over waar echt een plek in staat', () => {

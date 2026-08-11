@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import { STANDING_PEDESTRIAN } from '#/data/character';
 import { level, levelAt } from '#/data/levels';
 import type { DriveableHandling, DriveableKind, DriveableSpot } from '#/data/world';
 import { DRIVEABLE_HANDLING, DRIVEABLE_SPOTS, RENTAL_CAR_SPEC } from '#/data/world';
 import type { CollisionWorld } from '#/physics/Collision';
 import type { VehicleGroundState } from '#/physics/VehicleGround';
 import { LANDING_GRIP, stepVehicleGround } from '#/physics/VehicleGround';
+import { GRAVITY } from '#/player/constants';
 import { lit } from '#/render/material';
 import type { Barriers } from '#/scene/city/Barriers';
 import { outsideMallFootprint } from '#/scene/city/cityPlan';
@@ -32,6 +34,8 @@ type CarSlot = {
 
 /** Hoe snel de carrosserie de gemeten helling aanneemt. Direct is een schok bij elke naad. */
 const PITCH_EASE = 9;
+/** Hoe snel de motor naar zijn balanshoek toe leunt. Direct springt de leun bij elke stuurcorrectie. */
+const LEAN_EASE = 7;
 /** Boven dit loopvlak hoort een huurvoertuig niet; het rijdt de garage en de stad, geen daken. */
 const CEILING = 10;
 
@@ -54,6 +58,8 @@ export class DriveableCars {
 	private readonly ground: VehicleGroundState = { y: GARAGE_Y, vy: 0, grounded: true };
 	/** Hoe schuin hij nu staat; loopt achter de gemeten helling aan, dus geen knik aan de voet van de helling. */
 	private pitch = 0;
+	/** Hoe ver de motor nu in de bocht hangt; loopt eased naar de balanshoek toe. De auto rolt niet via deze staat. */
+	private lean = 0;
 	private wheels: THREE.Object3D[] = [];
 	/** Van het voertuig waar hij nu op zit; buiten een rit die van de auto. */
 	private handling: DriveableHandling = DRIVEABLE_HANDLING.car;
@@ -146,6 +152,7 @@ export class DriveableCars {
 		this.yaw = c.mesh.rotation.y - Math.PI;
 		this.speed = 0;
 		this.pitch = 0;
+		this.lean = 0;
 		this.ground.y = this.pos.y;
 		this.ground.vy = 0;
 		this.ground.grounded = true;
@@ -174,6 +181,19 @@ export class DriveableCars {
 		slot.mesh.rotation.set(0, state.yaw + Math.PI, 0);
 		if (!this.board(slot)) return false;
 		this.speed = state.speed;
+		return true;
+	}
+
+	/** Zet een uitgestapt voertuig na HMR terug zonder de speler opnieuw te laten instappen. */
+	restoreParked(state: VehicleRide): boolean {
+		const slot = this.cars.find((car) => car.name === state.id);
+		if (!slot) return false;
+		slot.active = false;
+		slot.park.set(state.x, state.y, state.z);
+		slot.yaw = state.yaw + Math.PI;
+		slot.mesh.position.copy(slot.park);
+		slot.mesh.rotation.set(0, slot.yaw, 0);
+		this.paintLabel(slot, `${slot.name} · E`, '#0d47a1');
 		return true;
 	}
 
@@ -236,6 +256,7 @@ export class DriveableCars {
 			else this.speed = Math.min(0, this.speed + handling.friction * dt);
 		}
 
+		const yawBefore = this.yaw;
 		const steerAuth = clamp(Math.abs(this.speed) / 5, 0.25, 1);
 		if (Math.abs(steer) > 0.05) {
 			const dir = this.speed >= -0.2 ? 1 : -1;
@@ -262,7 +283,10 @@ export class DriveableCars {
 
 		// Op wielen, niet te voet: de trap en de roltrap houden hem tegen, de lift en de
 		// uitritramp laten hem door, uit de poorten van elke doorgang.
-		const hit = this.world.resolveCircle(nx, nz, gy + 0.6, handling.radius, 4, false, !this.ground.grounded, true, true);
+		const hit = this.world.resolveCircle(nx, nz, gy + 0.6, handling.radius, 4, false, !this.ground.grounded, true, true, {
+			feetY: gy,
+			height: STANDING_PEDESTRIAN.requiredHeadroom,
+		});
 		const scraped = Math.hypot(hit.x - nx, hit.z - nz) > 0.04;
 		if (scraped) this.speed *= 0.55;
 		nx = hit.x;
@@ -273,9 +297,20 @@ export class DriveableCars {
 		const gemeten = this.ground.grounded ? this.world.surfacePitchAt(nx, nz, gy, fx, fz, handling.wheelbase) : this.pitch;
 		this.pitch = ease(this.pitch, gemeten, PITCH_EASE, dt);
 
-		// Hangen in de bocht: de auto zet zich een paar graden op zijn veren, de motor
-		// legt zich er echt in. Beide om dezelfde as, met hun eigen maat uit het model.
-		const lean = clamp(steer * Math.abs(this.speed) * handling.leanPerSteerSpeed, -handling.maxLean, handling.maxLean);
+		// Hangen in de bocht. De motor legt zich in de balanshoek van de bocht, atan(v·ω/g),
+		// waar de zijwaartse versnelling en de zwaartekracht in evenwicht komen, en loopt eased
+		// naar die hoek toe zodat een stuurcorrectie geen schok is. De oude leun hing aan de
+		// stuuruitslag (steer·vaart) en bleef in een echte bocht ver onder de hoek die de vaart
+		// vroeg. De auto rolt nog wel direct op zijn veren, per stuur en vaart, de andere kant op.
+		let lean: number;
+		if (this.active.kind === 'motorcycle') {
+			const yawRate = dt > 0 ? (this.yaw - yawBefore) / dt : 0;
+			const doel = clamp(Math.atan2(this.speed * yawRate, GRAVITY), -handling.maxLean, handling.maxLean);
+			this.lean = ease(this.lean, doel, LEAN_EASE, dt);
+			lean = this.lean;
+		} else {
+			lean = clamp(steer * Math.abs(this.speed) * (handling.leanPerSteerSpeed ?? 0), -handling.maxLean, handling.maxLean);
+		}
 		this.pos.set(nx, gy, nz);
 		const mesh = this.active.mesh;
 		mesh.position.copy(this.pos);

@@ -6,8 +6,22 @@ import type { EscalatorSpec } from '#/data/connectors';
 import { CONNECTOR_LIMITS, VerticalConnectorRegistrySchema, validateEscalatorSpec } from '#/data/connectors';
 import { LEVEL_LIMITS, LevelRegistrySchema } from '#/data/levelSchema';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt } from '#/data/levels';
-import type { FlightClearanceGeometry, InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
-import { geometryBounds, PLAN_ENVELOPE_TAG, pointInPlan, receiverAccepts, validateSpatialWorld } from '#/data/spatial';
+import type {
+	CardinalSide,
+	FlightClearanceGeometry,
+	InteractionReceiver,
+	PlanShape,
+	SpatialVolume,
+	WorldEntity,
+} from '#/data/spatial';
+import {
+	geometryBounds,
+	PLAN_ENVELOPE_TAG,
+	pointInPlan,
+	ROOM_SHELL_TAG,
+	receiverAccepts,
+	validateSpatialWorld,
+} from '#/data/spatial';
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
 import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATORS, VERTICAL_CONNECTORS, WORLD_ENTITIES } from '#/data/world';
 import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
@@ -397,6 +411,34 @@ describe('authoritative spatial world', () => {
 			},
 		]);
 		assert.deepEqual(validateSpatialWorld([floor, entity('room', 'fixture', [clear])]), []);
+	});
+
+	test('a corner room shell must rest against the structure behind each backing face it declares', () => {
+		const backs: readonly CardinalSide[] = ['north', 'west'];
+		const floor = entity('mall-floor', 'structure', [prism('surface', 'support', 0, 0, 40, 40, -0.3, 0, false, true)]);
+		// Twee loodrechte gevels, met een kier bij de hoek zodat ze niet coplanair raken.
+		const north = entity('perimeter-north', 'structure', [prism('wall', 'solid', 5.1, -10.2, 30, 0.4, 0, 4, true, true)]);
+		const west = entity('perimeter-west', 'structure', [prism('wall', 'solid', -10.2, 0, 0.4, 40, 0, 4, true, true)]);
+		const cornerRoom = (cx: number, cz: number): WorldEntity =>
+			entity('prayer', 'fixture', [
+				{
+					...prism('room-shell', 'support', cx, cz, 6, 4, 0, 0.08, false, true),
+					tags: [PLAN_ENVELOPE_TAG, ROOM_SHELL_TAG],
+					backs,
+				},
+			]);
+
+		// Vloerrand west op x −10, noord op z −10: rug én zijkant raken de gevels.
+		assert.deepEqual(validateSpatialWorld([floor, north, west, cornerRoom(-7, -8)]), []);
+
+		// Een halve meter naar het oosten: de rug blijft staan, de zijkant laat los.
+		assert.deepEqual(validateSpatialWorld([floor, north, west, cornerRoom(-6.5, -8)]), [
+			{
+				code: 'detached-backing',
+				message: 'prayer.room-shell stands 0.500 m clear of the structure behind its west face and declares 0.000 m',
+				entities: ['prayer'],
+			},
+		]);
 	});
 
 	test('a storefront frontage rejects a collider and a solid without one alike', () => {

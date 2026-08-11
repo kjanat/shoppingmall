@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle';
 import type { EffectComposer } from 'postprocessing';
 import * as THREE from 'three';
 import { BartekChat } from '#/audio/BartekChat';
-import { DJPlayer } from '#/audio/DJPlayer';
+import { BOOTH_FALLOFF_K, DJPlayer } from '#/audio/DJPlayer';
 import { fetchDjStatus, playBoothFile, speakLine } from '#/audio/ElevenVoice';
 import { spatial } from '#/audio/SpatialAudio';
 import { Director } from '#/camera/Director';
@@ -50,6 +50,7 @@ import { CityTheatre } from '#/scene/city/CityTheatre';
 import type { RoadObstacle } from '#/scene/city/CityTraffic';
 import { CityTraffic } from '#/scene/city/CityTraffic';
 import { CITY_TRAFFIC_ZONES } from '#/scene/city/cityPlan';
+import { FurryCon } from '#/scene/con/FurryCon';
 import { DiscoParty } from '#/scene/Disco';
 import { BARTEK_LINES, DJBartek } from '#/scene/DJBartek';
 import { DriveableCars } from '#/scene/DriveableCars';
@@ -123,6 +124,18 @@ const DYN_RES_UP_FACTOR = 1.12;
  * een sample leveren en de regelaar zou juist dáár bevriezen.
  */
 const FRAME_MS_SPIKE = 250;
+/** Onder deze frametijd (ms) is een sample te snel om als vsync-schatting te tellen. */
+const DYN_RES_VSYNC_FLOOR_MS = 4;
+/** EMA-gewichten van de frametijd: hoeveel het gemiddelde onthoudt tegen het verse sample. */
+const DYN_RES_EMA_OLD = 0.9;
+const DYN_RES_EMA_NEW = 0.1;
+/** Zo lang aanhoudend traag zakt de schaal een trede, en (langer) ruim comfort voor hij weer omhoog mag (s). */
+const DYN_RES_HOLD_DOWN_S = 0.5;
+const DYN_RES_HOLD_UP_S = 2;
+/** Afkoeltijd na een schaalwissel voor de regelaar opnieuw mag ingrijpen (s). */
+const DYN_RES_COOLDOWN_S = 1;
+/** Valversnelling van de confetti (m/s²); lichter dan de speler zodat het dwarrelt. */
+const CONFETTI_GRAVITY = 9;
 
 /** Wat E bij de lift doet: het paneel in de cabine, of de oproepknop op een overloop. */
 type ElevatorAction = { kind: 'menu' } | { kind: 'call'; level: LevelId };
@@ -169,6 +182,8 @@ export class App {
 	private cityPlaza = new CityPlaza();
 	/** Het theater heeft zaallicht, dus het krijgt de pool en wordt in de ctor gebouwd. */
 	private cityTheatre: CityTheatre;
+	/** RAI-scale fur con east of the ring; adult wing + techno + crowd. */
+	private furryCon: FurryCon;
 	private cityGarage = new CityGarage();
 	private citySky = new CitySky();
 	private cityBirds = new CityBirds();
@@ -265,6 +280,8 @@ export class App {
 	private lastRafTs: number | null = null;
 	/** Welk voertuig je bestuurt */
 	private vehicle: 'drone' | 'heli' | 'scrubber' | 'car' | null = null;
+	/** Laatste parkeerstand; blijft na uitstappen bewaard voor een HMR-herbouw. */
+	private lastParkedVehicle: PersistedRide | null = null;
 	/** reused each frame for the monkey's target list */
 	private simPositions: THREE.Vector3[] = [];
 	private djPlayer = new DJPlayer();
@@ -331,6 +348,7 @@ export class App {
 		roof: new CoarseTicker(),
 		city: new CoarseTicker(),
 		theatre: new CoarseTicker(),
+		con: new CoarseTicker(),
 	};
 	/** Resolves once the shaders are linked and the frame loop is running. */
 	readonly ready: Promise<void>;
@@ -360,6 +378,7 @@ export class App {
 		this.djBartek = new DJBartek(this.pool);
 		this.alienProbe = new AlienProbe(this.pool);
 		this.cityTheatre = new CityTheatre(this.pool);
+		this.furryCon = new FurryCon(this.pool, this.world);
 
 		this.atmosphere = new Atmosphere(this.world);
 		this.thief = new BakerThief(this.world, this.beardCave);
@@ -454,6 +473,7 @@ export class App {
 		this.scene.add(this.barriers.group);
 		this.scene.add(this.cityPark.group);
 		this.scene.add(this.cityTheatre.group);
+		this.scene.add(this.furryCon.group);
 		this.scene.add(this.cityGarage.group);
 		this.scene.add(this.citySky.group);
 		this.scene.add(this.cityBirds.group);
@@ -868,6 +888,10 @@ export class App {
 				this.onStartRoute(getKruidvat());
 			}
 			if (e.key === 'Escape') {
+				if (this.furryCon.tryLeaveScene()) {
+					this.ui.setStatus('Left scene');
+					return;
+				}
 				if (this.djUi.isOpen()) {
 					this.djUi.hide();
 					return;
@@ -891,6 +915,12 @@ export class App {
 					this.onCancel();
 				}
 			}
+			if (e.key === 'f' || e.key === 'F') {
+				if (this.furryCon.toggleFilm(this.camera.position)) {
+					this.ui.setStatus('Studio film mode');
+					return;
+				}
+			}
 			if (e.key === 'h' || e.key === 'H') this.onHome();
 			if (e.key === 'v' || e.key === 'V') this.togglePossess();
 			if (e.key === 'p' || e.key === 'P') this.toggleDisco();
@@ -905,8 +935,12 @@ export class App {
 					this.monkey.provoke() ? '🐒 De aap pakt een handvol kak… duiken!' : '🐒 De aap heeft even niks bij de hand',
 				);
 			}
-			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper
+			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper · con adult
 			if (e.key === 'e' || e.key === 'E') {
+				if (this.furryCon.tryJoin(this.camera.position)) {
+					this.ui.setStatus('Joined scene · Esc to leave');
+					return;
+				}
 				// Het liftpaneel wint één keer van uitstappen: rijdend in de cabine was E altijd
 				// uitstappen, dus Hans' verdiepingenmenu was met een voertuig onbereikbaar.
 				// Alleen het paneel zelf, want een oproepknop naast de schacht mag niet
@@ -965,6 +999,7 @@ export class App {
 			this.prayer.ensureAudio();
 			this.protest.ensureAudio();
 			this.cleaner.ensureAudio();
+			this.furryCon.unlockAudio();
 			// Resume / start mall music after gesture
 			void (async () => {
 				const resumed = await this.djPlayer.restoreIfNeeded();
@@ -1129,6 +1164,7 @@ export class App {
 			thiefFiredAt: this.thiefFiredAt,
 			disco: this.disco.active === true,
 			ride: this.rideSnapshot(),
+			parkedVehicle: this.lastParkedVehicle,
 		});
 	}
 
@@ -1160,6 +1196,12 @@ export class App {
 		this.player.syncFromCamera();
 		this.player.driving = true;
 		this.player.setHeading(ride.yaw);
+	}
+
+	/** Herstel alleen de transform van een uitgestapt voertuig; de speler blijft lopen. */
+	private restoreParkedVehicle(parked: PersistedRide): void {
+		const restored = parked.kind === 'car' ? this.driveCars.restoreParked(parked) : this.scrubber.restoreParked(parked);
+		if (restored) this.lastParkedVehicle = { ...parked, speed: 0 };
 	}
 
 	private restoreGame(saved: NonNullable<ReturnType<typeof loadGame>>): void {
@@ -1195,6 +1237,7 @@ export class App {
 		// laat je in het voertuig staan waar je op zat. Klem is klem: elke stap wordt dan
 		// teruggeduwd, wat de rit-soort ook was.
 		this.player.unstick();
+		if (saved.parkedVehicle) this.restoreParkedVehicle(saved.parkedVehicle);
 
 		// Ná syncFromCamera: die zet de speler op de grond onder de camera, en dat is
 		// precies wat een zittende bestuurder niet is.
@@ -1454,7 +1497,9 @@ export class App {
 		const p = this.camera.position;
 
 		if (wasCar) {
+			const parked = this.driveCars.ride;
 			const exit = this.driveCars.release();
+			if (parked) this.lastParkedVehicle = { ...parked, kind: 'car', speed: 0 };
 			this.camera.position.set(exit.x, exit.y + EYE, exit.z);
 			this.player.syncFromCamera();
 			this.ui.setStatus(
@@ -1467,7 +1512,9 @@ export class App {
 			// De vloer waar de buggy op staat, net als bij de auto. Een vaste zoekhoogte
 			// van 0,5 m vond altijd de begane grond, dus uitstappen in de liftcabine op
 			// V1 zette je naast de cabine op V0 en liet het karretje boven achter.
+			const parked = this.scrubber.ride;
 			const exit = this.scrubber.release();
+			if (parked) this.lastParkedVehicle = { ...parked, kind: 'scrubber', speed: 0 };
 			this.camera.position.set(exit.x, exit.y + EYE, exit.z);
 			this.player.syncFromCamera();
 			this.ui.setStatus('🧽 Uitgestapt — buggy blijft staan voor de volgende racer');
@@ -1942,7 +1989,7 @@ export class App {
 			arr[i] = (arr[i] ?? 0) + (vel[i] ?? 0) * dt;
 			arr[i + 1] = (arr[i + 1] ?? 0) + (vel[i + 1] ?? 0) * dt;
 			arr[i + 2] = (arr[i + 2] ?? 0) + (vel[i + 2] ?? 0) * dt;
-			vel[i + 1] = (vel[i + 1] ?? 0) - 9 * dt;
+			vel[i + 1] = (vel[i + 1] ?? 0) - CONFETTI_GRAVITY * dt;
 		}
 		pos.needsUpdate = true;
 	}
@@ -1974,8 +2021,8 @@ export class App {
 		// beloofde halve seconde reactietijd in werkelijkheid twee seconden.
 		const sampleMs = Math.min(frameMs, FRAME_MS_SPIKE);
 		const sampleSec = sampleMs / 1000;
-		if (frameMs >= 4 && frameMs < this.vsyncMs) this.vsyncMs = frameMs;
-		this.frameMsEma = this.frameMsEma === 0 ? sampleMs : this.frameMsEma * 0.9 + sampleMs * 0.1;
+		if (frameMs >= DYN_RES_VSYNC_FLOOR_MS && frameMs < this.vsyncMs) this.vsyncMs = frameMs;
+		this.frameMsEma = this.frameMsEma === 0 ? sampleMs : this.frameMsEma * DYN_RES_EMA_OLD + sampleMs * DYN_RES_EMA_NEW;
 		if (this.dynResCooldown > 0) {
 			this.dynResCooldown -= sampleSec;
 			return;
@@ -1990,8 +2037,8 @@ export class App {
 		if (dir === 0) return;
 		this.dynResHold += sampleSec;
 		// Omlaag snel (0.5 s aanhoudend traag), omhoog traag (2 s ruim comfort)
-		if (dir === 1 && this.dynResHold >= 0.5) this.stepDynRes(this.dynResIndex + 1);
-		else if (dir === -1 && this.dynResHold >= 2) this.stepDynRes(this.dynResIndex - 1);
+		if (dir === 1 && this.dynResHold >= DYN_RES_HOLD_DOWN_S) this.stepDynRes(this.dynResIndex + 1);
+		else if (dir === -1 && this.dynResHold >= DYN_RES_HOLD_UP_S) this.stepDynRes(this.dynResIndex - 1);
 	}
 
 	/** Verse meting: oude samples horen niet mee te tellen na een schaal- of standwissel. */
@@ -2007,7 +2054,7 @@ export class App {
 		this.dynScale = DYN_RES_STEPS[index] ?? 1;
 		// Verse meting na de wissel, want oude samples stappen meteen dóór
 		this.resetDynResMeting();
-		this.dynResCooldown = 1;
+		this.dynResCooldown = DYN_RES_COOLDOWN_S;
 		this.applyPixelRatio();
 	}
 
@@ -2133,6 +2180,7 @@ export class App {
 	 */
 	private hasEInteraction(): boolean {
 		const p = this.camera.position;
+		if (this.furryCon.nearestScene(p) !== null) return true;
 		const lift = this.elevatorAction();
 		if (lift !== null) return true;
 		if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car') return true;
@@ -2419,7 +2467,20 @@ export class App {
 				this.camera.rotation.z = 0;
 			}
 		} else if (this.freeMove && this.player.enabled) {
-			this.player.update(dt);
+			if (this.furryCon.ageModalOpen && this.player.locked) {
+				this.player.releaseLook();
+			}
+			if (this.furryCon.filming) {
+				this.camera.position.copy(this.furryCon.filmCam.position);
+				this.camera.quaternion.copy(this.furryCon.filmCam.quaternion);
+			} else {
+				this.player.update(dt);
+				const joinAt = this.furryCon.joinAnchor;
+				if (joinAt) {
+					this.camera.position.x = joinAt.x;
+					this.camera.position.z = joinAt.z;
+				}
+			}
 			// Keep glued after physics (belt/sim push can nudge feet)
 			if (this.elevRiding && !this.player.driving) {
 				const passenger = this.elevator.resolvePassenger(this.camera.position.x, this.camera.position.z, PLAYER_RADIUS);
@@ -2428,7 +2489,7 @@ export class App {
 				this.player.setElevatorRide(this.elevator.cabinFloorY);
 			}
 			// Lopend: loopband-drift + niet ín Brad staan. Vliegend/rijdend: skip.
-			if (!this.player.flying && !this.player.driving) {
+			if (!this.furryCon.filming && !this.furryCon.joinAnchor && !this.player.flying && !this.player.driving) {
 				if (this.player.isGrounded && !this.elevRiding) {
 					const belt = this.walkways.beltVelocityAt(this.camera.position.x, this.player.feetHeight, this.camera.position.z);
 					if (belt) this.player.nudge(belt.x * dt, belt.z * dt);
@@ -2477,6 +2538,11 @@ export class App {
 		// straat niet meer te zien, en dat is precies waar je hem wél ziet.
 		const theatreDt = this.lod.theatre.step(dt, this.seesWhere(this.cityTheatre.marquee, this.cityTheatre.house));
 		if (theatreDt !== null) this.cityTheatre.update(theatreDt, elapsed, this.camera.position);
+		const conDt = this.lod.con.step(
+			dt,
+			this.seesWhere(this.furryCon.plazaSpot, this.furryCon.dealersSpot, this.furryCon.stageSpot),
+		);
+		if (conDt !== null) this.furryCon.update(conDt, elapsed, this.camera.position);
 		const roofDt = this.lod.roof.step(dt, this.seesWhere(this.roofIsland.group.position, this.poolPeople.group.position));
 		if (roofDt !== null) {
 			this.roofIsland.update(roofDt, elapsed);
@@ -2566,7 +2632,7 @@ export class App {
 			// net als de gebedsruimte-loop. Dichtbij = vol, andere kant mall = zacht.
 			{
 				const bd = this.camera.position.distanceTo(this.djBartek.pos);
-				this.djPlayer.setDistanceGain(1 / (1 + 0.012 * bd * bd));
+				this.djPlayer.setDistanceGain(1 / (1 + BOOTH_FALLOFF_K * bd * bd));
 			}
 			const near = this.atmosphere.americans.getSimsNear(this.camera.position, 5.5);
 			let gained = false;

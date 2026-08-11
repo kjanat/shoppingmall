@@ -1,6 +1,7 @@
 import type { PedestrianPosture } from '#/data/character';
 import { postureHeadroom, STANDING_PEDESTRIAN } from '#/data/character';
 import type { EscalatorSpec, OpeningDef, StairSpec, VerticalConnector } from '#/data/connectors';
+import { CON_ENTITIES } from '#/data/conWorld';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT, PARKING_FOOTPRINT } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { LEVELS, levelY } from '#/data/levels';
@@ -720,11 +721,12 @@ function signage(volume: SpatialVolume): SpatialVolume {
 	return { ...volume, tags: [...volume.tags, SIGNAGE_TAG] };
 }
 
-/** A shop's room shell: it carries the plan the rest of the shop stays inside, and its back has to meet a wall. */
-function roomShell(volume: SpatialVolume, standoff?: Standoff): SpatialVolume {
+/** A room shell: it carries the plan the rest of the room stays inside, and its backing faces have to meet a wall. */
+function roomShell(volume: SpatialVolume, standoff?: Standoff, backs?: readonly CardinalSide[]): SpatialVolume {
 	const envelope = planEnvelope(volume);
 	const shell = { ...envelope, tags: [...envelope.tags, ROOM_SHELL_TAG] };
-	return standoff === undefined ? shell : { ...shell, standoff };
+	const withStandoff = standoff === undefined ? shell : { ...shell, standoff };
+	return backs === undefined ? withStandoff : { ...withStandoff, backs };
 }
 
 function structurePlacement(): MallWorldEntity['placement'] {
@@ -3097,12 +3099,15 @@ export const WUDU_COLLIDER = {
 const PRAYER_WALL_THICKNESS = 0.15;
 
 export const PRAYER_ROOM_SPEC = {
-	center: { x: prayerStore.x, z: prayerStore.z },
+	center: {
+		x: MALL_INTERIOR.minX + half(prayerStore.width),
+		z: MALL_INTERIOR.minZ + half(prayerStore.depth),
+	},
 	room: { width: prayerStore.width, depth: prayerStore.depth },
 	floorThickness: 0.08,
 	wallHeight: 3.2,
 	wallThickness: PRAYER_WALL_THICKNESS,
-	backWallOffset: 2,
+	backWallOffset: half(prayerStore.depth) - half(PRAYER_WALL_THICKNESS),
 	/** Hartlijn, dus een halve dikte binnen de vloerrand: 2,7 zette het wandvlak 25 mm ernaast. */
 	sideWallOffset: half(prayerStore.width) - half(PRAYER_WALL_THICKNESS),
 	carpet: { width: 4.2, depth: 2.8, thickness: 0.03, centerY: 0.1, offsetZ: -0.2 },
@@ -3119,7 +3124,7 @@ export const PRAYER_ROOM_ENTITY: MallWorldEntity = roomEntity({
 	center: PRAYER_ROOM_SPEC.center,
 	placementClass: 'fixture',
 	volumes: [
-		planEnvelope(
+		roomShell(
 			solidPrism(
 				'floor',
 				rectangle(PRAYER_ROOM_SPEC.center.x, PRAYER_ROOM_SPEC.center.z, PRAYER_ROOM_SPEC.room.width, PRAYER_ROOM_SPEC.room.depth),
@@ -3128,6 +3133,8 @@ export const PRAYER_ROOM_ENTITY: MallWorldEntity = roomEntity({
 				[],
 				'support',
 			),
+			undefined,
+			['north', 'west'],
 		),
 		solidPrism(
 			'wall-north',
@@ -3923,6 +3930,42 @@ export const PARKING_EXIT_TRENCH_WALLS: readonly ParkingTrenchWall[] = ([-1, 1] 
 	];
 });
 
+/** Het straathek boven op de open keermuren: stijl en collision lezen dezelfde envelop. */
+export const PARKING_EXIT_TRENCH_GUARD = {
+	height: 1.1,
+	railThickness: 0.12,
+	postSize: 0.12,
+	postPitch: 1.8,
+} as const;
+
+export type ParkingTrenchGuard = Readonly<{
+	id: string;
+	minX: number;
+	maxX: number;
+	minY: number;
+	maxY: number;
+	centerZ: number;
+	thickness: number;
+}>;
+
+/**
+ * De open geul ligt ruim zes meter diep naast de stoep. De keermuur eindigt vrijwel
+ * vlak met het maaiveld en was daardoor onzichtbaar als grens, terwijl zijn collider
+ * een wandelaar wel tegenhield en een springer erover liet vallen. Boven elk open
+ * stuk staat nu één hek uit dezelfde maten als de keermuur.
+ */
+export const PARKING_EXIT_TRENCH_GUARDS: readonly ParkingTrenchGuard[] = PARKING_EXIT_TRENCH_WALLS.filter(
+	(wall) => wall.openToSky,
+).map((wall) => ({
+	id: `guard-${wall.id}`,
+	minX: wall.minX,
+	maxX: wall.maxX,
+	minY: wall.topY,
+	maxY: wall.topY + PARKING_EXIT_TRENCH_GUARD.height,
+	centerZ: midpoint(wall.minZ, wall.maxZ),
+	thickness: PARKING_EXIT_TRENCH_GUARD.railThickness,
+}));
+
 /**
  * De kop over het overdekte deel van de geul.
  *
@@ -3979,6 +4022,15 @@ export const PARKING_EXIT_TRENCH_ENTITY: MallWorldEntity = {
 				...(MALL_WALL_ENVELOPE.minX - wall.minX > PROTRUSION_MARGIN ? { protrusion: PARKING_EXIT_PROTRUSION } : {}),
 			};
 		}),
+		...PARKING_EXIT_TRENCH_GUARDS.map((guard) => ({
+			...solidPrism(
+				guard.id,
+				rectangle(midpoint(guard.minX, guard.maxX), guard.centerZ, span(guard.minX, guard.maxX), guard.thickness),
+				guard.minY,
+				guard.maxY,
+			),
+			protrusion: PARKING_EXIT_PROTRUSION,
+		})),
 		solidPrism(
 			'trench-head',
 			rectangle(
@@ -4009,15 +4061,26 @@ export const PARKING_EXIT_TRENCH_ENTITY: MallWorldEntity = {
  * wall standing inside the building.
  */
 export function parkingExitTrenchColliders(): readonly WorldCollider[] {
-	return PARKING_EXIT_TRENCH_WALLS.filter((wall) => wall.openToSky).map((wall) => ({
-		minX: wall.minX,
-		maxX: wall.maxX,
-		minY: PARKING_EXIT_TRENCH.baseY,
-		maxY: wall.topY,
-		minZ: wall.minZ,
-		maxZ: wall.maxZ,
-		label: `parking_${wall.id}`,
-	}));
+	return [
+		...PARKING_EXIT_TRENCH_WALLS.filter((wall) => wall.openToSky).map((wall) => ({
+			minX: wall.minX,
+			maxX: wall.maxX,
+			minY: PARKING_EXIT_TRENCH.baseY,
+			maxY: wall.topY,
+			minZ: wall.minZ,
+			maxZ: wall.maxZ,
+			label: `parking_${wall.id}`,
+		})),
+		...PARKING_EXIT_TRENCH_GUARDS.map((guard) => ({
+			minX: guard.minX,
+			maxX: guard.maxX,
+			minY: guard.minY,
+			maxY: guard.maxY,
+			minZ: guard.centerZ - half(guard.thickness),
+			maxZ: guard.centerZ + half(guard.thickness),
+			label: `parking_${guard.id}`,
+		})),
+	];
 }
 
 /** The mall's underside. Cut for the elevator, which travels straight through it. */
@@ -4880,8 +4943,9 @@ export type DriveableHandling = Readonly<{
 	/** Ooghoogte boven het wegdek, en hoever de stoel achter het hart staat. */
 	seatHeight: number;
 	seatBack: number;
-	/** Rol per eenheid stuur maal snelheid, en hoever hij daarmee mag hangen. */
-	leanPerSteerSpeed: number;
+	/** Rol op de veren per eenheid stuur maal snelheid. Afwezig bij een voertuig dat op de balanshoek van de bocht leunt in plaats van rolt. */
+	leanPerSteerSpeed?: number;
+	/** Hoever hij daarmee mag hangen, of hij nu rolt of op de balanshoek leunt. */
 	maxLean: number;
 }>;
 
@@ -4911,7 +4975,6 @@ export const DRIVEABLE_HANDLING: Readonly<Record<DriveableKind, DriveableHandlin
 		wheelbase: MOTORCYCLE_SPEC.wheel.offsetZ * 2,
 		seatHeight: MOTORCYCLE_SPEC.seat.centerY + half(MOTORCYCLE_SPEC.seat.height),
 		seatBack: -MOTORCYCLE_SPEC.seat.offsetZ,
-		leanPerSteerSpeed: 0.022,
 		maxLean: 0.55,
 	},
 };
@@ -5500,6 +5563,17 @@ const BACKSTAGE_ROOM_DOOR = {
 const BACKSTAGE_ROOM_DOOR_TOP = BACKSTAGE_FLOOR_Y + BS.roomDoor.headY;
 const BACKSTAGE_DOOR_TOP = BACKSTAGE_FLOOR_Y + BS.door.headY;
 
+/**
+ * De coulissedeuren: uit elke kleedkamer het toneel op, elk in de strook naast het
+ * toneeldoek. Even breed als de doekmarge en tegen de zijgevel aan, zodat de doorgang
+ * naast het doek uitkomt in plaats van erachter; de kaptafel staat middenin de kamer
+ * en blijft er vrij van.
+ */
+const BACKSTAGE_WING_DOOR = {
+	west: { minX: THEATRE_INTERIOR.minX, maxX: THEATRE_INTERIOR.minX + THEATRE_PLAN.stage.set.margin },
+	east: { minX: THEATRE_INTERIOR.maxX - THEATRE_PLAN.stage.set.margin, maxX: THEATRE_INTERIOR.maxX },
+} as const;
+
 /** Het hart in de diepte van een kleedkamer: waar de kaptafel en de stoelen om draaien. */
 const BACKSTAGE_ROOM_CENTER_Z = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
 
@@ -5648,13 +5722,16 @@ function theatreFoyerWallVolumes(): readonly SpatialVolume[] {
 
 /**
  * De loopvlakken van de backstage: de vloer op toneelhoogte, de dorpel onder de deur
- * vanaf het toneel, en de dorpel onder de artiesteningang in de achtergevel.
+ * vanaf het toneel, de twee dorpels onder de coulissedeuren in de tussenwand, en de
+ * dorpel onder de artiesteningang in de achtergevel.
  *
  * Ze horen in `THEATRE_HALL_ENTITY` en niet in de backstage-entiteit, want ze raken
  * de toneelvloer en de gangvloer aan; twee loopvlakken uit verschillende entiteiten
  * die tegen elkaar liggen melden `coplanar-surface`.
  */
 function backstageFloorVolumes(): readonly SpatialVolume[] {
+	const partitionSill = (id: string, minX: number, maxX: number): SpatialVolume =>
+		theatreBox(id, { minX, maxX, ...BACKSTAGE_PARTITION, minY: THEATRE_PLAN.baseY, maxY: BACKSTAGE_FLOOR_Y }, 'walkable', false);
 	return [
 		theatreBox(
 			'backstage-floor',
@@ -5662,18 +5739,9 @@ function backstageFloorVolumes(): readonly SpatialVolume[] {
 			'walkable',
 			false,
 		),
-		theatreBox(
-			'stage-door-sill',
-			{
-				minX: BACKSTAGE_CORRIDOR.minX,
-				maxX: BACKSTAGE_CORRIDOR.maxX,
-				...BACKSTAGE_PARTITION,
-				minY: THEATRE_PLAN.baseY,
-				maxY: BACKSTAGE_FLOOR_Y,
-			},
-			'walkable',
-			false,
-		),
+		partitionSill('stage-door-sill', BACKSTAGE_CORRIDOR.minX, BACKSTAGE_CORRIDOR.maxX),
+		partitionSill('wing-door-sill-west', BACKSTAGE_WING_DOOR.west.minX, BACKSTAGE_WING_DOOR.west.maxX),
+		partitionSill('wing-door-sill-east', BACKSTAGE_WING_DOOR.east.minX, BACKSTAGE_WING_DOOR.east.maxX),
 		theatreBox(
 			'artist-door-sill',
 			{
@@ -6084,9 +6152,11 @@ export const THEATRE_BACKSTAGE_ENTITY: MallWorldEntity = {
 		rotation: ZERO_ROTATION,
 	},
 	volumes: [
-		// De tussenwand naar het toneel, met de deur eruit: twee wangen en een latei.
+		// De tussenwand naar het toneel, met drie deuren eruit: de centrale toneeldeur op
+		// de as van de gang en een coulissedeur tegen elke zijgevel. Tussen de deuren blijft
+		// wand staan, en boven elke deur hangt een latei.
 		theatreBox('partition-west', {
-			minX: BACKSTAGE_INTERIOR.minX,
+			minX: BACKSTAGE_WING_DOOR.west.maxX,
 			maxX: BACKSTAGE_CORRIDOR.minX,
 			...BACKSTAGE_PARTITION,
 			minY: THEATRE_PLAN.baseY,
@@ -6094,7 +6164,7 @@ export const THEATRE_BACKSTAGE_ENTITY: MallWorldEntity = {
 		}),
 		theatreBox('partition-east', {
 			minX: BACKSTAGE_CORRIDOR.maxX,
-			maxX: BACKSTAGE_INTERIOR.maxX,
+			maxX: BACKSTAGE_WING_DOOR.east.minX,
 			...BACKSTAGE_PARTITION,
 			minY: THEATRE_PLAN.baseY,
 			maxY: THEATRE_CEILING_Y,
@@ -6102,6 +6172,18 @@ export const THEATRE_BACKSTAGE_ENTITY: MallWorldEntity = {
 		theatreBox('partition-head', {
 			minX: BACKSTAGE_CORRIDOR.minX,
 			maxX: BACKSTAGE_CORRIDOR.maxX,
+			...BACKSTAGE_PARTITION,
+			minY: BACKSTAGE_DOOR_TOP,
+			maxY: THEATRE_CEILING_Y,
+		}),
+		theatreBox('partition-wing-head-west', {
+			...BACKSTAGE_WING_DOOR.west,
+			...BACKSTAGE_PARTITION,
+			minY: BACKSTAGE_DOOR_TOP,
+			maxY: THEATRE_CEILING_Y,
+		}),
+		theatreBox('partition-wing-head-east', {
+			...BACKSTAGE_WING_DOOR.east,
 			...BACKSTAGE_PARTITION,
 			minY: BACKSTAGE_DOOR_TOP,
 			maxY: THEATRE_CEILING_Y,
@@ -6508,6 +6590,7 @@ export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 	ROOF_FURNITURE_ENTITY,
 	ROOF_SLIDE_ENTITY,
 	...THEATRE_ENTITIES,
+	...CON_ENTITIES,
 ];
 
 /** Relational view of the authored world. Callers do not maintain parallel per-level feature lists. */

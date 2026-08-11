@@ -1,3 +1,4 @@
+import { CON_CITY_MARGIN, CON_LOT } from '#/data/conPlan';
 import type { Bounds2, Vec2 } from '#/data/spatial';
 import { boundsMinusHoles } from '#/data/spatial';
 import type { BarrierSpec } from '#/data/world';
@@ -33,8 +34,14 @@ export type Rect = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: nu
  * De wereldrand. Collision klemt hierop, de drone ook. De noordrand ligt verder dan
  * de zuidrand omdat het theater in de noordoosthoek zijn backstage en achterbordes
  * achter zich heeft staan; zonder die ruimte klemt collision je de artiesteningang in.
+ * East bound follows the fur-con lot so the clamp never cuts the halls short.
  */
-export const CITY_BOUNDS = { minX: -95, maxX: 95, minZ: -88, maxZ: 75 } as const;
+export const CITY_BOUNDS = {
+	minX: -95,
+	maxX: CON_LOT.maxX + CON_CITY_MARGIN,
+	minZ: Math.min(-90, CON_LOT.minZ - CON_CITY_MARGIN),
+	maxZ: Math.max(80, CON_LOT.maxZ + CON_CITY_MARGIN),
+} as const;
 
 /** Straatniveau. Buiten de mall ligt hier de vloer, tenzij een citySurface hoger komt. */
 export const CITY_GROUND_Y = 0;
@@ -528,6 +535,8 @@ export const CITY_KAVELS = {
 	theatre: { minX: 52, maxX: 90, minZ: -87, maxZ: -40 },
 	garage: { minX: 52, maxX: 90, minZ: 40, maxZ: 72 },
 	park: { minX: -94, maxX: -52, minZ: -74, maxZ: -36 },
+	/** Fur con lot (plaza + halls); numbers come from conPlan. */
+	con: { minX: CON_LOT.minX, maxX: CON_LOT.maxX, minZ: CON_LOT.minZ, maxZ: CON_LOT.maxZ },
 } as const satisfies Record<string, Rect>;
 
 const KAVELS: readonly Rect[] = Object.values(CITY_KAVELS);

@@ -19,6 +19,7 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import * as THREE from 'three';
+import { MALL_SLAB_SPECS } from '#/data/world';
 import { CollisionWorld } from '#/physics/Collision';
 import { LIGHT_POOL_SLOTS, LightPool } from '#/render/LightPool';
 import { stubAudio, stubDocument } from './stub-dom.ts';
@@ -60,6 +61,7 @@ async function bouwWereld(): Promise<{
 	const world = new CollisionWorld();
 
 	const [
+		{ Catwalk },
 		{ setupLighting },
 		{ DiscoParty },
 		{ AlienProbe },
@@ -79,6 +81,7 @@ async function bouwWereld(): Promise<{
 		{ Entrance },
 		{ Barriers },
 	] = await Promise.all([
+		import('#/scene/Catwalk'),
 		import('#/scene/Lighting'),
 		import('#/scene/Disco'),
 		import('#/scene/AlienProbe'),
@@ -107,6 +110,7 @@ async function bouwWereld(): Promise<{
 	for (const feature of [
 		disco,
 		probe,
+		new Catwalk(),
 		new StockDisplay(pool),
 		new SecurityGuards(world, pool),
 		new GlassElevator(pool),
@@ -190,7 +194,41 @@ function controleSchakelen(
 	meet('probe weg');
 }
 
-// ── 3. de bron ─────────────────────────────────────────────────────────────
+// ── 3. de spot ─────────────────────────────────────────────────────────────
+
+/**
+ * Precies één SpotLight, en die hangt onder de onderkant van het V1-dek.
+ *
+ * `NUM_SPOT_LIGHTS` zit net als het puntlichtaantal in de programmacachesleutel,
+ * en tot nu toe dwong niets af dat het er één blijft. De hoogte-eis komt van de
+ * modeshow: de spot hing op 7.4, boven het V1-vloervlak, en omdat hij geen
+ * schaduw werpt tekende zijn kegel een lichtvlek óp de vloer van de verdieping
+ * erboven. Een binnenlamp met 26 m worp haalt ergens altijd dat dek, dus de
+ * bron zelf moet eronder blijven.
+ */
+function controleSpot(scene: THREE.Scene): void {
+	const spots: THREE.SpotLight[] = [];
+	scene.traverse((o) => {
+		if (o instanceof THREE.SpotLight) spots.push(o);
+	});
+	if (spots.length !== 1) {
+		fout('spot', `${spots.length} SpotLights in de scene in plaats van 1: dat verandert NUM_SPOT_LIGHTS en relinkt de mall`);
+		return;
+	}
+	const spot = spots[0];
+	if (!spot) return;
+	scene.updateMatrixWorld(true);
+	const bronY = spot.getWorldPosition(new THREE.Vector3()).y;
+	const onderkantV1 = MALL_SLAB_SPECS.v1.topY - MALL_SLAB_SPECS.v1.thickness;
+	if (bronY >= onderkantV1) {
+		fout(
+			'spot',
+			`de spot hangt op y ${bronY.toFixed(2)}, op of boven de onderkant van het V1-dek (${onderkantV1.toFixed(2)}): zonder schaduwen licht hij de vloer van de verdieping erboven aan`,
+		);
+	}
+}
+
+// ── 4. de bron ─────────────────────────────────────────────────────────────
 
 /** Elk .ts-bestand onder src/, als pad relatief aan src/. */
 function bronBestanden(map = ''): string[] {
@@ -241,6 +279,7 @@ try {
 	controles.push(
 		{ naam: 'aantal', draai: () => controleAantal(scene) },
 		{ naam: 'schakelen', draai: () => controleSchakelen(scene, pool, disco, probe) },
+		{ naam: 'spot', draai: () => controleSpot(scene) },
 		{ naam: 'bron', draai: controleBron },
 	);
 } catch (e) {

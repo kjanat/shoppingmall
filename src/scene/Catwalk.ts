@@ -22,9 +22,25 @@ const POSE_TIME = 2.6;
 /** The spot never sits still: it drifts across the runway at this rate, this far. */
 const SPOT_SWEEP_TEMPO = 0.6;
 const SPOT_SWEEP = 0.5;
+
+/**
+ * The lighting rig over the runway: two posts, a beam, five lamps and the spot,
+ * all on one line. The spot used to hang at 7.4, above the V1 floor plane, and
+ * with no shadow map its cone painted a bright pool on the deck upstairs.
+ */
+const RIG_Z = TIP_Z - 3;
+const RIG_BEAM_Y = 4.5;
+const RIG_LAMP_Y = 4.34;
+const LED_WIDTH = 0.08;
+const LED_HEIGHT = 0.06;
+const LED_INSET = 0.02;
+/** The kerb strip stands this far proud of the deck; flush, its top shared the deck plane and z-fought into grey stripes from above. */
+const LED_RISE = 0.02;
 /** Shoulders counter the hips, arms counter the legs, both at half the throw. */
 const BODY_SWAY_SHARE = 0.5;
 const ARM_SWING_SHARE = 0.5;
+/** Arms hang this far outside the hips so the sagittal swing runs along the body, not across it toward the midline. */
+const ARM_REST_SPLAY = 0.14;
 /** Head turns once per two steps, barely. */
 const HEAD_TURN_TEMPO = 0.5;
 const HEAD_TURN_AMP = 0.12;
@@ -98,7 +114,7 @@ export class Catwalk {
 		this.buildBackdrop();
 
 		this.spot = new THREE.SpotLight(0xffffff, 90, 26, Math.PI * 0.16, 0.45, 1.4);
-		this.spot.position.set(RUNWAY_X, 7.4, TIP_Z - 4);
+		this.spot.position.set(RUNWAY_X, RIG_LAMP_Y, RIG_Z);
 		this.spotTarget.position.set(RUNWAY_X, PODIUM_Y, START_Z);
 		this.group.add(this.spot, this.spotTarget);
 		this.spot.target = this.spotTarget;
@@ -281,7 +297,7 @@ export class Catwalk {
 		}
 	}
 
-	/** Runway walk: long stride, hard hip sway, arms swinging across the body. */
+	/** Runway walk: long stride, hard hip sway, arms swinging sagittally along the hips. */
 	private strut(m: Model, dir: 1 | -1): void {
 		const p = m.z * m.stride * dir;
 		const swing = Math.sin(p) * 0.55;
@@ -299,8 +315,8 @@ export class Catwalk {
 
 		m.armL.rotation.x = -swing * ARM_SWING_SHARE;
 		m.armR.rotation.x = swing * ARM_SWING_SHARE;
-		m.armL.rotation.z = 0.22 + Math.sin(p) * 0.1;
-		m.armR.rotation.z = -0.22 + Math.sin(p) * 0.1;
+		m.armL.rotation.z = -ARM_REST_SPLAY;
+		m.armR.rotation.z = ARM_REST_SPLAY;
 
 		m.head.rotation.y = Math.sin(p * HEAD_TURN_TEMPO) * HEAD_TURN_AMP;
 		m.hair.rotation.z = -Math.sin(p) * 0.14;
@@ -476,9 +492,11 @@ export class Catwalk {
 		lips.position.set(0, -0.052, 0.114);
 		head.add(lips);
 
-		// Long hair, swings with the walk
-		const hair = new THREE.Mesh(new THREE.CapsuleGeometry(0.115, 0.34, 6, 12), hairMat);
-		hair.position.set(0, -0.08, -0.06);
+		// Long hair, swings with the walk. Raked back off the nape so the fall lies behind the
+		// gown's back instead of poking through it from behind.
+		const hair = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.34, 6, 12), hairMat);
+		hair.position.set(0, -0.1, -0.2);
+		hair.rotation.x = 0.38;
 		head.add(hair);
 		const fringe = new THREE.Mesh(
 			new THREE.SphereGeometry(0.132, 14, 10, Math.PI * 0.22, Math.PI * 1.56, 0, Math.PI * 0.55),
@@ -519,8 +537,8 @@ export class Catwalk {
 		// LED strips along both edges
 		const strip = this.track(new THREE.MeshBasicMaterial({ color: 0xff4fa3, toneMapped: false }));
 		for (const side of [-1, 1] as const) {
-			const led = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, DECK_LENGTH), strip);
-			led.position.set(RUNWAY_X + side * (HALF_W - 0.02), PODIUM_Y - 0.03, DECK_CENTER_Z);
+			const led = new THREE.Mesh(new THREE.BoxGeometry(LED_WIDTH, LED_HEIGHT, DECK_LENGTH), strip);
+			led.position.set(RUNWAY_X + side * (HALF_W - LED_INSET), PODIUM_Y - half(LED_HEIGHT) + LED_RISE, DECK_CENTER_Z);
 			this.group.add(led);
 		}
 		// Rounded tip
@@ -602,16 +620,16 @@ export class Catwalk {
 		const truss = this.mat(0x40454f, 0.5, 0.6);
 		for (const side of [-1, 1] as const) {
 			const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 4.6, 8), truss);
-			post.position.set(RUNWAY_X + side * 2.6, 2.3, TIP_Z - 3);
+			post.position.set(RUNWAY_X + side * 2.6, 2.3, RIG_Z);
 			this.group.add(post);
 		}
 		const beam = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.14, 0.14), truss);
-		beam.position.set(RUNWAY_X, 4.5, TIP_Z - 3);
+		beam.position.set(RUNWAY_X, RIG_BEAM_Y, RIG_Z);
 		this.group.add(beam);
 		const lampMat = this.track(new THREE.MeshBasicMaterial({ color: 0xfff4d6, toneMapped: false }));
 		for (let i = 0; i < 5; i++) {
 			const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), lampMat);
-			lamp.position.set(RUNWAY_X - 2 + i, 4.34, TIP_Z - 3);
+			lamp.position.set(RUNWAY_X - 2 + i, RIG_LAMP_Y, RIG_Z);
 			this.group.add(lamp);
 		}
 	}
