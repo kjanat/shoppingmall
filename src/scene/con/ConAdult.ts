@@ -17,24 +17,41 @@ import {
 import type { AABB, CollisionWorld } from '#/physics/Collision';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { ACCENT_COLORS, FUR_COLORS, furMat, partGeometry, SPECIES, type Species } from '#/scene/con/FursuitKit';
+import {
+	ACCENT_COLORS,
+	BELLY_COLORS,
+	buildHeroSuit,
+	FUR_COLORS,
+	SPECIES,
+} from '#/scene/con/FursuitKit';
 import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { midpoint, span } from '#/util/math';
 import { at, mulberry32, pickWith } from '#/util/rand';
 
-const THRUST_COUNTER = 0.5;
-const EAR_FLARE = 0.5;
+const U = CON_BODY / 1.9;
+const THRUST_HZ = 2.4;
+const THRUST_AMP = 0.14;
+const ORAL_HIP_KICK = 0.5;
+const RIDE_COUNTER_KICK = 0.5;
+const COUNTER_FRAC = 0.35;
+const PAD_PULSE_BASE = 0.35;
+const PAD_PULSE_SPAN = 0.45;
+
+type Pose = 'doggy' | 'stand' | 'oral' | 'bench' | 'wall' | 'ride';
 
 type Scene = {
 	group: THREE.Group;
-	actors: THREE.Group[];
+	top: THREE.Group;
+	bottom: THREE.Group;
+	pose: Pose;
 	phase: number;
 	busy: boolean;
+	baseTopZ: number;
+	baseBotZ: number;
 };
 
 /**
- * Age-gated adult wing: solid door, darkroom/studio, join + film.
- * Hero meshes only here (few) — crowd stays instanced outside.
+ * Age-gated adult wing: darkroom + studio, explicit m/m fursuit scenes.
  */
 export class ConAdult {
 	readonly group = new THREE.Group();
@@ -57,6 +74,7 @@ export class ConAdult {
 	private readonly geometries: THREE.BufferGeometry[] = [];
 	private readonly textures: THREE.Texture[] = [];
 	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
+	private readonly pulseMats: THREE.MeshBasicMaterial[] = [];
 
 	constructor(pool: LightPool, world: CollisionWorld) {
 		this.group.name = 'con_adult';
@@ -90,25 +108,57 @@ export class ConAdult {
 			return;
 		}
 
+		const pulse = 0.55 + 0.45 * Math.sin(performance.now() * 0.004);
+		for (const m of this.pulseMats) {
+			m.opacity = PAD_PULSE_BASE + PAD_PULSE_SPAN * pulse;
+		}
+
 		for (const scene of this.scenes) {
 			scene.phase += dt;
-			const thrust = Math.sin(scene.phase * 5) * 0.08;
-			for (let i = 0; i < scene.actors.length; i++) {
-				const actor = at(scene.actors, i);
-				const hips = actor.getObjectByName('hips');
-				if (!hips) continue;
-				hips.position.z = (i === 0 ? 0 : 0.1) + (i === 0 ? thrust : -thrust * THRUST_COUNTER);
-				hips.rotation.x = (i === 0 ? 0.55 : -0.35) + thrust * 0.4;
+			const thrust = Math.sin(scene.phase * Math.PI * 2 * THRUST_HZ) * THRUST_AMP;
+			const counter = Math.sin(scene.phase * Math.PI * 2 * THRUST_HZ + 0.4) * THRUST_AMP * COUNTER_FRAC;
+			const hipsTop = scene.top.getObjectByName('hips');
+			const hipsBot = scene.bottom.getObjectByName('hips');
+			if (!hipsTop || !hipsBot) continue;
+
+			switch (scene.pose) {
+				case 'doggy':
+				case 'stand':
+				case 'wall':
+					scene.top.position.z = scene.baseTopZ + thrust;
+					hipsTop.rotation.x = 0.25 + thrust * 1.2;
+					hipsBot.position.z = counter * 0.4;
+					break;
+				case 'bench':
+					scene.top.position.z = scene.baseTopZ + thrust;
+					scene.top.position.y = 0.35 + Math.abs(thrust) * 0.15;
+					hipsTop.rotation.x = 0.15 + thrust * 0.8;
+					break;
+				case 'oral':
+					scene.top.position.z = scene.baseTopZ + thrust * 0.55;
+					hipsTop.rotation.x = -0.05 + thrust * ORAL_HIP_KICK;
+					hipsBot.rotation.x = 0.15 + Math.abs(thrust) * 0.3;
+					break;
+				case 'ride':
+					scene.bottom.position.y = scene.baseBotZ + Math.abs(thrust) * 0.2;
+					hipsBot.rotation.x = -0.15 + thrust * 0.9;
+					hipsTop.rotation.x = 0.4 + counter * RIDE_COUNTER_KICK;
+					break;
 			}
+
+			const shaft = scene.top.getObjectByName('shaft');
+			if (shaft) shaft.scale.y = 1 + Math.abs(thrust) * 2.2;
 		}
 
 		const near = this.nearest(viewer);
 		if (this.joined) this.showPrompt('Esc · leave scene');
 		else if (near) {
 			const studio = inRect2(CON_STUDIO, viewer.x, viewer.z);
-			this.showPrompt(studio ? 'E · join   F · film mode' : 'E · join scene');
+			this.showPrompt(studio ? 'E · join fuck   F · film mode' : 'E · join scene');
 		} else if (inRect2(CON_STUDIO, viewer.x, viewer.z)) {
 			this.showPrompt(this.filmMode ? 'F · stop film' : 'F · film mode');
+		} else if (inRect2(CON_DARKROOM, viewer.x, viewer.z)) {
+			this.showPrompt('Darkroom · walk into a pair · E join');
 		} else this.hidePrompt();
 
 		if (this.filmMode) {
@@ -122,7 +172,7 @@ export class ConAdult {
 		}
 	}
 
-	nearestScene(viewer: THREE.Vector3, maxDist = 2.4): boolean {
+	nearestScene(viewer: THREE.Vector3, maxDist = 3.2): boolean {
 		return this.nearest(viewer, maxDist) !== null;
 	}
 
@@ -132,7 +182,7 @@ export class ConAdult {
 		if (!scene) return false;
 		scene.busy = true;
 		this.joined = scene;
-		this.joinHold.copy(viewer);
+		this.joinHold.set(scene.group.position.x + 0.9, viewer.y, scene.group.position.z + 0.9);
 		return true;
 	}
 
@@ -172,7 +222,7 @@ export class ConAdult {
 		this.filmHud?.remove();
 	}
 
-	private nearest(viewer: THREE.Vector3, maxDist = 2.4): Scene | null {
+	private nearest(viewer: THREE.Vector3, maxDist = 3.2): Scene | null {
 		if (!this.unlocked || this.joined) return null;
 		let best: Scene | null = null;
 		let bestD = maxDist;
@@ -187,61 +237,97 @@ export class ConAdult {
 	}
 
 	private buildRooms(pool: LightPool): void {
-		const black = lit({ color: 0x0a060c, roughness: 1 });
+		const black = lit({ color: 0x120810, roughness: 1 });
 		this.materials.push(black);
-		const red = new THREE.MeshBasicMaterial({ color: 0xaa1122, toneMapped: false });
+		const red = new THREE.MeshBasicMaterial({ color: 0xff2244, toneMapped: false, transparent: true, opacity: 0.7 });
 		this.materials.push(red);
+		this.pulseMats.push(red);
 		const d = rectInterior(CON_DARKROOM);
 		const dc = rectCenter(CON_DARKROOM);
 		const floor = new THREE.Mesh(this.unitBox, black);
 		floor.scale.set(rectSize(CON_DARKROOM).w - 1, 0.1, rectSize(CON_DARKROOM).d - 1);
 		floor.position.set(dc.x, CON_FLOOR_Y + 0.08, dc.z);
 		this.group.add(floor);
-		for (let i = 0; i < 5; i++) {
+		for (let i = 0; i < 6; i++) {
 			const strip = new THREE.Mesh(this.unitBox, red);
-			strip.scale.set(rectSize(d).w - 1, 0.05, 0.12);
-			strip.position.set(dc.x, 2.6, d.minZ + 2 + i * ((d.maxZ - d.minZ - 4) / 4));
+			strip.scale.set(rectSize(d).w - 1, 0.06, 0.18);
+			strip.position.set(dc.x, 2.4, d.minZ + 2 + i * ((d.maxZ - d.minZ - 4) / 5));
 			this.group.add(strip);
 		}
+		const title = this.sign('DARKROOM · BOYS ONLY', 8, 0.6, 0xff4466);
+		title.position.set(dc.x, 3.4, d.minZ + 1.2);
+		this.group.add(title);
+
 		pool.register({
-			position: new THREE.Vector3(dc.x, 2.2, dc.z),
-			intensity: 4,
-			distance: 12,
+			position: new THREE.Vector3(dc.x, 2.6, dc.z),
+			intensity: 12,
+			distance: 28,
 			decay: 2,
-			color: 0xff2244,
-			priority: 0.6,
+			color: 0xff3366,
+			priority: 1.0,
+		});
+		pool.register({
+			position: new THREE.Vector3(dc.x - 10, 2.2, dc.z + 8),
+			intensity: 8,
+			distance: 18,
+			decay: 2,
+			color: 0xaa22ff,
+			priority: 0.8,
+		});
+		pool.register({
+			position: new THREE.Vector3(dc.x + 10, 2.2, dc.z - 8),
+			intensity: 8,
+			distance: 18,
+			decay: 2,
+			color: 0xff4488,
+			priority: 0.8,
 		});
 
 		const sc = rectCenter(CON_STUDIO);
 		const s = rectInterior(CON_STUDIO);
-		const chroma = new THREE.MeshBasicMaterial({ color: 0x111111, toneMapped: false });
+		const chroma = new THREE.MeshBasicMaterial({ color: 0x1a0a14, toneMapped: false });
 		this.materials.push(chroma);
 		const back = new THREE.Mesh(this.unitBox, chroma);
 		back.scale.set(rectSize(s).w - 1, 3.2, 0.15);
 		back.position.set(sc.x, 1.8, s.minZ + 0.4);
 		this.group.add(back);
+		const floorSMat = lit({ color: 0x181018, roughness: 0.95 });
+		this.materials.push(floorSMat);
+		const floorS = new THREE.Mesh(this.unitBox, floorSMat);
+		floorS.scale.set(rectSize(CON_STUDIO).w - 1.2, 0.08, rectSize(CON_STUDIO).d - 1.2);
+		floorS.position.set(sc.x, CON_FLOOR_Y + 0.06, sc.z);
+		this.group.add(floorS);
+
 		const camBody = lit({ color: 0x222228, roughness: 0.4 });
 		this.materials.push(camBody);
 		const cam = new THREE.Mesh(this.unitBox, camBody);
-		cam.scale.set(0.4, 0.35, 0.7);
-		cam.position.set(sc.x - 4, 1.5, sc.z + 3);
+		cam.scale.set(0.5, 0.4, 0.9);
+		cam.position.set(sc.x - 5, 1.5, sc.z + 4);
 		this.group.add(cam);
 		const rec = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
 		this.materials.push(rec);
 		const recMesh = new THREE.Mesh(this.unitBox, rec);
-		recMesh.scale.set(0.15, 0.15, 0.15);
-		recMesh.position.set(sc.x - 4, 1.85, sc.z + 3);
+		recMesh.scale.set(0.18, 0.18, 0.18);
+		recMesh.position.set(sc.x - 5, 1.9, sc.z + 4);
 		this.group.add(recMesh);
 		pool.register({
-			position: new THREE.Vector3(sc.x, 3, sc.z),
-			intensity: 14,
-			distance: 16,
+			position: new THREE.Vector3(sc.x, 3.2, sc.z),
+			intensity: 22,
+			distance: 22,
 			decay: 2,
-			color: 0xffe8d0,
-			priority: 1.1,
+			color: 0xffe8d8,
+			priority: 1.3,
 		});
-		const studioSign = this.sign('STUDIO · FILM MODE [F]', 5, 0.5, 0xffcc00);
-		studioSign.position.set(sc.x, 3.2, s.minZ + 0.6);
+		pool.register({
+			position: new THREE.Vector3(sc.x + 4, 2.4, sc.z - 3),
+			intensity: 10,
+			distance: 14,
+			decay: 2,
+			color: 0xff88aa,
+			priority: 0.9,
+		});
+		const studioSign = this.sign('STUDIO · FILM [F] · JOIN [E]', 7, 0.55, 0xffcc00);
+		studioSign.position.set(sc.x, 3.3, s.minZ + 0.6);
 		this.group.add(studioSign);
 	}
 
@@ -257,13 +343,18 @@ export class ConAdult {
 
 	private buildGateSign(): THREE.Object3D {
 		const leaf = CON_ADULT_GATE_LEAF;
-		const sign = this.sign('18+  ·  DARKROOM', 3.2, 0.45, 0xff3355);
-		sign.position.set(leaf.minX - 0.15, CON_FLOOR_Y + CON_ADULT_GATE.headY + 0.25, midpoint(leaf.minZ, leaf.maxZ));
+		const wrap = new THREE.Group();
+		const sign = this.sign('18+  ·  DARKROOM / STUDIO', 4.2, 0.5, 0xff3355);
+		sign.position.set(leaf.minX - 0.15, CON_FLOOR_Y + CON_ADULT_GATE.headY + 0.35, midpoint(leaf.minZ, leaf.maxZ));
 		sign.rotation.y = Math.PI / 2;
-		return sign;
+		wrap.add(sign);
+		const sub = this.sign('WALK IN · AGE GATE', 3.4, 0.4, 0xff88aa);
+		sub.position.set(leaf.minX - 0.15, CON_FLOOR_Y + CON_ADULT_GATE.headY - 0.15, midpoint(leaf.minZ, leaf.maxZ));
+		sub.rotation.y = Math.PI / 2;
+		wrap.add(sub);
+		return wrap;
 	}
 
-	/** Door stays outside the adult group so it is visible before unlock. */
 	get doorMesh(): THREE.Mesh | null {
 		return this.gateMesh;
 	}
@@ -274,7 +365,7 @@ export class ConAdult {
 
 	private buildScenes(): void {
 		const d = rectInterior(CON_DARKROOM);
-		// Pack m/m pairs through the darkroom on a grid.
+		const poses: Pose[] = ['doggy', 'stand', 'oral', 'bench', 'wall', 'ride'];
 		const cols = 4;
 		const rows = 3;
 		let n = 0;
@@ -284,129 +375,162 @@ export class ConAdult {
 				const v = (row + 0.5) / rows;
 				const x = d.minX + (d.maxX - d.minX) * u;
 				const z = d.minZ + (d.maxZ - d.minZ) * v;
-				const yaw = (col + row) * 0.7;
-				this.scenes.push(this.makeScene(x, z, yaw, `dark-${n}`, false));
+				const yaw = (col * 1.3 + row * 0.9) % (Math.PI * 2);
+				const pose = at(poses, n % poses.length);
+				this.scenes.push(this.makeScene(x, z, yaw, pose, `dark-${n}`, false));
 				n++;
 			}
 		}
 		const sc = rectCenter(CON_STUDIO);
 		const s = rectInterior(CON_STUDIO);
-		this.scenes.push(this.makeScene(sc.x + 2, sc.z - 1, 0.2, 'studio-A', true));
-		this.scenes.push(this.makeScene(sc.x - 2, sc.z + 1, -0.6, 'studio-B', true));
-		this.scenes.push(this.makeScene(midpoint(s.minX, sc.x), sc.z, 1.1, 'studio-C', true));
-		this.scenes.push(this.makeScene(midpoint(sc.x, s.maxX), sc.z - 2, -1.4, 'studio-D', true));
+		const studioSpots: { x: number; z: number; yaw: number; pose: Pose; id: string }[] = [
+			{ x: sc.x + 3, z: sc.z - 2, yaw: 0.3, pose: 'doggy', id: 'studio-A' },
+			{ x: sc.x - 3, z: sc.z + 2, yaw: -0.8, pose: 'bench', id: 'studio-B' },
+			{ x: midpoint(s.minX, sc.x), z: sc.z, yaw: 1.2, pose: 'oral', id: 'studio-C' },
+			{ x: midpoint(sc.x, s.maxX), z: sc.z - 3, yaw: -1.5, pose: 'ride', id: 'studio-D' },
+			{ x: sc.x, z: sc.z + 4, yaw: Math.PI, pose: 'wall', id: 'studio-E' },
+			{ x: sc.x + 6, z: sc.z + 1, yaw: 0.9, pose: 'stand', id: 'studio-F' },
+		];
+		for (const spot of studioSpots) {
+			this.scenes.push(this.makeScene(spot.x, spot.z, spot.yaw, spot.pose, spot.id, true));
+		}
 	}
 
-	private makeScene(x: number, z: number, yaw: number, label: string, studio: boolean): Scene {
+	private makeScene(x: number, z: number, yaw: number, pose: Pose, label: string, studio: boolean): Scene {
 		const group = new THREE.Group();
 		group.position.set(x, CON_FLOOR_Y, z);
 		group.rotation.y = yaw;
 		const rand = mulberry32(hash(label));
-		// Gay con: both partners male.
-		const a = this.hero(pickWith(SPECIES, rand), pickWith(FUR_COLORS, rand), pickWith(ACCENT_COLORS, rand), rand, true);
-		const b = this.hero(pickWith(SPECIES, rand), pickWith(FUR_COLORS, rand), pickWith(ACCENT_COLORS, rand), rand, true);
-		a.position.set(-0.32, 0, 0);
-		b.position.set(0.32, 0, 0.12);
-		a.rotation.y = 0.35;
-		b.rotation.y = -0.45;
-		const hipsA = a.getObjectByName('hips');
-		const hipsB = b.getObjectByName('hips');
-		if (hipsA) hipsA.rotation.x = 0.55;
-		if (hipsB) hipsB.rotation.x = -0.4;
-		group.add(a, b);
-		if (studio || label.includes('dark-0') || label.includes('dark-5') || label.includes('dark-9')) {
+
+		const top = buildHeroSuit(
+			pickWith(SPECIES, rand),
+			pickWith(FUR_COLORS, rand),
+			pickWith(BELLY_COLORS, rand),
+			pickWith(ACCENT_COLORS, rand),
+			rand,
+			{ male: true },
+		);
+		const bottom = buildHeroSuit(
+			pickWith(SPECIES, rand),
+			pickWith(FUR_COLORS, rand),
+			pickWith(BELLY_COLORS, rand),
+			pickWith(ACCENT_COLORS, rand),
+			rand,
+			{ male: true },
+		);
+
+		const matPad = new THREE.MeshBasicMaterial({
+			color: studio ? 0xff4488 : 0xaa1133,
+			toneMapped: false,
+			transparent: true,
+			opacity: 0.55,
+		});
+		this.materials.push(matPad);
+		this.pulseMats.push(matPad);
+		const pad = new THREE.Mesh(this.unitBox, matPad);
+		pad.scale.set(1.6, 0.04, 1.6);
+		pad.position.set(0, 0.03, 0);
+		group.add(pad);
+
+		if (pose === 'bench' || pose === 'ride' || studio) {
 			const benchMat = lit({ color: 0x1a1018, roughness: 0.95 });
 			this.materials.push(benchMat);
 			const bench = new THREE.Mesh(this.unitBox, benchMat);
-			bench.scale.set(1.4, 0.35, 0.6);
-			bench.position.set(0, 0.2, -0.2);
+			bench.scale.set(1.5, 0.38, 0.7);
+			bench.position.set(0, 0.22, pose === 'ride' ? 0 : -0.15);
 			group.add(bench);
 		}
+
+		const base = this.applyPose(top, bottom, pose);
+		group.add(top, bottom);
 		this.group.add(group);
-		return { group, actors: [a, b], phase: rand() * 6, busy: false };
+		return {
+			group,
+			top,
+			bottom,
+			pose,
+			phase: rand() * 6,
+			busy: false,
+			baseTopZ: base.topZ,
+			baseBotZ: base.botY,
+		};
 	}
 
-	private hero(species: Species, fur: number, accent: number, rand: () => number, male: boolean): THREE.Group {
-		const root = new THREE.Group();
-		const skin = furMat(fur);
-		const cloth = furMat(accent);
-		const dark = furMat(0x1a1218);
-		const hips = new THREE.Group();
-		hips.name = 'hips';
-		hips.position.y = CON_BODY * (0.92 / 1.9);
-		root.add(hips);
+	private applyPose(top: THREE.Group, bottom: THREE.Group, pose: Pose): { topZ: number; botY: number } {
+		const hipsT = top.getObjectByName('hips');
+		const hipsB = bottom.getObjectByName('hips');
+		if (!hipsT || !hipsB) return { topZ: 0, botY: 0 };
 
-		const add = (
-			geo: THREE.BufferGeometry,
-			mat: THREE.Material,
-			parent: THREE.Object3D,
-			y: number,
-			sx = 1,
-			sy = 1,
-			sz = 1,
-			x = 0,
-			z = 0,
-		) => {
-			this.geometries.push(geo);
-			const m = new THREE.Mesh(geo, mat);
-			m.scale.set(sx, sy, sz);
-			m.position.set(x, y, z);
-			parent.add(m);
-			return m;
-		};
+		let topZ = 0;
+		let botY = 0;
 
-		add(partGeometry('pelvis'), skin, hips, 0, 1.35, 0.85, 1.15);
-		add(partGeometry('waist'), skin, hips, 0.28, 1.05, 1.1, 0.9);
-		add(partGeometry('chest'), skin, hips, 0.55, 1.45, 1.05, 1.1, 0, 0.04);
-		add(partGeometry('top'), cloth, hips, 0.52, 1.5, 0.7, 1.15);
-		for (const sx of [-1, 1] as const) {
-			const leg = new THREE.Group();
-			leg.position.set(sx * 0.14, 0, 0);
-			add(partGeometry('thighL'), skin, leg, -0.28);
-			add(partGeometry('shinL'), skin, leg, -0.62);
-			add(partGeometry('footL'), dark, leg, -0.88, 1.1, 0.55, 1.6, 0, 0.06);
-			hips.add(leg);
-			add(partGeometry('armL'), skin, hips, 0.48, 1, 1, 1, sx * 0.32, 0);
-		}
-		const head = new THREE.Group();
-		head.position.y = 0.95;
-		hips.add(head);
-		add(partGeometry('skull'), skin, head, 0);
-		add(partGeometry('snout'), skin, head, -0.04, 0.9, 0.75, 1.4, 0, 0.14);
-		const earGeo = new THREE.ConeGeometry(0.07, 0.16, 6);
-		this.geometries.push(earGeo);
-		for (const sx of [-1, 1] as const) {
-			const ear = new THREE.Mesh(earGeo, skin);
-			ear.position.set(sx * 0.12, 0.16, -0.02);
-			if (species === 'bunny') ear.scale.set(0.7, 2.2, EAR_FLARE);
-			else if (species === 'dragon') {
-				ear.scale.set(0.6, 1.4, 0.4);
-				ear.rotation.z = sx * EAR_FLARE;
+		switch (pose) {
+			case 'doggy': {
+				bottom.position.set(0, 0, 0.15);
+				bottom.rotation.set(0, 0, 0);
+				hipsB.rotation.set(1.15, 0, 0);
+				hipsB.position.y = CON_BODY * 0.42;
+				top.position.set(0, 0.05, -0.55);
+				top.rotation.set(0, 0, 0);
+				hipsT.rotation.set(0.35, 0, 0);
+				topZ = -0.55;
+				break;
 			}
-			head.add(ear);
+			case 'stand': {
+				bottom.position.set(0, 0, 0.2);
+				hipsB.rotation.set(0.95, 0, 0);
+				hipsB.position.y = CON_BODY * 0.55;
+				top.position.set(0, 0.08, -0.48);
+				hipsT.rotation.set(0.2, 0, 0);
+				topZ = -0.48;
+				break;
+			}
+			case 'wall': {
+				bottom.position.set(0, 0.05, 0.25);
+				hipsB.rotation.set(0.35, 0, 0);
+				bottom.rotation.x = -0.1;
+				top.position.set(0, 0.1, -0.42);
+				hipsT.rotation.set(0.15, 0, 0);
+				topZ = -0.42;
+				break;
+			}
+			case 'oral': {
+				bottom.position.set(0, -0.15, 0.35);
+				hipsB.rotation.set(0.2, 0, 0);
+				hipsB.position.y = CON_BODY * 0.28;
+				bottom.scale.setScalar(0.95);
+				top.position.set(0, 0, 0);
+				hipsT.rotation.set(-0.05, 0, 0);
+				topZ = 0;
+				break;
+			}
+			case 'bench': {
+				bottom.position.set(0, 0.38, 0.05);
+				hipsB.rotation.set(1.35, 0, 0);
+				hipsB.position.y = CON_BODY * 0.2;
+				top.position.set(0, 0.4, -0.4);
+				hipsT.rotation.set(0.25, 0, 0);
+				topZ = -0.4;
+				break;
+			}
+			case 'ride': {
+				top.position.set(0, 0.35, 0);
+				hipsT.rotation.set(0.45, 0, 0);
+				hipsT.position.y = CON_BODY * 0.35;
+				bottom.position.set(0, 0.75, 0.05);
+				hipsB.rotation.set(-0.2, Math.PI, 0);
+				botY = 0.75;
+				topZ = 0;
+				break;
+			}
 		}
-		add(partGeometry('tail'), skin, hips, 0.1, 1, 1, 1, 0, -0.28).rotation.x = 0.9;
 
-		if (male) {
-			const shaft = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.22, 4, 6), furMat(0xe8b090));
-			this.geometries.push(shaft.geometry);
-			shaft.position.set(0, -0.08, 0.22);
-			shaft.rotation.x = -1.1;
-			hips.add(shaft);
-			const balls = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), furMat(0xe0a888));
-			this.geometries.push(balls.geometry);
-			balls.scale.set(1.4, 0.9, 1);
-			balls.position.set(0, -0.14, 0.14);
-			hips.add(balls);
-		} else {
-			const mound = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), furMat(0xe8b090));
-			this.geometries.push(mound.geometry);
-			mound.scale.set(1.1, 0.7, 0.9);
-			mound.position.set(0, -0.06, 0.18);
-			hips.add(mound);
+		const shaft = top.getObjectByName('shaft');
+		if (shaft && (pose === 'doggy' || pose === 'stand' || pose === 'wall' || pose === 'bench')) {
+			shaft.position.set(0, -0.06 * U, 0.28 * U);
+			shaft.rotation.x = -1.35;
 		}
-		root.scale.setScalar(0.92 + rand() * 0.12);
-		return root;
+		return { topZ, botY };
 	}
 
 	private unlock(): void {
@@ -433,8 +557,8 @@ export class ConAdult {
 		el.innerHTML = `
 			<div role="dialog" aria-modal="true" aria-labelledby="con-age-title" style="max-width:440px;padding:28px;background:#1a0a12;border:2px solid #ff3366;border-radius:12px;text-align:center">
 				<div id="con-age-title" style="font-size:22px;font-weight:700;margin-bottom:8px">18+ ADULT WING</div>
-				<div style="opacity:.88;margin-bottom:10px;line-height:1.45">Darkroom + recording studio. Explicit adult content between consenting adult characters only.</div>
-				<div style="opacity:.7;font-size:13px;margin-bottom:18px;line-height:1.4">No minors. You must be 18 or older to enter.</div>
+				<div style="opacity:.88;margin-bottom:10px;line-height:1.45">Darkroom + studio. Explicit adult m/m fursuit scenes.</div>
+				<div style="opacity:.7;font-size:13px;margin-bottom:18px;line-height:1.4">No minors. You must be 18 or older.</div>
 				<button type="button" id="con-age-yes" style="margin:0 8px;padding:10px 18px;background:#ff3366;border:0;border-radius:8px;color:#fff;font-weight:700;cursor:pointer">I am 18+</button>
 				<button type="button" id="con-age-no" style="margin:0 8px;padding:10px 18px;background:#333;border:0;border-radius:8px;color:#fff;cursor:pointer">Leave</button>
 			</div>`;
@@ -458,7 +582,7 @@ export class ConAdult {
 		if (!this.promptHud) {
 			const el = document.createElement('div');
 			el.style.cssText =
-				'position:fixed;left:50%;bottom:12%;transform:translateX(-50%);z-index:50;padding:8px 14px;background:rgba(0,0,0,.65);color:#fff;font:600 14px system-ui,sans-serif;border-radius:8px;pointer-events:none';
+				'position:fixed;left:50%;bottom:12%;transform:translateX(-50%);z-index:50;padding:8px 14px;background:rgba(80,0,30,.78);color:#fff;font:600 14px system-ui,sans-serif;border-radius:8px;pointer-events:none;border:1px solid #ff4466';
 			document.body.appendChild(el);
 			this.promptHud = el;
 		}

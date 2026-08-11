@@ -11,29 +11,34 @@ import {
 	inRect2,
 	rectInterior,
 } from '#/data/conPlan';
-
-const HIP_Y = CON_BODY * (0.92 / 1.9);
-const PATH_INSET = CON_BODY * 4;
-
 import {
 	ACCENT_COLORS,
+	BELLY_COLORS,
 	type BodyPartId,
 	type Bone,
+	channelColor,
 	FUR_COLORS,
 	furMat,
 	makeSkeleton,
 	partGeometry,
-	partRestOffset,
-	partRestScale,
+	partRestMatrix,
+	SPECIES,
+	type Species,
+	speciesEarSpread,
+	speciesPartScale,
 } from '#/scene/con/FursuitKit';
 import { lerp } from '#/util/math';
 import { at, mulberry32, pickWith } from '#/util/rand';
 
+const HIP_Y = CON_BODY * (0.92 / 1.9);
+const PATH_INSET = CON_BODY * 4;
 const SEED = 0xf47c0de;
+
 const PARTS: readonly BodyPartId[] = [
 	'pelvis',
 	'waist',
 	'chest',
+	'belly',
 	'top',
 	'thighL',
 	'thighR',
@@ -43,8 +48,15 @@ const PARTS: readonly BodyPartId[] = [
 	'footR',
 	'armL',
 	'armR',
+	'handL',
+	'handR',
 	'skull',
 	'snout',
+	'nose',
+	'eyeL',
+	'eyeR',
+	'earL',
+	'earR',
 	'tail',
 ];
 
@@ -59,10 +71,10 @@ type Agent = {
 	yaw: number;
 	scale: number;
 	fur: number;
+	belly: number;
 	cloth: number;
-	/** Index of hand-holding partner, or -1. Couples share a path and stay close. */
+	species: Species;
 	partner: number;
-	/** Lateral offset when following partner (m). */
 	pairSide: number;
 };
 
@@ -74,8 +86,8 @@ type Layer = {
 };
 
 /**
- * ~100 suiters as 15 InstancedMeshes (one per body part).
- * Pose math on one off-scene skeleton; GPU gets matrices only.
+ * Suiters as InstancedMeshes (one per body part).
+ * Pose on one off-scene skeleton; GPU gets matrices only.
  */
 export class FursuitCrowd {
 	readonly group = new THREE.Group();
@@ -84,6 +96,8 @@ export class FursuitCrowd {
 	private readonly skeleton = makeSkeleton();
 	private readonly boneById: Map<BodyPartId, Bone>;
 	private readonly scratch = new THREE.Matrix4();
+	private readonly speciesMat = new THREE.Matrix4();
+	private readonly earMat = new THREE.Matrix4();
 	private readonly geos: THREE.BufferGeometry[] = [];
 
 	constructor() {
@@ -115,13 +129,7 @@ export class FursuitCrowd {
 			if (!bone) continue;
 			const geo = partGeometry(id);
 			this.geos.push(geo);
-			const s = partRestScale(id);
-			const o = partRestOffset(id);
-			const rest = new THREE.Matrix4().makeTranslation(o.x, o.y, o.z).multiply(new THREE.Matrix4().makeScale(s.x, s.y, s.z));
-			if (id === 'tail') rest.multiply(new THREE.Matrix4().makeRotationX(0.9));
-			if (id === 'armL') rest.multiply(new THREE.Matrix4().makeRotationZ(-0.25));
-			if (id === 'armR') rest.multiply(new THREE.Matrix4().makeRotationZ(0.25));
-
+			const rest = partRestMatrix(id);
 			const mesh = new THREE.InstancedMesh(geo, white, n);
 			mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 			mesh.frustumCulled = false;
@@ -135,7 +143,6 @@ export class FursuitCrowd {
 		const rand = mulberry32(SEED);
 		const paths = this.paths();
 		const n = CON_CROWD_COUNT;
-		// ~55% walk as gay couples (hand-hold pairs); rest solo.
 		const coupleSlots = Math.floor(n * 0.55) & ~1;
 		for (let i = 0; i < n; i++) {
 			const path = at(paths, i % paths.length);
@@ -155,12 +162,13 @@ export class FursuitCrowd {
 				yaw: rand() * Math.PI * 2,
 				scale: 0.94 + rand() * 0.14,
 				fur: pickWith(FUR_COLORS, rand),
+				belly: pickWith(BELLY_COLORS, rand),
 				cloth: pickWith(ACCENT_COLORS, rand),
+				species: pickWith(SPECIES, rand),
 				partner,
 				pairSide: lead ? -0.45 : 0.45,
 			});
 		}
-		// Couples share path + phase so they stay together.
 		for (let i = 0; i < coupleSlots; i += 2) {
 			const a = this.agents[i];
 			const b = this.agents[i + 1];
@@ -210,7 +218,6 @@ export class FursuitCrowd {
 
 	private stepAgent(a: Agent, dt: number, t: number): void {
 		a.phase += dt * a.speed;
-		// Follower: stick to partner's side (hand-hold).
 		if (a.partner >= 0) {
 			const p = this.agents[a.partner];
 			if (p && a.pairSide > 0) {
@@ -258,6 +265,9 @@ export class FursuitCrowd {
 		const thighR = this.boneById.get('thighR')?.node;
 		const shinL = this.boneById.get('shinL')?.node;
 		const shinR = this.boneById.get('shinR')?.node;
+		const armL = this.boneById.get('armL')?.node;
+		const armR = this.boneById.get('armR')?.node;
+		const skull = this.boneById.get('skull')?.node;
 
 		if (a.mode === 'walk') {
 			const swing = Math.sin(a.phase * 6) * 0.45;
@@ -265,8 +275,11 @@ export class FursuitCrowd {
 			if (thighR) thighR.rotation.x = -swing;
 			if (shinL) shinL.rotation.x = Math.max(0, -swing) * 0.4;
 			if (shinR) shinR.rotation.x = Math.max(0, swing) * 0.4;
+			if (armL) armL.rotation.x = -swing * 0.55;
+			if (armR) armR.rotation.x = swing * 0.55;
 			hips.rotation.set(0, Math.sin(a.phase * 3) * 0.08, 0);
 			hips.position.y = HIP_Y;
+			if (skull) skull.rotation.set(0.05, Math.sin(a.phase * 2) * 0.08, 0);
 		} else if (a.mode === 'dance') {
 			hips.position.y = HIP_Y + Math.abs(Math.sin(a.phase * 4)) * 0.08 * CON_BODY;
 			hips.rotation.set(0, Math.sin(a.phase * 2) * 0.35, Math.sin(a.phase * 3) * 0.12);
@@ -274,6 +287,9 @@ export class FursuitCrowd {
 			if (thighR) thighR.rotation.x = Math.sin(a.phase * 4 + 1) * 0.25;
 			if (shinL) shinL.rotation.x = 0;
 			if (shinR) shinR.rotation.x = 0;
+			if (armL) armL.rotation.x = Math.sin(a.phase * 5) * 0.6 - 0.4;
+			if (armR) armR.rotation.x = Math.sin(a.phase * 5 + 1) * 0.6 - 0.4;
+			if (skull) skull.rotation.set(0.1, Math.sin(a.phase * 3) * 0.2, 0);
 		} else {
 			hips.rotation.set(0, Math.sin(a.phase * 0.7) * 0.1, 0);
 			hips.position.y = HIP_Y + Math.sin(a.phase) * 0.01 * CON_BODY;
@@ -281,10 +297,21 @@ export class FursuitCrowd {
 			if (thighR) thighR.rotation.x = 0;
 			if (shinL) shinL.rotation.x = 0;
 			if (shinR) shinR.rotation.x = 0;
+			if (armL) armL.rotation.x = 0;
+			if (armR) armR.rotation.x = 0;
+			if (skull) skull.rotation.set(0, Math.sin(a.phase * 0.5) * 0.12, 0);
 		}
 
 		const tail = this.boneById.get('tail')?.node;
-		if (tail) tail.rotation.x = Math.sin(a.phase * 2) * 0.1;
+		if (tail) {
+			tail.rotation.x = 0.2 + Math.sin(a.phase * 2.2) * 0.15;
+			tail.rotation.y = Math.sin(a.phase * 1.7) * 0.25;
+		}
+		const earL = this.boneById.get('earL')?.node;
+		const earR = this.boneById.get('earR')?.node;
+		const twitch = Math.sin(a.phase * 7) * 0.08;
+		if (earL) earL.rotation.z = 0.15 + twitch;
+		if (earR) earR.rotation.z = -0.15 - twitch;
 
 		root.updateMatrixWorld(true);
 	}
@@ -294,10 +321,18 @@ export class FursuitCrowd {
 		for (let i = 0; i < this.agents.length; i++) {
 			const a = at(this.agents, i);
 			this.poseAgent(a);
+			const spread = speciesEarSpread(a.species);
 			for (const layer of this.layers) {
-				this.scratch.copy(layer.bone.node.matrixWorld).multiply(layer.rest);
+				const sp = speciesPartScale(a.species, layer.id);
+				this.speciesMat.makeScale(sp.x, sp.y, sp.z);
+				this.scratch.copy(layer.bone.node.matrixWorld).multiply(layer.rest).multiply(this.speciesMat);
+				if (layer.id === 'earL' || layer.id === 'earR') {
+					const side = layer.id === 'earL' ? -1 : 1;
+					this.earMat.makeTranslation(side * (spread - 1) * 0.04 * CON_BODY, 0, 0);
+					this.scratch.multiply(this.earMat);
+				}
 				layer.mesh.setMatrixAt(i, this.scratch);
-				const hex = layer.bone.channel === 'cloth' ? a.cloth : layer.bone.channel === 'dark' ? 0x1a1218 : a.fur;
+				const hex = channelColor(layer.bone.channel, a.fur, a.belly, a.cloth);
 				color.setHex(hex);
 				layer.mesh.setColorAt(i, color);
 			}

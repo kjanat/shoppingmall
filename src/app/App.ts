@@ -314,6 +314,8 @@ export class App {
 	private nearDjHint = false;
 	private nearProtestHint = false;
 	private nearTravelHint = false;
+	private nearConHint = false;
+	private lastConHint: string | null = null;
 	private nearPrayerHint = false;
 	private bartekSpeaking = false;
 	private crowdCheerCd = 0;
@@ -600,6 +602,7 @@ export class App {
 			this.barriers.group,
 			this.cityPark.group,
 			this.cityTheatre.group,
+			this.furryCon.group,
 			this.cityGarage.group,
 			this.citySky.group,
 			this.cityBirds.group,
@@ -889,7 +892,7 @@ export class App {
 			}
 			if (e.key === 'Escape') {
 				if (this.furryCon.tryLeaveScene()) {
-					this.ui.setStatus('Left scene');
+					this.ui.setStatus('Left con activity');
 					return;
 				}
 				if (this.djUi.isOpen()) {
@@ -935,10 +938,15 @@ export class App {
 					this.monkey.provoke() ? '🐒 De aap pakt een handvol kak… duiken!' : '🐒 De aap heeft even niks bij de hand',
 				);
 			}
-			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper · con adult
+			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper · con
 			if (e.key === 'e' || e.key === 'E') {
-				if (this.furryCon.tryJoin(this.camera.position)) {
-					this.ui.setStatus('Joined scene · Esc to leave');
+				const con = this.furryCon.tryInteract(this.camera.position);
+				if (con) {
+					if (con.scoreDelta !== 0) {
+						this.score = Math.max(0, this.score + con.scoreDelta);
+						this.ui.setScore(this.score, this.metSims.size);
+					}
+					this.ui.setStatus(con.status);
 					return;
 				}
 				// Het liftpaneel wint één keer van uitstappen: rijdend in de cabine was E altijd
@@ -2180,7 +2188,7 @@ export class App {
 	 */
 	private hasEInteraction(): boolean {
 		const p = this.camera.position;
-		if (this.furryCon.nearestScene(p) !== null) return true;
+		if (this.furryCon.canInteract(p) || this.furryCon.onLot(p)) return true;
 		const lift = this.elevatorAction();
 		if (lift !== null) return true;
 		if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car') return true;
@@ -2538,11 +2546,29 @@ export class App {
 		// straat niet meer te zien, en dat is precies waar je hem wél ziet.
 		const theatreDt = this.lod.theatre.step(dt, this.seesWhere(this.cityTheatre.marquee, this.cityTheatre.house));
 		if (theatreDt !== null) this.cityTheatre.update(theatreDt, elapsed, this.camera.position);
-		const conDt = this.lod.con.step(
-			dt,
-			this.seesWhere(this.furryCon.plazaSpot, this.furryCon.dealersSpot, this.furryCon.stageSpot),
-		);
-		if (conDt !== null) this.furryCon.update(conDt, elapsed, this.camera.position);
+		const conSeen =
+			this.furryCon.onLot(this.camera.position) ||
+			this.seesWhere(this.furryCon.plazaSpot, this.furryCon.dealersSpot, this.furryCon.stageSpot);
+		const conDt = this.lod.con.step(dt, conSeen);
+		if (conDt !== null) {
+			this.furryCon.update(conDt, elapsed, this.camera.position);
+			const tick = this.furryCon.consumeScoreEvent();
+			if (tick) {
+				if (tick.scoreDelta !== 0) {
+					this.score = Math.max(0, this.score + tick.scoreDelta);
+					this.ui.setScore(this.score, this.metSims.size);
+				}
+				this.ui.setStatus(tick.status);
+			} else {
+				const hint = this.furryCon.activityHint(this.camera.position);
+				if (hint && hint !== this.lastConHint) {
+					this.lastConHint = hint;
+					this.ui.setStatus(hint);
+				} else if (!hint) {
+					this.lastConHint = null;
+				}
+			}
+		}
 		const roofDt = this.lod.roof.step(dt, this.seesWhere(this.roofIsland.group.position, this.poolPeople.group.position));
 		if (roofDt !== null) {
 			this.roofIsland.update(roofDt, elapsed);
@@ -2662,6 +2688,14 @@ export class App {
 				this.ui.setStatus('🎧 DJ BARTEK · druk E · request plaatjes · Bartek Bartek');
 			} else if (!atDj) {
 				this.nearDjHint = false;
+			}
+
+			const dCon = this.camera.position.distanceTo(this.furryCon.plazaSpot);
+			if (dCon < 40 && !this.nearConHint) {
+				this.nearConHint = true;
+				this.ui.setStatus('🐾 PRAIRIE FUR CON · pink glows = E · badge desk at doors first · dealers/stage/hotel/food');
+			} else if (dCon >= 55) {
+				this.nearConHint = false;
 			}
 
 			// Protest picket — Wir schaffen das

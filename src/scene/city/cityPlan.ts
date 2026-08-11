@@ -491,6 +491,21 @@ export const EXIT_BRANCH_ROUTE: readonly RoutePoint[] = [
 ];
 
 /**
+ * Aftakking oost-ring → fur-con spur: de buitenste strook (oost, noordwaarts) verlaat
+ * de ring, rijdt oost naar de plaza, keert, en komt op dezelfde strook terug.
+ * Hart van de oostbaan op de buitenste ring is x = LANE_X + LANE_OFFSET.
+ */
+export const CON_BRANCH_ROUTE: readonly RoutePoint[] = [
+	{ x: LANE_X + LANE_OFFSET, y: CITY_GROUND_Y, z: 0 },
+	{ x: CON_ACCESS.minX + 4, y: CITY_GROUND_Y, z: CON_ACCESS_LANE.east },
+	{ x: CON_ACCESS.maxX - 4, y: CITY_GROUND_Y, z: CON_ACCESS_LANE.east },
+	{ x: CON_ACCESS.maxX + 4, y: CITY_GROUND_Y, z: CON_ACCESS_LANE.east, park: true },
+	{ x: CON_ACCESS.maxX + 4, y: CITY_GROUND_Y, z: CON_ACCESS_LANE.west },
+	{ x: CON_ACCESS.minX + 4, y: CITY_GROUND_Y, z: CON_ACCESS_LANE.west },
+	{ x: LANE_X + LANE_OFFSET, y: CITY_GROUND_Y, z: 0 },
+];
+
+/**
  * De zones waar het stadsverkeer in rijdt, uit de routes zelf.
  *
  * De hele stadblok-simulatie hing aan `stad` alleen, terwijl de aftakking de geul
@@ -502,6 +517,7 @@ export const EXIT_BRANCH_ROUTE: readonly RoutePoint[] = [
 export const CITY_TRAFFIC_ZONES: number = (() => {
 	let mask = 0;
 	for (const point of EXIT_BRANCH_ROUTE) mask |= zoneBit(zoneAt(point.x, point.y, point.z));
+	for (const point of CON_BRANCH_ROUTE) mask |= zoneBit(zoneAt(point.x, point.y, point.z));
 	for (const ring of ROAD_RINGS) {
 		for (const rand of ring.edges) {
 			mask |= zoneBit(zoneAt(rand.ox, CITY_GROUND_Y, rand.oz));

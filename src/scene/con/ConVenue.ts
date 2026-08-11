@@ -234,17 +234,59 @@ export class ConVenue {
 		this.wallSeg(wall, hwX - t, hwX, hHi, CON_HOTEL.maxZ - t, fy, hTop);
 		this.wallSeg(wall, hwX - t, hwX, hLo, hHi, doorHead, hTop);
 
-		// Adult wing boxes (low ceiling).
 		const adultH = fy + CON_ADULT_GATE.headY * 2.05;
-		for (const room of [CON_DARKROOM, CON_STUDIO]) {
+		const gLo = CON_ADULT_GATE.minZ;
+		const gHi = CON_ADULT_GATE.maxZ;
+		const gHead = fy + CON_ADULT_GATE.headY;
+		const adultRooms = [CON_DARKROOM, CON_STUDIO] as const;
+		for (const room of adultRooms) {
 			const c = rectCenter(room);
 			const s = rectSize(room);
 			this.group.add(this.box(s.w, adultH - fy, t, wall, c.x, half(adultH + fy), room.minZ + half(t)));
 			this.group.add(this.box(s.w, adultH - fy, t, wall, c.x, half(adultH + fy), room.maxZ - half(t)));
-			this.group.add(this.box(t, adultH - fy, s.d - t * 2, wall, room.minX + half(t), half(adultH + fy), c.z));
-			this.group.add(this.box(t, adultH - fy, s.d - t * 2, wall, room.maxX - half(t), half(adultH + fy), c.z));
 			this.group.add(this.box(s.w - t * 2, 0.3, s.d - t * 2, this.mat(0x100810), c.x, adultH - 0.15, c.z));
+
+			const westX = room.minX + half(t);
+			const eastX = room.maxX - half(t);
+			const sideH = adultH - fy;
+			const sideY = half(adultH + fy);
+			const northD = Math.max(0.05, gLo - (room.minZ + t));
+			const southD = Math.max(0.05, room.maxZ - t - gHi);
+			const northZ = room.minZ + t + half(northD);
+			const southZ = gHi + half(southD);
+			const lintelH = Math.max(0.05, adultH - gHead);
+			const lintelY = half(gHead + adultH);
+			const gateD = Math.max(0.05, gHi - gLo);
+			const gateZ = midpoint(gLo, gHi);
+
+			this.group.add(this.box(t, sideH, northD, wall, westX, sideY, northZ));
+			this.group.add(this.box(t, sideH, southD, wall, westX, sideY, southZ));
+			this.group.add(this.box(t, lintelH, gateD, wall, westX, lintelY, gateZ));
+
+			this.group.add(this.box(t, sideH, northD, wall, eastX, sideY, northZ));
+			this.group.add(this.box(t, sideH, southD, wall, eastX, sideY, southZ));
+			this.group.add(this.box(t, lintelH, gateD, wall, eastX, lintelY, gateZ));
 		}
+
+		const dark = CON_DARKROOM;
+		const studio = CON_STUDIO;
+		const linkW = Math.max(0.05, studio.minX - dark.maxX);
+		if (linkW > 0.05) {
+			const linkX = midpoint(dark.maxX, studio.minX);
+			this.group.add(this.box(linkW, adultH - fy, t, wall, linkX, half(adultH + fy), gLo - half(t)));
+			this.group.add(this.box(linkW, adultH - fy, t, wall, linkX, half(adultH + fy), gHi + half(t)));
+			this.group.add(
+				this.box(linkW, 0.25, Math.max(0.05, gHi - gLo), this.mat(0x100810), linkX, adultH - 0.12, midpoint(gLo, gHi)),
+			);
+		}
+
+		const path = this.sign('18+ DARKROOM →', 6, 0.55, 0xff4466);
+		path.position.set(CON_DARKROOM.minX - 8, 2.8, midpoint(CON_ADULT_GATE.minZ, CON_ADULT_GATE.maxZ));
+		path.rotation.y = Math.PI / 2;
+		this.group.add(path);
+		const path2 = this.sign('ADULT WING · 18+', 5, 0.5, 0xff88aa);
+		path2.position.set(CON_DARKROOM.minX - 2, 2.2, CON_ADULT_GATE.maxZ + 3);
+		this.group.add(path2);
 	}
 
 	private wallSeg(mat: THREE.Material, minX: number, maxX: number, minZ: number, maxZ: number, minY: number, maxY: number): void {
@@ -265,6 +307,14 @@ export class ConVenue {
 		put(CON_DEALERS, 'DEALERS DEN', 4.5);
 		put(CON_STAGE, 'MAIN STAGE', 5.5);
 		put(CON_HOTEL, 'CON HOTEL', 4.2);
+		const dark = rectCenter(CON_DARKROOM);
+		const dSign = this.sign('DARKROOM 18+', 8, 0.9, 0xff3355);
+		dSign.position.set(dark.x, 2.6, CON_DARKROOM.minZ + 1.4);
+		this.group.add(dSign);
+		const stud = rectCenter(CON_STUDIO);
+		const sSign = this.sign('PORN STUDIO', 8, 0.9, 0xffcc44);
+		sSign.position.set(stud.x, 2.6, CON_STUDIO.minZ + 1.4);
+		this.group.add(sSign);
 	}
 
 	private buildInteriorLights(pool: LightPool): void {
@@ -375,7 +425,7 @@ export class ConVenue {
 		const inner = rectInterior(CON_HOTEL);
 		const c = rectCenter(CON_HOTEL);
 		this.group.add(this.box(8, 1.1, 1.4, this.mat(0x3a4555), c.x, CON_FLOOR_Y + 0.55, inner.minZ + 6));
-		const sign = this.sign('CHECK-IN · BADGES', 7, 0.7, 0x88ccff);
+		const sign = this.sign('HOTEL DESK · E', 7, 0.7, 0x88ccff);
 		sign.position.set(c.x, CON_FLOOR_Y + 1.6, inner.minZ + 6.1);
 		this.group.add(sign);
 		const shaft = this.mat(0x2a3340);
@@ -415,7 +465,7 @@ export class ConVenue {
 		const board = this.mat(0x120818);
 		const x = CON_PLAZA.maxX - 1;
 		this.group.add(this.box(0.4, 4, 18, board, x, 4, 0));
-		const lines = ['GAY FUR WEEKEND', 'TECHNO ALL NIGHT', 'BOYS · BOYS · BOYS', 'ADULT 18+ · HOTEL E'];
+		const lines = ['GAY FUR WEEKEND', 'TECHNO ALL NIGHT', 'E AT PINK GLOWS', 'BADGE AT DOORS · E'];
 		for (let i = 0; i < lines.length; i++) {
 			const s = this.sign(at(lines, i), 8, 0.55, i === 0 || i === 2 ? 0xff6b9d : i === 1 ? 0x00ffcc : 0xffffff);
 			s.position.set(x - 0.3, 5.4 - i * 0.85, 0);

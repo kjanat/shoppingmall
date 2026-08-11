@@ -3,7 +3,15 @@ import { MOTORCYCLE_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
 import type { Barriers } from '#/scene/city/Barriers';
 import type { RoadRing, RoutePoint } from '#/scene/city/cityPlan';
-import { EXIT_BOOM, EXIT_BRANCH_ROUTE, LANE_OFFSET, ROAD_RINGS, TRAFFIC_CAR, TRAFFIC_RIDER } from '#/scene/city/cityPlan';
+import {
+	CON_BRANCH_ROUTE,
+	EXIT_BOOM,
+	EXIT_BRANCH_ROUTE,
+	LANE_OFFSET,
+	ROAD_RINGS,
+	TRAFFIC_CAR,
+	TRAFFIC_RIDER,
+} from '#/scene/city/cityPlan';
 import { backToBackLabel, labelCanvas, labelTexture } from '#/util/label';
 import { half, inverseLerpClamped, lerp } from '#/util/math';
 import { at } from '#/util/rand';
@@ -192,6 +200,14 @@ function branchLegs(route: readonly RoutePoint[]): BranchLeg[] {
 const BRANCH_LEGS: readonly BranchLeg[] = branchLegs(EXIT_BRANCH_ROUTE);
 const BRANCH_LENGTH = BRANCH_LEGS.reduce((sum, leg) => sum + leg.len, 0);
 
+const SPUR_LEGS: readonly BranchLeg[] = branchLegs(CON_BRANCH_ROUTE);
+const SPUR_LENGTH = SPUR_LEGS.reduce((sum, leg) => sum + leg.len, 0);
+/** Seconds between con spur departures; several cars may already be on the spur. */
+const SPUR_EVERY = 14;
+/** Dwell at the plaza turnaround. */
+const SPUR_PARK = 4;
+const SPUR_VMAX = 7;
+
 /** Het stuk waar boogafstand s op ligt. */
 function branchLegAt(s: number): BranchLeg {
 	for (let k = BRANCH_LEGS.length - 1; k > 0; k--) {
@@ -199,6 +215,14 @@ function branchLegAt(s: number): BranchLeg {
 		if (s >= leg.start) return leg;
 	}
 	return at(BRANCH_LEGS, 0);
+}
+
+function spurLegAt(s: number): BranchLeg {
+	for (let k = SPUR_LEGS.length - 1; k > 0; k--) {
+		const leg = at(SPUR_LEGS, k);
+		if (s >= leg.start) return leg;
+	}
+	return at(SPUR_LEGS, 0);
 }
 
 /** Boogafstand van een x op de heenweg. De terugweg komt er niet aan te pas: die ligt verderop. */
@@ -215,10 +239,10 @@ function branchArcAtX(x: number): number {
  * erboven ligt. Dezelfde vraag als `ringDistance`, want een voetganger op de
  * inrit hoort net zo hard geremd te worden als een voorligger op de ring.
  */
-function branchDistance(p: RoadObstacle): number | null {
+function branchDistance(p: RoadObstacle, legs: readonly BranchLeg[] = BRANCH_LEGS): number | null {
 	let best: number | null = null;
 	let bestLat = ROAD_REACH;
-	for (const leg of BRANCH_LEGS) {
+	for (const leg of legs) {
 		const dx = leg.to.x - leg.from.x;
 		const dz = leg.to.z - leg.from.z;
 		const run = Math.hypot(dx, dz);
@@ -239,6 +263,7 @@ function branchDistance(p: RoadObstacle): number | null {
 
 /** Waar de auto beneden stilstaat: het knikpunt dat zichzelf als parkeerplek opgeeft. */
 const BRANCH_PARK_S = BRANCH_LEGS.find((leg) => leg.from.park === true)?.start ?? 0;
+const SPUR_PARK_S = SPUR_LEGS.find((leg) => leg.from.park === true)?.start ?? 0;
 const BOOM_S = branchArcAtX(EXIT_BOOM.post.x);
 
 /** Waar dit voertuig voor een dichte boom stilstaat: met zijn eigen neus vlak voor de arm. */
@@ -248,18 +273,21 @@ function boomStop(profile: TrafficProfile): number {
 
 /** De aftakking hangt aan de binnenste strook: die passeert de mond in de goede richting. */
 const BRANCH_RING = 0;
+/** Con spur leaves/rejoins the outer ring (east side, northbound). */
+const SPUR_RING = 1;
 
-function branchHook(point: RoutePoint | undefined): number | null {
-	return point === undefined ? null : ringDistance(at(RINGS, BRANCH_RING), point);
+function branchHook(point: RoutePoint | undefined, ring: number): number | null {
+	return point === undefined ? null : ringDistance(at(RINGS, ring), point);
 }
 
 /** Waar hij de ring verlaat en waar hij er weer op komt. Null als de route er niet op aansluit. */
-const BRANCH_ENTER_S = branchHook(EXIT_BRANCH_ROUTE[0]);
-const BRANCH_LEAVE_S = branchHook(EXIT_BRANCH_ROUTE[EXIT_BRANCH_ROUTE.length - 1]);
+const BRANCH_ENTER_S = branchHook(EXIT_BRANCH_ROUTE[0], BRANCH_RING);
+const BRANCH_LEAVE_S = branchHook(EXIT_BRANCH_ROUTE[EXIT_BRANCH_ROUTE.length - 1], BRANCH_RING);
+const SPUR_ENTER_S = branchHook(CON_BRANCH_ROUTE[0], SPUR_RING);
+const SPUR_LEAVE_S = branchHook(CON_BRANCH_ROUTE[CON_BRANCH_ROUTE.length - 1], SPUR_RING);
 
 /**
- * Eén auto. `branchS` is zijn afstand op de aftakking en null zolang hij zijn ring
- * rijdt: twee plaatsen tegelijk bestaan niet, en `s` is dan wat hij was.
+ * Eén auto. `branchS` / `spurS` is boogafstand op die aftakking, null op de ring.
  */
 type Car = {
 	mesh: THREE.Group;
@@ -271,6 +299,8 @@ type Car = {
 	s: number;
 	/** Boogafstand op de aftakking, of null zolang hij op zijn ring rijdt. */
 	branchS: number | null;
+	/** Boogafstand op de con-spur, of null. */
+	spurS: number | null;
 	/** Resterende parkeertijd beneden, en of hij daar al gestaan heeft. */
 	dwell: number;
 	parked: boolean;
@@ -304,6 +334,8 @@ export class CityTraffic {
 	private readonly barriers: Barriers;
 	/** Aftellen tot de volgende auto de geul in mag. */
 	private branchTimer = BRANCH_EVERY;
+	/** Aftellen tot de volgende auto de con-spur op mag. */
+	private spurTimer = SPUR_EVERY;
 
 	constructor(getPhase: () => string, barriers: Barriers) {
 		this.getPhase = getPhase;
@@ -412,6 +444,7 @@ export class CityTraffic {
 				ri,
 				s: ((Math.floor(i / RINGS.length) + 0.4 * Math.random()) / PER_RING) * at(RINGS, ri).perim,
 				branchS: null,
+				spurS: null,
 				dwell: 0,
 				parked: false,
 				v: cruise,
@@ -435,6 +468,7 @@ export class CityTraffic {
 		const phase = this.getPhase();
 		this.hitCooldown = Math.max(0, this.hitCooldown - dt);
 		this.branchTimer = Math.max(0, this.branchTimer - dt);
+		this.spurTimer = Math.max(0, this.spurTimer - dt);
 		// Eén projectie per ring per frame in plaats van één per auto: de ringen
 		// veranderen niet en de voetganger staat maar op één plek.
 		const obstacle = this.getObstacle?.() ?? null;
@@ -451,6 +485,10 @@ export class CityTraffic {
 				this.driveBranch(car, i, dt, obstacle);
 				return;
 			}
+			if (car.spurS !== null) {
+				this.driveSpur(car, i, dt, obstacle);
+				return;
+			}
 			const ring = at(RINGS, car.ri);
 			// Voorligger zoeken: kleinste positieve afstand vooruit op de ring.
 			// Alleen wie dezelfde strook rijdt telt mee; boogafstanden van twee
@@ -458,7 +496,7 @@ export class CityTraffic {
 			// O(n²) over 20 auto's — de Pi haalt z'n schouders op.
 			let gap = ring.perim;
 			for (const other of this.cars) {
-				if (other === car || other.ri !== car.ri || other.branchS !== null) continue;
+				if (other === car || other.ri !== car.ri || other.branchS !== null || other.spurS !== null) continue;
 				const d = ahead(other.s, car.s, ring.perim);
 				if (d < gap) gap = d;
 			}
@@ -499,6 +537,14 @@ export class CityTraffic {
 				car.dwell = 0;
 				car.parked = false;
 				this.branchTimer = BRANCH_EVERY;
+				this.place(i);
+				return;
+			}
+			if (this.turnsInSpur(car, was, move)) {
+				car.spurS = 0;
+				car.dwell = 0;
+				car.parked = false;
+				this.spurTimer = SPUR_EVERY;
 				this.place(i);
 				return;
 			}
@@ -544,16 +590,26 @@ export class CityTraffic {
 		return d <= move;
 	}
 
+	/** Of deze auto de con-spur op mag (buitenste ring, oost-aansluiting). */
+	private turnsInSpur(car: Car, was: number, move: number): boolean {
+		if (SPUR_ENTER_S === null || this.spurTimer > 0 || car.ri !== SPUR_RING) return false;
+		const ring = at(RINGS, SPUR_RING);
+		let d = SPUR_ENTER_S - was;
+		if (d < 0) d += ring.perim;
+		return d <= move;
+	}
+
 	/**
 	 * Of er bij de invoegplek een gat in de ring zit. Alleen vooruit gekeken: wie
 	 * erachter aankomt remt al voor de wachtende auto, en invoegen is juist wat die
 	 * file weer op gang helpt. Ook achteruit kijken zet de twee op elkaar te wachten.
 	 */
-	private ringHasRoom(profile: TrafficProfile): boolean {
-		if (BRANCH_LEAVE_S === null) return false;
-		const perim = at(RINGS, BRANCH_RING).perim;
+	private ringHasRoom(profile: TrafficProfile, leaveS: number | null, ringI: number): boolean {
+		if (leaveS === null) return false;
+		const perim = at(RINGS, ringI).perim;
 		return this.cars.every(
-			(other) => other.branchS !== null || other.ri !== BRANCH_RING || ahead(other.s, BRANCH_LEAVE_S, perim) > profile.holdGap,
+			(other) =>
+				other.branchS !== null || other.spurS !== null || other.ri !== ringI || ahead(other.s, leaveS, perim) > profile.holdGap,
 		);
 	}
 
@@ -605,9 +661,61 @@ export class CityTraffic {
 		car.branchS = next;
 		this.place(i);
 		this.checkHit(car, obstacle, branchLegAt(next).rotY);
-		if (next >= BRANCH_LENGTH && BRANCH_LEAVE_S !== null && this.ringHasRoom(car.profile)) {
+		if (next >= BRANCH_LENGTH && BRANCH_LEAVE_S !== null && this.ringHasRoom(car.profile, BRANCH_LEAVE_S, BRANCH_RING)) {
 			car.branchS = null;
 			car.s = BRANCH_LEAVE_S;
+		}
+	}
+
+	/**
+	 * Con spur: multi-car, follow-the-leader, plaza dwell, rejoin outer ring.
+	 * Same rem model as the parking branch without the boom.
+	 */
+	private driveSpur(car: Car, i: number, dt: number, obstacle: RoadObstacle | null): void {
+		const s = car.spurS;
+		if (s === null) return;
+		if (car.dwell > 0) {
+			car.dwell = Math.max(0, car.dwell - dt);
+			car.v = 0;
+			this.place(i);
+			return;
+		}
+
+		// Voorligger op de spur (kleinste s > self).
+		let gap = SPUR_LENGTH - s + 40;
+		for (const other of this.cars) {
+			if (other === car || other.spurS === null) continue;
+			const aheadS = other.spurS - s;
+			if (aheadS > 0 && aheadS < gap) gap = aheadS;
+		}
+
+		let stop = SPUR_LENGTH;
+		const voetganger = obstacle === null ? null : branchDistance(obstacle, SPUR_LEGS);
+		if (voetganger !== null && voetganger > s) stop = Math.min(stop, voetganger - car.profile.holdGap);
+		const roomToStop = Math.max(0, stop - s);
+		const roomToCar = Math.max(0, gap - car.profile.holdGap);
+		const ruimte = Math.min(roomToStop, roomToCar);
+		const kruis = Math.min(car.vmax, SPUR_VMAX);
+		const remweg = half(car.v * car.v) / BRAKE;
+		car.v = ruimte <= remweg ? Math.max(0, car.v - BRAKE * dt) : Math.min(kruis, car.v + ACCEL * dt);
+		const move = Math.min(car.v * dt, ruimte);
+		const next = s + move;
+
+		if (!car.parked && next >= SPUR_PARK_S) {
+			car.parked = true;
+			car.dwell = SPUR_PARK;
+			car.spurS = SPUR_PARK_S;
+			car.v = 0;
+			this.place(i);
+			return;
+		}
+		car.spurS = next;
+		this.place(i);
+		this.checkHit(car, obstacle, spurLegAt(next).rotY);
+		if (next >= SPUR_LENGTH && SPUR_LEAVE_S !== null && this.ringHasRoom(car.profile, SPUR_LEAVE_S, SPUR_RING)) {
+			car.spurS = null;
+			car.s = SPUR_LEAVE_S;
+			car.ri = SPUR_RING;
 		}
 	}
 
@@ -623,6 +731,13 @@ export class CityTraffic {
 			// Om zijn eigen lengte-as kantelen: op de helling staat hij met de neus
 			// omlaag in plaats van vlak door het beton.
 			car.mesh.rotateZ(leg.pitch);
+			return;
+		}
+		if (car.spurS !== null) {
+			const leg = spurLegAt(car.spurS);
+			const t = inverseLerpClamped(leg.start, leg.start + leg.len, car.spurS);
+			car.mesh.position.set(lerp(leg.from.x, leg.to.x, t), lerp(leg.from.y, leg.to.y, t), lerp(leg.from.z, leg.to.z, t));
+			car.mesh.rotation.set(0, leg.rotY, 0);
 			return;
 		}
 		const ring = at(RINGS, car.ri);
