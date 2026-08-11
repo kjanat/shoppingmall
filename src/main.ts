@@ -1,4 +1,5 @@
 import './style.css';
+import { guardAccidentalClose } from './app/closeGuard';
 
 const canvasRoot = document.querySelector<HTMLElement>('#canvas-root');
 const uiRoot = document.querySelector<HTMLElement>('#ui-root');
@@ -21,6 +22,8 @@ const boot = async () => {
 		throw error;
 	}
 };
+
+guardAccidentalClose();
 
 if (new URLSearchParams(window.location.search).has('perf-probe')) {
 	void boot();

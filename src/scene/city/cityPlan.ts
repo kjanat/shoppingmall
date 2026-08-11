@@ -626,18 +626,24 @@ export const CITY_KAVELS = {
 	rio: { minX: -140, maxX: -58, minZ: 36, maxZ: 92 },
 	/** Favela on the mall-facing slope — overlaps mountain east stairs so the climb is continuous. */
 	favela: { minX: -92, maxX: -46, minZ: 40, maxZ: 90 },
-	/** The Roman Mega Colosseum south of the ring road. */
-	colosseum: { minX: -42, maxX: 42, minZ: 68, maxZ: 178 },
+	/** The Roman Mega Colosseum south of the ring road; the lot follows its grown ellipse so no tower lands on it. */
+	colosseum: { minX: -47, maxX: 47, minZ: 50, maxZ: 160 },
 } as const satisfies Record<string, Rect>;
 
 export const COLOSSEUM_PLAN = {
 	x: 0,
 	z: 104,
-	radiusX: 34,
-	radiusZ: 40,
+	// The cavea is deeper than the arena is half-wide, the way a real amphitheatre
+	// is (Rome: ~51 m of stand against ~43 m arena half-width): the seating carries
+	// the view from inside, not the empty sand. The arena radii stay put — fighters,
+	// gates and the hypogeum all read them — so only the outer ring and its height
+	// grow. The ellipse clears the ring road (south edge z 52 against the road at
+	// ~41), the favela (west edge x −46 against its x −48) and CITY_BOUNDS.
+	radiusX: 46,
+	radiusZ: 52,
 	arenaRadiusX: 20,
 	arenaRadiusZ: 25,
-	wallHeight: 24,
+	wallHeight: 32,
 	levels: 4,
 	archesPerLevel: 36,
 	hypogeumDepth: 3.5,

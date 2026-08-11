@@ -4,7 +4,7 @@ import { ENTRANCE_PORTAL, MALL_WALL_ENVELOPE, PARKING_EXIT_RAMP } from '#/data/w
 import { EYE } from '#/player/constants';
 import { CITY_KAVELS, ROAD_INNER_X, ROAD_PLAN, TRAFFIC_LANE_CLEARANCE } from '#/scene/city/cityPlan';
 import { midpoint, span } from '#/util/math';
-import { mulberry32 } from '#/util/rand';
+import { mulberry32, shuffled } from '#/util/rand';
 import type { RoutePose } from './probe.ts';
 
 /**
@@ -200,19 +200,6 @@ const FULL_COURSE: readonly LevelCourse[] = [
 		],
 	},
 ];
-
-function shuffled<T>(values: readonly T[], random: () => number): T[] {
-	const result = [...values];
-	for (let i = result.length - 1; i > 0; i--) {
-		const j = Math.floor(random() * (i + 1));
-		const current = result[i];
-		const replacement = result[j];
-		if (current === undefined || replacement === undefined) continue;
-		result[i] = replacement;
-		result[j] = current;
-	}
-	return result;
-}
 
 export function fullMallRoute(seed: number | null = null): ProfileRoute {
 	const random = seed === null ? null : mulberry32(seed);

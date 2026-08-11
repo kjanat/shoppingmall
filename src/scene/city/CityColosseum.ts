@@ -3,7 +3,7 @@ import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { COLOSSEUM_PLAN } from '#/scene/city/cityPlan';
 import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
-import { clamp, half, lerp, midpoint, span } from '#/util/math';
+import { clamp, half, lerp, midpoint } from '#/util/math';
 
 export type GateState = 'closed' | 'opening' | 'open' | 'closing';
 
@@ -42,7 +42,6 @@ export class CityColosseum {
 		this.buildArenaAndPodium();
 		this.buildCavea();
 		this.buildFacade();
-		this.buildInnerArticulation();
 		this.buildImperialPulvinar();
 		this.buildSubterraneanGates();
 		this.buildTorches();
@@ -204,87 +203,65 @@ export class CityColosseum {
 
 	// ── the seating bowl ─────────────────────────────────────────────────────
 
-	/** How high the seating climbs; the inner wall above it carries a top gallery. */
-	private readonly caveaTopY = 16.5;
+	/** The top of the seating; it climbs almost the whole inner wall to the crown. */
+	private readonly caveaTopY = COLOSSEUM_PLAN.wallHeight - 2;
+
+	/** A flat elliptical annulus (a seating tread) lying in the xz-plane at height y. */
+	private tread(innerRx: number, outerRx: number, y: number, mat: THREE.Material): void {
+		const geo = new THREE.RingGeometry(innerRx, outerRx, 56, 1);
+		const ring = this.addMesh(geo, mat);
+		ring.rotation.x = -half(Math.PI);
+		ring.scale.set(1, this.aspect, 1);
+		ring.position.set(COLOSSEUM_PLAN.x, y, COLOSSEUM_PLAN.z);
+	}
 
 	private buildCavea(): void {
 		const { radiusX, arenaRadiusX } = COLOSSEUM_PLAN;
 
-		// Two tints that differ enough to read as alternating rows from the sand, a
-		// dark nose line at each step edge, and dark stairs for the radial aisles.
-		const lightRow = lit({ color: 0xe6dabd, roughness: 0.6 });
-		const darkRow = lit({ color: 0x8a7862, roughness: 0.85 });
-		const noseMat = lit({ color: 0x453c2d, roughness: 0.95 });
-		const aisleMat = lit({ color: 0x5a4f3c, roughness: 0.9 });
-		this.materials.push(lightRow, darkRow, noseMat, aisleMat);
+		// The seating faces inward, so every surface is DoubleSide: a solid ring would
+		// only show the renderer its outer face and read as a blank wall from the sand.
+		const lightRow = lit({ color: 0xe7dcc0, roughness: 0.6, side: THREE.DoubleSide });
+		const darkRow = lit({ color: 0x877663, roughness: 0.85, side: THREE.DoubleSide });
+		const treadMat = lit({ color: 0xcabfa2, roughness: 0.8, side: THREE.DoubleSide });
+		const aisleMat = lit({ color: 0x554a38, roughness: 0.9, side: THREE.DoubleSide });
+		const crownMat = lit({ color: 0xe4d9c2, roughness: 0.7, side: THREE.DoubleSide });
+		this.materials.push(lightRow, darkRow, treadMat, aisleMat, crownMat);
 
-		// Concentric filled rows rising from the podium to the facade foot. Each row is
-		// a solid tier taller than the one inside it; from the sand the visible riser
-		// band alternates tint and a dark nosing draws the step edge, so the bowl reads
-		// as seating instead of one smooth funnel.
-		const rows = 12;
-		const innerRx = arenaRadiusX + 1.6;
+		// The whole inner face is seating: thin risers and treads climbing from the
+		// podium to the crown, each an open shell so the rows behind the nearest one
+		// stay visible. From the sand the wall reads as a flight of alternating steps,
+		// never a smooth cone, because there is no plain wall left above the top row.
+		const rows = 22;
+		const innerRx = arenaRadiusX + 1.2;
 		const outerRx = radiusX - 3.0;
-		const innerTopY = 3.0;
-		const rowTopY = (t: number): number => lerp(innerTopY, this.caveaTopY, t);
+		const baseY = 2.6;
 		const rowRx = (t: number): number => lerp(innerRx, outerRx, t);
+		const rowY = (t: number): number => lerp(baseY, this.caveaTopY, t);
 		for (let k = 0; k < rows; k++) {
-			const t = k / (rows - 1);
-			const rx = rowRx(t);
-			const topY = rowTopY(t);
-			this.ringWall(rx, half(topY), topY, k % 2 === 0 ? lightRow : darkRow);
-			// A thin dark ring standing proud of the step's top edge: the nosing that
-			// separates one row from the next when the risers are seen from below.
-			this.ringWall(rx + 0.15, topY - 0.12, 0.28, noseMat, { openEnded: true });
+			const t0 = k / rows;
+			const t1 = (k + 1) / rows;
+			this.ringWall(rowRx(t0), midpoint(rowY(t0), rowY(t1)), rowY(t1) - rowY(t0), k % 2 === 0 ? lightRow : darkRow, {
+				openEnded: true,
+			});
+			this.tread(rowRx(t0), rowRx(t1), rowY(t1), treadMat);
 		}
+		// The crown: one light lip ring capping the top row.
+		this.ringWall(outerRx + 0.2, this.caveaTopY + 0.4, 0.8, crownMat, { openEnded: true });
 
-		// Radial vomitoria: a flight of dark treads down each aisle, cutting the bands
-		// so the rows do not read as one unbroken ring.
+		// Radial vomitoria: a flight of dark treads down each aisle, cutting the rings
+		// so the rows do not read as one unbroken band.
 		const aisles = 8;
 		for (let i = 0; i < aisles; i++) {
 			const a = (i / aisles) * Math.PI * 2 + Math.PI / aisles;
 			if (this.nearGate(a)) continue;
 			for (let k = 0; k < rows; k++) {
-				const t = k / (rows - 1);
-				const [x, z] = this.onEllipse(a, rowRx(t));
-				const tread = new THREE.BoxGeometry(2.2, 0.35, 1.6);
-				const step = this.addMesh(tread, aisleMat);
-				step.position.set(x, rowTopY(t) + 0.06, z);
+				const t = k / rows;
+				const [x, z] = this.onEllipse(a, rowRx(t) - 0.1);
+				const stepGeo = new THREE.BoxGeometry(2.6, 0.4, 1.5);
+				const step = this.addMesh(stepGeo, aisleMat);
+				step.position.set(x, rowY(t) + 0.12, z);
 				step.rotation.y = -a;
 			}
-		}
-	}
-
-	/**
-	 * The inner face above the seating: cornice bands and pilaster ribs per bay, plus
-	 * a short top gallery, so the wall between the top row and the attic is broken up
-	 * instead of standing as one blank sweep behind the arena.
-	 */
-	private buildInnerArticulation(): void {
-		const { radiusX, wallHeight, levels, archesPerLevel } = COLOSSEUM_PLAN;
-
-		const corniceMat = lit({ color: 0xe4d9c2, roughness: 0.7 });
-		const ribMat = lit({ color: 0xbfb08c, roughness: 0.8 });
-		const galleryMat = lit({ color: 0xd6caa8, roughness: 0.8 });
-		this.materials.push(corniceMat, ribMat, galleryMat);
-
-		const tierH = wallHeight / levels;
-		const innerRx = radiusX - 2.4;
-
-		// Cornice bands at the tier lines that sit above the seating.
-		for (const y of [this.caveaTopY, 3 * tierH]) {
-			this.ringWall(innerRx + 0.3, y, 0.6, corniceMat);
-		}
-
-		// Pilaster ribs per bay from the top row to the crown, and a short gallery
-		// column in front of each, so the upper wall reads as an arcade from inside.
-		for (let i = 0; i < archesPerLevel; i++) {
-			const a = (i / archesPerLevel) * Math.PI * 2;
-			this.tangentBox(a, innerRx, 0.7, span(this.caveaTopY, wallHeight), 0.4, midpoint(this.caveaTopY, wallHeight), ribMat);
-			const [gx, gz] = this.onEllipse(a, innerRx - 0.6);
-			const colGeo = new THREE.CylinderGeometry(0.3, 0.34, span(this.caveaTopY, 3 * tierH), 10);
-			const col = this.addMesh(colGeo, galleryMat);
-			col.position.set(gx, midpoint(this.caveaTopY, 3 * tierH), gz);
 		}
 	}
 

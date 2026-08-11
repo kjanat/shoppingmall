@@ -25,6 +25,23 @@ export function pickWith<T>(list: readonly T[], rng: () => number): T {
 }
 
 /**
+ * Dezelfde elementen in willekeurige volgorde, als nieuwe lijst.
+ *
+ * Voor trekken zonder teruglegging: wie telkens opnieuw uniform kiest hoort een
+ * handvol clips terugkomen terwijl de rest van de bank stil blijft.
+ */
+export function shuffled<T>(list: readonly T[], rng: () => number = Math.random): T[] {
+	const out = [...list];
+	for (let i = out.length - 1; i > 0; i--) {
+		const j = Math.floor(rng() * (i + 1));
+		const gekozen = at(out, j);
+		out[j] = at(out, i);
+		out[i] = gekozen;
+	}
+	return out;
+}
+
+/**
  * Element at `i`, wrapped into range — for cycling palettes and outfits.
  * ArrayLike, so typed arrays (Float32Array & co) work too.
  */

@@ -11,8 +11,8 @@ const SHOT_TIMEOUT_MS = 300_000;
 const REPAINT_MS = 900;
 
 const POSES = [
-	{ name: 'c1-midtribune', x: 0, y: 10.5, z: 133, lookX: 0, lookY: 7, lookZ: 74 },
-	{ name: 'c2-arenafloor', x: 0, y: 2.5, z: 114, lookX: 0, lookY: 12, lookZ: 80 },
+	{ name: 'p1-midtribune-across', x: 0, y: 18, z: 140, lookX: 0, lookY: 12, lookZ: 64 },
+	{ name: 'p2-arenafloor', x: 0, y: 2.5, z: 118, lookX: 0, lookY: 16, lookZ: 62 },
 ] as const;
 
 const outputDir = argv[2] ?? '/home/kjanat/.claude/jobs/8868c721/tmp';

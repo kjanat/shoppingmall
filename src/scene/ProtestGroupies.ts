@@ -9,7 +9,7 @@ import { GRAVITY } from '#/player/constants';
 import { lit } from '#/render/material';
 import { backToBackLabel, fitText, labelCanvas, labelTexture, roundRect, speechTail } from '#/util/label';
 import { easeFactor, half, lerp, shortestAngle } from '#/util/math';
-import { at, pick } from '#/util/rand';
+import { at, pick, shuffled } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 import MANIFEST from '$/public/voices/protest/manifest.json' with { type: 'json' };
 
@@ -31,6 +31,40 @@ const PROTEST_CLIPS: ProtestClip[] = MANIFEST.map((c) => ({
 	...c,
 	kind: c.kind === 'merkel' ? 'merkel' : 'crowd',
 }));
+
+/** Hoe vaak Merkel de beurt pakt als ze klaarstaat. */
+const MERKEL_TURN_CHANCE = 0.18;
+
+/**
+ * Trekken zonder teruglegging: elke clip is aan de beurt geweest voordat er één terugkomt.
+ *
+ * Uniform trekken laat van 23 clips telkens dezelfde paar terugkomen, en de stemvoorkeur
+ * die eroverheen lag knipte de keuze terug tot de één à twee clips van die ene spreker.
+ */
+class ClipBag {
+	private bag: ProtestClip[] = [];
+	private last: ProtestClip | null = null;
+
+	constructor(private readonly clips: readonly ProtestClip[]) {}
+
+	draw(): ProtestClip | null {
+		if (this.clips.length === 0) return null;
+		if (this.bag.length === 0) this.refill();
+		const clip = this.bag.pop() ?? null;
+		if (clip) this.last = clip;
+		return clip;
+	}
+
+	private refill(): void {
+		this.bag = shuffled(this.clips);
+		// Over de naad van twee rondes zou dezelfde clip anders twee keer achtereen klinken.
+		if (this.clips.length > 1 && at(this.bag, this.bag.length - 1) === this.last) {
+			const eerst = at(this.bag, this.bag.length - 1);
+			this.bag[this.bag.length - 1] = at(this.bag, 0);
+			this.bag[0] = eerst;
+		}
+	}
+}
 
 type Protester = {
 	/** Speech anchor. Merkel also keeps her bespoke visible model here. */
@@ -148,10 +182,11 @@ export class ProtestGroupies {
 	private clips: ProtestClip[] = [...PROTEST_CLIPS];
 	private crowdClips: ProtestClip[] = PROTEST_CLIPS.filter((c) => c.kind === 'crowd');
 	private merkelClips: ProtestClip[] = PROTEST_CLIPS.filter((c) => c.kind === 'merkel');
+	private readonly crowdBag = new ClipBag(this.crowdClips.length ? this.crowdClips : this.clips);
+	private readonly merkelBag = new ClipBag(this.merkelClips.length ? this.merkelClips : this.clips);
 	/** One owner for voice and bubble timing. No timer callback may start a chant. */
 	private chantState: ChantState = { kind: 'locked' };
 	private chantToken = 0;
-	private lastGlobalClip = -1;
 	private crowdInstances: CrowdInstances | null = null;
 	private swarmX = 0;
 	private swarmZ = 0;
@@ -240,26 +275,27 @@ export class ProtestGroupies {
 		this.chantState = { kind: 'waiting', remaining: 0.4 };
 	}
 
-	private pickClip(p: Protester): ProtestClip {
-		const bank = p.isMerkel
-			? this.merkelClips.length
-				? this.merkelClips
-				: this.clips
-			: this.crowdClips.length
-				? this.crowdClips
-				: this.clips;
-		// Prefer a clip we didn't just use globally; rotate through voices
-		let idx = Math.floor(Math.random() * bank.length);
-		if (bank.length > 1 && idx === this.lastGlobalClip % bank.length) {
-			idx = (idx + 1 + Math.floor(Math.random() * (bank.length - 1))) % bank.length;
+	/**
+	 * De clip komt eerst, dan de mond die erbij hoort.
+	 *
+	 * Andersom won de stemvoorkeur van de spreker het van de rotatie: wie aan de beurt
+	 * kwam had één à twee clips op zijn naam en die hoorde je telkens opnieuw, terwijl
+	 * de helft van de bank nooit klonk.
+	 */
+	private pickNextTurn(): { speaker: Protester; clip: ProtestClip } | null {
+		const available = this.people.filter((person) => person.voiceCd <= 0);
+		if (!available.length) return null;
+		const merkel = this.merkelIdx >= 0 ? this.people[this.merkelIdx] : undefined;
+		if (merkel && merkel.voiceCd <= 0 && Math.random() < MERKEL_TURN_CHANCE) {
+			const merkelClip = this.merkelBag.draw();
+			if (merkelClip) return { speaker: merkel, clip: merkelClip };
 		}
-		// Light sticky preference: same person often reuses their voiceKey subset
-		const sticky = bank.filter((c) => c.voice.includes(p.voiceKey) || p.voiceKey.includes(c.voice.split('-').pop() ?? ''));
-		if (sticky.length && Math.random() < 0.55) {
-			return pick(sticky);
-		}
-		this.lastGlobalClip = idx;
-		return at(bank, idx);
+		const clip = this.crowdBag.draw();
+		if (!clip) return null;
+		const crowd = available.filter((person) => !person.isMerkel);
+		const bank = crowd.length ? crowd : available;
+		const passend = bank.filter((person) => clip.voice.includes(person.voiceKey));
+		return { speaker: pick(passend.length ? passend : bank), clip };
 	}
 
 	private tickChant(dt: number): void {
@@ -281,22 +317,12 @@ export class ProtestGroupies {
 		if (state.kind !== 'waiting') return;
 		state.remaining -= dt;
 		if (state.remaining > 0) return;
-		const speaker = this.pickNextSpeaker();
-		if (speaker) this.startChant(speaker);
+		const turn = this.pickNextTurn();
+		if (turn) this.startChant(turn.speaker, turn.clip);
 		else state.remaining = 0.5;
 	}
 
-	private pickNextSpeaker(): Protester | null {
-		const available = this.people.filter((person) => person.voiceCd <= 0);
-		if (!available.length) return null;
-		const merkel = this.merkelIdx >= 0 ? this.people[this.merkelIdx] : undefined;
-		if (merkel && merkel.voiceCd <= 0 && Math.random() < 0.18) return merkel;
-		const crowd = available.filter((person) => !person.isMerkel);
-		return pick(crowd.length ? crowd : available);
-	}
-
-	private startChant(p: Protester): void {
-		const clip = this.pickClip(p);
+	private startChant(p: Protester, clip: ProtestClip): void {
 		const token = ++this.chantToken;
 		const controller = new AbortController();
 		// A stalled fetch releases the slot after eight seconds. There is no
