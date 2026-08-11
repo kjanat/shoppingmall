@@ -6,7 +6,7 @@ import { EYE } from '#/player/constants';
 import { CITY_KAVELS, ROAD_RINGS, TRAFFIC_LANE_CLEARANCE } from '#/scene/city/cityPlan';
 import { distanceToSegment2 } from '#/util/geometry2';
 import { midpoint } from '#/util/math';
-import { FULL_MALL_ROUTE, fullMallRoute, profilePoint } from './routes.ts';
+import { FULL_MALL_ROUTE, fullMallRoute, profilePoint } from '$/scripts/perf/routes.ts';
 
 function names(seed: number | null = null): string[] {
 	return fullMallRoute(seed).points.map((point) => point.name);

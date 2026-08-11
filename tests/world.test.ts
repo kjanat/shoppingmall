@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { describe, expect, test } from 'bun:test';
-import { controles, draaiControle } from './check-world.ts';
+import { controles, draaiControle } from '$/scripts/check-world.ts';
 
 /**
  * Elke wereldcontrole als eigen test.
