@@ -4,7 +4,7 @@ FROM oven/bun:1.3-alpine AS build
 WORKDIR /app
 COPY --from=kjanat/runner:latest /run /runner /usr/local/bin/
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN bun install
 COPY build.ts globals.d.ts index.html tsconfig.json ./
 COPY public ./public
 COPY scripts ./scripts
