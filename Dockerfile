@@ -12,7 +12,8 @@ COPY server ./server
 COPY src ./src
 ARG GIT_DESCRIBE
 ENV GIT_DESCRIBE=$GIT_DESCRIBE
-RUN bun build.ts --feature FORCE_LAMBERT
+# ENV MALL_FEATURES=FORCE_LAMBERT
+RUN bun build.ts
 
 # ── runtime: ./mall ──────────────────────────────────────────────────────
 FROM alpine:3 AS runtime
