@@ -124,6 +124,7 @@ import {
 	SLIDE_LADDER_X,
 	SLIDE_PLATFORM_TOP_Y,
 	SLIDE_TOWER_SPEC,
+	slabCeilingAbove,
 	THEATRE_AISLES,
 	THEATRE_ARTIST_PORTAL,
 	THEATRE_BACKSTAGE_DOORS_ENTITY,
@@ -178,6 +179,7 @@ import {
 	STAND_HEADROOM,
 	WALK_SPEED,
 } from '#/player/constants';
+import { HOVER_HEIGHT, SAUCER_BOB, SAUCER_DOME_RISE, saucerHoverY } from '#/scene/AlienProbe';
 import { PARK_LAWN } from '#/scene/city/CityPark';
 import { CitySky } from '#/scene/city/CitySky';
 import { TRAFFIC_FLEET, TRAFFIC_PROFILES } from '#/scene/city/CityTraffic';
@@ -6895,6 +6897,51 @@ function controleNeerslag(): void {
 	}
 }
 
+/**
+ * De schotel blijft onder het plafond dat werkelijk boven zijn slachtoffers hangt.
+ *
+ * Geklemd op het dak hing hij boven een V0-cluster met zijn koepel dwars door de
+ * V1-vloer; het plafond verschilt per kolom en onder het atriumgat is er geen.
+ */
+function controleUfoplafond(): void {
+	const koepeltop = (vloerY: number, x: number, z: number) => saucerHoverY(vloerY, x, z) + SAUCER_BOB + SAUCER_DOME_RISE;
+
+	// Elk meetpunt bewijst eerst zijn eigen aanname, zoals neerslag dat doet: een
+	// punt dat stiekem onder een gat ligt zou de klem-eis stilletjes leeg maken.
+	const gedekt: { vloerY: number; onderkant: number; naam: string }[] = [
+		{ vloerY: V0, onderkant: MALL_SLAB_SPECS.v1.topY - MALL_SLAB_SPECS.v1.thickness, naam: 'de V1-plaat' },
+		{ vloerY: V1, onderkant: MALL_SLAB_SPECS.roof.topY - MALL_SLAB_SPECS.roof.thickness, naam: 'de dakplaat' },
+	];
+	for (const { vloerY, onderkant, naam } of gedekt) {
+		const plafond = slabCeilingAbove(20, -10, vloerY);
+		if (plafond === null || Math.abs(plafond - onderkant) > 0.001) {
+			fout(
+				'ufoplafond',
+				`meetpunt (20, -10) boven ${nr(vloerY)} hoort ${naam} (${nr(onderkant)}) boven zich te hebben, niet ${plafond === null ? 'open lucht' : nr(plafond)}`,
+			);
+			continue;
+		}
+		const top = koepeltop(vloerY, 20, -10);
+		if (top > onderkant) {
+			fout(
+				'ufoplafond',
+				`boven een cluster op vloer ${nr(vloerY)} reikt de koepeltop tot ${nr(top)}, door de onderkant van ${naam} (${nr(onderkant)})`,
+			);
+		}
+	}
+
+	// Onder het atriumgat (hart op de oorsprong, open tot en met de lichtstraat) is
+	// er geen plafond en dus geen klem.
+	if (slabCeilingAbove(0, 0, V0) !== null) {
+		fout('ufoplafond', 'het atriumhart (0, 0) hoort tot de lichtstraat open te zijn en meldt toch een plafond');
+	} else if (saucerHoverY(V0, 0, 0) !== V0 + HOVER_HEIGHT) {
+		fout(
+			'ufoplafond',
+			`onder het open atrium klemt de schotel op ${nr(saucerHoverY(V0, 0, 0))} in plaats van vrij op ${nr(V0 + HOVER_HEIGHT)} te zweven`,
+		);
+	}
+}
+
 // ── uitvoeren ──────────────────────────────────────────────────────────────
 
 const controles: { naam: string; draai: () => void | Promise<void> }[] = [
@@ -6948,6 +6995,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'kaartlabels', draai: controleKaartlabels },
 	{ naam: 'theater', draai: controleTheater },
 	{ naam: 'neerslag', draai: controleNeerslag },
+	{ naam: 'ufoplafond', draai: controleUfoplafond },
 	{ naam: 'zonegraaf', draai: controleZonegraaf },
 	{ naam: 'zonecull', draai: controleZonecull },
 	{ naam: 'roltrapbord', draai: controleRoltrapbord },

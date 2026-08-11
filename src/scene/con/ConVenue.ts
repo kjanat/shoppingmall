@@ -1,9 +1,14 @@
 import * as THREE from 'three';
+import { STANDING_PEDESTRIAN } from '#/data/character';
 import {
+	CON_ADULT_GATE,
 	CON_BOOTH,
+	CON_CEILING_Y,
+	CON_DARKROOM,
 	CON_DEALERS,
 	CON_DOOR_BAY,
 	CON_FLOOR_Y,
+	CON_FOOTPRINT,
 	CON_HALL_HEIGHT,
 	CON_HOTEL,
 	CON_HOTEL_FLOOR_H,
@@ -11,7 +16,9 @@ import {
 	CON_LABEL,
 	CON_PLAZA,
 	CON_PORTAL,
+	CON_ROOF_T,
 	CON_STAGE,
+	CON_STUDIO,
 	CON_WALL_T,
 	conBoothGrid,
 	rectCenter,
@@ -25,9 +32,12 @@ import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/labe
 import { half, midpoint, span } from '#/util/math';
 import { at, mulberry32, pickWith } from '#/util/rand';
 
+/** Same pass width as conWorld interior doorways (6 pedestrians). */
+const PASS = STANDING_PEDESTRIAN.radius * 2 * 6;
+
 /**
- * Plaza, halls, booths, stage, hotel — static scene only.
- * Collision comes from conWorld; this draws what the player sees.
+ * Plaza + real walkable interior matching conWorld shell.
+ * Outer walls have a door hole; floors and partitions match collision.
  */
 export class ConVenue {
 	readonly group = new THREE.Group();
@@ -50,16 +60,18 @@ export class ConVenue {
 	constructor(pool: LightPool) {
 		this.group.name = 'con_venue';
 		this.buildPlaza();
-		this.buildHallMass(CON_DEALERS, 0x2a2438, 0x1a1528, 'DEALERS DEN');
-		this.buildHallMass(CON_STAGE, 0x1a1028, 0x120818, 'MAIN STAGE');
-		this.buildHallMass(CON_HOTEL, 0x243040, 0x1a2430, 'CON HOTEL');
+		this.buildShell();
+		this.buildInteriorFloors();
+		this.buildPartitions();
 		this.buildBooths();
 		this.buildStage(pool);
 		this.buildHotel();
+		this.buildInteriorLights(pool);
 		this.buildEntrance();
 		this.buildMarquee();
 		this.buildPride();
 		this.buildTrucks();
+		this.buildRoomLabels();
 	}
 
 	update(t: number): void {
@@ -116,23 +128,163 @@ export class ConVenue {
 		}
 	}
 
-	private buildHallMass(rect: typeof CON_DEALERS, wallCol: number, floorCol: number, title: string): void {
-		const wall = this.mat(wallCol);
-		const floor = this.mat(floorCol);
-		const roof = this.mat(0x141018);
-		const size = rectSize(rect);
-		const c = rectCenter(rect);
+	/** Outer shell = CON_FOOTPRINT, west wall open at main portal (matches conWorld). */
+	private buildShell(): void {
+		const outer = CON_FOOTPRINT;
 		const t = CON_WALL_T;
 		const h = CON_HALL_HEIGHT;
-		this.group.add(this.box(size.w - t * 2, 0.12, size.d - t * 2, floor, c.x, CON_FLOOR_Y + 0.06, c.z));
-		this.group.add(this.box(size.w, h, t, wall, c.x, half(h), rect.minZ + half(t)));
-		this.group.add(this.box(size.w, h, t, wall, c.x, half(h), rect.maxZ - half(t)));
-		this.group.add(this.box(t, h, size.d - t * 2, wall, rect.minX + half(t), half(h), c.z));
-		this.group.add(this.box(t, h, size.d - t * 2, wall, rect.maxX - half(t), half(h), c.z));
-		this.group.add(this.box(size.w, 0.6, size.d, roof, c.x, h - 0.3, c.z));
-		const sign = this.sign(title, 10, 1.2, 0xff66cc);
-		sign.position.set(c.x, h - 2.2, rect.minZ - 0.2);
-		this.group.add(sign);
+		const wall = this.mat(0x2a2438);
+		const roof = this.mat(0x141018);
+		const size = rectSize(outer);
+		const c = rectCenter(outer);
+		const doorLo = CON_DOOR_BAY.minZ;
+		const doorHi = CON_DOOR_BAY.maxZ;
+		const westX = outer.minX + half(t);
+
+		// West wall split around the main entrance.
+		const northLen = doorLo - outer.minZ;
+		const southLen = outer.maxZ - doorHi;
+		if (northLen > 0.05) {
+			this.group.add(this.box(t, h, northLen, wall, westX, half(h), outer.minZ + half(northLen)));
+		}
+		if (southLen > 0.05) {
+			this.group.add(this.box(t, h, southLen, wall, westX, half(h), doorHi + half(southLen)));
+		}
+		// Lintel over the doors.
+		const lintelH = h - CON_PORTAL.headY;
+		if (lintelH > 0.1) {
+			this.group.add(
+				this.box(
+					t,
+					lintelH,
+					doorHi - doorLo,
+					wall,
+					westX,
+					CON_FLOOR_Y + CON_PORTAL.headY + half(lintelH),
+					midpoint(doorLo, doorHi),
+				),
+			);
+		}
+
+		this.group.add(this.box(t, h, size.d - t * 2, wall, outer.maxX - half(t), half(h), c.z));
+		this.group.add(this.box(size.w, h, t, wall, c.x, half(h), outer.minZ + half(t)));
+		this.group.add(this.box(size.w, h, t, wall, c.x, half(h), outer.maxZ - half(t)));
+		// Roof slab (ceiling underside).
+		this.group.add(this.box(size.w - t * 2, CON_ROOF_T, size.d - t * 2, roof, c.x, CON_CEILING_Y + half(CON_ROOF_T), c.z));
+	}
+
+	private buildInteriorFloors(): void {
+		const t = CON_WALL_T;
+		const outer = CON_FOOTPRINT;
+		// One continuous indoor floor — this is the walkable inside.
+		const base = this.mat(0x1a1528);
+		this.group.add(
+			this.box(
+				span(outer.minX, outer.maxX) - t * 2,
+				0.1,
+				span(outer.minZ, outer.maxZ) - t * 2,
+				base,
+				midpoint(outer.minX, outer.maxX),
+				CON_FLOOR_Y + 0.05,
+				midpoint(outer.minZ, outer.maxZ),
+			),
+		);
+		// Colour zones so rooms read as different halls.
+		const zone = (rect: typeof CON_DEALERS, col: number) => {
+			const inner = rectInterior(rect, t + 0.2);
+			const s = rectSize(inner);
+			const c = rectCenter(inner);
+			this.group.add(this.box(s.w, 0.04, s.d, this.mat(col), c.x, CON_FLOOR_Y + 0.11, c.z));
+		};
+		zone(CON_DEALERS, 0x241c32);
+		zone(CON_STAGE, 0x1a1028);
+		zone(CON_HOTEL, 0x1c2430);
+	}
+
+	/** Interior walls with the same doorway cuts as collision. */
+	private buildPartitions(): void {
+		const wall = this.mat(0x322848);
+		const h = CON_HALL_HEIGHT;
+		const t = CON_WALL_T;
+		const fy = CON_FLOOR_Y;
+		const doorHead = fy + CON_ADULT_GATE.headY * 1.4;
+
+		const dsZ = CON_DEALERS.maxZ;
+		const dCx = midpoint(CON_DEALERS.minX, CON_DEALERS.maxX);
+		const dLo = dCx - half(PASS);
+		const dHi = dCx + half(PASS);
+		this.wallSeg(wall, CON_FOOTPRINT.minX + t, dLo, dsZ, dsZ + t, fy, h);
+		this.wallSeg(wall, dHi, Math.min(CON_DEALERS.maxX, CON_FOOTPRINT.maxX - t), dsZ, dsZ + t, fy, h);
+		this.wallSeg(wall, dLo, dHi, dsZ, dsZ + t, doorHead, h);
+
+		const seX = CON_STAGE.maxX;
+		const sCz = midpoint(CON_STAGE.minZ, CON_STAGE.maxZ);
+		const sLo = sCz - half(PASS);
+		const sHi = sCz + half(PASS);
+		this.wallSeg(wall, seX, seX + t, CON_STAGE.minZ, sLo, fy, h);
+		this.wallSeg(wall, seX, seX + t, sHi, CON_STAGE.maxZ - t, fy, h);
+		this.wallSeg(wall, seX, seX + t, sLo, sHi, doorHead, h);
+
+		const hwX = CON_HOTEL.minX;
+		const hCz = midpoint(CON_HOTEL.minZ, CON_HOTEL.maxZ);
+		const hLo = hCz - half(PASS);
+		const hHi = hCz + half(PASS);
+		const hTop = h + CON_HOTEL_FLOORS * CON_HOTEL_FLOOR_H;
+		this.wallSeg(wall, hwX - t, hwX, CON_HOTEL.minZ, hLo, fy, hTop);
+		this.wallSeg(wall, hwX - t, hwX, hHi, CON_HOTEL.maxZ - t, fy, hTop);
+		this.wallSeg(wall, hwX - t, hwX, hLo, hHi, doorHead, hTop);
+
+		// Adult wing boxes (low ceiling).
+		const adultH = fy + CON_ADULT_GATE.headY * 2.05;
+		for (const room of [CON_DARKROOM, CON_STUDIO]) {
+			const c = rectCenter(room);
+			const s = rectSize(room);
+			this.group.add(this.box(s.w, adultH - fy, t, wall, c.x, half(adultH + fy), room.minZ + half(t)));
+			this.group.add(this.box(s.w, adultH - fy, t, wall, c.x, half(adultH + fy), room.maxZ - half(t)));
+			this.group.add(this.box(t, adultH - fy, s.d - t * 2, wall, room.minX + half(t), half(adultH + fy), c.z));
+			this.group.add(this.box(t, adultH - fy, s.d - t * 2, wall, room.maxX - half(t), half(adultH + fy), c.z));
+			this.group.add(this.box(s.w - t * 2, 0.3, s.d - t * 2, this.mat(0x100810), c.x, adultH - 0.15, c.z));
+		}
+	}
+
+	private wallSeg(mat: THREE.Material, minX: number, maxX: number, minZ: number, maxZ: number, minY: number, maxY: number): void {
+		const w = maxX - minX;
+		const d = maxZ - minZ;
+		const h = maxY - minY;
+		if (w < 0.05 || d < 0.05 || h < 0.05) return;
+		this.group.add(this.box(w, h, d, mat, midpoint(minX, maxX), midpoint(minY, maxY), midpoint(minZ, maxZ)));
+	}
+
+	private buildRoomLabels(): void {
+		const put = (rect: typeof CON_DEALERS, title: string, y: number) => {
+			const c = rectCenter(rect);
+			const s = this.sign(title, 14, 1.4, 0xff66cc);
+			s.position.set(c.x, y, rect.minZ + 1.2);
+			this.group.add(s);
+		};
+		put(CON_DEALERS, 'DEALERS DEN', 4.5);
+		put(CON_STAGE, 'MAIN STAGE', 5.5);
+		put(CON_HOTEL, 'CON HOTEL', 4.2);
+	}
+
+	private buildInteriorLights(pool: LightPool): void {
+		// Sparse pool washes so the inside is not a black box (scores compete for slots).
+		const spots = [
+			rectCenter(CON_DEALERS),
+			rectCenter(CON_STAGE),
+			rectCenter(CON_HOTEL),
+			{ x: midpoint(CON_DEALERS.minX, CON_DEALERS.maxX), z: midpoint(CON_DEALERS.minZ, CON_DEALERS.maxZ) + 20 },
+		];
+		for (const s of spots) {
+			pool.register({
+				position: new THREE.Vector3(s.x, CON_HALL_HEIGHT * 0.55, s.z),
+				intensity: 22,
+				distance: 45,
+				decay: 2,
+				color: 0xffc8e8,
+				priority: 1.2,
+			});
+		}
 	}
 
 	/** One InstancedMesh for tabletops + one for legs. Grid size follows dealers interior. */

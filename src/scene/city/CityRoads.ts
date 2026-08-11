@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { lit } from '#/render/material';
 import type { RoadPaintKind, RoadPaintPatch } from '#/scene/city/cityPlan';
 import {
+	CON_ACCESS,
+	CON_ACCESS_APRON,
 	EXIT_APRON,
 	EXIT_APRON_TOP_Y,
 	LANE_X,
@@ -131,10 +133,13 @@ export class CityRoads {
 		this.group.name = 'city_roads';
 		this.buildLampMaterials();
 		this.buildStrips();
+		this.buildConAccess();
 		this.buildPaint();
 		this.buildZebras();
 		this.buildApron();
+		this.buildConApron();
 		this.buildTrafficLights();
+		this.buildConJunctionLights();
 	}
 
 	/**
@@ -351,6 +356,84 @@ export class CityRoads {
 		}
 		this.zebras.instanceMatrix.needsUpdate = true;
 		this.group.add(this.zebras);
+	}
+
+	/** Spur east from the ring to the fur-con plaza: asphalt + T-junction pad. */
+	private buildConAccess(): void {
+		const len = span(CON_ACCESS.minX, CON_ACCESS.maxX);
+		const mat = this.track(lit({ map: this.makeAsphaltTexture(len), roughness: 0.95 }));
+		const geo = new THREE.PlaneGeometry(len, ROAD_W);
+		geo.rotateX(-Math.PI / 2);
+		this.geometries.push(geo);
+		const strip = new THREE.Mesh(geo, mat);
+		strip.position.set(midpoint(CON_ACCESS.minX, CON_ACCESS.maxX), ROAD_Y, CON_ACCESS.z);
+		strip.receiveShadow = true;
+		this.group.add(strip);
+
+		// Junction pad where the spur meets the east ring (covers the T-join).
+		const join = new THREE.PlaneGeometry(ROAD_W + 1.5, ROAD_W + 1.5);
+		join.rotateX(-Math.PI / 2);
+		this.geometries.push(join);
+		const pad = new THREE.Mesh(join, mat);
+		pad.position.set(CON_ACCESS.minX - half(ROAD_W) * 0.15, ROAD_Y - 0.001, CON_ACCESS.z);
+		pad.receiveShadow = true;
+		this.group.add(pad);
+	}
+
+	/** Apron from spur into the con plaza so the road does not stop in grass. */
+	private buildConApron(): void {
+		const { canvas: c, ctx } = labelCanvas(ROAD_PX, ROAD_PX);
+		this.paveAsphalt(ctx, ROAD_PX, ROAD_PX);
+		const tex = labelTexture(c);
+		this.textures.push(tex);
+		const a = CON_ACCESS_APRON;
+		const geo = new THREE.BoxGeometry(span(a.minX, a.maxX), APRON_THICKNESS, span(a.minZ, a.maxZ));
+		this.geometries.push(geo);
+		const apron = new THREE.Mesh(geo, this.track(lit({ map: tex, roughness: 0.95 })));
+		apron.position.set(midpoint(a.minX, a.maxX), ROAD_Y + 0.01, midpoint(a.minZ, a.maxZ));
+		apron.receiveShadow = true;
+		this.group.add(apron);
+	}
+
+	/** Traffic lights at the con T-junction (spur phase follows ring EW). */
+	private buildConJunctionLights(): void {
+		const poleMat = this.track(lit({ color: 0x37404a, metalness: 0.6, roughness: 0.45 }));
+		const housingMat = this.track(lit({ color: 0x14171a, roughness: 0.7 }));
+		const poleGeo = new THREE.CylinderGeometry(0.09, 0.11, 4.2, 8);
+		this.geometries.push(poleGeo);
+		const housingGeo = new THREE.BoxGeometry(0.5, 1.35, 0.3);
+		this.geometries.push(housingGeo);
+		const bulbGeo = new THREE.SphereGeometry(0.14, 10, 8);
+		this.geometries.push(bulbGeo);
+
+		// Poles at the NW and SW corners of the T (ring-side of the spur).
+		for (const sz of [-1, 1] as const) {
+			const post = new THREE.Group();
+			post.position.set(CON_ACCESS.minX - 1.2, 0, CON_ACCESS.z + sz * (half(ROAD_W) + 1.1));
+			const pole = new THREE.Mesh(poleGeo, poleMat);
+			pole.position.y = 2.1;
+			post.add(pole);
+			const head = new THREE.Group();
+			head.position.y = 4.4;
+			// Face into the junction (toward ring centre from SE/NE).
+			head.rotation.y = Math.atan2(-sz, -1);
+			post.add(head);
+			head.add(new THREE.Mesh(housingGeo, housingMat));
+			const bulb = (y: number, off: THREE.Material): THREE.Mesh => {
+				const b = new THREE.Mesh(bulbGeo, off);
+				b.position.set(0, y, 0.14);
+				head.add(b);
+				return b;
+			};
+			// Spur traffic is east-west: same phase as ring EW.
+			this.heads.push({
+				dir: 'ew',
+				red: bulb(0.4, this.redOff),
+				amber: bulb(0, this.amberOff),
+				green: bulb(-0.4, this.greenOff),
+			});
+			this.group.add(post);
+		}
 	}
 
 	// ── inrit naar de parkeergarage ────────────────────────

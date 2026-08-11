@@ -33,6 +33,7 @@ import {
 	PLAN_ENVELOPE_TAG,
 	PROTRUSION_MARGIN,
 	planBounds,
+	pointInPlan,
 	ROOM_SHELL_TAG,
 	rectanglePlan,
 	SIGNAGE_TAG,
@@ -893,6 +894,25 @@ export const SLAB_SPEC_BY_LEVEL: Readonly<Record<LevelId, StructuralSlabSpec>> =
 	...MALL_SLAB_SPECS,
 	p1: PARKING_SLAB_SPEC,
 };
+
+/**
+ * De onderkant van de laagste plaat boven `y` op deze kolom, of null onder open lucht.
+ *
+ * Wat er boven een binnenscène hangt verschilt per dek en per gat: boven V0 is dat de
+ * V1-plaat, onder het atrium niets. De UFO klemde op het dak en hing daardoor boven
+ * een V0-cluster dwars door de V1-vloer.
+ */
+export function slabCeilingAbove(x: number, z: number, y: number): number | null {
+	let laagste: number | null = null;
+	for (const spec of Object.values(SLAB_SPEC_BY_LEVEL)) {
+		const onderkant = spec.topY - spec.thickness;
+		if (onderkant <= y) continue;
+		if (!pointInPlan(spec.plan, x, z)) continue;
+		if (spec.holes.some((gat) => pointInPlan(gat, x, z))) continue;
+		if (laagste === null || onderkant < laagste) laagste = onderkant;
+	}
+	return laagste;
+}
 
 /**
  * Waar de plaat op dit niveau open is binnen `rect`, of null als hij daar dicht is.

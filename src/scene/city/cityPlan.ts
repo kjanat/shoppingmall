@@ -1,4 +1,4 @@
-import { CON_CITY_MARGIN, CON_LOT } from '#/data/conPlan';
+import { CON_CITY_MARGIN, CON_LOT, CON_PLAZA } from '#/data/conPlan';
 import type { Bounds2, Vec2 } from '#/data/spatial';
 import { boundsMinusHoles } from '#/data/spatial';
 import type { BarrierSpec } from '#/data/world';
@@ -187,11 +187,34 @@ export type RoadCrossing = Readonly<{ id: string; x: number; z: number; rotY: nu
  * zebra vijf meter zuidelijker, en die knik bestond alleen omdat de entree en de
  * oversteek elkaars maat niet kenden. Nu verzet wie de deur verzet ze allebei.
  */
+/**
+ * Spur from the east ring face to the fur-con plaza.
+ * Two-way, keep-right: eastbound on +z of centreline, westbound on −z.
+ */
+export const CON_ACCESS = {
+	/** Road centreline (z). Aligned with the east ring crossing and the con doors. */
+	z: 0,
+	/** Starts at the outer face of the east ring strip. */
+	minX: ROAD_INNER_X + ROAD_PLAN.width,
+	/** Stops short of the plaza kerb so the apron can meet the square. */
+	maxX: CON_PLAZA.minX - 2,
+	width: ROAD_PLAN.width,
+} as const;
+
+/** Dual-lane centres on the spur (keep right when heading east / west). */
+export const CON_ACCESS_LANE = {
+	east: CON_ACCESS.z + LANE_OFFSET,
+	west: CON_ACCESS.z - LANE_OFFSET,
+} as const;
+
 export const ROAD_CROSSINGS: readonly RoadCrossing[] = [
 	{ id: 'north', x: 0, z: -LANE_Z, rotY: 0 },
 	{ id: 'south', x: 0, z: LANE_Z, rotY: 0 },
 	{ id: 'west', x: -LANE_X, z: ENTRANCE_PORTAL.centerZ, rotY: Math.PI / 2 },
 	{ id: 'east', x: LANE_X, z: 0, rotY: Math.PI / 2 },
+	// Spur: travel is along x, so bars run along x (rotY 0).
+	{ id: 'con-spur-ring', x: CON_ACCESS.minX + half(ZEBRA_WIDTH) + 1, z: CON_ACCESS.z, rotY: 0 },
+	{ id: 'con-spur-plaza', x: CON_ACCESS.maxX - half(ZEBRA_WIDTH) - 1, z: CON_ACCESS.z, rotY: 0 },
 ];
 
 function crossing(id: string): RoadCrossing {
@@ -299,8 +322,49 @@ export function roadPaintPatches(): readonly RoadPaintPatch[] {
 			cut('edge', stripRect(strip, 0, strip.reach, side * edgeAcross, halfEdgeWidth));
 		}
 	}
+
+	// Fur-con spur: paint only between ring outer face and plaza (not symmetric about origin).
+	const spurLen = span(CON_ACCESS.minX, CON_ACCESS.maxX);
+	const spurTiles = Math.max(1, Math.round(spurLen / ROAD_DASH_TILE));
+	const spurStep = spurLen / spurTiles;
+	const spurHalfDash = half(ROAD_DASH.length * (spurStep / ROAD_DASH_TILE));
+	for (let i = 0; i < spurTiles; i++) {
+		const tileStart = CON_ACCESS.minX + i * spurStep;
+		const along = midpoint(tileStart, tileStart + spurStep);
+		cut('dash', {
+			minX: along - spurHalfDash,
+			maxX: along + spurHalfDash,
+			minZ: CON_ACCESS.z - halfDashWidth,
+			maxZ: CON_ACCESS.z + halfDashWidth,
+		});
+	}
+	for (const side of [-1, 1] as const) {
+		const z = CON_ACCESS.z + side * edgeAcross;
+		cut('edge', {
+			minX: CON_ACCESS.minX,
+			maxX: CON_ACCESS.maxX,
+			minZ: z - halfEdgeWidth,
+			maxZ: z + halfEdgeWidth,
+		});
+	}
 	return patches;
 }
+
+/** Asphalt rectangle of the con access road (for scene + apron). */
+export const CON_ACCESS_ASPHALT: Rect = {
+	minX: CON_ACCESS.minX,
+	maxX: CON_ACCESS.maxX,
+	minZ: CON_ACCESS.z - half(CON_ACCESS.width),
+	maxZ: CON_ACCESS.z + half(CON_ACCESS.width),
+};
+
+/** Short apron from spur end into the con plaza. */
+export const CON_ACCESS_APRON: Rect = {
+	minX: CON_ACCESS.maxX - 0.5,
+	maxX: CON_PLAZA.minX + 4,
+	minZ: CON_ACCESS.z - half(CON_ACCESS.width) - 1,
+	maxZ: CON_ACCESS.z + half(CON_ACCESS.width) + 1,
+};
 
 /**
  * Het plein rond de mall: de ring tussen de gevel en de binnenrand van de ringweg.
