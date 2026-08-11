@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 # Herdeployt alleen waar de container van dit project al draait, en alleen als
 # er sinds de vorige deploy iets in de deploybare paden veranderde. Een machine
 # die hem niet serveert deployt dus nooit, zonder dat daar iets voor ingesteld

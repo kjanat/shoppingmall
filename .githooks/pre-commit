@@ -1,5 +1,5 @@
-#!/bin/sh
+#!/usr/bin/env sh
 set -eu
 cd "$(git rev-parse --show-toplevel)"
-bun run lint
-bunx dprint check
+bun run lint --staged
+bunx dprint check --staged

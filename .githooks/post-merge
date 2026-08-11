@@ -1,2 +1,2 @@
-#!/bin/sh
+#!/usr/bin/env sh
 exec "$(git rev-parse --show-toplevel)/.githooks/deploy-if-changed"
