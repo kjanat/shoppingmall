@@ -3,7 +3,7 @@ import { levelY } from '#/data/levels';
 import { TIKI_BAR_SPEC } from '#/data/world';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { half } from '#/util/math';
 import { at } from '#/util/rand';
 import { inPool, POOL_CENTER, POOL_WATER_Y, rimDistance } from './RoofIsland';
@@ -19,6 +19,26 @@ const RIM_SINK = 0.85;
 const RIM_CLEAR = 0.2;
 /** Schouderruimte tussen de bar-counter en de eerste man van de crew. */
 const CREW_CLEAR = 0.45;
+
+/** Straal van de parasolkap; ook waarmee hij van het bord af gehouden wordt. */
+export const PARASOL_CANOPY_RADIUS = 0.95;
+/** Speling tussen de rand van die kap en de rand van het tiki-bar-bord. */
+const PARASOL_SIGN_CLEAR = 0.2;
+/** Hoever west van de bar de paal staat, waar hij door niemand heen steekt. */
+const PARASOL_X = -15.6;
+
+/**
+ * Waar de parasol staat.
+ *
+ * Hij stond op de as van de crew-rij, en de kap hing daarmee tussen het bad en het
+ * bord: van de badkant las er nog "TIKI BA" en de rest zat achter riet. Hij schuift
+ * daarom zuidwaarts tot zijn kap voorbij de rand van dat bord valt, en die rand komt
+ * uit het bord zelf.
+ */
+export const PARASOL_POSITION = {
+	x: PARASOL_X,
+	z: TIKI_BAR_SPEC.center.z + half(TIKI_BAR_SPEC.sign.width) + PARASOL_CANOPY_RADIUS + PARASOL_SIGN_CLEAR,
+} as const;
 
 /**
  * Trekt een plek naar het water toe tot er `clear` meter waterlijn omheen zit.
@@ -196,7 +216,7 @@ export class PoolPeople {
 	private swimmers: Swimmer[] = [];
 	private crewHeads: THREE.Group[] = [];
 	private oilArm: THREE.Group;
-	private banner: THREE.Mesh;
+	private banner: THREE.Group;
 
 	constructor() {
 		this.group.name = 'poolPeople';
@@ -301,7 +321,7 @@ export class PoolPeople {
 			bottle: this.geo(new THREE.CylinderGeometry(0.032, 0.038, 0.15, 8)),
 			bottleCap: this.geo(new THREE.CylinderGeometry(0.012, 0.012, 0.05, 6)),
 			pole: this.geo(new THREE.CylinderGeometry(0.035, 0.035, 2.7, 8)),
-			canopy: this.geo(new THREE.ConeGeometry(0.95, 0.4, 10)),
+			canopy: this.geo(new THREE.ConeGeometry(PARASOL_CANOPY_RADIUS, 0.4, 10)),
 			bannerPlane: this.geo(new THREE.PlaneGeometry(0.85, 0.55)),
 		};
 	}
@@ -682,11 +702,9 @@ export class PoolPeople {
 	}
 
 	/** Parasolpaal naast de crew, met het clubvaandel. Retourneert het vaandel. */
-	private buildParasol(): THREE.Mesh {
+	private buildParasol(): THREE.Group {
 		const post = new THREE.Group();
-		// Aan kop van de crew-rij, waar hij hoort. Wel 1,7 m verder naar links dan
-		// vroeger: op x -14,3 stak hij dwars door het tiki-bar-bord op x -13,85.
-		post.position.set(-15.6, DECK_Y, 15.2);
+		post.position.set(PARASOL_POSITION.x, DECK_Y, PARASOL_POSITION.z);
 
 		const paal = new THREE.Mesh(this.s.pole, this.mat(0x8a6a45, 0.7));
 		paal.position.y = 1.35;
@@ -706,13 +724,9 @@ export class PoolPeople {
 		fitText(ctx, 'AL ZUT', { x: 20, y: 20, w: 216, h: 120 }, { size: 58 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
-		const vaandelMat = new THREE.MeshBasicMaterial({
-			map: tex,
-			toneMapped: false,
-			side: THREE.DoubleSide,
-		});
+		const vaandelMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
 		this.materials.push(vaandelMat);
-		const vaandel = new THREE.Mesh(this.s.bannerPlane, vaandelMat);
+		const vaandel = backToBackLabel(this.s.bannerPlane, vaandelMat);
 		vaandel.position.set(0.48, 2.1, 0);
 		post.add(vaandel);
 

@@ -7,7 +7,7 @@ import { LINE_OF_SIGHT } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
 import { GRAVITY } from '#/player/constants';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture, roundRect, speechTail } from '#/util/label';
+import { backToBackLabel, fitText, labelCanvas, labelTexture, roundRect, speechTail } from '#/util/label';
 import { easeFactor, half, lerp, shortestAngle } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
@@ -141,7 +141,7 @@ export class ProtestGroupies {
 	private t = 0;
 	private audioStarted = false;
 	private stopAudio: (() => void) | null = null;
-	private banner!: THREE.Mesh;
+	private readonly banner: THREE.Group;
 	private merkelIdx = -1;
 	private world: CollisionWorld;
 	/** Live clip bank (manifest or hardcoded) */
@@ -175,7 +175,7 @@ export class ProtestGroupies {
 		this.world = world;
 		this.group.name = 'protestGroupies';
 		this.group.position.copy(this.pos);
-		this.buildBanner();
+		this.banner = this.buildBanner();
 		this.buildPlantedFlags();
 		this.buildMerkel();
 		this.buildCrowd(CROWD_COUNT);
@@ -382,9 +382,7 @@ export class ProtestGroupies {
 			}
 		}
 
-		if (this.banner) {
-			this.banner.rotation.z = Math.sin(this.t * 1.3) * 0.04;
-		}
+		this.banner.rotation.z = Math.sin(this.t * 1.3) * 0.04;
 	}
 
 	/**
@@ -663,7 +661,7 @@ export class ProtestGroupies {
 		return m;
 	}
 
-	private buildBanner(): void {
+	private buildBanner(): THREE.Group {
 		const pole = this.track(lit({ color: 0x5d4037, roughness: 0.8 }));
 		const pL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 2.6, 6), pole);
 		pL.position.set(-1.6, 1.3, -1.8);
@@ -702,18 +700,12 @@ export class ProtestGroupies {
 		ctx.font = 'bold 24px system-ui';
 		ctx.fillText('ANGELA + LGBTQIA+ PROTEST GROUPIES', 440, 128);
 		const tex = labelTexture(c);
-		this.banner = new THREE.Mesh(
+		const banner = backToBackLabel(
 			new THREE.PlaneGeometry(3.4, 0.85),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: tex,
-					side: THREE.DoubleSide,
-					toneMapped: false,
-				}),
-			),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
-		this.banner.position.set(0, 2.35, -1.8);
-		this.group.add(this.banner);
+		banner.position.set(0, 2.35, -1.8);
+		this.group.add(banner);
 
 		const ring = new THREE.Mesh(
 			new THREE.RingGeometry(2.6, 2.75, 32),
@@ -729,6 +721,7 @@ export class ProtestGroupies {
 		ring.rotation.x = -Math.PI / 2;
 		ring.position.y = 0.03;
 		this.group.add(ring);
+		return banner;
 	}
 
 	/** Tall pride flag poles around the picket */
@@ -1030,15 +1023,9 @@ export class ProtestGroupies {
 		);
 		stick.position.set(0.35, 1.55, 0.35);
 		root.add(stick);
-		const sign = new THREE.Mesh(
+		const sign = backToBackLabel(
 			new THREE.PlaneGeometry(0.95, 0.55),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: this.makeSignTex(['WIR SCHAFFEN', 'DAS 🇩🇪'], 0),
-					side: THREE.DoubleSide,
-					toneMapped: false,
-				}),
-			),
+			this.track(new THREE.MeshBasicMaterial({ map: this.makeSignTex(['WIR SCHAFFEN', 'DAS 🇩🇪'], 0), toneMapped: false })),
 		);
 		sign.position.set(0.35, 2.2, 0.35);
 		root.add(sign);

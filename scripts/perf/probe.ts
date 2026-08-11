@@ -38,10 +38,11 @@ export type PassTiming = {
 
 export type BatchOwnerTiming = {
 	name: string;
-	dynamic: boolean;
 	sources: number;
+	dynamicSources: number;
 	batches: number;
 	triangles: number;
+	casters: number;
 	largestRadius: number;
 };
 
@@ -92,6 +93,8 @@ export type RoutePose = {
  */
 export type ZoneCullTally = {
 	zone: string;
+	/** Stond de cull aan? Met hem uit telt niemand mee en zijn alle eigenaarsregels nul. */
+	enabled: boolean;
 	cones: number;
 	batches: number;
 	batchesHidden: number;
@@ -100,6 +103,24 @@ export type ZoneCullTally = {
 	/** Bleef staan omdat het in de zone van de kijker zelf ligt, of via een portaalkegel. */
 	keptInOwnZone: number;
 	keptThroughCone: number;
+	owners: ZoneOwnerTiming[];
+};
+
+/**
+ * Wat de cull op dit standpunt met één feature deed.
+ *
+ * `items` is alles wat die feature te tekenen heeft en `casters` het deel daarvan dat
+ * schaduw werpt. Wat de cull wegneemt verdwijnt uit de scenepass én uit de
+ * schaduwpass, dus `castersKept` is wat dit standpunt nog aan de zon aanbiedt.
+ */
+export type ZoneOwnerTiming = {
+	name: string;
+	items: number;
+	casters: number;
+	kept: number;
+	hidden: number;
+	castersKept: number;
+	castersHidden: number;
 };
 
 export type Environment = {
@@ -300,8 +321,32 @@ function installProbe(batchKey: string, batchOverride: string | undefined, zoneC
 			const value = Reflect.get(tally, key);
 			return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 		};
+		const owners: ZoneOwnerTiming[] = [];
+		const rows = Reflect.get(tally, 'owners');
+		if (Array.isArray(rows)) {
+			for (const row of rows) {
+				if (typeof row !== 'object' || row === null) continue;
+				const name = Reflect.get(row, 'name');
+				if (typeof name !== 'string') continue;
+				const field = (key: string): number => {
+					const value = Reflect.get(row, key);
+					return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+				};
+				owners.push({
+					name,
+					items: field('items'),
+					casters: field('casters'),
+					kept: field('kept'),
+					hidden: field('hidden'),
+					castersKept: field('castersKept'),
+					castersHidden: field('castersHidden'),
+				});
+			}
+		}
 		return {
 			zone,
+			enabled: Reflect.get(tally, 'enabled') === true,
+			owners,
 			cones: count('cones'),
 			batches: count('batches'),
 			batchesHidden: count('batchesHidden'),
@@ -692,22 +737,24 @@ function installProbe(batchKey: string, batchOverride: string | undefined, zoneC
 				for (const owner of owners) {
 					if (typeof owner !== 'object' || owner === null) continue;
 					const name = Reflect.get(owner, 'name');
-					const dynamic = Reflect.get(owner, 'dynamic');
 					const sources = Reflect.get(owner, 'sources');
+					const dynamicSources = Reflect.get(owner, 'dynamicSources');
 					const batches = Reflect.get(owner, 'batches');
 					const triangles = Reflect.get(owner, 'triangles');
+					const casters = Reflect.get(owner, 'casters');
 					const largestRadius = Reflect.get(owner, 'largestRadius');
 					if (
 						typeof name !== 'string' ||
-						typeof dynamic !== 'boolean' ||
 						typeof sources !== 'number' ||
+						typeof dynamicSources !== 'number' ||
 						typeof batches !== 'number' ||
 						typeof triangles !== 'number' ||
+						typeof casters !== 'number' ||
 						typeof largestRadius !== 'number'
 					) {
 						continue;
 					}
-					batchOwners.push({ name, dynamic, sources, batches, triangles, largestRadius });
+					batchOwners.push({ name, sources, dynamicSources, batches, triangles, casters, largestRadius });
 				}
 			}
 			const zoneCull = readZoneCull();

@@ -1,4 +1,4 @@
-import { STANDING_PEDESTRIAN } from '#/data/character';
+import { CROUCHING_PEDESTRIAN, STANDING_PEDESTRIAN } from '#/data/character';
 import { half } from '#/util/math';
 
 const { eyeHeight, bodyHeight, radius } = STANDING_PEDESTRIAN;
@@ -11,6 +11,33 @@ export const PLAYER_HEIGHT = bodyHeight;
 
 /** Horizontal collision radius shared by controls, moving platforms, and tests. */
 export const PLAYER_RADIUS = radius;
+
+/** Camera height above the deck with the knees bent. */
+export const CROUCH_EYE = CROUCHING_PEDESTRIAN.eyeHeight;
+
+/** Vrije hoogte die er boven je voeten moet zijn voordat je weer rechtop mag komen. */
+export const STAND_HEADROOM = STANDING_PEDESTRIAN.requiredHeadroom;
+
+/** Idem gehurkt: hieronder past er geen lichaam meer en loop je er dus ook niet in. */
+export const CROUCH_HEADROOM = CROUCHING_PEDESTRIAN.requiredHeadroom;
+
+/**
+ * Gehurkte loopsnelheid (m/s). Door de knieën haalt een volwassene ongeveer een
+ * derde van zijn wandelpas; anders dan WALK_SPEED staat dit getal wél op mens-echt,
+ * want traag hurken is het hele punt van hurken.
+ */
+export const CROUCH_SPEED = 0.9;
+
+/** Hoe snel de knieën buigen en strekken (1/s); met STANCE_SETTLE eronder is dat een halve seconde. */
+export const CROUCH_RATE = 9;
+
+/**
+ * Waaronder de knik af is en op zijn eindwaarde klapt.
+ *
+ * `ease` nadert zijn doel alleen; de sprong en de vrije-hoogte-eis vragen allebei of
+ * de knieën écht gestrekt zijn, en "bijna" is daar geen antwoord op.
+ */
+export const STANCE_SETTLE = 0.01;
 
 /**
  * Aardse valversnelling (m/s²), op Kajs besluit: echte constanten zodat er

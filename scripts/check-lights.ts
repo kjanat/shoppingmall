@@ -77,6 +77,7 @@ async function bouwWereld(): Promise<{
 		{ ScrubberBuggy },
 		{ Restrooms },
 		{ Entrance },
+		{ Barriers },
 	] = await Promise.all([
 		import('#/scene/Lighting'),
 		import('#/scene/Disco'),
@@ -95,6 +96,7 @@ async function bouwWereld(): Promise<{
 		import('#/scene/ScrubberBuggy'),
 		import('#/scene/Restrooms'),
 		import('#/scene/Entrance'),
+		import('#/scene/city/Barriers'),
 	]);
 
 	const daylight = setupLighting(scene, pool);
@@ -113,10 +115,10 @@ async function bouwWereld(): Promise<{
 		new BeardCave(pool),
 		new DJBartek(pool),
 		new PrayerRoom(pool),
-		new Helipad(pool),
+		new Helipad(pool, world),
 		new Spaceship(pool),
 		new TravelAgency(pool),
-		new ScrubberBuggy(world, pool),
+		new ScrubberBuggy(world, pool, new Barriers(world)),
 		new Restrooms(pool),
 		new Entrance(pool),
 	]) {

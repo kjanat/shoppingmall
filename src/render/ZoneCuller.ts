@@ -73,6 +73,27 @@ type ClipPoint = { x: number; y: number; w: number };
 
 const CLIP_POINTS: ClipPoint[] = CORNERS.map(() => ({ x: 0, y: 0, w: 0 }));
 
+/**
+ * Wat de cull op dit standpunt met één eigenaar deed.
+ *
+ * `items` en `casters` zijn totalen en worden bij het opbouwen van de scene gemeld,
+ * niet per frame geteld: met de cull uit telt niemand mee, en zonder die totalen is
+ * een lege regel niet te onderscheiden van een eigenaar die volledig verdween.
+ *
+ * De schaduwtelling staat er los in omdat de schaduwpass een tweede lijst objecten
+ * tekent. Wat de cull wegneemt verdwijnt uit allebei, dus `castersKept` is wat een
+ * standpunt nog aan de zon aanbiedt.
+ */
+export type ZoneOwnerTally = {
+	name: string;
+	items: number;
+	casters: number;
+	kept: number;
+	hidden: number;
+	castersKept: number;
+	castersHidden: number;
+};
+
 export type ZoneCullStats = {
 	zone: ZoneId;
 	visibleZones: number;
@@ -86,6 +107,7 @@ export type ZoneCullStats = {
 	 */
 	keptInOwnZone: number;
 	keptThroughCone: number;
+	owners: readonly ZoneOwnerTally[];
 };
 
 /** De doos van elke begrensde zone, één keer omgezet naar het type dat three test. */
@@ -102,6 +124,8 @@ const ZONE_BOXES: ReadonlyMap<ZoneId, THREE.Box3> = new Map(
 );
 
 export class ZoneCuller {
+	private readonly ownerRows: ZoneOwnerTally[] = [];
+	private readonly ownerIndex = new Map<string, ZoneOwnerTally>();
 	readonly stats: ZoneCullStats = {
 		zone: 'stad',
 		visibleZones: 0,
@@ -110,6 +134,7 @@ export class ZoneCuller {
 		hidden: 0,
 		keptInOwnZone: 0,
 		keptThroughCone: 0,
+		owners: this.ownerRows,
 	};
 	private readonly cameraFrustum = new THREE.Frustum();
 	private readonly viewProjection = new THREE.Matrix4();
@@ -150,6 +175,45 @@ export class ZoneCuller {
 		this.stats.hidden = 0;
 		this.stats.keptInOwnZone = 0;
 		this.stats.keptThroughCone = 0;
+		for (const owner of this.ownerRows) {
+			owner.kept = 0;
+			owner.hidden = 0;
+			owner.castersKept = 0;
+			owner.castersHidden = 0;
+		}
+	}
+
+	/** De regel van deze eigenaar, aangemaakt zodra hij voor het eerst genoemd wordt. */
+	owner(name: string): ZoneOwnerTally {
+		const known = this.ownerIndex.get(name);
+		if (known) return known;
+		const row: ZoneOwnerTally = { name, items: 0, casters: 0, kept: 0, hidden: 0, castersKept: 0, castersHidden: 0 };
+		this.ownerIndex.set(name, row);
+		this.ownerRows.push(row);
+		return row;
+	}
+
+	/** Meld wat deze eigenaar te tekenen heeft, en hoeveel daarvan schaduw werpt. */
+	declareOwner(name: string, items: number, casters: number): void {
+		const tally = this.owner(name);
+		tally.items += items;
+		tally.casters += casters;
+	}
+
+	/**
+	 * Schrijf één beslissing op de eigenaar.
+	 *
+	 * Los van `accepts`, want een batch draagt de bronnen van meerdere eigenaren en
+	 * krijgt één zichtbaarheid; hoe die over hen verdeeld is weet alleen de beller.
+	 */
+	charge(tally: ZoneOwnerTally, shown: boolean, items: number, casters: number): void {
+		if (shown) {
+			tally.kept += items;
+			tally.castersKept += casters;
+		} else {
+			tally.hidden += items;
+			tally.castersHidden += casters;
+		}
 	}
 
 	/**

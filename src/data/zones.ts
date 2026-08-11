@@ -21,12 +21,22 @@
 import { MALL_FOOTPRINT } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt, levelBand, levelElevationIndex } from '#/data/levels';
-import type { Bounds3, CardinalSide, SpatialVolume, WorldEntity } from '#/data/spatial';
+import type { Bounds2, Bounds3, CardinalSide, SpatialVolume, WorldEntity } from '#/data/spatial';
 import { GLASS_TAG, geometryBounds, NOT_A_PORTAL_TAG } from '#/data/spatial';
-import { facadeOpeningWithin, slabOpeningWithin, WORLD_ENTITIES } from '#/data/world';
+import type { FacadePanel } from '#/data/world';
+import {
+	facadeOpeningWithin,
+	MALL_WALL_ENVELOPE,
+	slabOpeningWithin,
+	THEATRE_ENVELOPE,
+	THEATRE_WALL_ENVELOPE,
+	THEATRE_ZONE_VOLUME,
+	theatreOpeningWithin,
+	WORLD_ENTITIES,
+} from '#/data/world';
 import { half, span } from '#/util/math';
 
-export const ZONES = ['stad', 'p1', 'mall-v0', 'mall-v1', 'roof'] as const;
+export const ZONES = ['stad', 'p1', 'mall-v0', 'mall-v1', 'roof', 'theatre'] as const;
 
 export type ZoneId = (typeof ZONES)[number];
 
@@ -64,16 +74,118 @@ export function zoneOfLevel(level: LevelId): ZoneId {
 	return ZONE_BY_LEVEL[level];
 }
 
-const HALF_FOOTPRINT_X = half(MALL_FOOTPRINT.width);
-const HALF_FOOTPRINT_Z = half(MALL_FOOTPRINT.depth);
-
 /** Zonebit per dek, op hoogtevolgorde, zodat een doos over dekken heen één lus is. */
 const ZONE_BIT_BY_ELEVATION: readonly number[] = LEVELS_BOTTOM_UP.map((entry) => zoneBit(zoneOfLevel(entry.id)));
 
-/** Binnen de voetafdruk telt het dek, erbuiten is er geen gebouw en dus alleen stad. */
+type Band = Readonly<{ minY: number; maxY: number }>;
+
+/**
+ * Eén gebouw met een binnenkant.
+ *
+ * De zonegraaf ging over de mall alleen: buiten de voetafdruk was alles stad, en
+ * het theater was dan ook een massief blok waar niets in zat. Nu er twee gebouwen
+ * staan is de vraag "in welk gebouw sta ik" een lus geworden in plaats van een
+ * vergelijking met één voetafdruk, en de rest van dit bestand stelt hem één keer.
+ *
+ * `plan` is de hartlijn van de schil — voor de mall precies `MALL_FOOTPRINT` —
+ * want daar hoort het buitenvlak van de gevel een halve wanddikte buiten te liggen
+ * en is een dorpel die dat vlak doorsnijdt herkenbaar als doorsnijding.
+ */
+type Enclosure = Readonly<{
+	id: 'mall' | 'theatre';
+	plan: Bounds2;
+	/** De omhullende van zijn wandkasten: de huid waar de gevelcontrole tegen meet. */
+	envelope: Bounds2;
+	band: Band;
+	/** De zones erin, van onder naar boven. */
+	zones: readonly ZoneId[];
+	zoneOfY: (y: number) => ZoneId;
+	/** Elke zone die de hoogteband `minY..maxY` erin aanraakt. */
+	zonesOfY: (minY: number, maxY: number) => number;
+	openingWithin: (side: CardinalSide, face: FacadePanel) => FacadePanel | null;
+}>;
+
+const UNBOUNDED: Band = { minY: Number.NEGATIVE_INFINITY, maxY: Number.POSITIVE_INFINITY };
+
+const MALL_PLAN: Bounds2 = {
+	minX: -half(MALL_FOOTPRINT.width),
+	maxX: half(MALL_FOOTPRINT.width),
+	minZ: -half(MALL_FOOTPRINT.depth),
+	maxZ: half(MALL_FOOTPRINT.depth),
+};
+
+const THEATRE_BAND: Band = { minY: THEATRE_ZONE_VOLUME.minY, maxY: THEATRE_ZONE_VOLUME.maxY };
+
+const ENCLOSURES: readonly Enclosure[] = [
+	{
+		id: 'mall',
+		plan: MALL_PLAN,
+		envelope: MALL_WALL_ENVELOPE,
+		band: UNBOUNDED,
+		zones: LEVELS_BOTTOM_UP.map((entry) => zoneOfLevel(entry.id)),
+		zoneOfY: (y) => zoneOfLevel(levelAt(y)),
+		zonesOfY: (minY, maxY) => {
+			let mask = 0;
+			const from = levelElevationIndex(levelAt(minY));
+			const to = levelElevationIndex(levelAt(maxY));
+			for (let index = from; index <= to; index++) mask |= ZONE_BIT_BY_ELEVATION[index] ?? 0;
+			return mask;
+		},
+		openingWithin: facadeOpeningWithin,
+	},
+	{
+		id: 'theatre',
+		plan: THEATRE_ENVELOPE,
+		envelope: THEATRE_WALL_ENVELOPE,
+		band: THEATRE_BAND,
+		zones: ['theatre'],
+		zoneOfY: () => 'theatre',
+		zonesOfY: (minY, maxY) => (maxY > THEATRE_BAND.minY && minY < THEATRE_BAND.maxY ? zoneBit('theatre') : 0),
+		openingWithin: theatreOpeningWithin,
+	},
+];
+
+const ENCLOSURE_BY_ZONE: ReadonlyMap<ZoneId, Enclosure> = new Map(
+	ENCLOSURES.flatMap((enclosure) => enclosure.zones.map((zone) => [zone, enclosure] as const)),
+);
+
+/**
+ * De gebouwen zoals de rest van de wereld ze mag lezen: hun naam en hun schil.
+ *
+ * De gevelcontrole meet elk volume tegen de omhullende van het gebouw waar het in
+ * staat. Zonder deze lijst kende ze er maar één en stak het hele theater honderd
+ * meter voorbij de oostgevel van de mall uit.
+ */
+export const ZONE_ENCLOSURES: readonly Readonly<{ id: 'mall' | 'theatre'; plan: Bounds2; envelope: Bounds2; band: Band }>[] =
+	ENCLOSURES.map((enclosure) => ({
+		id: enclosure.id,
+		plan: enclosure.plan,
+		envelope: enclosure.envelope,
+		band: enclosure.band,
+	}));
+
+function planOverlaps(plan: Bounds2, bounds: Bounds3): boolean {
+	return bounds.minX <= plan.maxX && bounds.maxX >= plan.minX && bounds.minZ <= plan.maxZ && bounds.maxZ >= plan.minZ;
+}
+
+function planHolds(plan: Bounds2, bounds: Bounds3): boolean {
+	return bounds.minX >= plan.minX && bounds.maxX <= plan.maxX && bounds.minZ >= plan.minZ && bounds.maxZ <= plan.maxZ;
+}
+
+/** Het gebouw waar dit punt in staat, of null als het buiten staat. */
+function enclosureAt(x: number, y: number, z: number): Enclosure | null {
+	for (const enclosure of ENCLOSURES) {
+		const { plan, band } = enclosure;
+		if (x < plan.minX || x > plan.maxX || z < plan.minZ || z > plan.maxZ) continue;
+		if (y < band.minY || y > band.maxY) continue;
+		return enclosure;
+	}
+	return null;
+}
+
+/** Binnen een gebouw telt zijn eigen dek, erbuiten is er geen gebouw en dus alleen stad. */
 export function zoneAt(x: number, y: number, z: number): ZoneId {
-	if (Math.abs(x) > HALF_FOOTPRINT_X || Math.abs(z) > HALF_FOOTPRINT_Z) return 'stad';
-	return zoneOfLevel(levelAt(y));
+	return enclosureAt(x, y, z)?.zoneOfY(y) ?? 'stad';
 }
 
 /**
@@ -82,17 +194,23 @@ export function zoneAt(x: number, y: number, z: number): ZoneId {
  * Een muur van de voet tot de kroonlijst staat in vier zones tegelijk, en een
  * batch die hem bevat mag daarom nooit wegvallen. De doos is met opzet ruim: te
  * veel zones tekent te veel, te weinig laat geometrie verdwijnen die er staat.
+ *
+ * Stad komt erbij zodra de doos niet volledig in één gebouw past. Dat is de reden
+ * dat de gebouwen elkaar niet mogen raken: paste een doos in de vereniging van
+ * twee schillen zonder in één ervan te passen, dan zou ze hier ten onrechte de
+ * stad claimen. `controleTheater` leest die afstand na.
  */
 export function zoneMaskOfBounds(bounds: Bounds3): number {
 	let mask = 0;
-	if (bounds.minX < -HALF_FOOTPRINT_X || bounds.maxX > HALF_FOOTPRINT_X) mask |= zoneBit('stad');
-	if (bounds.minZ < -HALF_FOOTPRINT_Z || bounds.maxZ > HALF_FOOTPRINT_Z) mask |= zoneBit('stad');
-	const insideX = bounds.minX <= HALF_FOOTPRINT_X && bounds.maxX >= -HALF_FOOTPRINT_X;
-	const insideZ = bounds.minZ <= HALF_FOOTPRINT_Z && bounds.maxZ >= -HALF_FOOTPRINT_Z;
-	if (!insideX || !insideZ) return mask;
-	const from = levelElevationIndex(levelAt(bounds.minY));
-	const to = levelElevationIndex(levelAt(bounds.maxY));
-	for (let index = from; index <= to; index++) mask |= ZONE_BIT_BY_ELEVATION[index] ?? 0;
+	let housed = false;
+	for (const enclosure of ENCLOSURES) {
+		if (!planOverlaps(enclosure.plan, bounds)) continue;
+		mask |= enclosure.zonesOfY(bounds.minY, bounds.maxY);
+		if (planHolds(enclosure.plan, bounds) && bounds.minY >= enclosure.band.minY && bounds.maxY <= enclosure.band.maxY) {
+			housed = true;
+		}
+	}
+	if (!housed) mask |= zoneBit('stad');
 	return mask;
 }
 
@@ -194,10 +312,10 @@ const INTERFACE_THICKNESS = 0.05;
  * kwam een halve meter hoger uit en legde de dikte van elke vloerplaat buiten de
  * zone waar diezelfde plaat volgens de rest van dit bestand in ligt.
  */
-function zoneBand(zone: ZoneId): Readonly<{ minY: number; maxY: number }> {
+function zoneBand(zone: ZoneId): Band {
 	const level = levelOfZone(zone);
-	if (!level) return { minY: Number.NEGATIVE_INFINITY, maxY: Number.POSITIVE_INFINITY };
-	return levelBand(level.id);
+	if (level) return levelBand(level.id);
+	return ENCLOSURE_BY_ZONE.get(zone)?.band ?? UNBOUNDED;
 }
 
 function levelOfZone(zone: ZoneId): (typeof LEVELS)[number] | undefined {
@@ -214,9 +332,9 @@ function levelOfZone(zone: ZoneId): (typeof LEVELS)[number] | undefined {
  * een muur die op dat dek gewoon dicht is. Onder het onderste dek en boven het
  * bovenste houdt de gevel niet op, dus daar houdt deze band ook niet op.
  */
-function deckSpan(zone: ZoneId): Readonly<{ minY: number; maxY: number }> {
+function deckSpan(zone: ZoneId): Band {
 	const level = levelOfZone(zone);
-	if (!level) return { minY: Number.NEGATIVE_INFINITY, maxY: Number.POSITIVE_INFINITY };
+	if (!level) return ENCLOSURE_BY_ZONE.get(zone)?.band ?? UNBOUNDED;
 	const index = levelElevationIndex(level.id);
 	const below = LEVELS_BOTTOM_UP[index - 1];
 	const above = LEVELS_BOTTOM_UP[index + 1];
@@ -245,19 +363,17 @@ const SKY_HEADROOM = span(LEVELS_BOTTOM_UP[0]?.y ?? 0, LEVELS_BOTTOM_UP[LEVELS_B
  * de stoep is dat het verschil tussen het dak wegcullen en het hele gebouw tekenen.
  */
 export function zoneVolume(zone: ZoneId): Bounds3 | null {
-	if (zone === 'stad') return null;
+	const enclosure = ENCLOSURE_BY_ZONE.get(zone);
+	if (!enclosure) return null;
 	const band = zoneBand(zone);
 	return {
-		minX: -HALF_FOOTPRINT_X,
-		maxX: HALF_FOOTPRINT_X,
+		...enclosure.plan,
 		minY: band.minY,
 		maxY: isOpenToSky(zone) ? band.minY + SKY_HEADROOM : band.maxY,
-		minZ: -HALF_FOOTPRINT_Z,
-		maxZ: HALF_FOOTPRINT_Z,
 	};
 }
 
-function clipBounds(bounds: Bounds3, band: Readonly<{ minY: number; maxY: number }>): Bounds3 | null {
+function clipBounds(bounds: Bounds3, band: Band): Bounds3 | null {
 	const minY = Math.max(bounds.minY, band.minY);
 	const maxY = Math.min(bounds.maxY, band.maxY);
 	if (maxY - minY <= 0) return null;
@@ -275,9 +391,13 @@ function clipBounds(bounds: Bounds3, band: Readonly<{ minY: number; maxY: number
 function interfaceAperture(bounds: Bounds3, from: ZoneId, to: ZoneId): Bounds3 | null {
 	if (from === 'stad' || to === 'stad') {
 		const deck = from === 'stad' ? to : from;
+		const enclosure = ENCLOSURE_BY_ZONE.get(deck);
+		if (!enclosure) return null;
 		const clipped = clipBounds(bounds, deckSpan(deck));
-		return clipped === null ? null : facadeFaceOf(clipped);
+		return clipped === null ? null : facadeFaceOf(enclosure, clipped);
 	}
+	// Twee gebouwen delen geen wand, dus er is geen vlak waarop ze elkaar raken.
+	if (ENCLOSURE_BY_ZONE.get(from) !== ENCLOSURE_BY_ZONE.get(to)) return null;
 	return deckFaceOf(bounds, from, to);
 }
 
@@ -290,11 +410,12 @@ function interfaceAperture(bounds: Bounds3, from: ZoneId, to: ZoneId): Bounds3 |
  * westgevel, precies waar `wall_w_above_exit` staat. De dekkant vroeg het al
  * (`slabOpeningWithin`); de stadkant vroeg niets.
  */
-function facadeFaceOf(bounds: Bounds3): Bounds3 | null {
-	const side = facadeSideOf(bounds);
+function facadeFaceOf(enclosure: Enclosure, bounds: Bounds3): Bounds3 | null {
+	const plan = enclosure.plan;
+	const side = facadeSideOf(plan, bounds);
 	if (side === null) return null;
 	const alongZ = side === 'west' || side === 'east';
-	const opening = facadeOpeningWithin(side, {
+	const opening = enclosure.openingWithin(side, {
 		minU: alongZ ? bounds.minZ : bounds.minX,
 		maxU: alongZ ? bounds.maxZ : bounds.maxX,
 		minY: bounds.minY,
@@ -303,47 +424,23 @@ function facadeFaceOf(bounds: Bounds3): Bounds3 | null {
 	if (opening === null) return null;
 	const face = { minY: opening.minY, maxY: opening.maxY };
 	if (side === 'west') {
-		return {
-			...face,
-			minX: -HALF_FOOTPRINT_X - INTERFACE_THICKNESS,
-			maxX: -HALF_FOOTPRINT_X,
-			minZ: opening.minU,
-			maxZ: opening.maxU,
-		};
+		return { ...face, minX: plan.minX - INTERFACE_THICKNESS, maxX: plan.minX, minZ: opening.minU, maxZ: opening.maxU };
 	}
 	if (side === 'east') {
-		return {
-			...face,
-			minX: HALF_FOOTPRINT_X,
-			maxX: HALF_FOOTPRINT_X + INTERFACE_THICKNESS,
-			minZ: opening.minU,
-			maxZ: opening.maxU,
-		};
+		return { ...face, minX: plan.maxX, maxX: plan.maxX + INTERFACE_THICKNESS, minZ: opening.minU, maxZ: opening.maxU };
 	}
 	if (side === 'north') {
-		return {
-			...face,
-			minZ: -HALF_FOOTPRINT_Z - INTERFACE_THICKNESS,
-			maxZ: -HALF_FOOTPRINT_Z,
-			minX: opening.minU,
-			maxX: opening.maxU,
-		};
+		return { ...face, minZ: plan.minZ - INTERFACE_THICKNESS, maxZ: plan.minZ, minX: opening.minU, maxX: opening.maxU };
 	}
-	return {
-		...face,
-		minZ: HALF_FOOTPRINT_Z,
-		maxZ: HALF_FOOTPRINT_Z + INTERFACE_THICKNESS,
-		minX: opening.minU,
-		maxX: opening.maxU,
-	};
+	return { ...face, minZ: plan.maxZ, maxZ: plan.maxZ + INTERFACE_THICKNESS, minX: opening.minU, maxX: opening.maxU };
 }
 
-/** Welke gevel het portaal doorsnijdt, of null als het binnen de voetafdruk blijft. */
-function facadeSideOf(bounds: Bounds3): CardinalSide | null {
-	if (bounds.minX < -HALF_FOOTPRINT_X) return 'west';
-	if (bounds.maxX > HALF_FOOTPRINT_X) return 'east';
-	if (bounds.minZ < -HALF_FOOTPRINT_Z) return 'north';
-	if (bounds.maxZ > HALF_FOOTPRINT_Z) return 'south';
+/** Welke gevel het portaal doorsnijdt, of null als het binnen de schil blijft. */
+function facadeSideOf(plan: Bounds2, bounds: Bounds3): CardinalSide | null {
+	if (bounds.minX < plan.minX) return 'west';
+	if (bounds.maxX > plan.maxX) return 'east';
+	if (bounds.minZ < plan.minZ) return 'north';
+	if (bounds.maxZ > plan.maxZ) return 'south';
 	return null;
 }
 

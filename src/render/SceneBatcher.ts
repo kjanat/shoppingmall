@@ -3,7 +3,8 @@ import { levelAt } from '#/data/levels';
 import { ZONES, zoneMaskAround, zoneMaskOfBounds } from '#/data/zones';
 import type { BatchMode } from '#/render/graphicsPrefs';
 import { batchMode } from '#/render/graphicsPrefs';
-import type { ZoneCuller } from '#/render/ZoneCuller';
+import { ownerName } from '#/render/sceneOwner';
+import type { ZoneCuller, ZoneOwnerTally } from '#/render/ZoneCuller';
 import { span } from '#/util/math';
 
 type ColorMaterial = THREE.Material & { color?: THREE.Color };
@@ -26,9 +27,17 @@ type SourceInstance = {
 	zoneMask: number;
 };
 
+/**
+ * How many of a batch's sources one owner contributed, and where that owner's
+ * cull tally lives. The tally is resolved on first use because the culler only
+ * shows up at applyZoneVisibility time, long after the batch was built.
+ */
+type OwnerShare = { name: string; sources: number; tally: ZoneOwnerTally | null };
+
 type Batch = {
 	mesh: THREE.BatchedMesh;
 	sources: SourceInstance[];
+	owners: OwnerShare[];
 	dynamicRoot: THREE.Object3D | null;
 	/**
 	 * How many of this batch's instances stand in each zone, and the union of those
@@ -51,10 +60,12 @@ export type SceneBatchStats = {
 
 export type BatchOwnerStats = {
 	name: string;
-	dynamic: boolean;
 	sources: number;
+	dynamicSources: number;
 	batches: number;
 	triangles: number;
+	/** Sources whose batch casts a shadow, so what this owner offers the shadow pass. */
+	casters: number;
 	largestRadius: number;
 };
 
@@ -418,21 +429,43 @@ export class SceneBatcher {
 			batched.computeBoundingSphere();
 			const radius = batched.boundingSphere?.radius ?? 0;
 			largestRadius = Math.max(largestRadius, radius);
-			const ownerKey = dynamicRoot?.uuid ?? 'static';
-			const owner = ownerStats.get(ownerKey) ?? {
-				name: dynamicRoot?.name || (dynamicRoot ? '(unnamed dynamic root)' : '(static)'),
-				dynamic: dynamicRoot !== null,
-				sources: 0,
-				batches: 0,
-				triangles: 0,
-				largestRadius: 0,
+			// Per source and not per batch: the key that makes a batch big is a shared
+			// material, and that pulls the mall's floor slabs in next to the city's
+			// pavement. One batch therefore carries several owners.
+			const shares = new Map<string, OwnerShare>();
+			for (const source of sources) {
+				const name = ownerName(source.mesh);
+				const share = shares.get(name) ?? { name, sources: 0, tally: null };
+				share.sources++;
+				shares.set(name, share);
+				const owner = ownerStats.get(name) ?? {
+					name,
+					sources: 0,
+					dynamicSources: 0,
+					batches: 0,
+					triangles: 0,
+					casters: 0,
+					largestRadius: 0,
+				};
+				owner.sources++;
+				if (dynamicRoot) owner.dynamicSources++;
+				if (batched.castShadow) owner.casters++;
+				owner.triangles += geometryTriangles(source.mesh.geometry);
+				owner.largestRadius = Math.max(owner.largestRadius, radius);
+				ownerStats.set(name, owner);
+			}
+			for (const share of shares.values()) {
+				const owner = ownerStats.get(share.name);
+				if (owner) owner.batches++;
+			}
+			const batch: Batch = {
+				mesh: batched,
+				sources,
+				owners: [...shares.values()],
+				dynamicRoot,
+				zoneCounts: new Int32Array(ZONES.length),
+				zoneMask: 0,
 			};
-			owner.sources += sources.length;
-			owner.batches++;
-			owner.triangles += meshes.reduce((sum, mesh) => sum + geometryTriangles(mesh.geometry), 0);
-			owner.largestRadius = Math.max(owner.largestRadius, radius);
-			ownerStats.set(ownerKey, owner);
-			const batch: Batch = { mesh: batched, sources, dynamicRoot, zoneCounts: new Int32Array(ZONES.length), zoneMask: 0 };
 			for (const source of sources) countZones(batch, source.zoneMask, 1);
 			refreshZoneMask(batch);
 			this.batches.push(batch);
@@ -519,7 +552,15 @@ export class SceneBatcher {
 	 */
 	applyZoneVisibility(culler: ZoneCuller): void {
 		for (const batch of this.batches) {
-			batch.mesh.visible = culler.accepts(batch.zoneMask, batch.mesh.boundingSphere);
+			const shown = culler.accepts(batch.zoneMask, batch.mesh.boundingSphere);
+			batch.mesh.visible = shown;
+			// castShadow is part of the batch key, so every source in here answers the
+			// same way and the whole share counts as casting or as not casting.
+			const casting = batch.mesh.castShadow;
+			for (const share of batch.owners) {
+				share.tally ??= culler.owner(share.name);
+				culler.charge(share.tally, shown, share.sources, casting ? share.sources : 0);
+			}
 		}
 	}
 

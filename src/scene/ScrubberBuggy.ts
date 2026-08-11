@@ -1,12 +1,30 @@
 import * as THREE from 'three';
 import type { InteractionReceiver } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
-import { GRAVITY } from '#/player/constants';
+import type { VehicleGroundState } from '#/physics/VehicleGround';
+import { LANDING_GRIP, stepVehicleGround } from '#/physics/VehicleGround';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { CITY_GROUND_Y } from '#/scene/city/cityPlan';
-import { labelCanvas, labelTexture } from '#/util/label';
-import { clamp, half } from '#/util/math';
+import type { Barriers } from '#/scene/city/Barriers';
+import { outsideMallFootprint } from '#/scene/city/cityPlan';
+import { backToBackLabel, labelCanvas, labelTexture } from '#/util/label';
+import { clamp, ease, half } from '#/util/math';
+
+/**
+ * Waar een rit stond en hoe hard hij ging.
+ *
+ * Genoeg om hem terug te zetten nadat de wereld opnieuw is opgebouwd; welk
+ * voertuig het was staat erbuiten, want dat weet de aanroeper al.
+ */
+export type VehicleRide = {
+	/** Welk exemplaar: de naam van de huurauto, leeg waar er maar één is. */
+	id: string;
+	x: number;
+	y: number;
+	z: number;
+	yaw: number;
+	speed: number;
+};
 
 /** Arcade drive input from the player */
 export type DriveInput = {
@@ -38,10 +56,15 @@ const FRICTION = 2.5;
 const TURN_RATE = 2;
 /** Vanaf deze snelheid (m/s) stuurt hij vol; eronder loopt het stuurgezag terug tot een derde. */
 const STEER_AUTHORITY_SPEED = 1.6;
-/** Zakt de vloer verder dan dit onder de wielen, dan rijd je een rand af en val je. */
-const DROP_STEP = 0.9;
-/** Wat er van je vaart over is na een landing. */
-const LANDING_GRIP = 0.8;
+/** Asafstand: waarover de helling onder het karretje gemeten wordt. */
+const WHEELBASE = 0.85;
+/** Hoe snel de bak de gemeten helling aanneemt. Direct is een schok bij elke naad. */
+const PITCH_EASE = 8;
+/** Boven dit loopvlak hoort dit karretje niet thuis; het racet de gangen, niet het dak. */
+const CEILING = 10;
+/** Ooghoogte boven de wielen, en hoever het stoeltje achter het hart staat. */
+const SEAT_HEIGHT = 1.35;
+const SEAT_BACK = 0.05;
 
 /**
  * Empty ride-on floor scrubber — same class of buggy Wei Chen drives,
@@ -73,14 +96,18 @@ export class ScrubberBuggy {
 	 */
 	private yaw = 0;
 	private speed = 0;
-	private vy = 0;
-	private grounded = true;
+	/** Hoogte, valsnelheid en of hij staat — één record, want `stepVehicleGround` schrijft erin. */
+	private readonly ground: VehicleGroundState = { y: PARK.y, vy: 0, grounded: true };
+	/** Hoe schuin hij nu staat; loopt achter de gemeten helling aan zodat de voet van een helling geen knik is. */
+	private pitch = 0;
 	private parkPos = PARK.clone();
 	private label!: THREE.Sprite;
+	private readonly barriers: Barriers;
 
-	constructor(world: CollisionWorld, pool: LightPool) {
+	constructor(world: CollisionWorld, pool: LightPool, barriers: Barriers) {
 		this.world = world;
 		this.pool = pool;
+		this.barriers = barriers;
 		this.group.name = 'scrubberBuggy';
 		this.mesh = this.build();
 		this.mesh.position.copy(this.parkPos);
@@ -94,12 +121,16 @@ export class ScrubberBuggy {
 		return Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
 	}
 
-	/** Eye / camera seat */
+	/**
+	 * Eye / camera seat. Het stoeltje staat op de bak, dus het kantelt mee: op de
+	 * helling zakt het naar achteren in plaats van kaarsrecht boven de wielen te
+	 * blijven zweven.
+	 */
 	getSeatPosition(): THREE.Vector3 {
-		// Sit slightly above seat, looking forward
 		const fx = -Math.sin(this.yaw);
 		const fz = -Math.cos(this.yaw);
-		return new THREE.Vector3(this.pos.x - fx * 0.05, this.pos.y + 1.35, this.pos.z - fz * 0.05);
+		const achter = SEAT_BACK + SEAT_HEIGHT * Math.sin(this.pitch);
+		return new THREE.Vector3(this.pos.x - fx * achter, this.pos.y + SEAT_HEIGHT * Math.cos(this.pitch), this.pos.z - fz * achter);
 	}
 
 	get heading(): number {
@@ -117,9 +148,29 @@ export class ScrubberBuggy {
 	board(): void {
 		this.ridden = true;
 		this.speed = 0;
+		// De lift kan hem verzet hebben terwijl hij leeg stond.
+		this.ground.y = this.pos.y;
+		this.ground.vy = 0;
+		this.ground.grounded = true;
 		if (this.label) {
 			this.paintLabel('JIJ · SCHOONMAAK RACER', '#b71c1c');
 		}
+	}
+
+	/** Waar deze rit staat, of null als er niemand op zit. */
+	get ride(): VehicleRide | null {
+		if (!this.ridden) return null;
+		return { id: '', x: this.pos.x, y: this.pos.y, z: this.pos.z, yaw: this.yaw, speed: this.speed };
+	}
+
+	/** Zet een onderbroken rit terug: dezelfde plek, dezelfde koers, dezelfde vaart. */
+	resume(state: VehicleRide): boolean {
+		this.pos.set(state.x, state.y, state.z);
+		this.mesh.position.copy(this.pos);
+		this.yaw = state.yaw;
+		this.board();
+		this.speed = state.speed;
+		return true;
 	}
 
 	/** Park where you got out */
@@ -131,7 +182,18 @@ export class ScrubberBuggy {
 		const leftX = -Math.cos(this.yaw);
 		const leftZ = Math.sin(this.yaw);
 		const exit = new THREE.Vector3(this.pos.x + leftX * 1.4, this.pos.y, this.pos.z + leftZ * 1.4);
-		const fixed = this.world.resolveCircle(exit.x, exit.z, this.pos.y + 0.5, 0.4, 3, true);
+		// Dezelfde vrijstelling als rijdend, anders trekt de voetafdrukklem een uitstappunt
+		// op straat de mall in. Zonder deze vlag zette uitstappen buiten je tegen de gevel.
+		const fixed = this.world.resolveCircle(
+			exit.x,
+			exit.z,
+			this.pos.y + 0.5,
+			0.4,
+			3,
+			true,
+			false,
+			outsideMallFootprint(this.pos.y),
+		);
 		exit.x = fixed.x;
 		exit.z = fixed.z;
 		if (this.label) {
@@ -158,6 +220,7 @@ export class ScrubberBuggy {
 		if (!this.ridden) {
 			if (this.floorOverride !== null) {
 				this.pos.y = this.floorOverride;
+				this.ground.y = this.floorOverride;
 				this.mesh.position.y = this.floorOverride;
 			}
 			// Idle: slow brush spin so it reads as "ready"
@@ -206,51 +269,39 @@ export class ScrubberBuggy {
 			nz += carry.z * dt;
 		}
 
-		// Verticaal: cabine > staand op de vloer > ballistisch. Elke frame naar
-		// gy snappen teleporteerde het karretje van de garagehelling af naar
-		// straatniveau; nu valt het met dezelfde GRAVITY als de speler.
-		let feetY: number;
-		if (this.floorOverride !== null) {
-			feetY = this.floorOverride;
-			this.vy = 0;
-			this.grounded = true;
-		} else if (this.grounded) {
-			const gy = this.world.groundHeightAt(nx, nz, this.pos.y + 0.5, 2);
-			// Stay mostly on V0 / P1, not roof racing
-			const ground = gy < 10 ? gy : this.pos.y;
-			if (this.pos.y - ground > DROP_STEP) {
-				this.grounded = false;
-				this.vy = 0;
-				feetY = this.pos.y;
-			} else {
-				feetY = ground;
-			}
-		} else {
-			this.vy -= GRAVITY * dt;
-			feetY = this.pos.y + this.vy * dt;
-			const gy = this.world.groundHeightAt(nx, nz, feetY, 0.5);
-			if (feetY <= gy) {
-				feetY = gy;
-				this.vy = 0;
-				this.grounded = true;
-				this.speed *= LANDING_GRIP;
-			}
+		// Cabine > staand op de vloer > ballistisch. Elke frame naar de vloerhoogte
+		// snappen teleporteerde het karretje van de garagehelling af naar straatniveau;
+		// nu valt het met dezelfde GRAVITY als de speler. Zelfde stap als de huurauto's.
+		if (stepVehicleGround(this.world, this.ground, nx, nz, dt, { floorOverride: this.floorOverride, ceiling: CEILING })) {
+			this.speed *= LANDING_GRIP;
 		}
+		const feetY = this.ground.y;
+
+		// Hij meldt zich bij elke slagboom waar hij op afrijdt; of de arm omhoog gaat
+		// staat op de boom en niet hier.
+		this.barriers.approach(nx, nz, 'player-vehicle');
 
 		// Op straatniveau geldt dezelfde vrijstelling als voor de speler te voet:
 		// zonder `outside` hield de footprint-klem het karretje 1,2 m vóór de open
 		// schuifdeuren tegen.
-		const buiten = feetY > CITY_GROUND_Y - 0.5;
-		const hit = this.world.resolveCircle(nx, nz, feetY + 0.5, RADIUS, 4, true, !this.grounded, buiten);
+		const buiten = outsideMallFootprint(feetY);
+		const hit = this.world.resolveCircle(nx, nz, feetY + 0.5, RADIUS, 4, true, !this.ground.grounded, buiten);
 		// Wall scrape kills speed
 		const scraped = Math.hypot(hit.x - nx, hit.z - nz) > 0.02;
 		if (scraped) this.speed *= 0.55;
 		nx = hit.x;
 		nz = hit.z;
 
+		// De helling onder de wielen, niet die van het vlak eronder: zonder deze reed
+		// hij vlak de garagehelling op, met het dek zichtbaar schuin onder zich door.
+		// In de lucht houdt hij de stand die hij had, anders klapt hij bij het afrijden
+		// van een rand naar de hoek van de vloer diep beneden.
+		const gemeten = this.ground.grounded ? this.world.surfacePitchAt(nx, nz, feetY, fx, fz, WHEELBASE) : this.pitch;
+		this.pitch = ease(this.pitch, gemeten, PITCH_EASE, dt);
+
 		this.pos.set(nx, feetY, nz);
 		this.mesh.position.set(nx, feetY, nz);
-		this.mesh.rotation.y = this.yaw + Math.PI;
+		this.mesh.rotation.set(-this.pitch, this.yaw + Math.PI, 0);
 
 		// Wheels + brush spin with speed
 		const spin = this.speed * dt * 1.8;
@@ -412,15 +463,9 @@ export class ScrubberBuggy {
 		this.wetSign = new THREE.Group();
 		this.wetSign.position.set(0, 0.35, -1.05);
 		const wetTex = this.makePlate('⚠ WET FLOOR\n小心地滑', '#ffeb3b', '#111', 256, 160);
-		const wetBoard = new THREE.Mesh(
+		const wetBoard = backToBackLabel(
 			new THREE.PlaneGeometry(0.55, 0.45),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: wetTex,
-					side: THREE.DoubleSide,
-					toneMapped: false,
-				}),
-			),
+			this.track(new THREE.MeshBasicMaterial({ map: wetTex, toneMapped: false })),
 		);
 		const wetL = wetBoard.clone();
 		wetL.position.set(0, 0.2, -0.08);

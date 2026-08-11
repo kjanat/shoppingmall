@@ -4,7 +4,7 @@ import { levelAt } from '#/data/levels';
 import { LINE_OF_SIGHT } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { clamp, easeFactor, half, shortestAngle } from '#/util/math';
 import { at, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
@@ -566,15 +566,9 @@ export class CleaningCart {
 		signPole.position.y = -0.1;
 		this.wetSign.add(signPole);
 		const wetTex = this.makePlate('⚠ WET FLOOR\n小心地滑', '#ffeb3b', '#111', 256, 160);
-		const wetBoard = new THREE.Mesh(
+		const wetBoard = backToBackLabel(
 			new THREE.PlaneGeometry(0.55, 0.45),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: wetTex,
-					side: THREE.DoubleSide,
-					toneMapped: false,
-				}),
-			),
+			this.track(new THREE.MeshBasicMaterial({ map: wetTex, toneMapped: false })),
 		);
 		wetBoard.position.y = 0.2;
 		// tent shape: two planes

@@ -1,10 +1,28 @@
+import type { PedestrianPosture } from '#/data/character';
+import { postureHeadroom } from '#/data/character';
 import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
-import { half, midpoint } from '#/util/math';
+import { clamp01, half, lerp, midpoint, span } from '#/util/math';
 
 export type Vec2 = Readonly<{ x: number; z: number }>;
 export type Vec3 = Readonly<{ x: number; y: number; z: number }>;
 
 export type CardinalSide = 'north' | 'south' | 'west' | 'east';
+
+/** The outward unit normal of each elevation. Which way is out is a property of the side itself. */
+export const CARDINAL_OUTWARD = {
+	west: { x: -1, z: 0 },
+	east: { x: 1, z: 0 },
+	north: { x: 0, z: -1 },
+	south: { x: 0, z: 1 },
+} as const satisfies Readonly<Record<CardinalSide, Vec2>>;
+
+/** The elevation across the building from each one. */
+export const CARDINAL_OPPOSITE = {
+	west: 'east',
+	east: 'west',
+	north: 'south',
+	south: 'north',
+} as const satisfies Readonly<Record<CardinalSide, CardinalSide>>;
 
 export type RectangleSource2 = Readonly<{
 	center: Vec2;
@@ -90,6 +108,7 @@ export type SpatialRole =
 	| 'opening-clearance'
 	| 'connector-clearance'
 	| 'storefront-clearance'
+	| 'aisle-clearance'
 	| 'decorative-covering'
 	| 'trigger'
 	| 'fluid';
@@ -142,6 +161,37 @@ export type Protrusion = Readonly<{
  */
 export const PROTRUSION_MARGIN = 0.02;
 
+/**
+ * The gap this volume's back face keeps to the structure behind it, and why it may.
+ *
+ * A shop is a box put down in front of a wall, and nothing measured what was left
+ * between the two: eighteen of the nineteen stopped between 0.28 and 1.2 m short of
+ * the perimeter, and ISLAND HOP stood 3.8 m clear of it with its own blue back panel
+ * floating in the slit. `Penetration` answers the mirror question, how far a volume
+ * may cut *into* what is behind it, so it cannot answer this one.
+ */
+export type Standoff = Readonly<{
+	/** Which face of the volume is its back. */
+	side: CardinalSide;
+	/** Metres of gap allowed between that face and the nearest structure behind it. */
+	depth: number;
+}>;
+
+/**
+ * Metres of gap below which a back face counts as resting against what is behind it.
+ *
+ * One number for both parties, like `PROTRUSION_MARGIN`: the rule demands a
+ * declaration above this figure and a declaration that covers less than this figure
+ * is doing no work.
+ */
+export const STANDOFF_MARGIN = 0.02;
+
+/** Marks the room shell of a shop: the box whose back has to meet the wall behind it. */
+export const ROOM_SHELL_TAG = 'room-shell';
+
+/** Marks a sign hung on the building. It may rest against what carries it and cut into nothing. */
+export const SIGNAGE_TAG = 'signage';
+
 export type SpatialVolume = Readonly<{
 	id: string;
 	role: SpatialRole;
@@ -152,6 +202,8 @@ export type SpatialVolume = Readonly<{
 	penetration?: Penetration;
 	/** Declared reach past the building envelope; absent means the facade is the limit. */
 	protrusion?: Protrusion;
+	/** Declared gap behind this volume's back; absent means it has to meet what stands there. */
+	standoff?: Standoff;
 	/** Visual and physical obstruction are separate. Opaque visual geometry can block a route without a collider. */
 	clearance:
 		| Readonly<{ kind: 'clear' }>
@@ -175,6 +227,15 @@ export type ConnectionPort = Readonly<{
 	oneWay: boolean;
 	allows: readonly ('walking' | 'wheeled' | 'service' | 'falling')[];
 	clearanceVolumeId: string;
+	/**
+	 * The posture a body has to be in to pass here.
+	 *
+	 * Crouch-only is a property of the passage, so the height its clearance has to
+	 * offer is read from the profile this names instead of from a standing body every
+	 * time. A duct that says `crouching` asks for the crouching headroom and nothing
+	 * else changes.
+	 */
+	posture: PedestrianPosture;
 }>;
 
 export type InteractionChannel =
@@ -290,6 +351,23 @@ export type Kinematics =
 			radiansPerSecond: number;
 	  }>;
 
+/**
+ * Wie een doorgang mag passeren.
+ *
+ * Een slagboom kent het verschil tussen een auto van de wegbeheerder, de auto
+ * die de speler zelf rijdt en iemand te voet. Zonder deze klassen kon een
+ * runtime dat verschil alleen aan het voertuigtype ophangen, en dan staat het
+ * antwoord in de code van het voertuig in plaats van op de boom.
+ */
+export const TRAFFIC_CLASSES = ['npc-traffic', 'player-vehicle', 'pedestrian'] as const;
+
+export type TrafficClass = (typeof TRAFFIC_CLASSES)[number];
+
+export type AccessPolicy = Readonly<{
+	/** De klassen waarvoor dit mechanisme opengaat. */
+	admits: readonly TrafficClass[];
+}>;
+
 export type ClearanceMechanism = Readonly<{
 	id: string;
 	kind: 'sliding' | 'hinged' | 'retracting';
@@ -299,6 +377,8 @@ export type ClearanceMechanism = Readonly<{
 	openState: Readonly<{ translation?: Vec3; rotationRadians?: number }>;
 	openingSeconds: number;
 	failSafe: 'open' | 'closed';
+	/** Voor wie hij opengaat. Wie er niet in staat komt er niet langs. */
+	access: AccessPolicy;
 }>;
 
 export type MapPresentation = Readonly<{
@@ -336,7 +416,11 @@ export type SpatialProblem = Readonly<{
 		| 'uncontained-volume'
 		| 'coplanar-surface'
 		| 'invalid-interaction'
-		| 'unused-penetration';
+		| 'unused-penetration'
+		| 'unmeasurable-clearance'
+		| 'insufficient-headroom'
+		| 'detached-backing'
+		| 'unused-standoff';
 	message: string;
 	entities: readonly string[];
 }>;
@@ -458,6 +542,18 @@ export function geometryBounds(geometry: SpatialGeometry): Bounds3 {
 	};
 }
 
+/**
+ * The free height a clearance volume offers a body walking through it.
+ *
+ * A flight carries its own figure: its bounding box spans the whole rise, so reading
+ * the box would report a stair as twelve metres of headroom.
+ */
+export function clearanceHeight(geometry: SpatialGeometry): number {
+	if (geometry.kind === 'flight-clearance') return geometry.height;
+	const bounds = geometryBounds(geometry);
+	return span(bounds.minY, bounds.maxY);
+}
+
 function boundsOverlap(a: Bounds3, b: Bounds3): boolean {
 	return (
 		a.minX < b.maxX - EPSILON &&
@@ -560,10 +656,6 @@ function pointInFlightPlan(geometry: StairGeometry | RampGeometry, x: number, z:
 	return pointInSegmentStrip2(x, z, geometry.start.x, geometry.start.z, geometry.end.x, geometry.end.z, geometry.width, EPSILON);
 }
 
-function pointInClearancePlan(geometry: FlightClearanceGeometry, x: number, z: number): boolean {
-	return pointInSegmentStrip2(x, z, geometry.start.x, geometry.start.z, geometry.end.x, geometry.end.z, geometry.width, EPSILON);
-}
-
 function prismFlightOverlap(prism: PrismGeometry, flight: StairGeometry | RampGeometry): boolean {
 	const flightBounds = geometryBounds(flight);
 	const prismBounds = geometryBounds(prism);
@@ -584,23 +676,193 @@ function prismFlightOverlap(prism: PrismGeometry, flight: StairGeometry | RampGe
 	return points.some((point) => prism.maxY > flightSurfaceY(flight, point.x, point.z) - thickness + EPSILON);
 }
 
-function prismFlightClearanceOverlap(prism: PrismGeometry, flight: FlightClearanceGeometry): boolean {
-	const flightBounds = geometryBounds(flight);
-	const prismBounds = geometryBounds(prism);
-	if (!boundsOverlap(flightBounds, prismBounds)) return false;
-	const minX = Math.max(flightBounds.minX, prismBounds.minX);
-	const maxX = Math.min(flightBounds.maxX, prismBounds.maxX);
-	const minZ = Math.max(flightBounds.minZ, prismBounds.minZ);
-	const maxZ = Math.min(flightBounds.maxZ, prismBounds.maxZ);
-	for (const x of [minX, midpoint(minX, maxX), maxX]) {
-		for (const z of [minZ, midpoint(minZ, maxZ), maxZ]) {
-			const point = { x, z };
-			if (!prismContainsPlanPoint(prism, point) || !pointInClearancePlan(flight, x, z)) continue;
-			const surfaceY = flightSurfaceY(flight, x, z);
-			if (prism.minY < surfaceY + flight.height - EPSILON && prism.maxY > surfaceY + EPSILON) return true;
-		}
+/** An interval on the flight's own plan axis, in world metres. */
+type AxisInterval = Readonly<{ min: number; max: number }>;
+
+/**
+ * What a solid does to the headroom over a flight.
+ *
+ * Nine sampled corner and midpoints used to answer this, and the strip where the
+ * east escalator's riders cross the V1 slab edge, z 1.6 to 2.42, fell between
+ * three of them: the world validated green while a head went through concrete.
+ * The answer is now the interval itself.
+ *
+ * `unmeasurable` is a third answer because coverage is read as an interval on one
+ * axis. A circular, polygonal or yawed hole has no such interval, and both silent
+ * answers would be a guess.
+ */
+export type FlightClearanceVerdict =
+	| Readonly<{ kind: 'clear' }>
+	| Readonly<{ kind: 'blocked'; axis: 'x' | 'z'; from: number; to: number }>
+	| Readonly<{ kind: 'unmeasurable'; reason: string }>;
+
+/** The swath a flight sweeps in plan: its run along one world axis, widened across the other. */
+type FlightSwath = Readonly<{ axis: 'x' | 'z'; from: number; to: number; crossMin: number; crossMax: number }>;
+
+const QUARTER_TURN = Math.PI / 2;
+
+function alongAxis(bounds: Bounds2, axis: 'x' | 'z'): AxisInterval {
+	return axis === 'x' ? { min: bounds.minX, max: bounds.maxX } : { min: bounds.minZ, max: bounds.maxZ };
+}
+
+function acrossAxis(bounds: Bounds2, axis: 'x' | 'z'): AxisInterval {
+	return axis === 'x' ? { min: bounds.minZ, max: bounds.maxZ } : { min: bounds.minX, max: bounds.maxX };
+}
+
+/** Bounds of a plan shape that is an axis-aligned rectangle, and null for every other shape. */
+function axisAlignedRectangleBounds(shape: PlanShape): Bounds2 | null {
+	if (shape.kind !== 'rectangle') return null;
+	const turns = shape.yaw / QUARTER_TURN;
+	return Math.abs(turns - Math.round(turns)) <= EPSILON ? planBounds(shape) : null;
+}
+
+function flightSwath(flight: FlightClearanceGeometry): FlightSwath | null {
+	const alongZ = Math.abs(flight.end.x - flight.start.x) <= EPSILON;
+	const alongX = Math.abs(flight.end.z - flight.start.z) <= EPSILON;
+	if (alongZ === alongX) return null;
+	const reach = half(flight.width);
+	if (alongZ) {
+		return {
+			axis: 'z',
+			from: flight.start.z,
+			to: flight.end.z,
+			crossMin: flight.start.x - reach,
+			crossMax: flight.start.x + reach,
+		};
 	}
-	return false;
+	return {
+		axis: 'x',
+		from: flight.start.x,
+		to: flight.end.x,
+		crossMin: flight.start.z - reach,
+		crossMax: flight.start.z + reach,
+	};
+}
+
+/**
+ * The stretch of the flight, as a parameter from start to end, where the band a
+ * standing body needs meets the prism's own band.
+ *
+ * The surface height runs linearly between the two endpoints, so the stretch is a
+ * single interval and follows from a division. A flight with no rise has no such
+ * division and fouls over its whole run or over none of it.
+ */
+function foulingWindow(flight: FlightClearanceGeometry, prism: PrismGeometry): AxisInterval | null {
+	const lowest = prism.minY - flight.height + EPSILON;
+	const highest = prism.maxY - EPSILON;
+	const rise = flight.end.y - flight.start.y;
+	if (Math.abs(rise) <= EPSILON) {
+		return flight.start.y > lowest && flight.start.y < highest ? { min: 0, max: 1 } : null;
+	}
+	const first = (lowest - flight.start.y) / rise;
+	const second = (highest - flight.start.y) / rise;
+	const min = clamp01(Math.min(first, second));
+	const max = clamp01(Math.max(first, second));
+	return max - min > EPSILON ? { min, max } : null;
+}
+
+export function flightClearanceVerdict(prism: PrismGeometry, flight: FlightClearanceGeometry): FlightClearanceVerdict {
+	if (!boundsOverlap(geometryBounds(flight), geometryBounds(prism))) return { kind: 'clear' };
+	const swath = flightSwath(flight);
+	if (!swath) return { kind: 'unmeasurable', reason: 'the flight does not run along a single plan axis' };
+	const window = foulingWindow(flight, prism);
+	if (!window) return { kind: 'clear' };
+	const edgeA = lerp(swath.from, swath.to, window.min);
+	const edgeB = lerp(swath.from, swath.to, window.max);
+	const planReach = planBounds(prism.plan);
+	const planAcross = acrossAxis(planReach, swath.axis);
+	if (planAcross.max <= swath.crossMin + EPSILON || planAcross.min >= swath.crossMax - EPSILON) return { kind: 'clear' };
+	const planAlong = alongAxis(planReach, swath.axis);
+	const foulMin = Math.min(edgeA, edgeB);
+	const foulMax = Math.max(edgeA, edgeB);
+	const solidMin = Math.max(foulMin, planAlong.min);
+	const solidMax = Math.min(foulMax, planAlong.max);
+	if (solidMax - solidMin <= EPSILON) return { kind: 'clear' };
+
+	const covered: AxisInterval[] = [];
+	for (const hole of prism.holes) {
+		const rectangle = axisAlignedRectangleBounds(hole);
+		const reach = rectangle ?? planBounds(hole);
+		const along = alongAxis(reach, swath.axis);
+		const across = acrossAxis(reach, swath.axis);
+		const meetsSwath =
+			along.max > solidMin + EPSILON &&
+			along.min < solidMax - EPSILON &&
+			across.max > swath.crossMin + EPSILON &&
+			across.min < swath.crossMax - EPSILON;
+		if (!rectangle) {
+			if (meetsSwath) return { kind: 'unmeasurable', reason: `hole shape '${hole.kind}' is not an axis-aligned rectangle` };
+			continue;
+		}
+		if (!meetsSwath) continue;
+		// A hole covers only where it spans the whole width of the swath. Half a bite
+		// out of it leaves a strip of deck standing beside the rider.
+		if (across.min > swath.crossMin + EPSILON || across.max < swath.crossMax - EPSILON) continue;
+		covered.push({ min: Math.max(along.min, solidMin), max: Math.min(along.max, solidMax) });
+	}
+
+	// Coverage is measured as a union. Subtracting the holes' lengths counts the
+	// metres two overlapping holes share twice, and calls deck that is still there
+	// covered.
+	const merged = [...covered].sort((a, b) => a.min - b.min);
+	let reached = solidMin;
+	for (const interval of merged) {
+		if (interval.min > reached + EPSILON) return { kind: 'blocked', axis: swath.axis, from: reached, to: interval.min };
+		reached = Math.max(reached, interval.max);
+	}
+	if (solidMax > reached + EPSILON) return { kind: 'blocked', axis: swath.axis, from: reached, to: solidMax };
+	return { kind: 'clear' };
+}
+
+/**
+ * The upright box a cylinder occupies, so it can be measured against a flight.
+ *
+ * Wider than the cylinder at the four corners, so it over-reports and never
+ * under-reports, and far tighter than the flight's own bounding box, which is what
+ * the pair fell back to.
+ */
+function prismOverCylinder(cylinder: CylinderGeometry): PrismGeometry {
+	const bounds = geometryBounds(cylinder);
+	return {
+		kind: 'prism',
+		plan: {
+			kind: 'rectangle',
+			center: { x: midpoint(bounds.minX, bounds.maxX), z: midpoint(bounds.minZ, bounds.maxZ) },
+			width: span(bounds.minX, bounds.maxX),
+			depth: span(bounds.minZ, bounds.maxZ),
+			yaw: 0,
+		},
+		minY: bounds.minY,
+		maxY: bounds.maxY,
+		holes: [],
+	};
+}
+
+/** A solid this function can hand to `flightClearanceVerdict`, and null for the rest. */
+function solidPrism(geometry: SpatialGeometry): PrismGeometry | null {
+	if (geometry.kind === 'prism') return geometry;
+	if (geometry.kind === 'cylinder') return prismOverCylinder(geometry);
+	return null;
+}
+
+/**
+ * The verdict for a solid against a flight clearance in either order, and null for
+ * any other pair.
+ *
+ * A cylinder used to fall past this to the bare `return true` in `geometriesOverlap`,
+ * and a flight's bounding box is far wider than the flight, so a lamp post beside a
+ * staircase read as a lamp post in it.
+ */
+function clearanceVerdict(a: SpatialGeometry, b: SpatialGeometry): FlightClearanceVerdict | null {
+	if (b.kind === 'flight-clearance') {
+		const solid = solidPrism(a);
+		return solid && flightClearanceVerdict(solid, b);
+	}
+	if (a.kind === 'flight-clearance') {
+		const solid = solidPrism(b);
+		return solid && flightClearanceVerdict(solid, a);
+	}
+	return null;
 }
 
 export function geometriesOverlap(a: SpatialGeometry, b: SpatialGeometry): boolean {
@@ -608,8 +870,8 @@ export function geometriesOverlap(a: SpatialGeometry, b: SpatialGeometry): boole
 	if (a.kind === 'prism' && b.kind === 'prism') return prismPlanOverlap(a, b);
 	if (a.kind === 'prism' && (b.kind === 'stair-flight' || b.kind === 'ramp')) return prismFlightOverlap(a, b);
 	if (b.kind === 'prism' && (a.kind === 'stair-flight' || a.kind === 'ramp')) return prismFlightOverlap(b, a);
-	if (a.kind === 'prism' && b.kind === 'flight-clearance') return prismFlightClearanceOverlap(a, b);
-	if (b.kind === 'prism' && a.kind === 'flight-clearance') return prismFlightClearanceOverlap(b, a);
+	const verdict = clearanceVerdict(a, b);
+	if (verdict) return verdict.kind !== 'clear';
 	return true;
 }
 
@@ -719,9 +981,21 @@ function passageClearance(volume: SpatialVolume): boolean {
 	return volume.role === 'opening-clearance' || volume.role === 'connector-clearance';
 }
 
+/**
+ * Reserved floor: nothing an entity puts down may stand in it.
+ *
+ * A shopfront keeps the strip in front of its window; a theatre aisle keeps the
+ * lane between two banks of seats. Both are floor a body walks on and neither is
+ * a passage between two places, so they answer the same question and are asked it
+ * in the same breath.
+ */
+function reservedFloor(volume: SpatialVolume): boolean {
+	return volume.role === 'storefront-clearance' || volume.role === 'aisle-clearance';
+}
+
 /** Declared free space: it reaches past the geometry it belongs to, which is its whole point. */
 function clearanceRole(volume: SpatialVolume): boolean {
-	return passageClearance(volume) || volume.role === 'storefront-clearance';
+	return passageClearance(volume) || reservedFloor(volume);
 }
 
 /**
@@ -821,6 +1095,100 @@ function penetrationUsed(volume: SpatialVolume, target: WorldEntity, other: Spat
 	return intrusionDepth(volume.geometry, other.geometry) > EPSILON;
 }
 
+/**
+ * Which way this entity's back points, from its own yaw, and null for a yaw that is
+ * off the quarter turns. A yaw of zero faces +z, so the back is the north face.
+ */
+function backSide(yaw: number): CardinalSide | null {
+	const turns = yaw / QUARTER_TURN;
+	if (Math.abs(turns - Math.round(turns)) > EPSILON) return null;
+	const quarters: readonly CardinalSide[] = ['north', 'west', 'south', 'east'];
+	return quarters[((Math.round(turns) % quarters.length) + quarters.length) % quarters.length] ?? null;
+}
+
+/** Where `bounds` ends on the named side, measured along that side's outward normal. */
+function faceOf(bounds: Bounds3, side: CardinalSide): number {
+	const outward = CARDINAL_OUTWARD[side];
+	if (outward.x !== 0) return outward.x < 0 ? bounds.minX : bounds.maxX;
+	return outward.z < 0 ? bounds.minZ : bounds.maxZ;
+}
+
+/** The two axes as intervals, so a rule can pick the one it is not measuring along. */
+function acrossInterval(bounds: Bounds3, side: CardinalSide): AxisInterval {
+	return CARDINAL_OUTWARD[side].x !== 0 ? { min: bounds.minZ, max: bounds.maxZ } : { min: bounds.minX, max: bounds.maxX };
+}
+
+function intervalsMeet(a: AxisInterval, b: AxisInterval): boolean {
+	return a.max > b.min + EPSILON && a.min < b.max - EPSILON;
+}
+
+/**
+ * Metres between a room shell's back face and the nearest structure standing behind
+ * it, and `null` where nothing stands there at all.
+ *
+ * Only structure counts. A shop rests against the building, and another fixture in
+ * the slit is the thing this rule exists to find rather than an answer to it.
+ */
+function backingGap(shell: Bounds3, side: CardinalSide, entities: readonly WorldEntity[], owner: WorldEntity): number | null {
+	const outward = CARDINAL_OUTWARD[side];
+	const sign = outward.x !== 0 ? outward.x : outward.z;
+	const face = faceOf(shell, side);
+	const across = acrossInterval(shell, side);
+	let nearest: number | null = null;
+	for (const entity of entities) {
+		if (entity.id === owner.id || entity.placement.class !== 'structure') continue;
+		for (const volume of entity.volumes) {
+			if (!OPAQUE_ROLES.includes(volume.role) || !boundedByItsShape(volume.geometry)) continue;
+			const bounds = geometryBounds(volume.geometry);
+			if (bounds.maxY <= shell.minY + EPSILON || bounds.minY >= shell.maxY - EPSILON) continue;
+			if (!intervalsMeet(across, acrossInterval(bounds, side))) continue;
+			const near = faceOf(bounds, CARDINAL_OPPOSITE[side]);
+			const gap = (near - face) * sign;
+			// Strictly behind: a slab reaching past the shell on both sides is the floor
+			// it stands on, not the wall it should be resting against.
+			if (gap < -EPSILON) continue;
+			if (nearest === null || gap < nearest) nearest = gap;
+		}
+	}
+	return nearest;
+}
+
+/**
+ * Signs cutting into each other or into what they hang from.
+ *
+ * Two rules should have caught this and neither could. `undeclaredIntrusion` needs a
+ * collider on both sides and a hanging sign has none, and the pass that calls it
+ * compares entities two at a time while a shop's fascia and its own banners belong to
+ * one entity. ISLAND HOP's green charter banner, its red cash-only banner and the gold
+ * fascia therefore all interpenetrated at ceiling height with this file green.
+ */
+function signageClashes(entities: readonly WorldEntity[]): SpatialProblem[] {
+	const all = entities.flatMap((entity) =>
+		entity.volumes
+			.filter((volume) => boundedByItsShape(volume.geometry) && VISIBLE_SURFACE_ROLES.includes(volume.role))
+			.map((volume) => ({ entity, volume })),
+	);
+	const problems: SpatialProblem[] = [];
+	for (const sign of all.filter((candidate) => candidate.volume.tags.includes(SIGNAGE_TAG))) {
+		for (const other of all) {
+			if (other.volume === sign.volume) continue;
+			// Elk paar één keer: twee vaandels die elkaar snijden zijn één fout.
+			if (other.volume.tags.includes(SIGNAGE_TAG) && all.indexOf(other) < all.indexOf(sign)) continue;
+			// Een bord hangt binnen het grondvlak van zijn eigen winkel, en dat is waar
+			// een plan-envelop voor is. Of het daarbinnen blijft is `uncontained-volume`.
+			if (other.entity.id === sign.entity.id && other.volume.tags.includes(PLAN_ENVELOPE_TAG)) continue;
+			const depth = intrusionDepth(sign.volume.geometry, other.volume.geometry);
+			if (depth <= EPSILON) continue;
+			problems.push({
+				code: 'unsupported-placement',
+				message: `${sign.entity.id}.${sign.volume.id} cuts ${depth.toFixed(3)} m into ${other.entity.id}.${other.volume.id}; a sign hangs clear of what it is hung from`,
+				entities: [sign.entity.id, other.entity.id],
+			});
+		}
+	}
+	return problems;
+}
+
 /** An authored interpenetration: the wall caps run over the side walls and say so. */
 function authoredJoin(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, volumeB: SpatialVolume): boolean {
 	const depth = intrusionDepth(volumeA.geometry, volumeB.geometry);
@@ -858,10 +1226,31 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 			if (portOwners.has(port.id))
 				problems.push({ code: 'duplicate-id', message: `duplicate port id ${port.id}`, entities: [entity.id] });
 			portOwners.set(port.id, entity);
-			if (!volumeIds.has(port.clearanceVolumeId)) {
+			const clearance = entity.volumes.find((volume) => volume.id === port.clearanceVolumeId);
+			if (!clearance) {
 				problems.push({
 					code: 'missing-volume',
 					message: `${entity.id}.${port.id} references missing clearance volume ${port.clearanceVolumeId}`,
+					entities: [entity.id],
+				});
+				continue;
+			}
+			// Alleen wie er te voet doorheen gaat heeft een houding; een leiding of een
+			// auto meet zijn vrije hoogte aan iets anders.
+			if (!port.allows.includes('walking')) continue;
+			const needed = postureHeadroom(port.posture);
+			const offered = clearanceHeight(clearance.geometry);
+			if (offered < needed - EPSILON) {
+				problems.push({
+					code: 'insufficient-headroom',
+					message: `${entity.id}.${port.id} is walked ${port.posture} and needs ${needed.toFixed(3)} m, but ${clearance.id} offers ${offered.toFixed(3)} m`,
+					entities: [entity.id],
+				});
+			}
+			if (port.height < needed - EPSILON) {
+				problems.push({
+					code: 'insufficient-headroom',
+					message: `${entity.id}.${port.id} is walked ${port.posture} and needs ${needed.toFixed(3)} m, but declares an opening ${port.height.toFixed(3)} m high`,
 					entities: [entity.id],
 				});
 			}
@@ -895,6 +1284,13 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 				problems.push({
 					code: 'invalid-interaction',
 					message: `${entity.id}.${mechanism.id} has no valid moving geometry or opening time`,
+					entities: [entity.id],
+				});
+			}
+			if (mechanism.access.admits.length === 0) {
+				problems.push({
+					code: 'invalid-interaction',
+					message: `${entity.id}.${mechanism.id} admits no traffic class, so nothing it guards can ever be passed`,
 					entities: [entity.id],
 				});
 			}
@@ -966,25 +1362,36 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 					const clearanceA = passageClearance(volumeA);
 					const clearanceB = passageClearance(volumeB);
 					const buriedCovering = coveringInStructure(a, volumeA, b, volumeB);
-					const frontage =
-						volumeA.role === 'storefront-clearance'
-							? { entity: a, volume: volumeA, obstacle: { entity: b, volume: volumeB } }
-							: volumeB.role === 'storefront-clearance'
-								? { entity: b, volume: volumeB, obstacle: { entity: a, volume: volumeA } }
-								: null;
+					const frontage = reservedFloor(volumeA)
+						? { entity: a, volume: volumeA, obstacle: { entity: b, volume: volumeB } }
+						: reservedFloor(volumeB)
+							? { entity: b, volume: volumeB, obstacle: { entity: a, volume: volumeA } }
+							: null;
 					if (
 						(clearanceA && volumeB.clearance.kind === 'fixed-obstruction') ||
 						(clearanceB && volumeA.clearance.kind === 'fixed-obstruction')
 					) {
-						problems.push({
-							code: 'blocked-clearance',
-							message: `${a.id}.${volumeA.id} intersects ${b.id}.${volumeB.id}`,
-							entities: [a.id, b.id],
-						});
+						const verdict = clearanceVerdict(volumeA.geometry, volumeB.geometry);
+						problems.push(
+							verdict?.kind === 'unmeasurable'
+								? {
+										code: 'unmeasurable-clearance',
+										message: `${a.id}.${volumeA.id} meets ${b.id}.${volumeB.id} where ${verdict.reason}`,
+										entities: [a.id, b.id],
+									}
+								: {
+										code: 'blocked-clearance',
+										message:
+											verdict?.kind === 'blocked'
+												? `${a.id}.${volumeA.id} intersects ${b.id}.${volumeB.id} over ${verdict.axis} ${verdict.from.toFixed(3)}..${verdict.to.toFixed(3)}`
+												: `${a.id}.${volumeA.id} intersects ${b.id}.${volumeB.id}`,
+										entities: [a.id, b.id],
+									},
+						);
 					} else if (frontage && blocksFrontage(frontage.obstacle.volume)) {
 						problems.push({
 							code: 'blocked-clearance',
-							message: `${frontage.obstacle.entity.id}.${frontage.obstacle.volume.id} stands in the frontage of ${frontage.entity.id}`,
+							message: `${frontage.obstacle.entity.id}.${frontage.obstacle.volume.id} stands in ${frontage.entity.id}.${frontage.volume.id}, which is floor kept clear`,
 							entities: [a.id, b.id],
 						});
 					} else if (!overlapAllowed(a, volumeA, b, volumeB) && volumeA.blocksMovement && volumeB.blocksMovement) {
@@ -1038,6 +1445,58 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 				message: `${entity.id}.${volume.id} declares ${permit.depth.toFixed(3)} m of penetration into ${permit.into.join(', ')} but cuts into nothing`,
 				entities: [entity.id],
 			});
+		}
+	}
+
+	problems.push(...signageClashes(entities));
+
+	for (const entity of entities) {
+		for (const volume of entity.volumes) {
+			if (!volume.tags.includes(ROOM_SHELL_TAG)) continue;
+			const side = backSide(entity.transform.rotation.yaw);
+			if (side === null) {
+				problems.push({
+					code: 'detached-backing',
+					message: `${entity.id}.${volume.id} is turned off the quarter turns, so which face is its back cannot be read`,
+					entities: [entity.id],
+				});
+				continue;
+			}
+			const gap = backingGap(geometryBounds(volume.geometry), side, entities, entity);
+			const permit = volume.standoff;
+			if (permit && permit.side !== side) {
+				problems.push({
+					code: 'unused-standoff',
+					message: `${entity.id}.${volume.id} declares its standoff on the ${permit.side} face while its back is the ${side} face`,
+					entities: [entity.id],
+				});
+				continue;
+			}
+			if (gap === null) {
+				problems.push({
+					code: 'detached-backing',
+					message: `${entity.id}.${volume.id} has no structure behind its ${side} face at all`,
+					entities: [entity.id],
+				});
+				continue;
+			}
+			const allowed = permit ? permit.depth : 0;
+			if (gap > allowed + STANDOFF_MARGIN) {
+				problems.push({
+					code: 'detached-backing',
+					message: `${entity.id}.${volume.id} stands ${gap.toFixed(3)} m clear of the structure behind its ${side} face and declares ${allowed.toFixed(3)} m`,
+					entities: [entity.id],
+				});
+			} else if (permit && gap < permit.depth - STANDOFF_MARGIN) {
+				// Dezelfde helft als bij een ongebruikte protrusion: een verklaring die
+				// ruimer is dan het gat dat er ligt houdt een vergunning open voor
+				// geometrie die allang teruggeschoven is.
+				problems.push({
+					code: 'unused-standoff',
+					message: `${entity.id}.${volume.id} declares ${permit.depth.toFixed(3)} m of standoff and keeps only ${gap.toFixed(3)} m`,
+					entities: [entity.id],
+				});
+			}
 		}
 	}
 

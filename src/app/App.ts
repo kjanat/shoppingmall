@@ -13,7 +13,7 @@ import { level, levelAt, levelY } from '#/data/levels';
 import { SIGHT_BLOCKING_TAG } from '#/data/spatial';
 import type { StoreDef } from '#/data/stores';
 import { getKruidvat, getStore, shopStores } from '#/data/stores';
-import { ELEVATOR_ENTITY } from '#/data/world';
+import { ELEVATOR_ENTITY, ENTRANCE_MOTORCYCLE_SPOTS, PARKED_MOTORCYCLE_SPOTS } from '#/data/world';
 import type { ZoneId } from '#/data/zones';
 import { zoneAt, zoneBit } from '#/data/zones';
 import { Pathfinder } from '#/path/Pathfinder';
@@ -28,6 +28,7 @@ import { GpuTimer } from '#/render/GpuTimer';
 import { lampCount, zoneCullOn } from '#/render/graphicsPrefs';
 import { LightPool } from '#/render/LightPool';
 import { SceneBatcher } from '#/render/SceneBatcher';
+import type { ZoneOwnerTally } from '#/render/ZoneCuller';
 import { ZoneCuller } from '#/render/ZoneCuller';
 import { ZoneVisibility } from '#/render/ZoneVisibility';
 import { AlienProbe } from '#/scene/AlienProbe';
@@ -37,6 +38,7 @@ import { Atmosphere } from '#/scene/Atmosphere';
 import { BeardCave } from '#/scene/BeardCave';
 import { Catwalk } from '#/scene/Catwalk';
 import { CleaningCart } from '#/scene/CleaningCart';
+import { Barriers } from '#/scene/city/Barriers';
 import { CityBirds } from '#/scene/city/CityBirds';
 import { CityBuildings } from '#/scene/city/CityBuildings';
 import { CityGarage } from '#/scene/city/CityGarage';
@@ -63,6 +65,7 @@ import { MallBuilder } from '#/scene/MallBuilder';
 import { MallFacade } from '#/scene/MallFacade';
 import { MallRat } from '#/scene/MallRat';
 import { Monkey } from '#/scene/Monkey';
+import { Motorcycles } from '#/scene/Motorcycles';
 import { PalmForest } from '#/scene/Palms';
 import { ParkingGarage } from '#/scene/ParkingGarage';
 import { Penguins } from '#/scene/Penguins';
@@ -70,7 +73,7 @@ import { PoolPeople } from '#/scene/PoolPeople';
 import { PrayerRoom } from '#/scene/PrayerRoom';
 import { ProtestGroupies } from '#/scene/ProtestGroupies';
 import { Restrooms } from '#/scene/Restrooms';
-import { RoofIsland, SLIDE_PLATFORM, SLIDE_PLATFORM_TOP_Y } from '#/scene/RoofIsland';
+import { RoofIsland } from '#/scene/RoofIsland';
 import { ScrubberBuggy } from '#/scene/ScrubberBuggy';
 import { SecurityGuards } from '#/scene/SecurityGuards';
 import { ShopVoice } from '#/scene/ShopVoice';
@@ -92,14 +95,13 @@ import { setLabelAnisotropy } from '#/util/label';
 import { easeFactor, half, lerp, shortestAngle } from '#/util/math';
 import { at, jitter, pick } from '#/util/rand';
 import { cullByLevel } from '#/util/visibility';
+import type { PersistedRide } from './GamePersist';
 import { loadGame, pathToPersist, saveGame } from './GamePersist';
 import { CoarseTicker } from './ZoneLod';
 
 const PERSIST_EVERY = 0.75; // seconds
 /** Praatafstand tot een verkoper — E praat én de E-melding luistert hiernaar. */
 const TALK_RADIUS = 7;
-/** Reikwijdte rond het glijbaanplatform waarbinnen E de glijbaan start. */
-const SLIDE_BOARD_REACH = 2.2;
 /**
  * Dynamische resolutie: vaste treden i.p.v. een glijdende schaal, want elke
  * wissel laat composer.setSize twee HalfFloat-fullscreentargets heralloceren.
@@ -122,10 +124,14 @@ const DYN_RES_UP_FACTOR = 1.12;
  */
 const FRAME_MS_SPIKE = 250;
 
+/** Wat E bij de lift doet: het paneel in de cabine, of de oproepknop op een overloop. */
+type ElevatorAction = { kind: 'menu' } | { kind: 'call'; level: LevelId };
+
 type PerfPose = { x: number; y: number; z: number; lookX: number; lookY: number; lookZ: number };
 type PerfCpuFrame = { logicMs: number; batchMs: number; submitMs: number; triangles: number };
 type PerfZoneCull = {
 	zone: ZoneId;
+	enabled: boolean;
 	cones: number;
 	batches: number;
 	batchesHidden: number;
@@ -133,6 +139,7 @@ type PerfZoneCull = {
 	occupantsHidden: number;
 	keptInOwnZone: number;
 	keptThroughCone: number;
+	owners: readonly ZoneOwnerTally[];
 };
 
 export class App {
@@ -152,10 +159,16 @@ export class App {
 	/** DE STAD — 8 modules buiten de muren + tropisch dakeiland met badgasten */
 	private cityBuildings = new CityBuildings();
 	private cityRoads = new CityRoads();
-	private cityTraffic = new CityTraffic(() => this.cityRoads.lightPhase);
+	/**
+	 * De slagbomen van de stad. Ze staan vóór alles wat erlangs wil, want ieder
+	 * voertuig meldt zich bij deze ene lijst en de bomen beslissen zelf wie erdoor mag.
+	 */
+	private barriers = new Barriers(this.world);
+	private cityTraffic = new CityTraffic(() => this.cityRoads.lightPhase, this.barriers);
 	private cityPark = new CityPark();
 	private cityPlaza = new CityPlaza();
-	private cityTheatre = new CityTheatre();
+	/** Het theater heeft zaallicht, dus het krijgt de pool en wordt in de ctor gebouwd. */
+	private cityTheatre: CityTheatre;
 	private cityGarage = new CityGarage();
 	private citySky = new CitySky();
 	private cityBirds = new CityBirds();
@@ -207,11 +220,15 @@ export class App {
 	private drone = new Drone();
 	private scrubber!: ScrubberBuggy;
 	private driveCars!: DriveableCars;
+	private readonly motorcycles: Motorcycles;
+	private readonly showMotorcycles: Motorcycles;
 	private nearDroneHint = false;
 	private nearScrubberHint = false;
 	private nearCarHint = false;
-	/** Glijbaan-rit: 0..1 langs de curve, -1 = niet aan het glijden */
-	private slideT = -1;
+	/** Glijbaan-rit: meters langs de bocht, -1 = niet aan het glijden */
+	private slideDistance = -1;
+	private readonly slideSeat = new THREE.Vector3();
+	private readonly slideLook = new THREE.Vector3();
 	/** FPS-chip + het uitklapbare prestatiepaneel */
 	private perfHud: PerfOverlay | null = null;
 	/** Alleen aanwezig als het paneel meekomt: het is puur meetgereedschap. */
@@ -314,6 +331,7 @@ export class App {
 		catwalk: new CoarseTicker(),
 		roof: new CoarseTicker(),
 		city: new CoarseTicker(),
+		theatre: new CoarseTicker(),
 	};
 	/** Resolves once the shaders are linked and the frame loop is running. */
 	readonly ready: Promise<void>;
@@ -335,19 +353,20 @@ export class App {
 		this.travel = new TravelAgency(this.pool);
 		this.prayer = new PrayerRoom(this.pool);
 		this.restrooms = new Restrooms(this.pool);
-		this.helipad = new Helipad(this.pool);
+		this.helipad = new Helipad(this.pool, this.world);
 		this.foodCourt = new FoodCourt(this.pool);
 		this.elevator = new GlassElevator(this.pool);
 		this.entrance = new Entrance(this.pool);
 		this.parking = new ParkingGarage(this.pool);
 		this.djBartek = new DJBartek(this.pool);
 		this.alienProbe = new AlienProbe(this.pool);
+		this.cityTheatre = new CityTheatre(this.pool);
 
 		this.atmosphere = new Atmosphere(this.world);
 		this.thief = new BakerThief(this.world, this.beardCave);
 		this.rat = new MallRat(this.world);
 		this.cleaner = new CleaningCart(this.world);
-		this.scrubber = new ScrubberBuggy(this.world, this.pool);
+		this.scrubber = new ScrubberBuggy(this.world, this.pool, this.barriers);
 		this.carrier = new CabinCarrier(
 			ELEVATOR_ENTITY,
 			() => this.elevator.cabinFloorY,
@@ -359,7 +378,9 @@ export class App {
 			position: () => this.scrubber.pos,
 			setFloor: (y) => this.scrubber.setFloorOverride(y),
 		});
-		this.driveCars = new DriveableCars(this.world);
+		this.driveCars = new DriveableCars(this.world, this.barriers);
+		this.motorcycles = new Motorcycles(PARKED_MOTORCYCLE_SPOTS, 'motorcycles_p1');
+		this.showMotorcycles = new Motorcycles(ENTRANCE_MOTORCYCLE_SPOTS, 'motorcycles_entrance');
 		this.protest = new ProtestGroupies(this.world);
 		this.security = new SecurityGuards(this.world, this.pool);
 		this.penguins = new Penguins(this.world, 12);
@@ -416,6 +437,8 @@ export class App {
 		this.scene.add(this.cleaner.group);
 		this.scene.add(this.scrubber.group);
 		this.scene.add(this.driveCars.group);
+		this.scene.add(this.motorcycles.group);
+		this.scene.add(this.showMotorcycles.group);
 		this.scene.add(this.security.group);
 		this.scene.add(this.prayer.group);
 		this.scene.add(this.penguins.group);
@@ -431,6 +454,7 @@ export class App {
 		this.scene.add(this.cityRoads.group);
 		this.scene.add(this.cityPlaza.group);
 		this.scene.add(this.cityTraffic.group);
+		this.scene.add(this.barriers.group);
 		this.scene.add(this.cityPark.group);
 		this.scene.add(this.cityTheatre.group);
 		this.scene.add(this.cityGarage.group);
@@ -551,6 +575,8 @@ export class App {
 			this.cityBuildings.group,
 			this.cityRoads.group,
 			this.cityTraffic.group,
+			// De armen draaien, dus de bomen zijn een dynamische wortel.
+			this.barriers.group,
 			this.cityPark.group,
 			this.cityTheatre.group,
 			this.cityGarage.group,
@@ -571,6 +597,15 @@ export class App {
 		// meer mee. Wat overblijft — losse meshes, InstancedMeshes, sprites, punten —
 		// is vanaf de stoep het grootste deel van de draw calls.
 		this.zoneVisibility = new ZoneVisibility(this.scene, dynamicRoots);
+		// Wat elke feature te tekenen heeft, ongeacht of de cull straks aan staat: met
+		// hem uit telt niemand mee en is een lege regel niet te onderscheiden van een
+		// feature die het standpunt volledig wegcullde.
+		for (const owner of this.sceneBatcher.stats.owners) {
+			this.zoneCuller.declareOwner(owner.name, owner.sources, owner.casters);
+		}
+		for (const owner of this.zoneVisibility.stats.owners) {
+			this.zoneCuller.declareOwner(owner.name, owner.occupants, owner.casters);
+		}
 		// De statische wereldmatrix is hierboven eenmaal vastgelegd. Vanaf nu
 		// ververst SceneBatcher alleen de expliciet bewegende wortels. De algemene
 		// rendererwandeling over circa 7000 objecten blijft daarom uit.
@@ -712,6 +747,7 @@ export class App {
 				// onderscheiden van een standpunt waar toevallig alles zichtbaar is.
 				readZoneCull: (): PerfZoneCull => ({
 					zone: this.zoneCuller.stats.zone,
+					enabled: this.zoneCullOn,
 					cones: this.zoneCuller.stats.cones,
 					batches: this.sceneBatcher.stats.batchedMeshes,
 					batchesHidden: this.zoneCuller.stats.hidden - this.zoneVisibility.stats.hidden,
@@ -719,6 +755,7 @@ export class App {
 					occupantsHidden: this.zoneVisibility.stats.hidden,
 					keptInOwnZone: this.zoneCuller.stats.keptInOwnZone,
 					keptThroughCone: this.zoneCuller.stats.keptThroughCone,
+					owners: this.zoneCuller.stats.owners,
 				}),
 			});
 		}
@@ -869,10 +906,17 @@ export class App {
 			}
 			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper
 			if (e.key === 'e' || e.key === 'E') {
-				// Voertuigen eerst: uitstappen als je vliegt/rijdt
-				if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car') {
+				// Het liftpaneel wint één keer van uitstappen: rijdend in de cabine was E altijd
+				// uitstappen, dus Hans' verdiepingenmenu was met een voertuig onbereikbaar.
+				// Alleen het paneel zelf, want een oproepknop naast de schacht mag niet
+				// betekenen dat je daar je karretje niet meer uit komt, en alleen zolang het
+				// menu dicht is, want anders kom je er in de cabine helemaal niet meer af.
+				const lift = this.elevatorAction();
+				const paneelWint = lift?.kind === 'menu' && !this.elevUi.isOpen;
+				// Voertuigen daarna: uitstappen als je vliegt/rijdt
+				if (!paneelWint && (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car')) {
 					this.exitVehicle();
-				} else if (this.tryOpenElevatorMenu()) {
+				} else if (this.tryOpenElevatorMenu(lift)) {
 					// Hans floor picker — frees mouse without Esc
 				} else if (!this.possessId && this.freeMove && this.driveCars.nearestCar(this.camera.position, 4.5)) {
 					this.boardCar();
@@ -887,9 +931,6 @@ export class App {
 					this.boardDrone();
 				} else if (!this.possessId && this.freeMove && this.heli.boardable && this.heli.distanceTo(this.camera.position) < 4.5) {
 					this.boardHeli();
-				} else if (this.atSlideTop(this.camera.position)) {
-					// Bovenop de glijbaantoren: E = WHEEE
-					this.startSlide();
 				} else if (this.djBartek.inRange(this.camera.position)) {
 					void this.openDjBooth();
 				} else {
@@ -1086,27 +1127,53 @@ export class App {
 			path: pathToPersist(this.currentPath),
 			thiefFiredAt: this.thiefFiredAt,
 			disco: this.disco.active === true,
+			ride: this.rideSnapshot(),
 		});
+	}
+
+	/**
+	 * De rit die loopt, klaar om na een herbouw teruggezet te worden.
+	 *
+	 * Een edit tijdens het rijden bouwt de wereld opnieuw op; zonder dit stond je
+	 * daarna te voet naast een auto die je zojuist bestuurde, met de instapstand
+	 * nog op het exemplaar dat weg was.
+	 */
+	private rideSnapshot(): PersistedRide | null {
+		const car = this.vehicle === 'car' ? this.driveCars.ride : null;
+		if (car) return { ...car, kind: 'car' };
+		const scrubber = this.vehicle === 'scrubber' ? this.scrubber.ride : null;
+		return scrubber === null ? null : { ...scrubber, kind: 'scrubber' };
+	}
+
+	/** Weer instappen in wat er reed toen de pagina omviel. */
+	private resumeRide(ride: PersistedRide): void {
+		const terug = ride.kind === 'car' ? this.driveCars.resume(ride) : this.scrubber.resume(ride);
+		if (!terug) return;
+		this.vehicle = ride.kind;
+		this.player.releaseLook();
+		this.player.flying = false;
+		this.player.driving = true;
+		const seat = ride.kind === 'car' ? this.driveCars.getSeatPosition() : this.scrubber.getSeatPosition();
+		this.camera.position.copy(seat);
+		this.player.setHeading(ride.yaw);
+		this.player.syncFromCamera();
+		this.player.driving = true;
+		this.player.setHeading(ride.yaw);
 	}
 
 	private restoreGame(saved: NonNullable<ReturnType<typeof loadGame>>): void {
 		this.restoredFromSave = true;
-		this.score = saved.score ?? 0;
-		this.metSims = new Set(saved.metSims ?? []);
-		this.thiefFiredAt = saved.thiefFiredAt ?? 0;
+		this.score = saved.score;
+		this.metSims = new Set(saved.metSims);
+		this.thiefFiredAt = saved.thiefFiredAt;
 		this.freeMove = true;
 
 		if (saved.storeId) {
 			const store = getStore(saved.storeId);
 			if (store) {
 				this.currentStore = store;
-				if (saved.path?.length) {
-					this.currentPath = saved.path.map((p) => ({
-						id: p.id ?? '',
-						x: p.x,
-						y: p.y,
-						z: p.z,
-					}));
+				if (saved.path.length > 0) {
+					this.currentPath = saved.path.map((p) => ({ id: p.id, x: p.x, y: p.y, z: p.z }));
 					this.pathMesh.setPath(this.currentPath);
 				}
 			}
@@ -1123,6 +1190,14 @@ export class App {
 
 		this.player.enabled = true;
 		this.player.syncFromCamera();
+		// De opgeslagen stand is die van de vorige wereld, en een rit die niet terugkomt
+		// laat je in het voertuig staan waar je op zat. Klem is klem: elke stap wordt dan
+		// teruggeduwd, wat de rit-soort ook was.
+		this.player.unstick();
+
+		// Ná syncFromCamera: die zet de speler op de grond onder de camera, en dat is
+		// precies wat een zittende bestuurder niet is.
+		if (saved.ride) this.resumeRide(saved.ride);
 
 		if (saved.disco) {
 			// Toggle on if it was on (toggle flips from false → true)
@@ -1141,6 +1216,7 @@ export class App {
 		this.camera.rotation.order = 'YXZ';
 		this.camera.rotation.set(0, yaw, 0);
 		this.player.syncFromCamera();
+		this.player.unstick();
 	}
 
 	get debugState() {
@@ -1240,8 +1316,8 @@ export class App {
 		});
 
 		rows.push({
-			icon: '🚗',
-			name: this.driveCars.activeName !== '—' ? this.driveCars.activeName : "Huurauto's (P1)",
+			icon: this.driveCars.activeKind === 'motorcycle' ? '🏍️' : '🚗',
+			name: this.driveCars.activeName !== '—' ? this.driveCars.activeName : 'Huurvoertuigen (P1)',
 			doing: this.driveCars.statusLine,
 			floor: this.driveCars.ridden
 				? levelAt(this.camera.position.y) === 'p1'
@@ -1329,35 +1405,35 @@ export class App {
 		this.player.syncFromCamera();
 		this.player.driving = true;
 		this.player.setHeading(this.driveCars.heading);
-		this.ui.setStatus(`🚗 ${this.driveCars.activeName} · WASD rijden · Shift = turbo · E = uit · west-exit → STAD`);
+		const icoon = this.driveCars.activeKind === 'motorcycle' ? '🏍️' : '🚗';
+		this.ui.setStatus(`${icoon} ${this.driveCars.activeName} · WASD rijden · Shift = turbo · E = uit · west-exit → STAD`);
 	}
 
-	/** E bovenop de glijbaantoren: WHEEE — camera volgt de buis het zwembad in. */
+	/** Wie in de mond van de buis stapt gaat mee: WHEEE — de bocht in, het bad uit. */
 	private startSlide(): void {
-		this.slideT = 0;
+		this.slideDistance = 0;
 		this.freeMove = false;
 		this.player.enabled = false;
 		this.player.releaseLook();
 		this.ui.setStatus('🛝 WHEEEEE — glijmiddel werkt!');
 	}
 
-	/** Per frame tijdens de glij-rit. */
+	/** Per frame tijdens de glij-rit: de buis draagt je op zijn eigen vaart. */
 	private tickSlide(dt: number): void {
-		if (this.slideT < 0) return;
-		this.slideT = Math.min(1, this.slideT + dt / 1.7);
-		// ease-in: hoe verder, hoe sneller (zwaartekracht + glijmiddel)
-		const t = this.slideT * this.slideT * (3 - 2 * this.slideT);
-		const p = this.roofIsland.slideCurve.getPointAt(t);
-		const look = this.roofIsland.slideCurve.getPointAt(Math.min(1, t + 0.06));
-		this.camera.position.set(p.x, p.y + 0.55, p.z);
+		if (this.slideDistance < 0) return;
+		const ride = this.roofIsland.ride;
+		this.slideDistance += ride.speed * dt;
+		ride.seatAt(this.slideDistance, this.slideSeat);
+		ride.aheadOf(this.slideDistance, this.slideLook);
+		this.camera.position.copy(this.slideSeat);
 		this.camera.up.set(0, 1, 0);
-		this.camera.lookAt(look.x, look.y + 0.35, look.z);
+		this.camera.lookAt(this.slideLook);
 
-		if (this.slideT >= 1) {
-			this.slideT = -1;
+		if (this.slideDistance >= ride.length) {
+			this.slideDistance = -1;
 			// PLONS in het diepe
-			const end = this.roofIsland.slideCurve.getPointAt(1);
-			this.spawnConfetti(new THREE.Vector3(end.x, end.y + 0.8, end.z));
+			ride.seatAt(ride.length, this.slideSeat);
+			this.spawnConfetti(this.slideSeat);
 			this.ui.setStatus('💦 PLONS! · klim de ladder op voor nog een rondje');
 			this.freeMove = true;
 			this.player.enabled = true;
@@ -1378,18 +1454,20 @@ export class App {
 
 		if (wasCar) {
 			const exit = this.driveCars.release();
-			this.camera.position.set(exit.x, exit.y + 1.6, exit.z);
+			this.camera.position.set(exit.x, exit.y + EYE, exit.z);
 			this.player.syncFromCamera();
 			this.ui.setStatus(
-				`🚗 Uitgestapt · ${this.driveCars.activeName === '—' ? 'auto geparkeerd' : 'auto blijft hier'} · E om weer in te stappen`,
+				`🚗 Uitgestapt · ${this.driveCars.activeName === '—' ? 'voertuig geparkeerd' : 'voertuig blijft hier'} · E om weer in te stappen`,
 			);
 			return;
 		}
 
 		if (wasScrub) {
+			// De vloer waar de buggy op staat, net als bij de auto. Een vaste zoekhoogte
+			// van 0,5 m vond altijd de begane grond, dus uitstappen in de liftcabine op
+			// V1 zette je naast de cabine op V0 en liet het karretje boven achter.
 			const exit = this.scrubber.release();
-			const ground = this.world.groundHeightAt(exit.x, exit.z, 0.5, 2);
-			this.camera.position.set(exit.x, ground + 1.6, exit.z);
+			this.camera.position.set(exit.x, exit.y + EYE, exit.z);
 			this.player.syncFromCamera();
 			this.ui.setStatus('🧽 Uitgestapt — buggy blijft staan voor de volgende racer');
 			return;
@@ -1990,7 +2068,7 @@ export class App {
 	 * Wat E bij de lift zou doen, zonder het te doen. Ook `hasEInteraction` vraagt
 	 * het hier, zodat de knop-check en de actie niet uit elkaar kunnen lopen.
 	 */
-	private elevatorAction(): { kind: 'menu' } | { kind: 'call'; level: LevelId } | null {
+	private elevatorAction(): ElevatorAction | null {
 		if (!this.freeMove || this.possessId !== null || this.player.flying) return null;
 		const hit = this.elevator.getLookHit(this.camera, 10);
 		const inCab = this.elevator.contains(this.camera.position.x, this.camera.position.z, 0.2);
@@ -2015,8 +2093,7 @@ export class App {
 	 * - Outside call (look or stand next to shaft) → summon cabin to THIS floor
 	 * - Inside Hans / panel → destination menu + free mouse
 	 */
-	private tryOpenElevatorMenu(): boolean {
-		const action = this.elevatorAction();
+	private tryOpenElevatorMenu(action: ElevatorAction | null): boolean {
 		if (!action) return false;
 
 		if (action.kind === 'menu') {
@@ -2043,22 +2120,16 @@ export class App {
 	 */
 	private hasEInteraction(): boolean {
 		const p = this.camera.position;
+		const lift = this.elevatorAction();
+		if (lift !== null) return true;
 		if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car') return true;
-		if (this.elevatorAction() !== null) return true;
 		const free = !this.possessId && this.freeMove;
 		if (free && this.driveCars.nearestCar(p, 4.5)) return true;
 		if (free && this.scrubber.distanceTo(p) < 3.5 && levelAt(p.y) === 'v0') return true;
 		if (free && this.drone.distanceTo(p) < 3.2) return true;
 		if (free && this.heli.boardable && this.heli.distanceTo(p) < 4.5) return true;
-		if (this.atSlideTop(p)) return true;
 		if (this.djBartek.inRange(p)) return true;
 		return this.keeperInTalkRange();
-	}
-
-	/** Sta je bovenop de glijbaantoren, dus is E de glijbaan? */
-	private atSlideTop(p: THREE.Vector3): boolean {
-		if (this.slideT >= 0 || this.player.feetHeight < SLIDE_PLATFORM_TOP_Y - 1) return false;
-		return Math.hypot(p.x - SLIDE_PLATFORM.center.x, p.z - SLIDE_PLATFORM.center.z) < SLIDE_BOARD_REACH;
 	}
 
 	/** Staat er een verkoper binnen praatafstand op jouw dek? Zoals ShopVoice.talkNear kiest. */
@@ -2212,6 +2283,10 @@ export class App {
 
 		const ratDt = this.lod.rat.step(dt, this.seesWhere(this.rat.group.position));
 		if (ratDt !== null) this.rat.update(ratDt);
+		// De armen lopen op wat ze vorige frame gezien hebben, dus vóór alles wat zich
+		// erbij meldt. Op volle dt, want de speler rijdt er in eigen tijd op af terwijl
+		// het stadsverkeer op zijn zoneklok tikt.
+		this.barriers.update(dt);
 		// Player vehicles: drive first so camera sticks before other systems
 		if (this.vehicle === 'car' && this.driveCars.ridden) {
 			const seat = this.driveCars.update(dt, this.player.getDriveInput());
@@ -2348,6 +2423,10 @@ export class App {
 					// vanzelf uit groundHeightAt. De trap heeft geen carrySpeed en doet niks.
 					const tread = this.world.rampCarryAt(this.camera.position.x, this.camera.position.z, this.player.feetHeight);
 					if (tread) this.player.nudge(tread.x * dt, tread.z * dt);
+					// De glijbaan is dezelfde afspraak, alleen laat die je niet meer los tot het bad.
+					if (this.roofIsland.ride.accepts(this.camera.position.x, this.player.feetHeight, this.camera.position.z)) {
+						this.startSlide();
+					}
 				}
 				if (!this.elevRiding) this.pushPlayerFromSims(0.9);
 			}
@@ -2377,11 +2456,14 @@ export class App {
 			this.cityTraffic.update(cityDt, elapsed);
 			this.cityBuildings.update(cityDt, elapsed);
 			this.cityPark.update(cityDt, elapsed);
-			this.cityTheatre.update(cityDt, elapsed);
-			this.cityGarage.update(cityDt, elapsed);
 			this.citySky.update(cityDt, elapsed);
 			this.cityBirds.update(cityDt, elapsed);
 		}
+		// Het theater staat in twee zones tegelijk: de marquee buiten en de zaal binnen.
+		// Op de stadsklok bevroor de zaal zodra je diep genoeg naar binnen liep om de
+		// straat niet meer te zien, en dat is precies waar je hem wél ziet.
+		const theatreDt = this.lod.theatre.step(dt, this.seesWhere(this.cityTheatre.marquee, this.cityTheatre.house));
+		if (theatreDt !== null) this.cityTheatre.update(theatreDt, elapsed, this.camera.position);
 		const roofDt = this.lod.roof.step(dt, this.seesWhere(this.roofIsland.group.position, this.poolPeople.group.position));
 		if (roofDt !== null) {
 			this.roofIsland.update(roofDt, elapsed);
@@ -2401,6 +2483,7 @@ export class App {
 		const catwalkDt = this.lod.catwalk.step(dt, this.seesWhere(this.catwalk.group.position));
 		if (catwalkDt !== null) this.catwalk.update(catwalkDt, elapsed);
 		this.entrance.update(dt, this.camera.position);
+		this.helipad.update(dt, this.camera.position);
 		if (this.vehicle === 'heli') this.heli.followCamera(this.camera, dt);
 		else this.heli.update(dt);
 		this.drone.followCamera(this.camera, dt);
@@ -2646,6 +2729,7 @@ export class App {
 				eyeX: this.camera.position.x,
 				eyeY: this.camera.position.y,
 				eyeZ: this.camera.position.z,
+				feetY: this.player.feetHeight,
 				dirX: blik.x,
 				dirY: blik.y,
 				dirZ: blik.z,

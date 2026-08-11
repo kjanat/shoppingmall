@@ -14,12 +14,12 @@ import { createServer } from 'node:http';
 import { join, normalize, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { blue, space } from 'ansispeck/safe';
+import { isRecord, readArray, readBoolean, readNumber, readString } from '#/util/values';
 import { PROFILE_DIR, STATIC_DIR } from './paths.ts';
 import type { PerfBrowser } from './playwright.ts';
 import { isSoftwareHeadless, launchPerfBrowser } from './playwright.ts';
-import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample, ZoneCullTally } from './probe.ts';
+import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample, ZoneCullTally, ZoneOwnerTiming } from './probe.ts';
 import { probeSource } from './probe.ts';
-import { isRecord, readArray, readBoolean, readNumber, readString } from './values.ts';
 
 export type StaticServer = { url: string; stop: () => Promise<void> };
 
@@ -255,10 +255,29 @@ export function parseSample(value: unknown): Sample {
 	return sample;
 }
 
+function parseZoneOwners(value: unknown): ZoneOwnerTiming[] {
+	return readArray({ v: value }, 'v').flatMap((entry) => {
+		if (!isRecord(entry)) return [];
+		return [
+			{
+				name: readString(entry, 'name', '?'),
+				items: readNumber(entry, 'items'),
+				casters: readNumber(entry, 'casters'),
+				kept: readNumber(entry, 'kept'),
+				hidden: readNumber(entry, 'hidden'),
+				castersKept: readNumber(entry, 'castersKept'),
+				castersHidden: readNumber(entry, 'castersHidden'),
+			},
+		];
+	});
+}
+
 function parseZoneCull(value: unknown): ZoneCullTally | null {
 	if (!isRecord(value)) return null;
 	return {
 		zone: readString(value, 'zone', '?'),
+		enabled: readBoolean(value, 'enabled'),
+		owners: parseZoneOwners(value['owners']),
 		cones: readNumber(value, 'cones'),
 		batches: readNumber(value, 'batches'),
 		batchesHidden: readNumber(value, 'batchesHidden'),
@@ -276,10 +295,11 @@ export function parseEnvironment(value: unknown): Environment {
 		return [
 			{
 				name: readString(entry, 'name', '?'),
-				dynamic: readBoolean(entry, 'dynamic'),
 				sources: readNumber(entry, 'sources'),
+				dynamicSources: readNumber(entry, 'dynamicSources'),
 				batches: readNumber(entry, 'batches'),
 				triangles: readNumber(entry, 'triangles'),
+				casters: readNumber(entry, 'casters'),
 				largestRadius: readNumber(entry, 'largestRadius'),
 			},
 		];

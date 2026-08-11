@@ -14,7 +14,7 @@ import {
 	garageEastSpiralY,
 } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { easeFactor, half, inverseLerpClamped, midpoint, span } from '#/util/math';
+import { half, midpoint, span } from '#/util/math';
 import { at, jitterWith, mulberry32, pickWith } from '#/util/rand';
 
 /**
@@ -93,10 +93,6 @@ export class CityGarage {
 	private readonly beton: LitMaterial;
 	private readonly betonDonker: LitMaterial;
 
-	private boomPivot!: THREE.Group;
-	/** 0 = slagboom dicht, 1 = open. Traag, zoals het hoort bij gemeentelijk staal. */
-	private boomOpen = 0;
-
 	constructor() {
 		this.group.name = 'city_garage';
 		this.geometries.push(this.unitBox);
@@ -109,16 +105,7 @@ export class CityGarage {
 		this.buildRamp();
 		this.buildSign();
 		this.buildCars(rand);
-		this.buildBoom();
-	}
-
-	update(dt: number, t: number): void {
-		// Geklemde sinus: de slagboom hangt even boven, hangt even beneden, en
-		// beweegt daartussen alsof hij ergens over nadenkt. De ease loopt op dt
-		// zodat de bedenktijd niet meeschaalt met de framerate van de Pi.
-		const doel = inverseLerpClamped(-1, 1, Math.sin(t * 0.35) * 1.8);
-		this.boomOpen += (doel - this.boomOpen) * easeFactor(1.6, dt);
-		this.boomPivot.rotation.x = -1.25 * this.boomOpen;
+		this.buildTicketMachine();
 	}
 
 	dispose(): void {
@@ -341,31 +328,17 @@ export class CityGarage {
 		this.fill(wheelGeo, wheelMat, wheels, 'garage_wielen');
 	}
 
-	/** Slagboom + kaartautomaat bij de westingang. De oprit zelf heeft niets; daar heerst vertrouwen. */
-	private buildBoom(): void {
-		const wit = this.track(lit({ color: 0xe8e8e2, roughness: 0.5, metalness: 0.2 }));
-		const rood = this.track(new THREE.MeshBasicMaterial({ color: 0xc62f28, toneMapped: false }));
+	/**
+	 * De kaartautomaat bij de westingang. De oprit zelf heeft niets; daar heerst vertrouwen.
+	 *
+	 * De slagboom ernaast stond hier ook, met eigen maten en een sinus die hem los van
+	 * wie er aankwam op en neer liet gaan; hij staat nu bij de andere bomen in het
+	 * wereldmodel, met een beleid dat zegt wie erlangs mag.
+	 */
+	private buildTicketMachine(): void {
 		const scherm = this.track(new THREE.MeshBasicMaterial({ color: 0x8fd8a0, toneMapped: false }));
-
-		this.addBox(this.betonDonker, 0.22, 1.05, 0.22, 56.9, 0.53, 50.4); // slagboompaal
 		this.addBox(this.betonDonker, 0.55, 1.15, 0.45, 56.9, 0.58, 49.2); // kaartautomaat
 		this.addBox(scherm, 0.05, 0.3, 0.32, 56.6, 0.85, 49.2); // schermpje: altijd groen, betekent niets
-
-		// Arm scharniert om x: bij rotatie 0 ligt hij over de inrit (z 50.4 → 54),
-		// bij −1.25 rad wijst hij omhoog en mag iedereen erdoor. Ook bij 0 trouwens.
-		this.boomPivot = new THREE.Group();
-		this.boomPivot.position.set(56.9, 1.02, 50.4);
-		const arm = new THREE.Mesh(this.unitBox, wit);
-		arm.scale.set(0.14, 0.14, 3.6);
-		arm.position.set(0, 0, 1.8);
-		this.boomPivot.add(arm);
-		for (const zz of [0.9, 2.0, 3.1]) {
-			const sleeve = new THREE.Mesh(this.unitBox, rood);
-			sleeve.scale.set(0.18, 0.18, 0.5);
-			sleeve.position.set(0, 0, zz);
-			this.boomPivot.add(sleeve);
-		}
-		this.group.add(this.boomPivot);
 	}
 
 	// ── gereedschap ─────────────────────────────────────────────

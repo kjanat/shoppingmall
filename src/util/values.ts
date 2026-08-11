@@ -1,4 +1,4 @@
-/** Parse values returned from the page at the untyped process boundary. */
+/** Parse values from an untyped boundary: a page's return value, or a stored session. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -20,4 +20,10 @@ export function readBoolean(source: Record<string, unknown>, key: string): boole
 export function readArray(source: Record<string, unknown>, key: string): unknown[] {
 	const value = source[key];
 	return Array.isArray(value) ? value : [];
+}
+
+/** A finite number under this key, or nothing. Separates "absent" from a fallback that reads as data. */
+export function finiteNumber(source: Record<string, unknown>, key: string): number | null {
+	const value = source[key];
+	return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }

@@ -65,6 +65,23 @@ export function labelTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
 	return tex;
 }
 
+/**
+ * Twee vlakken rug aan rug, elk met zijn eigen voorkant naar buiten.
+ *
+ * `side: THREE.DoubleSide` op een tekstvlak toont de achterkant van diezelfde
+ * textuur, en die staat gespiegeld: het taxidak las IXAT zodra je aan de andere kant
+ * ging staan. Twee enkelzijdige vlakken delen hier één geometrie en één materiaal, en
+ * de achterste staat een halve slag om, dus beide kanten lezen van links naar rechts.
+ */
+export function backToBackLabel(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.Group {
+	const group = new THREE.Group();
+	const front = new THREE.Mesh(geometry, material);
+	const back = new THREE.Mesh(geometry, material);
+	back.rotation.y = Math.PI;
+	group.add(front, back);
+	return group;
+}
+
 // ── speech bubble: the tail hanging off the bottom edge, sideways as fractions of the canvas width ──
 const TAIL_LEFT = 0.45;
 const TAIL_TIP = 0.5;

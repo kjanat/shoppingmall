@@ -16,6 +16,9 @@
  * een tweede kopie van een getal is nou juist het probleem.
  */
 import { readdirSync, readFileSync } from 'node:fs';
+import type { Mesh } from 'three';
+import type { PedestrianPosture } from '#/data/character';
+import { CROUCHING_PEDESTRIAN, postureHeadroom, STANDING_PEDESTRIAN } from '#/data/character';
 import { assertValidVerticalConnectorRegistry } from '#/data/connectors';
 import type { GraphNode } from '#/data/graph';
 import { NODES } from '#/data/graph';
@@ -23,41 +26,66 @@ import { getInventory } from '#/data/inventory';
 import { ATRIUM_VOID, MALL_FOOTPRINT, PARKING_FOOTPRINT } from '#/data/layout';
 import { assertCanonicalLevelRegistry } from '#/data/levelSchema';
 import { LEVELS, levelAt, levelY } from '#/data/levels';
-import type { Bounds3, CardinalSide, SpatialRole, SpatialVolume, Vec3 } from '#/data/spatial';
+import type { Bounds3, CardinalSide, SpatialRole, SpatialVolume, TrafficClass, Vec3 } from '#/data/spatial';
 import {
+	CARDINAL_OUTWARD,
 	geometryBounds,
 	LINE_OF_SIGHT,
 	NOT_A_PORTAL_TAG,
 	PROJECTILE_PATH,
 	PROTRUSION_MARGIN,
 	planBounds,
+	ROOM_SHELL_TAG,
 	SIGHT_BLOCKING_TAG,
+	TRAFFIC_CLASSES,
+	validateSpatialWorld,
 } from '#/data/spatial';
 import { STORES, shopStores } from '#/data/stores';
-import type { MallWorldEntity } from '#/data/world';
+import type { BarrierSpec, DriveableHandling, FacadePanel, MallWorldEntity } from '#/data/world';
 import {
 	ATRIUM_BALUSTRADE_TOP_Y,
 	ATRIUM_OPENING,
 	ATRIUM_PLANTER_SPEC,
 	atriumPlanterTiers,
+	BARRIER_ENTITIES,
+	BARRIER_HARDWARE,
+	BARRIER_SPECS,
+	barrierAdmits,
+	barrierApproachBounds,
+	barrierGateCollider,
+	DRIVEABLE_HANDLING,
+	DRIVEABLE_SPOTS,
 	ELEVATOR_SHAFT_WALLS,
 	ELEVATOR_SPEC,
+	ENTRANCE_CANOPY_BAY_ZS,
 	ENTRANCE_CANOPY_PARTS,
+	ENTRANCE_CANOPY_RIB_PITCH,
+	ENTRANCE_CANOPY_RIB_ZS,
+	ENTRANCE_CANOPY_WASH_Z,
 	ENTRANCE_ENTITY,
 	ENTRANCE_LABEL,
 	ENTRANCE_PORTAL,
 	ENTRANCE_SPEC,
 	entitiesOnLevel,
-	FACADE_OUTWARD,
 	FACADE_RELIEF_SPEC,
+	HELIPAD_DECK_TOP_Y,
+	HELIPAD_HATCH,
+	HELIPAD_HATCH_GATE,
+	HELIPAD_HATCH_SPEC,
 	levelsContaining,
 	MALL_FACADE_RELIEF,
 	MALL_FACADE_SIGNS,
 	MALL_SLAB_SPECS,
 	MALL_WALL_ENVELOPE,
 	MALL_WALL_SPECS,
+	MOTORCYCLE_SPEC,
+	mechanismAdmits,
+	mechanismGateBounds,
+	mechanismTriggerBounds,
 	PARKED_CAR_SPEC,
 	PARKED_CAR_SPOTS,
+	PARKED_MOTORCYCLE_SPOTS,
+	PARKING_CEILING_SPEC,
 	PARKING_DECK_ENTITY,
 	PARKING_DECK_SPEC,
 	PARKING_EXIT_CHEVRONS,
@@ -79,6 +107,29 @@ import {
 	parkingStalls,
 	RENTAL_CAR_SPEC,
 	RENTAL_CAR_SPOTS,
+	RIDEABLE_MOTORCYCLE_SPOTS,
+	ROOF_SLIDE_ENTITY,
+	SECRET_STAIRS_OPENING_BOUNDS,
+	SLIDE_LADDER_CLIMB,
+	SLIDE_LADDER_X,
+	SLIDE_PLATFORM_TOP_Y,
+	SLIDE_TOWER_SPEC,
+	THEATRE_AISLES,
+	THEATRE_ENTRANCE_ENTITY,
+	THEATRE_FLOOR_Y,
+	THEATRE_FOYER_ENTITY,
+	THEATRE_INTERIOR,
+	THEATRE_LABEL,
+	THEATRE_PLAN,
+	THEATRE_PORTAL,
+	THEATRE_SEATING_ENTITY,
+	TIKI_BAR_SPEC,
+	theatreOpeningWithin,
+	theatreRowBank,
+	theatreRowDeck,
+	theatreRowY,
+	theatreSeatBanks,
+	theatreSeatXs,
 	VERTICAL_CONNECTORS,
 	WORLD_ENTITIES,
 } from '#/data/world';
@@ -86,16 +137,22 @@ import type { ZoneId } from '#/data/zones';
 import {
 	portalOfEntity,
 	reachableZones,
+	ZONE_ENCLOSURES,
 	ZONE_PORTALS,
 	ZONES,
+	zoneAt,
 	zoneBit,
 	zoneMaskOfBounds,
 	zoneOfLevel,
 	zonesOfMask,
 	zoneVolume,
 } from '#/data/zones';
-import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
+import { CollisionWorld, RAMP_BAND_MARGIN, WALK_STEP } from '#/physics/Collision';
+import type { VehicleGroundState } from '#/physics/VehicleGround';
+import { stepVehicleGround } from '#/physics/VehicleGround';
 import { AIR_STEP, GRAVITY, JUMP_RISE, JUMP_V, PLAYER_RADIUS, WALK_SPEED } from '#/player/constants';
+import { PARK_LAWN } from '#/scene/city/CityPark';
+import { TRAFFIC_FLEET, TRAFFIC_PROFILES } from '#/scene/city/CityTraffic';
 import type { GarageDeck } from '#/scene/city/cityPlan';
 import {
 	CITY_BOUNDS,
@@ -109,6 +166,7 @@ import {
 	EXIT_APRON,
 	EXIT_APRON_TOP_Y,
 	EXIT_BOOM,
+	EXIT_BOOM_TIP_Z,
 	EXIT_BRANCH_ROUTE,
 	EXIT_LANE_OFFSET,
 	GARAGE_DECKS,
@@ -129,9 +187,9 @@ import {
 	RING_INNER_WEST_X,
 	ROAD_PLAN,
 	ROAD_RINGS,
-	THEATRE_PLAN,
 	TOWER_SPECS,
 	TRAFFIC_CAR,
+	TRAFFIC_LANE_CLEARANCE,
 	ZEBRA_WIDTH,
 } from '#/scene/city/cityPlan';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
@@ -497,6 +555,9 @@ function controleVloergat(): void {
  * plaat. Precies op de treden dus, over de hele lengte: de roltraptreden worden
  * op dezelfde lijn getekend, dus een afwijking hier is een trede naast je voet.
  */
+/** Op deze hoogtes onder de voet van een vlucht staat een sim er zeker niet meer op. */
+const ONDER_DE_VOET: readonly number[] = [RAMP_BAND_MARGIN * 2, 1, 2];
+
 function controleHellinglijn(): void {
 	const N = 400;
 	for (const r of wereld.ramps) {
@@ -542,6 +603,38 @@ function controleHellinglijn(): void {
 				'hellinglijn',
 				`${r.label}: een dakplaat (y ${nr(padY)}) ligt over z ${nr(padVanaf)}..${nr(padTot)} van de vlucht, daar loop je over het trapgat heen in plaats van erop`,
 			);
+		}
+
+		// Waar de speler `groundHeightAt` vraagt, vraagt een sim `snapFloorY`, en die
+		// twee horen over dezelfde vlucht hetzelfde te zeggen. Welke vlucht een sim
+		// draagt volgde eerder uit twee vaste verdiepingsbanden met de naam van de
+		// geheime trap erin, en die naam matchte niets: onder die trap bleef een sim
+		// op V0 in de lucht staan en middenop sprong hij naar de dakplaat.
+		const hart = midpoint(r.minX, r.maxX);
+		// De band is open aan beide kanten: op de grens zelf draagt de plaat je nog.
+		const laagsteY = Math.min(r.yBottom, r.yTop) + RAMP_BAND_MARGIN;
+		const hoogsteY = Math.max(r.yBottom, r.yTop) - RAMP_BAND_MARGIN;
+		for (let i = 1; i < N; i++) {
+			const y = lerp(laagsteY, hoogsteY, i / N);
+			const z = lerp(r.zBottom, r.zTop, (y - r.yBottom) / (r.yTop - r.yBottom));
+			const gezakt = wereld.snapFloorY(hart, z, y);
+			if (bijna(gezakt, y, 1e-6)) continue;
+			fout(
+				'hellinglijn',
+				`${r.label}: halverwege op (${nr(hart)}, ${nr(z)}) zet snapFloorY een sim op ${nr(gezakt)} in plaats van op de vlucht (${nr(y)})`,
+			);
+			break;
+		}
+
+		// En onder de voet van die vlucht draagt hij niets: daar ligt de plaat.
+		const voetY = Math.min(r.yBottom, r.yTop);
+		const voetZ = r.yBottom < r.yTop ? r.zBottom : r.zTop;
+		for (const onder of ONDER_DE_VOET) {
+			const y = voetY - onder;
+			const gezakt = wereld.snapFloorY(hart, voetZ, y);
+			if (!bijna(gezakt, y, 1e-6)) continue;
+			fout('hellinglijn', `${r.label}: ${nr(onder)} m onder zijn voet houdt snapFloorY een sim op y ${nr(y)} in de lucht`);
+			break;
 		}
 	}
 }
@@ -731,6 +824,32 @@ function controleParkeerschil(): void {
 		}
 	}
 
+	// En de spouw erboven. Het parkeerdak ligt bijna een meter onder de
+	// begane-grondplaat, dus tussen die twee loopt een holle laag over de hele
+	// voetafdruk. Zonder een kop over het overdekte deel van de geul kijk je daar
+	// vanaf de helling de mall in, tweeënzeventig meter onder de vloer door.
+	const spouwZ = [-PARKING_EXIT_RAIL_OUTER + SCHIL_MARGE, 0, PARKING_EXIT_RAIL_OUTER - SCHIL_MARGE];
+	const spouwHoogtes = [
+		PARKING_CEILING_SPEC.topY + SCHIL_MARGE,
+		midpoint(PARKING_CEILING_SPEC.topY, PARKING_EXIT_TRENCH.coveredTopY),
+		PARKING_EXIT_TRENCH.coveredTopY - SCHIL_MARGE,
+	];
+	let spouwGemeld = false;
+	for (let x = PARKING_EXIT_TRENCH.coverX; x <= PARKING_EXIT_TRENCH.maxX && !spouwGemeld; x += SCHIL_STAP) {
+		for (const z of spouwZ) {
+			for (const y of spouwHoogtes) {
+				if (inMassief(schil, x, y, z)) continue;
+				fout(
+					'parkeerschil',
+					`de spouw boven de geul is open op (${nr(x)}, ${nr(z)}) op hoogte ${nr(y)} — daar kijk je onder de begane grond de mall in`,
+				);
+				spouwGemeld = true;
+				break;
+			}
+			if (spouwGemeld) break;
+		}
+	}
+
 	// En je loopt er niet naast: op de rand van de rijbaan duwt de keermuur terug.
 	for (const z of [-PARKING_EXIT_RAIL_OUTER, PARKING_EXIT_RAIL_OUTER]) {
 		const x = midpoint(PARKING_EXIT_TRENCH.minX, PARKING_EXIT_TRENCH.coverX);
@@ -761,27 +880,41 @@ const INGANG_ZIJWAARTS = 0.05;
 type Wandeling = { x: number; klacht: string | null };
 
 /**
+ * Wie er loopt: in welke wereld, en in welke houding.
+ *
+ * De houding hoort erbij omdat een lopende voetganger twee dingen tegen kan komen.
+ * Zijn lichaam botst tegen de dozen, en zijn hoofd komt een balk tegen die zijn
+ * voeten nergens raakt. Gehurkt geldt dezelfde route met een lagere eis.
+ */
+type Wandelaar = Readonly<{ wereld: CollisionWorld; houding: PedestrianPosture }>;
+
+const RECHTOP: Wandelaar = { wereld, houding: 'standing' };
+
+/**
  * Eén voetganger die op z-lijn `z` van `van` naar `naar` loopt, stap voor stap.
  *
  * Dezelfde vorm als de parkeeruitrit-probe hierboven: `groundHeightAt` voor de
- * vloer onder je voeten en `resolveCircle` voor wat je tegenhoudt, met de
- * buitenvlag aan, want die heeft de speler op straatniveau ook. Hij geeft terug
- * hoever hij kwam; of dat ver genoeg of juist te ver is, weet de aanroeper.
+ * vloer onder je voeten, `headroomAt` voor wat er boven je hoofd hangt en
+ * `resolveCircle` voor wat je tegenhoudt, met de buitenvlag aan, want die heeft de
+ * speler op straatniveau ook. Hij geeft terug hoever hij kwam; of dat ver genoeg of
+ * juist te ver is, weet de aanroeper.
  */
-function loopLangsDeAs(z: number, van: number, naar: number): Wandeling {
+function loopLangsDeAs(z: number, van: number, naar: number, wie: Wandelaar = RECHTOP): Wandeling {
 	const richting = Math.sign(naar - van);
+	const nodig = postureHeadroom(wie.houding);
 	let x = van;
 	let y = V0;
 	// Eén stap ruimte extra: de laatste voert over het doel heen, niet ernaartoe.
 	const stappen = Math.ceil(span(0, Math.abs(naar - van)) / INGANG_STAP) + 1;
 	for (let i = 0; i < stappen && (naar - x) * richting > 0; i++) {
 		const wens = x + richting * INGANG_STAP;
-		const grond = wereld.groundHeightAt(wens, z, y, WALK_STEP);
+		const grond = wie.wereld.groundHeightAt(wens, z, y, WALK_STEP);
 		if (!bijna(grond, V0, 1e-6)) {
 			return { x, klacht: `op x ${nr(wens)} (z ${nr(z)}) ligt de vloer op ${nr(grond)} in plaats van op dekhoogte ${nr(V0)}` };
 		}
-		const los = wereld.resolveCircle(wens, z, grond, PLAYER_RADIUS, 3, true, false, true);
+		const los = wie.wereld.resolveCircle(wens, z, grond, PLAYER_RADIUS, 3, true, false, true);
 		if ((los.x - x) * richting < INGANG_STAP * INGANG_VOORTGANG) return { x, klacht: null };
+		if (wie.wereld.headroomAt(los.x, z, grond) < nodig) return { x, klacht: null };
 		if (Math.abs(los.z - z) > INGANG_ZIJWAARTS) {
 			return { x: los.x, klacht: `op x ${nr(wens)} wordt de voetganger opzij geduwd naar z ${nr(los.z)}` };
 		}
@@ -846,6 +979,7 @@ function controleIngang(): void {
 	}
 
 	controleIngangZicht();
+	controleParkZicht();
 	controleIngangLoper();
 	controleLuifel();
 }
@@ -945,6 +1079,36 @@ function controleLuifel(): void {
 const INGANG_STANDPUNT = 'v0-entrance-street';
 
 /**
+ * Staat dit meetstandpunt buiten elke rijstrook en buiten de aftakking naar de garage?
+ *
+ * Het ingangsstandpunt stond op vijf centimeter van het hart van de buitenste strook,
+ * dus een passerende auto van 4,2 meter dekte het onderste halve beeld af: precies de
+ * meting die zo'n standpunt moet dragen en precies de grond die er beoordeeld wordt.
+ * Elk standpunt buiten de gevel loopt hier langs.
+ */
+function controleerVrijVanVerkeer(controle: string, standpunt: string, x: number, z: number): void {
+	for (const ring of ROAD_RINGS) {
+		for (const rand of ring.edges) {
+			const afstand = distanceToSegment2(x, z, rand.ox, rand.oz, rand.ox + rand.dx * rand.len, rand.oz + rand.dz * rand.len);
+			if (afstand < TRAFFIC_LANE_CLEARANCE) {
+				fout(
+					controle,
+					`${standpunt} staat ${nr(afstand)} m van een rijstrook, minder dan de ${nr(TRAFFIC_LANE_CLEARANCE)} m die een auto er zelf inneemt`,
+				);
+			}
+		}
+	}
+	for (let i = 0; i + 1 < EXIT_BRANCH_ROUTE.length; i++) {
+		const van = at(EXIT_BRANCH_ROUTE, i);
+		const naar = at(EXIT_BRANCH_ROUTE, i + 1);
+		const afstand = distanceToSegment2(x, z, van.x, van.z, naar.x, naar.z);
+		if (afstand < TRAFFIC_LANE_CLEARANCE) {
+			fout(controle, `${standpunt} staat ${nr(afstand)} m van de aftakking naar de garage`);
+		}
+	}
+}
+
+/**
  * De entree zoals hij van de stoep af leest.
  *
  * Een portaal, een luifel en een gevelbelettering zijn op een plattegrond samen één
@@ -959,43 +1123,14 @@ function controleIngangZicht(): void {
 	const { lettering, canopy, flag } = ENTRANCE_SPEC;
 	const { pose } = profilePoint(INGANG_STANDPUNT);
 
-	// Het standpunt zelf staat op de bestrating en niet op de rijbaan. Het stond op
-	// vijf centimeter van het hart van de buitenste rijstrook, dus een passerende
-	// auto van 4,2 meter dekte het onderste halve beeld af: precies de meting die
-	// dit standpunt moet dragen, en precies de grond die er visueel beoordeeld wordt.
-	const vrijeRuimte = half(TRAFFIC_CAR.width) + PLAYER_RADIUS;
+	// Het standpunt zelf staat op de bestrating en niet op de rijbaan.
 	if (!dekt(PLAZA_OUTER, pose.x, pose.z)) {
 		fout('ingang', `${INGANG_STANDPUNT} staat op (${nr(pose.x)}, ${nr(pose.z)}) en dus buiten de bestrating`);
 	}
 	if (dekt(PLAZA_TRENCH_GAP, pose.x, pose.z)) {
 		fout('ingang', `${INGANG_STANDPUNT} staat op (${nr(pose.x)}, ${nr(pose.z)}) boven het open gat van de uitritgeul`);
 	}
-	for (const ring of ROAD_RINGS) {
-		for (const rand of ring.edges) {
-			const afstand = distanceToSegment2(
-				pose.x,
-				pose.z,
-				rand.ox,
-				rand.oz,
-				rand.ox + rand.dx * rand.len,
-				rand.oz + rand.dz * rand.len,
-			);
-			if (afstand < vrijeRuimte) {
-				fout(
-					'ingang',
-					`${INGANG_STANDPUNT} staat ${nr(afstand)} m van een rijstrook, minder dan de ${nr(vrijeRuimte)} m die een auto er zelf inneemt`,
-				);
-			}
-		}
-	}
-	for (let i = 0; i + 1 < EXIT_BRANCH_ROUTE.length; i++) {
-		const van = at(EXIT_BRANCH_ROUTE, i);
-		const naar = at(EXIT_BRANCH_ROUTE, i + 1);
-		const afstand = distanceToSegment2(pose.x, pose.z, van.x, van.z, naar.x, naar.z);
-		if (afstand < vrijeRuimte) {
-			fout('ingang', `${INGANG_STANDPUNT} staat ${nr(afstand)} m van de aftakking naar de garage`);
-		}
-	}
+	controleerVrijVanVerkeer('ingang', INGANG_STANDPUNT, pose.x, pose.z);
 
 	// De zichtlijn over de voorrand van de luifel, doorgetrokken tot het vlak van de
 	// letters. Alles op de gevel eronder is van dit standpunt niet te zien.
@@ -1056,22 +1191,257 @@ function controleIngangZicht(): void {
 
 	// De spots onder de luifel liggen in de vakken tússen de ribben, en eronder.
 	const { rib, spot } = canopy;
-	const steek = (ENTRANCE_SPEC.width + canopy.flank * 2) / rib.count;
 	const ribY = canopy.topY - canopy.thickness - rib.drop;
 	const spotY = ribY - half(rib.height) - spot.drop;
 	if (spotY > ribY - half(rib.height)) {
 		fout('ingang', `de spots hangen op ${nr(spotY)} en zitten daarmee in de ribben (tot ${nr(ribY - half(rib.height))})`);
 	}
 	const vrij = spot.radius + half(rib.width);
-	for (let i = 0; i < rib.count - 1; i++) {
-		const spotZ = ENTRANCE_PORTAL.centerZ + (i - half(rib.count - 2)) * steek;
-		for (let k = 0; k < rib.count; k++) {
-			const ribZ = ENTRANCE_PORTAL.centerZ + (k - half(rib.count - 1)) * steek;
+	for (const [i, spotZ] of ENTRANCE_CANOPY_BAY_ZS.entries()) {
+		for (const ribZ of ENTRANCE_CANOPY_RIB_ZS) {
 			const speling = Math.abs(spotZ - ribZ) - vrij;
 			if (speling < 0) {
 				fout('ingang', `spot ${i} op z ${nr(spotZ)} loopt ${nr(-speling)} m de rib op z ${nr(ribZ)} in`);
 			}
 		}
+	}
+
+	// En de waslamp onder de luifel hangt in een vak, net als de spots. Op de portaalas
+	// staat bij een oneven aantal ribben een rib, en die brandt van 0,66 m wit uit
+	// terwijl zijn buren op 1,20 m donker blijven: kop-op leest de luifel als een
+	// witte balk. Midden in een vak is elke rib even ver weg.
+	const halveSteek = half(ENTRANCE_CANOPY_RIB_PITCH);
+	const dichtsteRib = ENTRANCE_CANOPY_RIB_ZS.reduce(
+		(kortste, ribZ) => Math.min(kortste, Math.abs(ENTRANCE_CANOPY_WASH_Z - ribZ)),
+		Number.POSITIVE_INFINITY,
+	);
+	if (dichtsteRib < halveSteek - EPS) {
+		fout(
+			'ingang',
+			`de waslamp hangt op z ${nr(ENTRANCE_CANOPY_WASH_Z)} en daarmee ${nr(dichtsteRib)} m van een rib, in plaats van midden in een vak op ${nr(halveSteek)} m`,
+		);
+	}
+}
+
+/** Het paar standpunten in het park: één op de mall, één met de mall in de rug. */
+const PARK_NAAR_MALL = 'park-buiten-mall';
+const PARK_WEG_VAN_MALL = 'park-buiten-weg';
+
+/**
+ * Het paar meetstandpunten in het stadspark.
+ *
+ * Ze bestaan om de zonecull van buitenaf af te lezen, en dat werkt alleen als ze
+ * allebei écht buiten staan, allebei op dezelfde plek, en de tweede het gebouw
+ * werkelijk in de rug heeft. Elk van die drie is een getal in een pose en geen van
+ * drieën is aan de coördinaten af te lezen: het kavel dat het park draagt loopt tot
+ * tússen de twee rijstroken, dus wie zich op het kavel richt staat op de rijbaan.
+ */
+function controleParkZicht(): void {
+	// Het gras hoort binnen het kavel dat het park draagt. Het stond hier als vier
+	// losse getallen naast dat kavel, dezelfde hartlijn maar een rechthoek van acht
+	// meter kleiner, en niets vergeleek die twee.
+	if (
+		PARK_LAWN.minX < CITY_KAVELS.park.minX ||
+		PARK_LAWN.maxX > CITY_KAVELS.park.maxX ||
+		PARK_LAWN.minZ < CITY_KAVELS.park.minZ ||
+		PARK_LAWN.maxZ > CITY_KAVELS.park.maxZ
+	) {
+		fout(
+			'park',
+			`het gras loopt van (${nr(PARK_LAWN.minX)}, ${nr(PARK_LAWN.minZ)}) tot (${nr(PARK_LAWN.maxX)}, ${nr(PARK_LAWN.maxZ)}) en steekt daarmee buiten het parkkavel (${nr(CITY_KAVELS.park.minX)}, ${nr(CITY_KAVELS.park.minZ)})..(${nr(CITY_KAVELS.park.maxX)}, ${nr(CITY_KAVELS.park.maxZ)})`,
+		);
+	}
+	if (span(PARK_LAWN.minX, PARK_LAWN.maxX) <= 0 || span(PARK_LAWN.minZ, PARK_LAWN.maxZ) <= 0) {
+		fout('park', 'de berm eet het hele grasveld op; dan staat er een park zonder gras');
+	}
+
+	const naar = profilePoint(PARK_NAAR_MALL);
+	const weg = profilePoint(PARK_WEG_VAN_MALL);
+	if (naar.pose.x !== weg.pose.x || naar.pose.y !== weg.pose.y || naar.pose.z !== weg.pose.z) {
+		fout(
+			'park',
+			`${PARK_NAAR_MALL} staat op (${nr(naar.pose.x)}, ${nr(naar.pose.z)}) en ${PARK_WEG_VAN_MALL} op (${nr(weg.pose.x)}, ${nr(weg.pose.z)}); dan meten ze twee standpunten in plaats van twee richtingen`,
+		);
+	}
+	for (const { name, pose } of [naar, weg]) {
+		if (!dekt(CITY_KAVELS.park, pose.x, pose.z)) {
+			fout('park', `${name} staat op (${nr(pose.x)}, ${nr(pose.z)}) en dus buiten het parkkavel`);
+		}
+		controleerVrijVanVerkeer('park', name, pose.x, pose.z);
+		const grond = wereld.groundHeightAt(pose.x, pose.z, CITY_GROUND_Y, WALK_STEP);
+		if (!bijna(grond, CITY_GROUND_Y)) {
+			fout('park', `${name} staat op ${nr(grond)} in plaats van op straatniveau (${nr(CITY_GROUND_Y)})`);
+		}
+		const zone = zoneAt(pose.x, pose.y, pose.z);
+		if (zone !== 'stad') {
+			fout('park', `${name} staat in zone ${zone} en meet daarmee geen standpunt buiten het gebouw`);
+		}
+	}
+	// De vier hoeken van de gevelomtrek, elk vóór of achter de kijkrichting. Alle vier
+	// vóór is "de mall in beeld", alle vier achter is "de mall in de rug"; per hoek en
+	// niet per middelpunt, want een gebouw van 73 bij 48 meter ligt op negentig meter
+	// nog altijd dertig graden breed.
+	const hoeken = [
+		[MALL_WALL_ENVELOPE.minX, MALL_WALL_ENVELOPE.minZ],
+		[MALL_WALL_ENVELOPE.minX, MALL_WALL_ENVELOPE.maxZ],
+		[MALL_WALL_ENVELOPE.maxX, MALL_WALL_ENVELOPE.minZ],
+		[MALL_WALL_ENVELOPE.maxX, MALL_WALL_ENVELOPE.maxZ],
+	] as const;
+	for (const [standpunt, inBeeld] of [
+		[naar, true],
+		[weg, false],
+	] as const) {
+		const { pose } = standpunt;
+		const kijkX = span(pose.x, pose.lookX);
+		const kijkZ = span(pose.z, pose.lookZ);
+		for (const [hoekX, hoekZ] of hoeken) {
+			const voor = kijkX * span(pose.x, hoekX) + kijkZ * span(pose.z, hoekZ) > 0;
+			if (voor === inBeeld) continue;
+			fout(
+				'park',
+				`${standpunt.name} heeft gevelhoek (${nr(hoekX)}, ${nr(hoekZ)}) ${voor ? 'vóór' : 'achter'} zich, en hoort de mall ${inBeeld ? 'volledig in beeld' : 'volledig in de rug'} te hebben`,
+			);
+		}
+	}
+}
+
+// ── 5b2. hurken onder een lage balk ────────────────────────────────────────
+
+/** Dikte van de proefbalk langs x. Ruim boven de stap van de probe, zodat niemand erdoorheen tunnelt. */
+const KRUIP_BALKDIEPTE = 1;
+
+/** Breedte langs z: aan weerszijden meer dan een lichaam, zodat er niet omheen te lopen valt. */
+const KRUIP_BALKBREEDTE = PLAYER_RADIUS * 8;
+
+/** Hoogte van de balk zelf; alleen zijn onderkant doet ertoe, maar een balk van niets bestaat niet. */
+const KRUIP_BALKHOOGTE = 0.4;
+
+/** Hoever vóór de balk een rechtop lopende voetganger mag stranden: één stap, en niet eerder. */
+const KRUIP_STOPMARGE = INGANG_STAP * 2;
+
+/** Hoeveel monsters er over een vlucht lopen als de vrije hoogte erlangs gemeten wordt. */
+const KRUIP_VLUCHTMONSTERS = 40;
+
+/**
+ * Hurken, gelopen zoals de speler het loopt.
+ *
+ * De balk hangt op precies de vrije hoogte die de gehurkte houding vraagt, en dat
+ * getal komt uit `CROUCHING_PEDESTRIAN`. Trek dat profiel gelijk aan het staande, dan
+ * stuit de gehurkte voetganger op zijn eigen balk en valt deze controle om: dit is de
+ * plek waar het profiel iets doet dat je kunt aflopen.
+ *
+ * De balk staat in een eigen wereld. Hij hoort niet in het gebouw en elke controle na
+ * deze zou hem daar tegenkomen.
+ *
+ * De tweede helft kijkt de andere kant op. De vrije hoogte is nu een eis om ergens te
+ * mogen lopen, dus elke vlucht die er al was moet er staand doorheen passen; deed hij
+ * dat niet, dan zou de speler op de roltrap door de knieën gaan.
+ */
+function controleHurken(): void {
+	const staand = STANDING_PEDESTRIAN;
+	const gehurkt = CROUCHING_PEDESTRIAN;
+	if (gehurkt.bodyHeight >= staand.bodyHeight || gehurkt.eyeHeight >= staand.eyeHeight) {
+		fout(
+			'hurken',
+			`gehurkt is ${nr(gehurkt.bodyHeight)} m hoog en staand ${nr(staand.bodyHeight)} m, dus hurken levert niets op`,
+		);
+	}
+	if (gehurkt.eyeHeight >= gehurkt.bodyHeight) {
+		fout('hurken', `het gehurkte oog zit op ${nr(gehurkt.eyeHeight)} m en de kruin op ${nr(gehurkt.bodyHeight)} m`);
+	}
+	if (gehurkt.requiredHeadroom <= gehurkt.bodyHeight) {
+		fout(
+			'hurken',
+			`gehurkt vraagt ${nr(gehurkt.requiredHeadroom)} m vrije hoogte voor een lichaam van ${nr(gehurkt.bodyHeight)} m`,
+		);
+	}
+	if (gehurkt.requiredHeadroom >= staand.requiredHeadroom) {
+		fout(
+			'hurken',
+			`gehurkt vraagt ${nr(gehurkt.requiredHeadroom)} m en staand ${nr(staand.requiredHeadroom)} m, dus geen enkele doorgang is alleen gehurkt te nemen`,
+		);
+	}
+	if (gehurkt.radius !== staand.radius) {
+		fout(
+			'hurken',
+			`gehurkt meet een straal van ${nr(gehurkt.radius)} m en staand ${nr(staand.radius)} m; schouders worden niet smaller`,
+		);
+	}
+
+	const z = ENTRANCE_PORTAL.centerZ;
+	const balkX = ENTRANCE_PORTAL.innerX + half(ENTRANCE_SPEC.hall.depth);
+	const voorkant = balkX - half(KRUIP_BALKDIEPTE);
+	const onderkant = V0 + postureHeadroom('crouching');
+	const kruipwereld = new CollisionWorld();
+	kruipwereld.addBox(voorkant, balkX + half(KRUIP_BALKDIEPTE), z - half(KRUIP_BALKBREEDTE), z + half(KRUIP_BALKBREEDTE), {
+		minY: onderkant,
+		maxY: onderkant + KRUIP_BALKHOOGTE,
+		label: 'kruipbalk',
+		tags: [SIGHT_BLOCKING_TAG],
+	});
+
+	const onder = kruipwereld.headroomAt(balkX, z, V0);
+	if (!bijna(onder, postureHeadroom('crouching'))) {
+		fout(
+			'hurken',
+			`onder de balk meet de vrije hoogte ${nr(onder)} m in plaats van de gehurkte ${nr(postureHeadroom('crouching'))} m`,
+		);
+	}
+
+	const doel = half(ATRIUM_VOID.width);
+	const rechtop = loopLangsDeAs(z, INGANG_STRAAT_X, doel, { wereld: kruipwereld, houding: 'standing' });
+	if (rechtop.klacht !== null) {
+		fout('hurken', rechtop.klacht);
+	} else if (rechtop.x >= voorkant) {
+		fout('hurken', `rechtop loopt de voetganger tot x ${nr(rechtop.x)} en dus onder de balk op x ${nr(voorkant)} door`);
+	} else if (voorkant - rechtop.x > KRUIP_STOPMARGE) {
+		fout('hurken', `rechtop strandt de voetganger al op x ${nr(rechtop.x)}, ruim voor de balk op x ${nr(voorkant)}`);
+	}
+
+	const gehurktLangs = loopLangsDeAs(z, INGANG_STRAAT_X, doel, { wereld: kruipwereld, houding: 'crouching' });
+	if (gehurktLangs.klacht !== null) {
+		fout('hurken', gehurktLangs.klacht);
+	} else if (gehurktLangs.x < doel) {
+		fout('hurken', `gehurkt strandt de wandeling op x ${nr(gehurktLangs.x)} en haalt het atrium (x ${nr(doel)}) niet`);
+	}
+
+	// De hal zelf: zonder balk hoort de onderkant van de V1-plaat het antwoord te zijn.
+	// Een `headroomAt` die overal oneindig meldt haalt elke eis hierboven leeg.
+	const inDeHal = wereld.headroomAt(balkX, z, V0);
+	const onderkantV1 = MALL_SLAB_SPECS.v1.topY - MALL_SLAB_SPECS.v1.thickness;
+	if (!bijna(inDeHal, span(V0, onderkantV1))) {
+		fout('hurken', `in de entreehal meet de vrije hoogte ${nr(inDeHal)} m en de V1-plaat begint op ${nr(onderkantV1)}`);
+	}
+
+	for (const connector of VERTICAL_CONNECTORS) {
+		for (let i = 0; i <= KRUIP_VLUCHTMONSTERS; i++) {
+			const t = i / KRUIP_VLUCHTMONSTERS;
+			const treeZ = lerp(connector.zBottom, connector.zTop, t);
+			const treeY = lerp(levelY(connector.from), levelY(connector.to), t);
+			const vrij = wereld.headroomAt(connector.x, treeZ, treeY);
+			if (vrij >= postureHeadroom('standing')) continue;
+			fout(
+				'hurken',
+				`op ${connector.id} (z ${nr(treeZ)}, y ${nr(treeY)}) is er ${nr(vrij)} m vrije hoogte en staand vraagt ${nr(postureHeadroom('standing'))} m`,
+			);
+			break;
+		}
+	}
+
+	let laagsteOpDeUitrit = Number.POSITIVE_INFINITY;
+	let laagsteX: number = PARKING_EXIT_RAMP.start.x;
+	for (let i = 0; i <= KRUIP_VLUCHTMONSTERS; i++) {
+		const x = lerp(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x, i / KRUIP_VLUCHTMONSTERS);
+		const vrij = wereld.headroomAt(x, PARKING_EXIT_RAMP.start.z, parkingExitRampY(x));
+		if (vrij >= laagsteOpDeUitrit) continue;
+		laagsteOpDeUitrit = vrij;
+		laagsteX = x;
+	}
+	if (laagsteOpDeUitrit < postureHeadroom('standing')) {
+		fout(
+			'hurken',
+			`op de parkeeruitrit (x ${nr(laagsteX)}) is er ${nr(laagsteOpDeUitrit)} m vrije hoogte en staand vraagt ${nr(postureHeadroom('standing'))} m`,
+		);
 	}
 }
 
@@ -1347,6 +1717,22 @@ async function controleBadgasten(): Promise<void> {
 		) {
 			fout('badgasten', `castlid op (${nr(x)}, ${nr(z)}) staat in of tegen de tiki-bar-counter`);
 		}
+	}
+
+	// Het tiki-bar-bord leest van de badkant. De parasolkap hing tussen het bad en
+	// het bord in, op dezelfde hoogte, en dekte de rechterhelft af: er stond nog
+	// "TIKI BA" en de rest zat achter riet. De kap staat west van het bord, dus wie
+	// van het bad kijkt kijkt er langs alleen als hij voorbij de rand van het bord valt.
+	const { PARASOL_CANOPY_RADIUS, PARASOL_POSITION } = await import('#/scene/PoolPeople');
+	const bordZ = TIKI_BAR_SPEC.center.z;
+	const bordRand = half(TIKI_BAR_SPEC.sign.width);
+	const bordX = TIKI_BAR_SPEC.center.x + TIKI_BAR_SPEC.sign.offsetX;
+	const overlap = bordRand + PARASOL_CANOPY_RADIUS - Math.abs(PARASOL_POSITION.z - bordZ);
+	if (PARASOL_POSITION.x < bordX && overlap > 0) {
+		fout(
+			'badgasten',
+			`de parasolkap op z ${nr(PARASOL_POSITION.z)} staat voor het bord (z ${nr(bordZ - bordRand)}..${nr(bordZ + bordRand)}) en dekt er ${nr(overlap)} m van af`,
+		);
 	}
 
 	// In het water hangen is dieper dan alleen onder dekhoogte: de zonaanbidsters
@@ -1851,30 +2237,82 @@ const GEVELZIJDEN = [
 	{ kant: 'south', naam: 'zuid' },
 ] as const satisfies readonly { kant: CardinalSide; naam: string }[];
 
+/** Raakt deze doos het grondvlak van dit gebouw? */
+function opGebouw(plan: Vlak, b: Vlak): boolean {
+	return b.minX <= plan.maxX && b.maxX >= plan.minX && b.minZ <= plan.maxZ && b.maxZ >= plan.minZ;
+}
+
+/**
+ * Het gebouw waar deze entiteit bij hoort.
+ *
+ * Er stond er één, dus was de vraag nooit gesteld en mat de controle alles tegen
+ * de omhullende van de mall. Met het theater erbij is dat een gevel op vijftig
+ * meter afstand: elke zaalwand stak er per definitie voorbij. Wie geen enkel
+ * grondvlak raakt houdt de mall, want dat is wat de uitritgeul en de luifel
+ * altijd al deden.
+ */
+function gebouwVan(entity: (typeof WORLD_ENTITIES)[number]): (typeof ZONE_ENCLOSURES)[number] {
+	const mall = at(ZONE_ENCLOSURES, 0);
+	const geraakt = ZONE_ENCLOSURES.filter((gebouw) =>
+		entity.volumes.some((volume) => opGebouw(gebouw.plan, geometryBounds(volume.geometry))),
+	);
+	if (geraakt.length > 1) {
+		fout(
+			'gevel',
+			`${entity.id} staat in ${geraakt.map((gebouw) => gebouw.id).join(' en ')} tegelijk; twee gebouwen delen geen vloer`,
+		);
+	}
+	return geraakt[0] ?? mall;
+}
+
 function controleGevel(): void {
 	const wanden = WORLD_ENTITIES.filter((entity) => entity.category === 'wall');
 	if (wanden.length === 0) {
 		fout('gevel', 'geen enkele wall-entiteit in WORLD_ENTITIES — waar is de perimeter?');
 		return;
 	}
-	const gevel: Vlak = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
-	for (const wand of wanden) {
-		for (const volume of wand.volumes) {
-			const b = geometryBounds(volume.geometry);
-			gevel.minX = Math.min(gevel.minX, b.minX);
-			gevel.maxX = Math.max(gevel.maxX, b.maxX);
-			gevel.minZ = Math.min(gevel.minZ, b.minZ);
-			gevel.maxZ = Math.max(gevel.maxZ, b.maxZ);
+	// Elk gebouw heeft zijn eigen huid, en die huid hoort door zijn eigen
+	// wall-entiteiten opgetrokken te worden. De omhullende die de zonegraaf uitdeelt
+	// wordt daarom hier nagemeten in plaats van geloofd: staat er een wandkast buiten,
+	// dan meet de rest van deze controle tegen een gevel die er niet is.
+	const gevels = new Map<string, Vlak>();
+	for (const gebouw of ZONE_ENCLOSURES) {
+		const eigen = wanden.filter((wand) => gebouwVan(wand).id === gebouw.id);
+		if (eigen.length === 0) {
+			fout('gevel', `${gebouw.id} heeft geen enkele wall-entiteit, dus dat gebouw heeft geen huid om aan te toetsen`);
+			continue;
 		}
-	}
-	if (!Number.isFinite(gevel.minX) || !Number.isFinite(gevel.minZ)) {
-		fout('gevel', 'de wall-entiteiten hebben geen enkel volume met omvang — er is geen gevel om aan te toetsen');
-		return;
+		const gemeten: Vlak = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+		for (const wand of eigen) {
+			for (const volume of wand.volumes) {
+				const b = geometryBounds(volume.geometry);
+				gemeten.minX = Math.min(gemeten.minX, b.minX);
+				gemeten.maxX = Math.max(gemeten.maxX, b.maxX);
+				gemeten.minZ = Math.min(gemeten.minZ, b.minZ);
+				gemeten.maxZ = Math.max(gemeten.maxZ, b.maxZ);
+			}
+		}
+		if (!Number.isFinite(gemeten.minX) || !Number.isFinite(gemeten.minZ)) {
+			fout('gevel', `de wall-entiteiten van ${gebouw.id} hebben geen enkel volume met omvang`);
+			continue;
+		}
+		for (const [as, opgegeven, gebouwd] of [
+			['minX', gebouw.envelope.minX, gemeten.minX],
+			['maxX', gebouw.envelope.maxX, gemeten.maxX],
+			['minZ', gebouw.envelope.minZ, gemeten.minZ],
+			['maxZ', gebouw.envelope.maxZ, gemeten.maxZ],
+		] as [string, number, number][]) {
+			if (bijna(opgegeven, gebouwd, GEVEL_MARGE)) continue;
+			fout('gevel', `${gebouw.id} geeft ${as} ${nr(opgegeven)} op terwijl zijn wandkasten op ${nr(gebouwd)} staan`);
+		}
+		gevels.set(gebouw.id, gemeten);
 	}
 
 	const vergunningGebruikt = new Set<string>();
 	for (const entity of WORLD_ENTITIES) {
 		if (entity.category === 'wall') continue;
+		const gevel = gevels.get(gebouwVan(entity).id);
+		if (!gevel) continue;
 		for (const volume of entity.volumes) {
 			if (!volume.blocksMovement && !GEVEL_GEBOUWD.includes(volume.role)) continue;
 			const b = geometryBounds(volume.geometry);
@@ -1934,10 +2372,12 @@ const BUITENWERK_MARGE = 1e-6;
 
 /** Hoeveel het getekende maaiveld onder het loopvlak mag liggen zonder dat je het ziet. */
 const MAAIVELD_SPELING = 0.1;
+/** Stap waarmee de grondvraag over het gat in de bestrating wordt afgeprikt. */
+const MAAIVELD_STAP = 0.25;
 
 /** De buitenvlakken van de wandstukken per gevel: daar hoort het reliëf tegenaan te staan. */
 function wandvlakken(kant: CardinalSide): readonly number[] {
-	const uit = FACADE_OUTWARD[kant];
+	const uit = CARDINAL_OUTWARD[kant];
 	return MALL_WALL_SPECS.filter((wall) => wall.side === kant).map((wall) =>
 		uit.x !== 0 ? wall.position.x + uit.x * half(wall.size.width) : wall.position.z + uit.z * half(wall.size.depth),
 	);
@@ -1955,7 +2395,7 @@ function controleBuitenwerk(): void {
 	}
 
 	for (const stuk of [...MALL_FACADE_RELIEF, ...MALL_FACADE_SIGNS]) {
-		const uit = FACADE_OUTWARD[stuk.side];
+		const uit = CARDINAL_OUTWARD[stuk.side];
 		const langsX = uit.x !== 0;
 		const binnen = langsX ? (uit.x < 0 ? stuk.maxX : stuk.minX) : uit.z < 0 ? stuk.maxZ : stuk.minZ;
 		const diepte = langsX ? span(stuk.minX, stuk.maxX) : span(stuk.minZ, stuk.maxZ);
@@ -1996,7 +2436,7 @@ function controleBuitenwerk(): void {
 				`${bord.id} begint op ${nr(bord.minY)} in plaats van op de kroonlijst (${nr(FACADE_RELIEF_SPEC.cornice.maxY)}); dan hangt hij los van de daklijst`,
 			);
 		}
-		const langsX = FACADE_OUTWARD[bord.side].x === 0;
+		const langsX = CARDINAL_OUTWARD[bord.side].x === 0;
 		const bordMin = langsX ? bord.minX : bord.minZ;
 		const bordMax = langsX ? bord.maxX : bord.maxZ;
 		const stukken = MALL_WALL_SPECS.filter((wall) => wall.side === bord.side);
@@ -2091,6 +2531,24 @@ function controleMaaiveld(): void {
 		}
 	}
 
+	// Het gat in de bestrating is ook een gat voor je voeten. De grondvraag buiten de
+	// mall gaf overal straatniveau terug, dus liep je over de open geul heen alsof er
+	// een plaat lag: zes meter lucht onder je schoenen en de helling die eronderdoor
+	// omhoog komt zag je niet. Onderin ligt het loopvlak van de helling, en daar loop
+	// je via diezelfde helling weer uit.
+	for (let x = PLAZA_TRENCH_GAP.minX + MAAIVELD_STAP; x < PLAZA_TRENCH_GAP.maxX; x += MAAIVELD_STAP) {
+		for (const z of [-EXIT_LANE_OFFSET, 0, EXIT_LANE_OFFSET]) {
+			const grond = wereld.groundHeightAt(x, z, CITY_GROUND_Y, WALK_STEP);
+			const helling = parkingExitRampY(x);
+			if (bijna(grond, helling, MAAIVELD_SPELING)) continue;
+			fout(
+				'buitenwerk',
+				`boven de open geul geeft de grond op (${nr(x)}, ${nr(z)}) ${nr(grond)} terwijl de helling daar op ${nr(helling)} ligt; daar loop je over het gat heen`,
+			);
+			return;
+		}
+	}
+
 	// En de mall-bouwer legt er geen tweede, lager, overheen. Die plaat was er, was
 	// 200 bij 200 en had geen gat voor het gebouw of voor de uitritgeul.
 	const bouwer = bron('scene/MallBuilder.ts');
@@ -2117,6 +2575,12 @@ function controlePuien(): void {
 		if (!winkel.volumes.some((volume) => volume.role === 'storefront-clearance')) {
 			fout('puien', `${winkel.id} heeft geen storefront-clearance-volume, dus zijn pui wordt door niets bewaakt`);
 		}
+		// Dezelfde vorm als hierboven, voor de achterkant: `detached-backing` meet
+		// alleen wat de tag draagt, dus een winkel zonder tag stond ongemerkt los van
+		// de wand erachter.
+		if (!winkel.volumes.some((volume) => volume.tags.includes(ROOM_SHELL_TAG))) {
+			fout('puien', `${winkel.id} heeft geen ${ROOM_SHELL_TAG}-volume, dus niets meet na of zijn achterwand de gevel raakt`);
+		}
 	}
 }
 
@@ -2142,6 +2606,9 @@ function controleParkeerplekken(): void {
 	const autos: [string, Vlak][] = [
 		...PARKED_CAR_SPOTS.map((spot, index): [string, Vlak] => [`decorauto ${index + 1}`, autoVlak(spot, PARKED_CAR_SPEC.body)]),
 		...RENTAL_CAR_SPOTS.map((spot): [string, Vlak] => [spot.name, autoVlak(spot, RENTAL_CAR_SPEC.body)]),
+		// De motoren staan in dezelfde vakkenrij en lopen dus tegen dezelfde kolommen op.
+		...PARKED_MOTORCYCLE_SPOTS.map((spot, index): [string, Vlak] => [`motor ${index + 1}`, autoVlak(spot, MOTORCYCLE_SPEC.body)]),
+		...RIDEABLE_MOTORCYCLE_SPOTS.map((spot): [string, Vlak] => [spot.name, autoVlak(spot, MOTORCYCLE_SPEC.body)]),
 	];
 	for (const [naam, vlak] of autos) {
 		for (const [index, kolom] of parkingPillarCenters().entries()) {
@@ -2338,32 +2805,58 @@ type Punt = readonly [number, number];
  * hoogte terug waar hij aankomt, zodat de aanroeper kan toetsen of dat het dek
  * is dat hij bedoelde.
  */
-function loopLangsPolylijn(controle: string, wat: string, punten: readonly Punt[], startY: number): number {
-	const stap = 0.05;
+/**
+ * Waar de wandeling bleef, en waarom.
+ *
+ * `klacht` is null zolang hij doorliep. De ene helft van de wereld wil dat een
+ * route lóópt en de andere helft wil dat hij vastloopt — de dichte gevel naast een
+ * deur is net zo goed een eis — en die twee kunnen niet allebei op een melding
+ * uitkomen. Wie de route wil zien lopen geeft de klacht door aan `fout`; wie hem
+ * juist wil zien stranden leest waar hij bleef.
+ */
+type Wandelverslag = Readonly<{ x: number; z: number; y: number; klacht: string | null }>;
+
+const POLYLIJN_STAP = 0.05;
+
+function volgPolylijn(punten: readonly Punt[], startY: number): Wandelverslag {
 	let y = startY;
+	const eerste = punten[0];
+	let x = eerste ? eerste[0] : 0;
+	let z = eerste ? eerste[1] : 0;
 	for (let i = 1; i < punten.length; i++) {
 		const van = punten[i - 1];
 		const naar = punten[i];
 		if (!van || !naar) continue;
-		const stappen = Math.max(1, Math.ceil(Math.hypot(naar[0] - van[0], naar[1] - van[1]) / stap));
+		const stappen = Math.max(1, Math.ceil(Math.hypot(naar[0] - van[0], naar[1] - van[1]) / POLYLIJN_STAP));
 		for (let k = 1; k <= stappen; k++) {
 			const t = k / stappen;
-			const x = lerp(van[0], naar[0], t);
-			const z = lerp(van[1], naar[1], t);
-			const grond = wereld.groundHeightAt(x, z, y, WALK_STEP);
+			const wensX = lerp(van[0], naar[0], t);
+			const wensZ = lerp(van[1], naar[1], t);
+			const grond = wereld.groundHeightAt(wensX, wensZ, y, WALK_STEP);
 			if (Math.abs(grond - y) > WALK_STEP) {
-				fout(controle, `${wat}: op (${nr(x)}, ${nr(z)}) springt de vloer van ${nr(y)} naar ${nr(grond)}`);
-				return y;
+				return { x, z, y, klacht: `op (${nr(wensX)}, ${nr(wensZ)}) springt de vloer van ${nr(y)} naar ${nr(grond)}` };
 			}
-			const los = wereld.resolveCircle(x, z, grond, PLAYER_RADIUS, 3, true, false, true);
-			if (Math.hypot(los.x - x, los.z - z) > 1e-4) {
-				fout(controle, `${wat}: op (${nr(x)}, ${nr(z)}) duwt collision je naar (${nr(los.x)}, ${nr(los.z)})`);
-				return y;
+			const los = wereld.resolveCircle(wensX, wensZ, grond, PLAYER_RADIUS, 3, true, false, true);
+			if (Math.hypot(los.x - wensX, los.z - wensZ) > 1e-4) {
+				return {
+					x,
+					z,
+					y,
+					klacht: `op (${nr(wensX)}, ${nr(wensZ)}) duwt collision je naar (${nr(los.x)}, ${nr(los.z)})`,
+				};
 			}
+			x = wensX;
+			z = wensZ;
 			y = grond;
 		}
 	}
-	return y;
+	return { x, z, y, klacht: null };
+}
+
+function loopLangsPolylijn(controle: string, wat: string, punten: readonly Punt[], startY: number): number {
+	const verslag = volgPolylijn(punten, startY);
+	if (verslag.klacht !== null) fout(controle, `${wat}: ${verslag.klacht}`);
+	return verslag.y;
 }
 
 /**
@@ -2395,22 +2888,33 @@ function controleStad(): void {
 		const grond = wereld.groundHeightAt(x, z, DAK, WALK_STEP);
 		if (!bijna(grond, DAK)) fout('stad', `dakrand (${nr(x)}, ${nr(z)}): de vloer is ${nr(grond)} in plaats van ${nr(DAK)}`);
 	}
-	for (const [x, z] of [
+	// Naast het dak is er geen schil meer: over de dakrand stappen is de sprong naar
+	// de stad, en dat is het punt. Dit geldt ook pal west, boven de mond van de geul.
+	const naastHetDak: [number, number][] = [
 		[randX + 1.5, 0],
 		[-(randX + 1.5), 0],
 		[0, randZ + 1.5],
 		[0, -(randZ + 1.5)],
-	] as [number, number][]) {
+	];
+	for (const [x, z] of naastHetDak) {
+		const los = wereld.resolveCircle(x, z, DAK, straal, 3, true, true, true);
+		if (Math.hypot(los.x - x, los.z - z) > EPS) {
+			fout('stad', `de buitenschil duwt je op dakhoogte terug bij (${nr(x)}, ${nr(z)}): over de dakrand stappen kan niet`);
+		}
+	}
+	// Wat er onder je ligt is een tweede vraag, en pal west ligt daar de mond van de
+	// uitritgeul: de bestrating is daar open tot op de helling zes meter lager, en dat
+	// is geen straat om naast het dak te vinden. `controleMaaiveld` toetst dat gat
+	// zelf; alleen déze vraag wijkt eromheen, de duwvraag hierboven niet.
+	for (const [x, z] of naastHetDak.map(([x, z]): [number, number] =>
+		x < 0 && z === 0 ? [x, PLAZA_TRENCH_GAP.maxZ + 1.5] : [x, z],
+	)) {
 		const grond = wereld.groundHeightAt(x, z, DAK, WALK_STEP);
 		if (!bijna(grond, CITY_GROUND_Y)) {
 			fout(
 				'stad',
 				`naast het dak (${nr(x)}, ${nr(z)}): de wereld geeft ${nr(grond)} in plaats van straatniveau — je loopt op lucht`,
 			);
-		}
-		const los = wereld.resolveCircle(x, z, DAK, straal, 3, true, true, true);
-		if (Math.hypot(los.x - x, los.z - z) > EPS) {
-			fout('stad', `de buitenschil duwt je op dakhoogte terug bij (${nr(x)}, ${nr(z)}): over de dakrand stappen kan niet`);
 		}
 	}
 
@@ -2631,7 +3135,73 @@ function controleWegen(): void {
 	eist(asfalt, 'const EW_LEN = 2 * ROAD_INNER_X', 'oost-weststroken die bij de hoektegels ophouden');
 	eist(asfalt, 'const NS_LEN = 2 * ROAD_INNER_Z', 'noord-zuidstroken die bij de hoektegels ophouden');
 
+	controleRijders();
 	controleAftakking();
+}
+
+/**
+ * De motorrijders op de ring.
+ *
+ * De volgafstanden en de botsstraal van het stadsverkeer waren drie losse getallen
+ * met de lengte van een auto erin verwerkt, dus een smaller voertuig kon er alleen bij
+ * door ze te kopiëren, en een kopie die niet meeschuift is precies hoe een motor met
+ * de volgafstand van een auto op de ring belandt. Ze worden nu per carrosserie
+ * gerekend en hier tegen de rijbaan en tegen elkaar nagelopen: dat elk profiel binnen
+ * zijn eigen strook past, dat een stilstaande rij niet in zichzelf schuift, dat de
+ * motor werkelijk korter volgt dan de auto en niet andersom, en dat er in beide
+ * richtingen een rijdt. Alle vier zijn ze onzichtbaar van bovenaf.
+ */
+function controleRijders(): void {
+	const profielen = Object.entries(TRAFFIC_PROFILES);
+	for (const [soort, profiel] of profielen) {
+		if (half(profiel.width) > LANE_OFFSET + EPS) {
+			fout(
+				'wegen',
+				`een ${soort} is ${nr(profiel.width)} m breed en hangt daarmee over de middenstreep: een strookhart ligt ${nr(LANE_OFFSET)} m naast de middellijn`,
+			);
+		}
+		if (profiel.holdGap <= profiel.length) {
+			fout(
+				'wegen',
+				`een ${soort} houdt ${nr(profiel.holdGap)} m hart-op-hart aan terwijl hij zelf ${nr(profiel.length)} m lang is, dus een stilstaande rij schuift in zichzelf`,
+			);
+		}
+		if (profiel.brakeGap <= profiel.holdGap) {
+			fout(
+				'wegen',
+				`een ${soort} gaat pas op ${nr(profiel.brakeGap)} m van zijn gas terwijl hij op ${nr(profiel.holdGap)} m stilstaat, dus hij remt niet maar botst`,
+			);
+		}
+		if (profiel.hit <= 0 || profiel.hit > half(profiel.length)) {
+			fout(
+				'wegen',
+				`de botsstraal van een ${soort} is ${nr(profiel.hit)} m en past niet binnen zijn eigen neus (${nr(half(profiel.length))} m)`,
+			);
+		}
+	}
+
+	const auto = TRAFFIC_PROFILES.car;
+	const rijder = TRAFFIC_PROFILES.rider;
+	if (rijder.length >= auto.length || rijder.width >= auto.width) {
+		fout(
+			'wegen',
+			`een motor meet ${nr(rijder.length)} bij ${nr(rijder.width)} m en is daarmee niet smaller dan de auto (${nr(auto.length)} bij ${nr(auto.width)} m)`,
+		);
+	}
+	if (rijder.holdGap >= auto.holdGap || rijder.brakeGap >= auto.brakeGap) {
+		fout(
+			'wegen',
+			`een motor volgt op ${nr(rijder.holdGap)} m en remt op ${nr(rijder.brakeGap)} m, en dat is geen krapper profiel dan de auto (${nr(auto.holdGap)} en ${nr(auto.brakeGap)} m)`,
+		);
+	}
+
+	const perRichting = ROAD_RINGS.map(
+		(_strook, ring) => TRAFFIC_FLEET.filter((soort, slot) => soort === 'rider' && slot % ROAD_RINGS.length === ring).length,
+	);
+	for (const [ring, aantal] of perRichting.entries()) {
+		if (aantal > 0) continue;
+		fout('wegen', `richting ${ring} van de ringweg rijdt geen enkele motor, dus daar is het weer alleen blik`);
+	}
 }
 
 /** Op welke rijstrook een punt precies op het hart ligt, en welke kant die strook daar op rijdt. */
@@ -2732,16 +3302,634 @@ function controleAftakking(): void {
 	}
 
 	// De slagboom staat op de inrit, naast de heenstrook, en zijn arm sluit alleen die af.
-	if (EXIT_BOOM.x < EXIT_APRON.minX || EXIT_BOOM.x > EXIT_APRON.maxX) {
-		fout('wegen', `de slagboom staat op x ${nr(EXIT_BOOM.x)} en dus niet op de inrit`);
+	if (EXIT_BOOM.post.x < EXIT_APRON.minX || EXIT_BOOM.post.x > EXIT_APRON.maxX) {
+		fout('wegen', `de slagboom staat op x ${nr(EXIT_BOOM.post.x)} en dus niet op de inrit`);
 	}
-	if (EXIT_BOOM.postZ < EXIT_LANE_OFFSET + halveAuto) {
-		fout('wegen', `de paal van de slagboom staat op z ${nr(EXIT_BOOM.postZ)}, binnen de rijstrook naar binnen`);
+	if (EXIT_BOOM.post.z < EXIT_LANE_OFFSET + halveAuto) {
+		fout('wegen', `de paal van de slagboom staat op z ${nr(EXIT_BOOM.post.z)}, binnen de rijstrook naar binnen`);
 	}
-	const tip = EXIT_BOOM.postZ - EXIT_BOOM.armLength;
+	if (!bijna(EXIT_BOOM.post.y, EXIT_APRON_TOP_Y)) {
+		fout('wegen', `de slagboom staat op y ${nr(EXIT_BOOM.post.y)} en de inrit waar hij op staat op ${nr(EXIT_APRON_TOP_Y)}`);
+	}
+	const tip = EXIT_BOOM_TIP_Z;
 	if (tip > EXIT_LANE_OFFSET) fout('wegen', `de arm reikt tot z ${nr(tip)} en sluit de strook naar binnen niet af`);
 	if (tip < -EXIT_LANE_OFFSET + halveAuto) {
 		fout('wegen', `de arm reikt tot z ${nr(tip)} en staat daarmee in de strook naar buiten`);
+	}
+}
+
+// ── 15b2. de slagbomen en wie er langs mogen ───────────────────────────────
+
+/** Simulatiestap van de rijproeven hieronder. Zestig hertz, zoals een frame. */
+const RIT_DT = 1 / 60;
+/** Snelheid waarmee de proefrit op een boom af rijdt (m/s): stapvoets, dus de arm heeft alle tijd. */
+const RIT_SNELHEID = 3;
+/** Zoveel meter voorbij de arm telt als "erlangs". */
+const RIT_DOORGANG = 0.2;
+/** Hoogte waarop een voertuig zijn botsingsvraag stelt, boven het wegdek. */
+const RIT_ROMPHOOGTE = 0.6;
+/** Boven dit loopvlak hoort geen enkel voertuig; de proefritten rijden geen daken. */
+const RIT_PLAFOND = 10;
+
+/**
+ * Rijd één voertuig van deze klasse op deze boom af en geef terug hoe ver het komt.
+ *
+ * Precies wat App doet: de armen lopen eerst op wat ze vorige frame zagen, dan meldt
+ * het voertuig zich, dan lost de wereld de botsing op. Het antwoord is de x die het
+ * haalt; voorbij de paal betekent erlangs.
+ */
+async function rijdNaarBoom(spec: BarrierSpec, klasse: TrafficClass): Promise<number> {
+	const { Barriers } = await import('#/scene/city/Barriers');
+	const stad = new CollisionWorld();
+	const bomen = new Barriers(stad);
+	const strook = barrierApproachBounds(spec);
+	const z = midpoint(strook.minZ, strook.maxZ);
+	const straal = half(TRAFFIC_CAR.width);
+	const richting = -spec.approachSide;
+	const doel = spec.post.x + richting * (half(BARRIER_HARDWARE.arm.thickness) + RIT_DOORGANG);
+	let x = spec.post.x - richting * spec.sight;
+	for (let stap = 0; stap < Math.ceil(spec.sight / (RIT_SNELHEID * RIT_DT)) + 1; stap++) {
+		bomen.update(RIT_DT);
+		bomen.approach(x, z, klasse);
+		const opgelost = stad.resolveCircle(
+			x + richting * RIT_SNELHEID * RIT_DT,
+			z,
+			spec.post.y + RIT_ROMPHOOGTE,
+			straal,
+			4,
+			true,
+			false,
+			true,
+		);
+		x = opgelost.x;
+		if ((doel - x) * richting <= 0) break;
+	}
+	return x;
+}
+
+/** Om de hoeveel meter een route bemonsterd wordt bij het zoeken naar een aanloopstrook. */
+const ROUTE_STAP = 0.5;
+
+/**
+ * Elke klasse die de broncode ooit bij een boom meldt.
+ *
+ * Een boom die een klasse toelaat die niemand aanbiedt leest precies zoals een boom
+ * die werkt: hij staat er, hij heeft beleid, en hij gaat nooit open. De stad-garageboom
+ * liet `npc-traffic` toe en er rijdt daar geen enkele sim.
+ */
+function gemeldeVerkeersklassen(): Set<TrafficClass> {
+	const gemeld = new Set<TrafficClass>();
+	for (const pad of rekenBestanden('src')) {
+		const code = readFileSync(new URL(`../${pad}`, import.meta.url), 'utf8');
+		for (const treffer of code.matchAll(/\.approach\s*\([^)]*?'([a-z-]+)'\s*\)/g)) {
+			const klasse = TRAFFIC_CLASSES.find((kandidaat) => kandidaat === treffer[1]);
+			if (klasse) gemeld.add(klasse);
+		}
+	}
+	return gemeld;
+}
+
+/** Elk punt waar het stadsverkeer langskomt: de twee ringstroken en de aftakking. */
+function verkeerspunten(): [number, number][] {
+	const punten: [number, number][] = [];
+	for (const ring of ROAD_RINGS) {
+		for (const rand of ring.edges) {
+			for (let afstand = 0; afstand <= rand.len; afstand += ROUTE_STAP) {
+				punten.push([rand.ox + rand.dx * afstand, rand.oz + rand.dz * afstand]);
+			}
+		}
+	}
+	for (let i = 1; i < EXIT_BRANCH_ROUTE.length; i++) {
+		const van = at(EXIT_BRANCH_ROUTE, i - 1);
+		const naar = at(EXIT_BRANCH_ROUTE, i);
+		const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
+		for (let afstand = 0; afstand <= lengte; afstand += ROUTE_STAP) {
+			const t = lengte === 0 ? 0 : afstand / lengte;
+			punten.push([lerp(van.x, naar.x, t), lerp(van.z, naar.z, t)]);
+		}
+	}
+	return punten;
+}
+
+/**
+ * Komt er iets van deze klasse ooit in de aanloopstrook van deze boom?
+ *
+ * Het stadsverkeer rijdt geschreven routes, dus daar is het antwoord te meten. De
+ * speler rijdt waar hij wil zolang er iets is om in te stappen, en te voet meldt
+ * niemand zich bij een boom.
+ */
+function komtLangsDeBoom(spec: BarrierSpec, klasse: TrafficClass): boolean {
+	if (klasse === 'player-vehicle') return DRIVEABLE_SPOTS.length > 0;
+	if (klasse !== 'npc-traffic') return false;
+	const strook = barrierApproachBounds(spec);
+	return verkeerspunten().some(([x, z]) => x >= strook.minX && x <= strook.maxX && z >= strook.minZ && z <= strook.maxZ);
+}
+
+/**
+ * De slagbomen: wie erlangs mag staat op de boom en niet in het voertuig.
+ *
+ * Ze hielden allebei niets tegen — je reed er in een huurauto dwars doorheen — en de
+ * ene hing aan het ringverkeer terwijl de andere op een sinus op en neer ging. Nu is
+ * de liggende arm een collider en zegt het toelatingsbeleid van de boom of hij omhoog
+ * gaat. Deze controle rijdt daarom hetzelfde stuk drie keer, één keer per klasse, en
+ * verwacht per klasse het antwoord dat op de boom staat.
+ */
+async function controleSlagbomen(): Promise<void> {
+	for (const probleem of validateSpatialWorld(BARRIER_ENTITIES)) {
+		fout('slagbomen', `${probleem.code}: ${probleem.message}`);
+	}
+	if (BARRIER_SPECS.length === 0) {
+		fout('slagbomen', 'er staat geen enkele slagboom in het wereldmodel');
+		return;
+	}
+	stubDocument();
+	const gemeld = gemeldeVerkeersklassen();
+
+	for (const spec of BARRIER_SPECS) {
+		const poort = barrierGateCollider(spec);
+		if (poort.minY > spec.post.y + EPS) {
+			fout('slagbomen', `de doorgang van ${spec.id} begint op y ${nr(poort.minY)} en niet op zijn eigen loopvlak`);
+		}
+		if (poort.maxY <= spec.post.y + BARRIER_HARDWARE.pivotY) {
+			fout('slagbomen', `de doorgang van ${spec.id} houdt op ${nr(poort.maxY)} op, onder het scharnier van zijn eigen arm`);
+		}
+		const strook = barrierApproachBounds(spec);
+		if (strook.minX > spec.post.x - spec.sight + EPS && strook.maxX < spec.post.x + spec.sight - EPS) {
+			fout('slagbomen', `de aanloopstrook van ${spec.id} is korter dan de ${nr(spec.sight)} m waarop hij hoort te zien`);
+		}
+
+		for (const klasse of TRAFFIC_CLASSES) {
+			const toegelaten = barrierAdmits(spec, klasse);
+			// Een vergunning die niemand kan tonen is geen vergunning. Dezelfde regel
+			// als bij een `penetration` die nergens in snijdt en een vrijstellingsregel
+			// die niets meer raakt: hij staat er, hij doet niets, en hij leest als beleid.
+			if (toegelaten && !gemeld.has(klasse)) {
+				fout('slagbomen', `${spec.id} laat ${klasse} toe, maar nergens in src/ meldt iets zich als ${klasse} bij een boom`);
+			} else if (toegelaten && !komtLangsDeBoom(spec, klasse)) {
+				fout('slagbomen', `${spec.id} laat ${klasse} toe, maar geen enkele ${klasse} komt ooit in zijn aanloopstrook`);
+			}
+			const bereikt = await rijdNaarBoom(spec, klasse);
+			const erlangs = (bereikt - spec.post.x) * -spec.approachSide > 0;
+			if (toegelaten && !erlangs) {
+				fout(
+					'slagbomen',
+					`${spec.id} laat ${klasse} toe, maar die komt niet verder dan x ${nr(bereikt)} (paal op ${nr(spec.post.x)})`,
+				);
+			}
+			if (!toegelaten && erlangs) {
+				fout('slagbomen', `${spec.id} laat ${klasse} niet toe en die rijdt er tot x ${nr(bereikt)} toch doorheen`);
+			}
+		}
+	}
+}
+
+// ── 15b3. wat een voertuig van het wegdek merkt ────────────────────────────
+
+/**
+ * Hellinghouding en vrije val van de voertuigen.
+ *
+ * Op de garagehelling kantelde er niets: elk voertuig vroeg alleen de hoogte onder
+ * zijn eigen hart, en één hoogte is geen helling, dus je zweefde vlak omhoog met het
+ * dek zichtbaar schuin onder je door. En van een rand af sprong de hoogte in één
+ * frame naar het vlak beneden, want die hoogte werd elk frame overgenomen zonder
+ * verticale snelheid ertussen.
+ */
+async function controleVoertuigen(): Promise<void> {
+	const helling =
+		span(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y) / span(PARKING_EXIT_RAMP.end.x, PARKING_EXIT_RAMP.start.x);
+	const middenX = midpoint(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x);
+	const z = PARKING_EXIT_RAMP.start.z;
+	const y = parkingExitRampY(middenX);
+
+	// Elke soort die de speler wegrijdt heeft zijn eigen asafstand, en elk van die
+	// asafstanden moet dezelfde helling opleveren: de auto meet over 2,5 m en de motor
+	// over anderhalve, en een helling die van de meetlat afhangt is geen helling.
+	for (const [soort, rijgedrag] of Object.entries(DRIVEABLE_HANDLING)) {
+		const asafstand = rijgedrag.wheelbase;
+		if (asafstand <= 0) {
+			fout('voertuigen', `de ${soort} meet zijn helling over ${nr(asafstand)} m, en dan is er niets om over te meten`);
+			continue;
+		}
+		// Naar het westen loopt de uitrit omhoog, dus daar gaat de neus omhoog en de
+		// andere kant op omlaag. Op een rechte helling maakt de asafstand niet uit.
+		const omhoog = wereld.surfacePitchAt(middenX, z, y, -1, 0, asafstand);
+		const omlaag = wereld.surfacePitchAt(middenX, z, y, 1, 0, asafstand);
+		if (!bijna(omhoog, Math.atan(helling), 1e-3)) {
+			fout('voertuigen', `de uitrit klimt ${nr(Math.atan(helling))} rad en een ${soort} erop kantelt ${nr(omhoog)} rad`);
+		}
+		if (!bijna(omlaag, -omhoog, 1e-3)) {
+			fout('voertuigen', `dezelfde helling levert een ${soort} ${nr(omhoog)} rad omhoog en ${nr(omlaag)} rad omlaag op`);
+		}
+		if (!bijna(wereld.surfacePitchAt(0, 0, levelY('p1'), 1, 0, asafstand), 0, 1e-6)) {
+			fout('voertuigen', `op de vlakke parkeervloer staat een ${soort} niet vlak`);
+		}
+	}
+
+	// Van de rand van het bovenste bordes van de garagespiraal af: een boog met
+	// dezelfde zwaartekracht als de speler, niet één frame waarin de hoogte naar het
+	// maaiveld beneden springt.
+	const bordes = GARAGE_RAMP_LANDINGS[GARAGE_RAMP_LANDINGS.length - 1];
+	if (!bordes) {
+		fout('voertuigen', 'de garagespiraal heeft geen bordes om vanaf te rijden');
+		return;
+	}
+	const randX = bordes.maxX + 1;
+	const randZ = midpoint(bordes.minZ, bordes.maxZ);
+	const start = bordes.y;
+	const bodem = CITY_GROUND_Y;
+	const toestand: VehicleGroundState = { y: start, vy: 0, grounded: true };
+	const hoogtes: number[] = [start];
+	let frames = 0;
+	const maxFrames = Math.ceil(10 / RIT_DT);
+	while (frames < maxFrames) {
+		stepVehicleGround(wereld, toestand, randX, randZ, RIT_DT, { floorOverride: null, ceiling: RIT_PLAFOND });
+		hoogtes.push(toestand.y);
+		frames++;
+		if (toestand.grounded && frames > 1) break;
+	}
+	if (toestand.grounded && frames <= 1) {
+		fout('voertuigen', `van de rand op y ${nr(start)} af blijft een voertuig staan; daar ligt de vloer op ${nr(bodem)}`);
+	}
+	if (!toestand.grounded) {
+		fout('voertuigen', `een voertuig valt na ${nr(frames * RIT_DT)} s nog steeds en landt niet op ${nr(bodem)}`);
+	} else if (!bijna(toestand.y, bodem, 1e-3)) {
+		fout('voertuigen', `een voertuig landt op y ${nr(toestand.y)} in plaats van op de vloer ${nr(bodem)}`);
+	}
+	// Elke stap groter dan de vorige: dat is versnellen, en niet één sprong.
+	let vorige = 0;
+	for (let i = 2; i < hoogtes.length - 1; i++) {
+		const zak = span(at(hoogtes, i), at(hoogtes, i - 1));
+		if (zak <= vorige) {
+			fout('voertuigen', `de val zakt bij frame ${i} ${nr(zak)} m na ${nr(vorige)} m, dus hij versnelt niet`);
+			break;
+		}
+		vorige = zak;
+	}
+	// En de valtijd is die van een vrije val over dezelfde hoogte, op één frame na.
+	const vrijeVal = Math.sqrt((2 * span(bodem, start)) / GRAVITY);
+	if (Math.abs(frames * RIT_DT - vrijeVal) > RIT_DT * 2) {
+		fout(
+			'voertuigen',
+			`de val duurt ${nr(frames * RIT_DT)} s waar vrije val over ${nr(span(bodem, start))} m ${nr(vrijeVal)} s duurt`,
+		);
+	}
+
+	await controleUitstappen();
+}
+
+/** Waar de proef uitstapt: midden op de zuidstoep, ver van de vrijstelling rond de uitritgeul. */
+const UITSTAP_BUITEN = { x: midpoint(PLAZA_OUTER.minX, PLAZA_OUTER.maxX), y: CITY_GROUND_Y, z: PLAZA_OUTER.maxZ - 2 };
+
+// ── 15b3c. wie klem staat komt er weer uit ─────────────────────────────────
+
+/**
+ * Uit de geometrie komen waar je in staat.
+ *
+ * Een herstelde sessie zet je terug op een punt uit de vorige wereld, en een rit die
+ * daarbij niet terugkomt laat je te voet in het voertuig staan waar je op zat. Daar
+ * loop je niet meer uit: elke stap wordt teruggeduwd naar waar je al klem stond, en
+ * dat is wat `unstickBody` na een herstel en na een teleport wegneemt. Elke massieve
+ * doos waar een lichaam middenin past hoort hem er langs de dichtstbijzijnde kant uit
+ * te zetten, en in de open ruimte hoort hij niemand te verzetten.
+ */
+function controleKlemvrij(): void {
+	const straal = STANDING_PEDESTRIAN.radius;
+	let gemeten = 0;
+	for (const doos of wereld.boxes) {
+		if (doos.disabled || doos.climbable || doos.outdoor) continue;
+		// Alleen dozen waar een lichaam echt middenin past; in een dunne plaat staat de
+		// rand er al buiten en meet de proef niets.
+		if (span(doos.minX, doos.maxX) < straal * 2 || span(doos.minZ, doos.maxZ) < straal * 2) continue;
+		gemeten++;
+		const x = midpoint(doos.minX, doos.maxX);
+		const z = midpoint(doos.minZ, doos.maxZ);
+		const los = wereld.unstickBody(x, z, doos.minY ?? CITY_GROUND_Y, false, straal);
+		const nogBinnen =
+			los.x > doos.minX - straal + EPS &&
+			los.x < doos.maxX + straal - EPS &&
+			los.z > doos.minZ - straal + EPS &&
+			los.z < doos.maxZ + straal - EPS;
+		if (nogBinnen) {
+			fout(
+				'klemvrij',
+				`midden in ${doos.label ?? 'een naamloze doos'} op (${nr(x)}, ${nr(z)}) blijf je klem staan op (${nr(los.x)}, ${nr(los.z)})`,
+			);
+		}
+	}
+	if (gemeten === 0) {
+		fout('klemvrij', 'er is geen enkele massieve doos waar een lichaam middenin past, dus deze controle meet niets');
+	}
+
+	// En wie vrij staat wordt niet verzet: een losmaakstap die iedereen verplaatst is
+	// een teleport en geen redding.
+	const vrij = profilePoint(INGANG_STANDPUNT).pose;
+	const stil = wereld.unstickBody(vrij.x, vrij.z, CITY_GROUND_Y, true, straal);
+	if (!bijna(stil.x, vrij.x, 1e-9) || !bijna(stil.z, vrij.z, 1e-9)) {
+		fout(
+			'klemvrij',
+			`op de vrije stoep bij ${INGANG_STANDPUNT} word je van (${nr(vrij.x)}, ${nr(vrij.z)}) naar (${nr(stil.x)}, ${nr(stil.z)}) verzet`,
+		);
+	}
+}
+
+/**
+ * Waar je uit een voertuig stapt, stap je uit.
+ *
+ * `board` zet de wereld op 'city' zodat een auto de stad in mag, en `release` zette
+ * hem terug op 'mall' en trok het uitstappunt daarna door dezelfde voetafdrukklem.
+ * Buiten op de motor uitstappen zette je elf meter verderop tegen de zuidrand van de
+ * footprint, binnen het gebouw. Het uitstappunt krijgt nu dezelfde vrijstelling als de
+ * speler te voet, en die vrijstelling hangt aan de hoogte en niet aan de gedeelde klem.
+ */
+async function controleUitstappen(): Promise<void> {
+	stubDocument();
+	const [{ Barriers }, { DriveableCars }] = await Promise.all([import('#/scene/city/Barriers'), import('#/scene/DriveableCars')]);
+	const motor = RIDEABLE_MOTORCYCLE_SPOTS[0];
+	if (!motor) {
+		fout('voertuigen', 'er staat geen motor die de speler wegrijdt');
+		return;
+	}
+	const staanplaatsen = [
+		{ waar: 'op de stoep', zone: 'stad', rit: { ...UITSTAP_BUITEN, yaw: 0 } },
+		{ waar: 'in de garage', zone: zoneOfLevel('p1'), rit: { x: motor.x, y: motor.y, z: motor.z, yaw: motor.yaw } },
+	] as const;
+	const stappen: number[] = [];
+	for (const plaats of staanplaatsen) {
+		const stad = new CollisionWorld();
+		const voertuigen = new DriveableCars(stad, new Barriers(stad));
+		if (!voertuigen.resume({ id: motor.name, ...plaats.rit, speed: 0 })) {
+			fout('voertuigen', `${motor.name} is ${plaats.waar} niet terug te zetten om uit te stappen`);
+			return;
+		}
+		const uit = voertuigen.release();
+		const beland = zoneAt(uit.x, uit.y, uit.z);
+		if (beland !== plaats.zone) {
+			fout(
+				'voertuigen',
+				`wie ${plaats.waar} uitstapt op (${nr(plaats.rit.x)}, ${nr(plaats.rit.z)}) belandt op (${nr(uit.x)}, ${nr(uit.z)}) in ${beland} in plaats van in ${plaats.zone}`,
+			);
+		}
+		if (stad.boundsMode !== 'mall') {
+			fout(
+				'voertuigen',
+				`na uitstappen ${plaats.waar} staat de gedeelde wereld op '${stad.boundsMode}', dus mag elke sim de mall uit`,
+			);
+		}
+		stappen.push(Math.hypot(uit.x - plaats.rit.x, uit.z - plaats.rit.z));
+	}
+	// Even ver opzij, waar je ook uitstapt: verschilt het, dan heeft de klem aan één
+	// van de twee getrokken.
+	const [buiten, binnen] = stappen;
+	if (buiten === undefined || binnen === undefined || !bijna(buiten, binnen, 1e-6)) {
+		fout('voertuigen', `uitstappen zet je buiten ${nr(buiten ?? 0)} m opzij en in de garage ${nr(binnen ?? 0)} m`);
+	}
+
+	// En de vloer waarop je uitstapt is de vloer waar het voertuig op staat. De buggy
+	// rijdt de lift in, dus die vloer is de cabinevloer; wie hem uit een vaste
+	// zoekhoogte haalt vindt altijd de begane grond en zet je van V1 af naar beneden.
+	const [THREE, { LightPool }, { ScrubberBuggy }] = await Promise.all([
+		import('three'),
+		import('#/render/LightPool'),
+		import('#/scene/ScrubberBuggy'),
+	]);
+	const dek = new CollisionWorld();
+	const buggy = new ScrubberBuggy(dek, new LightPool(new THREE.Scene()), new Barriers(dek));
+	const cabine = levelY('v1');
+	buggy.board();
+	buggy.setFloorOverride(cabine);
+	buggy.update(RIT_DT, { throttle: 0, steer: 0, boost: false });
+	const uitCabine = buggy.release();
+	if (!bijna(uitCabine.y, cabine, 1e-6)) {
+		fout(
+			'voertuigen',
+			`uit de liftcabine op ${nr(cabine)} stap je op ${nr(uitCabine.y)}, dus niet op de vloer waar de buggy staat`,
+		);
+	}
+}
+
+// ── 15b3b. de motor die de speler wegrijdt ─────────────────────────────────
+
+/** Zo lang duurt de proefrit op de motor, in seconden. */
+const MOTORRIT_DUUR = 1;
+/** Zoveel van de afstand die zijn eigen optrekvermogen belooft moet hij halen. */
+const MOTORRIT_RENDEMENT = 0.9;
+/** Speling op de koers: verder dan dit naast zijn eigen voorwaartse as en het is niet vooruit. */
+const MOTORRIT_KOERS = 1e-3;
+/** Hoever het zadel na een herbouw van de motor zelf mag liggen: de stoel staat achter het hart. */
+const MOTORRIT_ZADEL = 1;
+
+/**
+ * Waarin de motor de huurauto voorbij hoort te gaan, elk cijfer op zijn eigen regel.
+ *
+ * Twee regels met drie voorwaarden erin drukten altijd hetzelfde paar getallen af.
+ * Een `boostSpeed` die terugliep meldde zich dan met een zin over `accel` en
+ * `maxSpeed`, en met `leanPerSteerSpeed` op nul verscheen "hij hangt tot 0.55 rad en
+ * legt zich daarmee niet verder in dan de huurauto (0.12 rad)" — 0.55 is meer dan
+ * 0.12, dus die zin sprak zichzelf tegen en wees de lezer de verkeerde constante.
+ */
+const SCHERPER_DAN_DE_AUTO: readonly {
+	wat: string;
+	eenheid: string;
+	lees: (rijgedrag: DriveableHandling) => number;
+}[] = [
+	{ wat: 'trekt op met', eenheid: 'm/s²', lees: (r) => r.accel },
+	{ wat: 'loopt', eenheid: 'm/s', lees: (r) => r.maxSpeed },
+	{ wat: 'sprint tot', eenheid: 'm/s', lees: (r) => r.boostSpeed },
+	{ wat: 'hangt in de bocht tot', eenheid: 'rad', lees: (r) => r.maxLean },
+	{ wat: 'legt zich per stuur en vaart in met', eenheid: 'rad·s/m', lees: (r) => r.leanPerSteerSpeed },
+];
+
+/**
+ * Instappen, gas geven, en waar hij dan heen gaat.
+ *
+ * De rijrichting is camera-vooruit, `−(sin, cos)`, en de carrosserie staat er een halve
+ * slag op: met `+(sin, cos)` reed de huurauto achteruit terwijl je uit de achterruit
+ * keek, en dat was aan de camera niet te zien omdat die meedraaide. Een tweede soort
+ * op dezelfde machinerie erbij is precies waar zo'n omgeklapt teken opnieuw in sluipt,
+ * dus de proefrit rijdt hem: W is vooruit, hij haalt wat zijn eigen optrekvermogen
+ * belooft, hij hangt de bocht in waar de auto zich alleen op zijn veren zet, en hij
+ * komt niet verder dan de hoek die op hem staat.
+ */
+async function controleMotorrit(): Promise<void> {
+	const plek = RIDEABLE_MOTORCYCLE_SPOTS[0];
+	if (!plek) {
+		fout('motorrit', 'er staat geen motor die de speler wegrijdt');
+		return;
+	}
+	const auto = DRIVEABLE_HANDLING.car;
+	const motor = DRIVEABLE_HANDLING.motorcycle;
+	for (const eigenschap of SCHERPER_DAN_DE_AUTO) {
+		const opMotor = eigenschap.lees(motor);
+		const opAuto = eigenschap.lees(auto);
+		if (opMotor > opAuto) continue;
+		fout(
+			'motorrit',
+			`de motor ${eigenschap.wat} ${nr(opMotor)} ${eigenschap.eenheid} waar de huurauto ${nr(opAuto)} ${eigenschap.eenheid} haalt, en is daarin dus niet scherper`,
+		);
+	}
+
+	stubDocument();
+	const [THREE, { Barriers }, { DriveableCars }] = await Promise.all([
+		import('three'),
+		import('#/scene/city/Barriers'),
+		import('#/scene/DriveableCars'),
+	]);
+	const stad = new CollisionWorld();
+	const voertuigen = new DriveableCars(stad, new Barriers(stad));
+	const slot = voertuigen.nearestCar(new THREE.Vector3(plek.x, plek.y + 1, plek.z), 1);
+	if (!slot || slot.name !== plek.name) {
+		fout('motorrit', `bij de motor op (${nr(plek.x)}, ${nr(plek.z)}) staat ${slot ? slot.name : 'niets'} om in te stappen`);
+		return;
+	}
+	if (!voertuigen.board(slot) || voertuigen.activeKind !== 'motorcycle') {
+		fout('motorrit', `instappen bij ${plek.name} levert ${voertuigen.activeKind ?? 'niets'} op`);
+		return;
+	}
+
+	// Zoals de mesh staat: de neus is lokaal +z, dus de carrosserie draait π op de rijkoers.
+	const koers = voertuigen.heading;
+	const meshDraai = Math.atan2(Math.sin(slot.mesh.rotation.y - koers), Math.cos(slot.mesh.rotation.y - koers));
+	if (!bijna(Math.abs(meshDraai), Math.PI, 1e-9)) {
+		fout('motorrit', `de carrosserie staat ${nr(meshDraai)} rad op de rijkoers in plaats van een halve slag`);
+	}
+
+	const vanaf = voertuigen.ride;
+	if (!vanaf) {
+		fout('motorrit', 'de motor meldt geen rit terwijl er wel iemand op zit');
+		return;
+	}
+	const stappen = Math.round(MOTORRIT_DUUR / RIT_DT);
+	for (let stap = 0; stap < stappen; stap++) voertuigen.update(RIT_DT, { throttle: 1, steer: 0, boost: false });
+	const naar = voertuigen.ride;
+	if (!naar) {
+		fout('motorrit', 'de rit is halverwege de proef opgehouden te bestaan');
+		return;
+	}
+
+	// W is vooruit: de verplaatsing ligt op de voorwaartse as van de rijkoers, en niet
+	// een halve slag ertegenin.
+	const vooruitX = -Math.sin(koers);
+	const vooruitZ = -Math.cos(koers);
+	const dx = naar.x - vanaf.x;
+	const dz = naar.z - vanaf.z;
+	const langs = dx * vooruitX + dz * vooruitZ;
+	const dwars = Math.abs(dx * -vooruitZ + dz * vooruitX);
+	if (langs <= 0) {
+		fout('motorrit', `met W erop komt de motor ${nr(-langs)} m achteruit; de rijrichting staat omgekeerd`);
+	}
+	if (dwars > MOTORRIT_KOERS) {
+		fout('motorrit', `zonder stuur wijkt de motor ${nr(dwars)} m zijwaarts af van zijn eigen koers`);
+	}
+	const belooft = half(motor.accel * MOTORRIT_DUUR * MOTORRIT_DUUR);
+	if (langs < belooft * MOTORRIT_RENDEMENT) {
+		fout(
+			'motorrit',
+			`de motor legt in ${nr(MOTORRIT_DUUR)} s ${nr(langs)} m af terwijl zijn optrekvermogen ${nr(belooft)} m belooft`,
+		);
+	}
+
+	// En hangen: vol stuur legt hem in de bocht, tot niet verder dan zijn eigen hoek.
+	voertuigen.update(RIT_DT, { throttle: 1, steer: 1, boost: false });
+	const helling = slot.mesh.rotation.z;
+	if (helling <= 0) {
+		fout('motorrit', `met vol stuur naar één kant hangt de motor ${nr(helling)} rad, dus de andere kant op of niet`);
+	}
+	if (Math.abs(helling) > motor.maxLean + EPS) {
+		fout('motorrit', `de motor hangt ${nr(helling)} rad, voorbij de ${nr(motor.maxLean)} rad die op hem staat`);
+	}
+
+	// Een edit tijdens het rijden bouwt de wereld en elk voertuig erin opnieuw op, en
+	// de rit hoort dat te overleven: hij komt terug via de rit-soort van de auto's,
+	// want de motor is een slot van dezelfde bouwer. Komt hij niet terug, dan sta je
+	// te voet in de motor waar je op zat en loop je daar niet meer uit.
+	const onderweg = voertuigen.ride;
+	if (!onderweg) {
+		fout('motorrit', 'de rit is voor de herbouwproef opgehouden te bestaan');
+		return;
+	}
+	const herbouwd = new CollisionWorld();
+	const opnieuw = new DriveableCars(herbouwd, new Barriers(herbouwd));
+	if (!opnieuw.resume(onderweg)) {
+		fout('motorrit', `na een herbouw is ${onderweg.id} niet terug te vinden om weer op te stappen`);
+		return;
+	}
+	if (opnieuw.activeKind !== 'motorcycle') {
+		fout('motorrit', `na een herbouw stap je op ${opnieuw.activeKind ?? 'niets'} in plaats van op de motor`);
+	}
+	const zadel = opnieuw.getSeatPosition();
+	if (!bijna(Math.hypot(zadel.x - onderweg.x, zadel.z - onderweg.z), 0, MOTORRIT_ZADEL)) {
+		fout(
+			'motorrit',
+			`na een herbouw zit je op (${nr(zadel.x)}, ${nr(zadel.z)}) terwijl de motor op (${nr(onderweg.x)}, ${nr(onderweg.z)}) staat`,
+		);
+	}
+}
+
+// ── 15b4. het geulverkeer en de speler ─────────────────────────────────────
+
+/** Zo lang draait de verkeersproef, in seconden. Ruim boven de klok tussen twee inritten. */
+const GEUL_DUUR = 120;
+/** Stap van de verkeersproef. Grover dan een frame, want er wordt twee minuten mee gedraaid. */
+const GEUL_DT = 1 / 30;
+/** Zo lang staat elke lichtfase in de proef. */
+const GEUL_FASE = 10;
+/** Waar de proefvoetganger op de inrit staat. */
+const GEUL_VOETGANGER_X = -40;
+/** Zoveel meter voorbij hem telt als "erdoorheen gereden". */
+const GEUL_MARGE = 1;
+
+/** Hoe diep de geul in het verkeer komt, met of zonder iemand op de helling. */
+async function diepsteAuto(voetganger: { x: number; y: number; z: number } | null): Promise<number> {
+	const [{ Barriers }, { CityTraffic }] = await Promise.all([
+		import('#/scene/city/Barriers'),
+		import('#/scene/city/CityTraffic'),
+	]);
+	const stad = new CollisionWorld();
+	const bomen = new Barriers(stad);
+	let klok = 0;
+	const verkeer = new CityTraffic(() => (Math.floor(klok / GEUL_FASE) % 2 === 0 ? 'ns' : 'ew'), bomen);
+	verkeer.setObstacleProvider(() => voetganger);
+	let diepste = Number.NEGATIVE_INFINITY;
+	for (let stap = 0; stap < Math.ceil(GEUL_DUUR / GEUL_DT); stap++) {
+		klok = stap * GEUL_DT;
+		bomen.update(GEUL_DT);
+		verkeer.update(GEUL_DT, klok);
+		for (const auto of verkeer.group.children) {
+			if (auto.position.y > -0.5) continue;
+			diepste = Math.max(diepste, auto.position.x);
+		}
+	}
+	verkeer.dispose();
+	return diepste;
+}
+
+/**
+ * Een auto op de aftakking remt voor de speler zoals hij voor een voorligger remt.
+ *
+ * Op de ring deed hij dat al; op de inrit keek hij naar niets en reed hij je van de
+ * helling. Deze controle rijdt dezelfde twee minuten twee keer: één keer met een
+ * lege helling, zodat er echt een auto de geul in gaat, en één keer met iemand erop.
+ */
+async function controleGeulverkeer(): Promise<void> {
+	stubDocument();
+	const leeg = await diepsteAuto(null);
+	if (leeg < PARKING_EXIT_RAMP.start.x) {
+		fout(
+			'geulverkeer',
+			`in ${GEUL_DUUR} s komt er geen auto voorbij x ${nr(PARKING_EXIT_RAMP.start.x)}, dus de proef toetst niets`,
+		);
+		return;
+	}
+	const bezet = await diepsteAuto({
+		x: GEUL_VOETGANGER_X,
+		y: parkingExitRampY(GEUL_VOETGANGER_X),
+		z: EXIT_LANE_OFFSET,
+	});
+	if (bezet > GEUL_VOETGANGER_X - GEUL_MARGE) {
+		fout(
+			'geulverkeer',
+			`met iemand op de helling op x ${nr(GEUL_VOETGANGER_X)} rijdt een auto tot x ${nr(bezet)} en dus door hem heen`,
+		);
 	}
 }
 
@@ -3234,6 +4422,138 @@ function controleZoneklokken(): void {
 	});
 }
 
+// ── 16c. geen gespiegelde tekst ────────────────────────────────────────────
+// `side: THREE.DoubleSide` op een materiaal met een textuur laat je van achteren
+// diezelfde textuur zien, en die staat dan gespiegeld. Het taxidak las IXAT, het
+// vaandel van de AL ZUT-crew TUZ LA, het TIKI BAR-bord spiegelde vanaf de bar en de
+// WET FLOOR-plaat op de schrobber deed hetzelfde. Twee vlakken rug aan rug lezen
+// allebei van links naar rechts: `backToBackLabel` in util/label.
+//
+// Gemeten wordt élk materiaal met zowel een `map` als DoubleSide, want of er tekst
+// in die textuur zit is niet te grepen. Wat er geen tekst in heeft — vlaggen,
+// gezichten, bladeren, water — staat in de tabel hieronder met de reden erbij, en
+// een rij die niets meer raakt is zelf een bouwfout.
+
+const SPIEGEL_VRIJE_BESTANDEN: { pad: string; reden: string }[] = [];
+
+const SPIEGEL_UITZONDERINGEN: Vrijstelling[] = [
+	{
+		pad: 'src/scene/ProtestGroupies.ts',
+		fragment: 'map: tex,',
+		reden: 'de Duitse vlag is drie kleurbanen; gespiegeld staat er nog steeds zwart-rood-goud',
+	},
+	{
+		pad: 'src/scene/ProtestGroupies.ts',
+		fragment: 'map: this.makePrideFlagTex(kind),',
+		reden: 'een regenboogvlag is gestreept en leest van beide kanten hetzelfde',
+	},
+	{
+		pad: 'src/scene/ProtestGroupies.ts',
+		fragment: 'map,',
+		reden:
+			'de gezichtsatlas hangt aan één InstancedMesh met een eigen tegel-shader; twee vlakken rug aan rug zijn daar geen vlakken maar tweemaal de zwerm',
+	},
+];
+
+/** Het omvattende objectliteral van `index`: de eerste `{` links die nog niet gesloten is. */
+function omvattendLiteral(code: string, index: number): { van: number; tot: number } | null {
+	let diepte = 0;
+	let van = -1;
+	for (let i = index; i >= 0; i--) {
+		const teken = code[i];
+		if (teken === '}') diepte++;
+		else if (teken === '{') {
+			if (diepte === 0) {
+				van = i;
+				break;
+			}
+			diepte--;
+		}
+	}
+	if (van < 0) return null;
+	diepte = 0;
+	for (let i = van; i < code.length; i++) {
+		const teken = code[i];
+		if (teken === '{') diepte++;
+		else if (teken === '}') {
+			diepte--;
+			if (diepte === 0) return { van, tot: i };
+		}
+	}
+	return null;
+}
+
+const DUBBELZIJDIG = /\bTHREE\s*\.\s*DoubleSide\b/g;
+/** `map: tex` en de verkorte vorm `map,` zijn dezelfde eigenschap. */
+const TEXTUUR_EIGENSCHAP = /\bmap\s*[:,}]/;
+
+const SPIEGEL_MELDING =
+	'is een textuur op een dubbelzijdig vlak; van achteren leest hij gespiegeld. Zet twee vlakken rug aan rug';
+
+/** `naam.map = ` en `naam.side = THREE.DoubleSide`: dezelfde twee eigenschappen, los toegekend. */
+const TEXTUUR_TOEKENNING = /\b([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.map\s*=[^=]/g;
+const ZIJDE_TOEKENNING = /\b([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.side\s*=\s*THREE\s*\.\s*DoubleSide\b/g;
+
+/** De declaratie van deze naam, tot aan de puntkomma die haar afsluit. */
+function declaratieVan(code: string, naam: string): string | null {
+	const patroon = new RegExp(String.raw`\b(?:const|let|var)\s+${naam.replaceAll('.', String.raw`\.`)}\b[^;]*`);
+	return patroon.exec(code)?.[0] ?? null;
+}
+
+/**
+ * Een textuur op een vlak dat van twee kanten te zien is.
+ *
+ * Twee eigenschappen op één materiaal, en ze hoeven niet in hetzelfde literal te
+ * staan: `mat.map = tex` een paar regels verderop is dezelfde textuur, en
+ * `mat.side = THREE.DoubleSide` dezelfde dubbele zijde. De greep las alleen het
+ * omvattende literal en zag zo'n toekenning dus niet, terwijl de regel die hij
+ * handhaaft breder is dan die vorm.
+ */
+function spiegeltreffers(code: string): Rekentreffer[] {
+	const treffers: Rekentreffer[] = [];
+	const dubbelzijdigeNamen = new Set<string>();
+	for (const zijde of code.matchAll(ZIJDE_TOEKENNING)) {
+		const naam = zijde[1];
+		if (naam !== undefined) dubbelzijdigeNamen.add(naam);
+	}
+	for (const dubbel of code.matchAll(DUBBELZIJDIG)) {
+		const literal = omvattendLiteral(code, dubbel.index);
+		if (!literal) continue;
+		const inhoud = code.slice(literal.van, literal.tot + 1);
+		const textuur = TEXTUUR_EIGENSCHAP.exec(inhoud);
+		if (textuur) {
+			treffers.push({ index: literal.van + textuur.index, melding: SPIEGEL_MELDING });
+			continue;
+		}
+		// Geen textuur in dit literal, maar de naam waar het aan hangt kan er later
+		// alsnog een krijgen. Zonder dit blijft de greep aan de vorm hangen in plaats
+		// van aan de regel.
+		const declaratie = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;]*$/.exec(code.slice(0, literal.van));
+		const naam = declaratie?.[1];
+		if (naam !== undefined) dubbelzijdigeNamen.add(naam);
+	}
+	for (const textuur of code.matchAll(TEXTUUR_TOEKENNING)) {
+		const naam = textuur[1];
+		if (naam === undefined) continue;
+		const declaratie = declaratieVan(code, naam);
+		const dubbelzijdig = dubbelzijdigeNamen.has(naam) || (declaratie !== null && DUBBELZIJDIG.test(declaratie));
+		DUBBELZIJDIG.lastIndex = 0;
+		if (!dubbelzijdig) continue;
+		treffers.push({ index: textuur.index, melding: SPIEGEL_MELDING });
+	}
+	return treffers;
+}
+
+function controleSpiegeltekst(): void {
+	greepDoorBron({
+		naam: 'spiegeltekst',
+		bestanden: rekenBestanden('src'),
+		vrij: SPIEGEL_VRIJE_BESTANDEN,
+		uitzonderingen: SPIEGEL_UITZONDERINGEN,
+		treffers: (code) => spiegeltreffers(code),
+	});
+}
+
 // ── 17. geen tweede kopie van een gedeelde hulp ────────────────────────────
 // De rekenhulpen hierboven bewaken het uitrékenen; dit bewaakt het opnieuw
 // opschrijven. roundRect stond zeven keer woord voor woord in de boom,
@@ -3486,6 +4806,306 @@ function controleZonegraaf(): void {
 	}
 }
 
+// ── het theater: naar binnen lopen, en de zaal die alleen door zijn deuren te zien is ──
+
+/** Hoever voor de deuren de wandeling begint: op het podium, ruim voor de dorpel. */
+const THEATER_START_Z = midpoint(THEATRE_PLAN.podium.minZ, THEATRE_PLAN.podium.maxZ);
+/** En hoever hij binnen moet komen: tot de voorste rij, onderaan het gangpad. */
+const THEATER_DOEL_Z = midpoint(
+	theatreRowDeck(THEATRE_PLAN.seating.rows - 1).minZ,
+	theatreRowBank(THEATRE_PLAN.seating.rows - 1).minZ,
+);
+
+/** Tussen de zuilenrij en de gevel: daar begint een wandeling die de gevel zelf moet toetsen. */
+const THEATER_PUI_Z = THEATRE_PLAN.columns.z - THEATRE_PLAN.columns.radius - PLAYER_RADIUS - 0.1;
+
+/** Hoever uit de hoek de dichte gevel beproefd wordt: naast de buitenste zuil. */
+const THEATER_GEVEL_INZET = 1.5;
+
+/** De speelruimte waarin twee gebouwen elkaar nog niet raken. Onder deze afstand deelt een doos ze. */
+const GEBOUWEN_VRIJE_RUIMTE = 1;
+
+/**
+ * Het theater, gelopen zoals de speler het loopt.
+ *
+ * Het blok was een gevel met deuren erop geschilderd. Wat het nu is staat op vier
+ * plekken tegelijk: de travee in de gevelspec, de dozen in Collision, de volumes in
+ * het wereldmodel en de zone erachter. Dit is de enige controle die vraagt of je er
+ * ook echt in komt, en de tegenhanger ervan — naast de deuren komt niemand naar
+ * binnen — want zonder die helft haalt een theater zonder muren deze controle net
+ * zo goed.
+ *
+ * De rest gaat over wat de zaal een zaal maakt: de gangpaden blijven leeg, de zone
+ * is alleen door zijn eigen deuren te zien, en het gebouw staat vrij van de mall.
+ */
+async function controleTheater(): Promise<void> {
+	const zaalX = THEATRE_PORTAL.centerX;
+	const gangpad = at(THEATRE_AISLES, 0);
+	const gangX = midpoint(gangpad.minX, gangpad.maxX);
+	const foyerZ = midpoint(THEATRE_INTERIOR.maxZ - THEATRE_PLAN.foyer.depth, THEATRE_INTERIOR.maxZ);
+
+	// 1. Van het podium door de travee, de foyer door, de doorgang in de foyerwand
+	// door en het gangpad af tot de voorste rij.
+	const binnen = volgPolylijn(
+		[
+			[zaalX, THEATER_START_Z],
+			[zaalX, foyerZ],
+			[gangX, foyerZ],
+			[gangX, THEATER_DOEL_Z],
+		],
+		THEATRE_FLOOR_Y,
+	);
+	if (binnen.klacht !== null) {
+		fout('theater', `de wandeling naar binnen strandt: ${binnen.klacht}`);
+	} else if (zoneAt(binnen.x, binnen.y, binnen.z) !== 'theatre') {
+		fout(
+			'theater',
+			`de wandeling eindigt op (${nr(binnen.x)}, ${nr(binnen.z)}), en dat ligt in ${zoneAt(binnen.x, binnen.y, binnen.z)}`,
+		);
+	}
+
+	// 2. En naast de travee komt niemand binnen: niet door het zijlicht, dat glas is
+	// voor het oog en wand voor het lichaam, en niet door de dichte gevel ernaast.
+	//
+	// Vanaf `THEATER_PUI_Z` en niet vanaf het podium: de zuilenrij staat ervoor, en
+	// vanaf de trap loopt elke van deze drie al op een zuil stuk. Dan bewijst de
+	// controle dat de portico in de weg staat en niet dat de gevel dicht is.
+	for (const [wat, x] of [
+		['het westelijke zijlicht', midpoint(THEATRE_PORTAL.minX, THEATRE_PORTAL.doorMinX)],
+		['het oostelijke zijlicht', midpoint(THEATRE_PORTAL.doorMaxX, THEATRE_PORTAL.maxX)],
+		['de dichte zuidgevel', THEATRE_PLAN.hall.minX + THEATER_GEVEL_INZET],
+	] as [string, number][]) {
+		const dwars = volgPolylijn(
+			[
+				[x, THEATER_PUI_Z],
+				[x, foyerZ],
+			],
+			THEATRE_FLOOR_Y,
+		);
+		if (zoneAt(x, dwars.y, dwars.z) === 'theatre') {
+			fout('theater', `door ${wat} (x ${nr(x)}) loopt de voetganger tot z ${nr(dwars.z)} de zaal in`);
+		}
+	}
+
+	// 2b. En de schil is verder overal dicht. De wandelingen hierboven lopen elk op
+	// één lijn en zien een gat van drie meter twee meter ernaast niet; de opening die
+	// de zonegraaf uit de gevel afleest is de hele gevel tegelijk. Precies één gat, en
+	// dat is de travee.
+	const overDeHeleGevel = (minU: number, maxU: number): FacadePanel => ({
+		minU,
+		maxU,
+		minY: THEATRE_PLAN.baseY,
+		maxY: THEATRE_PLAN.hallHeight,
+	});
+	// De noord- en zuidkap lopen over de volle breedte en dekken dus de vier hoeken;
+	// de zij-wanden zijn alleen verantwoordelijk voor wat daartussen overblijft. Dat
+	// de kappen die breedte werkelijk halen blijkt uit hun eigen twee regels: over de
+	// hele hal gemeten laat noord niets vallen en zuid alleen de travee.
+	const dichteZijden: readonly CardinalSide[] = ['north', 'west', 'east'];
+	for (const kant of dichteZijden) {
+		const langsZ = kant === 'west' || kant === 'east';
+		const opening = theatreOpeningWithin(
+			kant,
+			langsZ
+				? overDeHeleGevel(
+						THEATRE_PLAN.hall.minZ + THEATRE_PLAN.wallThickness,
+						THEATRE_PLAN.hall.maxZ - THEATRE_PLAN.wallThickness,
+					)
+				: overDeHeleGevel(THEATRE_PLAN.hall.minX, THEATRE_PLAN.hall.maxX),
+		);
+		if (opening === null) continue;
+		fout('theater', `de ${kant}gevel van het theater staat open van ${nr(opening.minU)} tot ${nr(opening.maxU)}`);
+	}
+	const travee = theatreOpeningWithin('south', overDeHeleGevel(THEATRE_PLAN.hall.minX, THEATRE_PLAN.hall.maxX));
+	if (travee === null) {
+		fout('theater', 'de zuidgevel van het theater is dicht, dus er is helemaal geen travee');
+	} else if (
+		!bijna(travee.minU, THEATRE_PORTAL.minX) ||
+		!bijna(travee.maxU, THEATRE_PORTAL.maxX) ||
+		!bijna(travee.maxY, THEATRE_FLOOR_Y + THEATRE_PLAN.doors.headY)
+	) {
+		fout(
+			'theater',
+			`de travee meet x ${nr(travee.minU)}..${nr(travee.maxU)} tot y ${nr(travee.maxY)} in plaats van ${nr(THEATRE_PORTAL.minX)}..${nr(THEATRE_PORTAL.maxX)} tot ${nr(THEATRE_FLOOR_Y + THEATRE_PLAN.doors.headY)}`,
+		);
+	}
+
+	// 3. Geen stoel in een gangpad. De vakken worden door de gangpaden uit de rij
+	// gesneden, dus dit hoort per definitie te kloppen — en dat is precies waarom het
+	// gemeten wordt: één vak dat zijn eigen breedte opschrijft haalt de zaal leeg.
+	const gangpaden = THEATRE_FOYER_ENTITY.volumes.filter((volume) => volume.role === 'aisle-clearance');
+	if (gangpaden.length === 0) {
+		fout('theater', 'de zaal heeft geen enkel gangpad-volume, dus er wordt geen vloer vrijgehouden');
+	}
+	for (const bank of THEATRE_SEATING_ENTITY.volumes) {
+		const stoelen = geometryBounds(bank.geometry);
+		for (const volume of gangpaden) {
+			const vrij = geometryBounds(volume.geometry);
+			if (!overlapt(stoelen, vrij)) continue;
+			fout('theater', `${THEATRE_SEATING_ENTITY.id}.${bank.id} staat in het gangpad ${THEATRE_FOYER_ENTITY.id}.${volume.id}`);
+		}
+	}
+
+	// 4. Elke stoel staat op de vloer van zijn eigen rij, en niet naast of erboven.
+	for (const bank of theatreSeatBanks()) {
+		const vloer = theatreRowY(bank.row);
+		const strook = theatreRowBank(bank.row);
+		for (const x of theatreSeatXs(bank)) {
+			if (x < bank.minX || x > bank.maxX) {
+				fout(
+					'theater',
+					`een stoel van ${bank.id} staat op x ${nr(x)}, buiten zijn eigen vak (${nr(bank.minX)}..${nr(bank.maxX)})`,
+				);
+			}
+			const grond = wereld.groundHeightAt(x, midpoint(strook.minZ, strook.maxZ), vloer, WALK_STEP);
+			if (!bijna(grond, vloer, 1e-6)) {
+				fout(
+					'theater',
+					`een stoel van ${bank.id} op x ${nr(x)} staat op ${nr(vloer)} terwijl de vloer daar op ${nr(grond)} ligt`,
+				);
+			}
+		}
+	}
+
+	// 4b. En wat in de zaal staat hoort ook alleen in de zaal te staan. `accepts` krijgt
+	// van de tekenaar het masker dat `zoneMaskOfBounds` van de doos maakt, dus een zaal
+	// die er stad bij claimt komt nergens meer onderuit: hij wordt vanaf de overkant
+	// van de straat gewoon getekend, met alle stoelen erin.
+	const stoelDoos = geometryBounds(at(THEATRE_SEATING_ENTITY.volumes, 0).geometry);
+	const stoelMasker = zoneMaskOfBounds(stoelDoos);
+	if (stoelMasker !== zoneBit('theatre')) {
+		fout('theater', `een stoelenblok staat in ${zonesOfMask(stoelMasker).join(' en ')} in plaats van alleen in theatre`);
+	}
+
+	// 5. De zonegraaf: het theater is een eigen zone, en de travee is het enige wat
+	// hem aan de stad knoopt. Geen tweede portaal, en geen handmatige lijst.
+	const portalen = ZONE_PORTALS.filter((portaal) => zonesOfMask(portaal.mask).includes('theatre'));
+	if (portalen.length !== 1 || portalen[0]?.id !== THEATRE_ENTRANCE_ENTITY.id) {
+		fout(
+			'theater',
+			`de zaal hangt aan ${portalen.length === 0 ? 'geen enkel portaal' : portalen.map((portaal) => portaal.id).join(' en ')} in plaats van alleen aan ${THEATRE_ENTRANCE_ENTITY.id}`,
+		);
+	}
+	const portaal = portalen[0];
+	if (portaal) {
+		for (const [van, naar] of [
+			['stad', 'theatre'],
+			['theatre', 'stad'],
+		] as [ZoneId, ZoneId][]) {
+			if (portaal.faces.some((vlak) => vlak.from === van && vlak.to === naar)) continue;
+			fout('theater', `de travee levert geen doorkijk van ${van} naar ${naar}`);
+		}
+	}
+	if (!reachableZones('theatre').includes('mall-v0')) {
+		fout('theater', 'vanuit de zaal is de winkelvloer door geen enkel portaal te bereiken');
+	}
+
+	// 6. De twee gebouwen raken elkaar niet. `zoneMaskOfBounds` leest stad af uit
+	// "past niet in één gebouw", en dat antwoord klopt alleen zolang geen doos in de
+	// vereniging van twee schillen past zonder in één ervan te passen.
+	for (let i = 0; i < ZONE_ENCLOSURES.length; i++) {
+		for (let j = i + 1; j < ZONE_ENCLOSURES.length; j++) {
+			const a = at(ZONE_ENCLOSURES, i);
+			const b = at(ZONE_ENCLOSURES, j);
+			const gat = Math.max(
+				a.plan.minX - b.plan.maxX,
+				b.plan.minX - a.plan.maxX,
+				a.plan.minZ - b.plan.maxZ,
+				b.plan.minZ - a.plan.maxZ,
+			);
+			if (gat >= GEBOUWEN_VRIJE_RUIMTE) continue;
+			fout('theater', `${a.id} en ${b.id} staan ${nr(gat)} m uit elkaar; onder ${nr(GEBOUWEN_VRIJE_RUIMTE)} m deelt één doos ze`);
+		}
+	}
+
+	await controleZaalcull(stoelMasker);
+	controleZaallabel();
+}
+
+/**
+ * De stresstest van het zonestelsel: het interieur is er alleen door de travee.
+ *
+ * De vier mall-zones liggen boven elkaar in één voetafdruk en delen hun gaten met
+ * de stad. Het theater is het eerste gebouw dat er náást staat, en dat is precies
+ * het geval waarin een te ruime kegel niets meer cullt: van de overkant van de
+ * straat staat de hele zaal in beeld, en er hoort niets van getekend te worden
+ * zolang je niet door de deuren kijkt.
+ */
+async function controleZaalcull(stoelMasker: number): Promise<void> {
+	const THREE = await import('three');
+	const { ZoneCuller } = await import('#/render/ZoneCuller');
+	const camera = new THREE.PerspectiveCamera(70, 16 / 9, 0.1, 500);
+	const culler = new ZoneCuller();
+	const oog = THEATRE_FLOOR_Y + 1.6;
+	const voorDeDeur = { x: THEATRE_PORTAL.centerX, z: THEATRE_PLAN.stair.zTop + THEATER_KIJKAFSTAND };
+
+	const kijk = (van: Vec3, naar: Vec3, zone: ZoneId): void => {
+		camera.position.set(van.x, van.y, van.z);
+		camera.lookAt(naar.x, naar.y, naar.z);
+		camera.updateMatrixWorld(true);
+		camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+		camera.updateProjectionMatrix();
+		culler.update(camera, zone);
+	};
+
+	// Recht op de travee: de zaal is er, en wat vlak achter de deuren staat blijft.
+	kijk({ x: voorDeDeur.x, y: oog, z: voorDeDeur.z }, { x: voorDeDeur.x, y: oog, z: THEATRE_INTERIOR.minZ }, 'stad');
+	if (!culler.seesZone('theatre'))
+		fout('theater', 'recht op de travee heet de zaal onzichtbaar, terwijl je er zo doorheen kijkt');
+	const inDeFoyer = new THREE.Sphere(
+		new THREE.Vector3(THEATRE_PORTAL.centerX, oog, THEATRE_INTERIOR.maxZ - THEATER_KIJKAFSTAND),
+		1,
+	);
+	if (!culler.accepts(stoelMasker, inDeFoyer)) {
+		fout('theater', 'recht op de travee wordt de foyer achter de deuren weggecullt');
+	}
+
+	// En met de rug ernaartoe is er niets van te zien. Dit is de beet: zonder de
+	// zonedoos gaf een opening áchter de camera de volle camerakegel terug en cullde
+	// de zaal nergens.
+	kijk({ x: voorDeDeur.x, y: oog, z: voorDeDeur.z }, { x: voorDeDeur.x, y: oog, z: voorDeDeur.z + THEATER_KIJKVER }, 'stad');
+	if (culler.seesZone('theatre')) fout('theater', 'met de rug naar de travee heet de zaal nog steeds zichtbaar');
+	const opDeRij = new THREE.Sphere(new THREE.Vector3(THEATRE_PORTAL.centerX, THEATRE_FLOOR_Y, THEATER_DOEL_Z), 1);
+	if (culler.accepts(stoelMasker, opDeRij)) {
+		fout('theater', 'met de rug naar de travee wordt een stoel in de zaal nog steeds geaccepteerd');
+	}
+
+	// En vanuit de mall bestaat de zaal helemaal niet, welke kant je ook op kijkt: de
+	// twee gebouwen delen geen enkel portaal. Dat is wat het hele stelsel hier
+	// oplevert — binnen in de winkels wordt er geen stoel van dit theater getekend.
+	for (const naar of [THEATRE_INTERIOR.minZ, -THEATRE_INTERIOR.minZ]) {
+		kijk({ x: 0, y: V0 + 1.6, z: 0 }, { x: THEATRE_PORTAL.centerX, y: V0 + 1.6, z: naar }, 'mall-v0');
+		if (culler.seesZone('theatre'))
+			fout('theater', 'vanaf de winkelvloer heet de zaal zichtbaar, terwijl er geen portaal heen loopt');
+		if (culler.accepts(stoelMasker, null)) {
+			fout('theater', 'vanaf de winkelvloer wordt geometrie uit de zaal nog steeds geaccepteerd');
+		}
+	}
+}
+
+/** Hoever voor het gebouw de camera staat, en hoe ver hij van de zaal af kijkt. */
+const THEATER_KIJKAFSTAND = 4;
+const THEATER_KIJKVER = 40;
+
+/**
+ * En de schotel noemt het theater als je ervoor staat.
+ *
+ * De dekplattegrond doet dat met opzet niet: die gaat over de mall, en een tweede
+ * gebouw vijftig meter verderop erbij krimpt het gebouw waar hij over gaat. De
+ * schotel staat om de speler heen en heeft die grens niet.
+ */
+function controleZaallabel(): void {
+	const meter = stubTextMeasure();
+	const oog = { x: THEATRE_PORTAL.centerX, z: THEATRE_PLAN.stair.zTop + THEATER_KIJKAFSTAND };
+	const genoemd = minimapLabelPlan(meter, { x: oog.x, z: oog.z, yaw: 0, level: levelAt(THEATRE_FLOOR_Y) }).plan;
+	if (!genoemd.some((label) => label.text === THEATRE_LABEL)) {
+		fout(
+			'theater',
+			`voor de trap noemt de schotel het theater niet; ze tekent er ${genoemd.length === 0 ? 'niets' : genoemd.map((label) => label.text).join(', ')}`,
+		);
+	}
+}
+
 /** Eén standpunt voor de zonecull: waar de camera staat, waar hij heen kijkt en in welke zone hij dan staat. */
 type Standpunt = Readonly<{ naam: string; van: Vec3; naar: Vec3; zone: ZoneId }>;
 
@@ -3710,6 +5330,265 @@ async function controleZichtlijn(): Promise<void> {
 	}
 }
 
+// ── 18. het dakluik boven de geheime trap ──────────────────────────────────
+
+/** Eén frame lopen, zoals de speler hem krijgt. */
+const LUIK_DT = 1 / 60;
+/** Waar de wandelaar begint: buiten de aanwezigheidszone van het luik. */
+const LUIK_AANLOOP = 2;
+/** Hoever de blikken vanaf de rand van het trapgat naar binnen staan, zodat het openstaande blad niet meetelt. */
+const LUIK_BLIKRAND = 0.1;
+/** Aantal blikken per as over het trapgat. */
+const LUIK_BLIKKEN = 5;
+
+/**
+ * Het luik boven de geheime trap gaat open voor wie eraan komt.
+ *
+ * Het trapgat lag altijd open: er zat een kozijn omheen en verder niets, dus de
+ * enige trap naar het dak was een gat in het dek. Nu ligt er een blad in dat het
+ * dek afmaakt zolang er niemand staat, en dat is precies het geval dat
+ * `validateSpatialWorld` alleen doorlaat als er een mechanisme aan hangt. Deze
+ * controle loopt het na zoals de speler het loopt: dicht is vloer, wie erheen
+ * loopt krijgt het binnen de openingstijd van het mechanisme open, wie eronder
+ * staat ook, en zodra iedereen weg is valt het weer dicht.
+ */
+async function controleLuik(): Promise<void> {
+	const poorten = HELIPAD_HATCH.volumes.filter((volume) => volume.clearance.kind === 'automatic-gate');
+	if (poorten.length === 0) {
+		fout('luik', `${HELIPAD_HATCH.id} heeft geen enkel blad dat automatisch opengaat`);
+		return;
+	}
+	for (const poort of poorten) {
+		if (poort.clearance.kind !== 'automatic-gate') continue;
+		const mechanismeId = poort.clearance.mechanismId;
+		const mechanisme = HELIPAD_HATCH.mechanisms.find((kandidaat) => kandidaat.id === mechanismeId);
+		if (!mechanisme) {
+			fout('luik', `${poort.id} hangt aan mechanisme '${mechanismeId}', dat niet op ${HELIPAD_HATCH.id} staat`);
+			return;
+		}
+		if (!mechanismAdmits(HELIPAD_HATCH, mechanismeId, 'pedestrian')) {
+			fout('luik', `${mechanismeId} laat geen voetganger toe, dus de trap naar het dak is voor niemand`);
+		}
+	}
+
+	// Het blad moet het hele trapgat dekken; een blad dat de helft afdekt laat je
+	// er langs de rand nog steeds in vallen.
+	const blad = mechanismGateBounds(HELIPAD_HATCH, HELIPAD_HATCH_GATE.id);
+	const gat = SECRET_STAIRS_OPENING_BOUNDS;
+	if (blad.minX > gat.minX + EPS || blad.maxX < gat.maxX - EPS || blad.minZ > gat.minZ + EPS || blad.maxZ < gat.maxZ - EPS) {
+		fout(
+			'luik',
+			`het blad dekt ${nr(span(blad.minX, blad.maxX))}×${nr(span(blad.minZ, blad.maxZ))} m van een trapgat van ${nr(span(gat.minX, gat.maxX))}×${nr(span(gat.minZ, gat.maxZ))} m`,
+		);
+	}
+
+	stubDocument();
+	const [THREE, { LightPool }, { Helipad }] = await Promise.all([
+		import('three'),
+		import('#/render/LightPool'),
+		import('#/scene/Helipad'),
+	]);
+	const dak = new CollisionWorld();
+	const luik = new Helipad(new LightPool(new THREE.Scene()), dak);
+	const midX = midpoint(gat.minX, gat.maxX);
+	const midZ = midpoint(gat.minZ, gat.maxZ);
+	const oog = DAK + STANDING_PEDESTRIAN.eyeHeight;
+	const zone = mechanismTriggerBounds(HELIPAD_HATCH, HELIPAD_HATCH_GATE.id);
+	const wandelaar = new THREE.Vector3();
+	const verweg = new THREE.Vector3(zone.maxX + LUIK_AANLOOP, oog, midZ);
+	const dicht = (): boolean => bijna(dak.groundHeightAt(midX, midZ, DAK, WALK_STEP), DAK, 1e-3);
+
+	luik.update(LUIK_DT, verweg);
+	if (!dicht()) {
+		fout(
+			'luik',
+			`zonder iemand in de buurt geeft de wereld op het trapgat ${nr(dak.groundHeightAt(midX, midZ, DAK, WALK_STEP))} in plaats van het dek ${nr(DAK)}`,
+		);
+	}
+
+	// Erheen lopen, en bij de rand van het gat blijven staan tot het opengaat.
+	const aanloop = Math.ceil(span(gat.maxX, verweg.x) / (WALK_SPEED * LUIK_DT));
+	const wachten = Math.ceil(HELIPAD_HATCH_SPEC.openSeconds / LUIK_DT) + 2;
+	let x = verweg.x;
+	let inZone = 0;
+	let opengegaan = -1;
+	for (let stap = 0; stap < aanloop + wachten && opengegaan < 0; stap++) {
+		luik.update(LUIK_DT, wandelaar.set(x, oog, midZ));
+		if (!dicht()) opengegaan = inZone;
+		if (x > zone.minX && x < zone.maxX) inZone += LUIK_DT;
+		x = Math.max(gat.maxX, x - WALK_SPEED * LUIK_DT);
+	}
+	if (opengegaan < 0) {
+		fout('luik', 'wie naar het luik toe loopt krijgt het niet open: het trapgat blijft dicht');
+	} else if (opengegaan > HELIPAD_HATCH_SPEC.openSeconds + LUIK_DT) {
+		fout(
+			'luik',
+			`het luik staat pas na ${nr(opengegaan)} s in de zone open, terwijl zijn mechanisme ${nr(HELIPAD_HATCH_SPEC.openSeconds)} s opgeeft`,
+		);
+	}
+
+	// En weer dicht zodra er niemand meer staat, anders is het gat gewoon open.
+	for (let stap = 0; stap < wachten; stap++) luik.update(LUIK_DT, verweg);
+	if (!dicht()) fout('luik', 'het luik blijft openstaan nadat iedereen is weggelopen');
+
+	// Wat er boven het trapgat ligt, ligt in de weg. Het plateau van de helipad lag
+	// eroverheen: het blad ging open, de vloerplaat ging eraf, en je keek nog steeds
+	// op massief dek. Deze blikken kijken van ooghoogte recht omlaag door het gat.
+	const platen: Mesh[] = [];
+	luik.group.traverse((deel) => {
+		if (deel instanceof THREE.Mesh) platen.push(deel);
+	});
+	const omlaag = new THREE.Vector3(0, -1, 0);
+	const straal = new THREE.Raycaster(new THREE.Vector3(), omlaag);
+	const blik = new THREE.Vector3();
+	const bovenop = (x: number, z: number) => {
+		luik.group.updateMatrixWorld(true);
+		straal.set(blik.set(x, oog, z), omlaag);
+		return straal.intersectObjects(platen, false).find((raak) => raak.point.y > HELIPAD_DECK_TOP_Y + EPS) ?? null;
+	};
+	// Buiten de rand, want het openstaande blad staat rechtop op de scharnierkant van het gat.
+	const blikken: { x: number; z: number }[] = [];
+	for (let i = 0; i < LUIK_BLIKKEN; i++) {
+		for (let j = 0; j < LUIK_BLIKKEN; j++) {
+			blikken.push({
+				x: lerp(gat.minX + LUIK_BLIKRAND, gat.maxX - LUIK_BLIKRAND, i / (LUIK_BLIKKEN - 1)),
+				z: lerp(gat.minZ + LUIK_BLIKRAND, gat.maxZ - LUIK_BLIKRAND, j / (LUIK_BLIKKEN - 1)),
+			});
+		}
+	}
+
+	// Dicht is het blad zelf het bovenste vlak; ligt er iets anders overheen, dan ligt
+	// het blad begraven en zie je het nooit opengaan.
+	const bladTop = HELIPAD_DECK_TOP_Y + HELIPAD_HATCH_SPEC.lidThickness;
+	for (const punt of blikken) {
+		const boven = bovenop(punt.x, punt.z);
+		if (!boven) {
+			fout('luik', `boven het dichte trapgat op (${nr(punt.x)}, ${nr(punt.z)}) ligt niets: daar is het dek een gat`);
+			break;
+		}
+		if (!bijna(boven.point.y, bladTop, 1e-3)) {
+			fout(
+				'luik',
+				`op (${nr(punt.x)}, ${nr(punt.z)}) ligt ${boven.object.name || boven.object.type} op ${nr(boven.point.y)} over het luikblad op ${nr(bladTop)}`,
+			);
+			break;
+		}
+	}
+
+	// Van onderaf: wie de trap op klimt staat onder het dek en hoort er ook uit te komen.
+	const klimmer = new THREE.Vector3(midX, midpoint(zone.minY, DAK), midZ);
+	for (let stap = 0; stap < wachten; stap++) luik.update(LUIK_DT, klimmer);
+	if (dicht()) fout('luik', 'wie van de trap omhoog komt loopt tegen een dicht luik: het gaat alleen van bovenaf open');
+
+	// En met het blad weg hoort er helemaal niets meer boven het gat te liggen.
+	for (const punt of blikken) {
+		const boven = bovenop(punt.x, punt.z);
+		if (boven) {
+			fout(
+				'luik',
+				`met het luik open ligt ${boven.object.name || boven.object.type} nog op ${nr(boven.point.y)} boven het trapgat op (${nr(punt.x)}, ${nr(punt.z)})`,
+			);
+			break;
+		}
+	}
+}
+
+// ── 19. de glijbaan draagt je het bad in ───────────────────────────────────
+
+/** Eén frame glijden. */
+const GLIJ_DT = 1 / 60;
+/** Hoever boven de waterspiegel de rit je nog mag loslaten. */
+const GLIJ_LOSLAAT = 0.5;
+
+/**
+ * De glijbaan is een rit en geen decor.
+ *
+ * De buis was geometrie zonder betekenis: je viel er dwars doorheen op het dek en
+ * alleen een losse cameratruc bracht je in het water. Nu draagt elk buisdeel je met
+ * zijn eigen conveyor-stroming, en het instappunt ligt op de plaat waar de ladder op
+ * uitkomt. Deze controle stapt er headless in en kijkt waar de rit hem loslaat.
+ */
+async function controleGlijbaan(): Promise<void> {
+	const oppervlakken = ROOF_SLIDE_ENTITY.volumes.filter(
+		(volume) => volume.tags.includes('travel-surface') && volume.geometry.kind === 'ramp',
+	);
+	if (oppervlakken.length === 0) {
+		fout('glijbaan', 'de glijbaan heeft geen enkel loopvlak meer: de buis is weer decor');
+		return;
+	}
+	const stromingen = ROOF_SLIDE_ENTITY.emitters.filter((emitter) => emitter.channel === 'conveyor');
+	if (stromingen.length !== oppervlakken.length) {
+		fout('glijbaan', `${oppervlakken.length} buisdelen tegen ${stromingen.length} stromingen: niet elk deel neemt je mee`);
+	}
+	for (const stroming of stromingen) {
+		const bron = ROOF_SLIDE_ENTITY.volumes.find((volume) => volume.id === stroming.sourceVolumeId);
+		if (!bron) {
+			fout('glijbaan', `${stroming.id} stroomt over volume '${stroming.sourceVolumeId}', dat er niet is`);
+			continue;
+		}
+		if (stroming.field.kind !== 'surface') {
+			fout('glijbaan', `${stroming.id} is een ${stroming.field.kind}-veld en geen loopvlakstroming`);
+			continue;
+		}
+		const vaart = Math.hypot(stroming.field.vector.x, stroming.field.vector.y, stroming.field.vector.z);
+		if (!bijna(vaart, SLIDE_TOWER_SPEC.tube.speed, 1e-9)) {
+			fout(
+				'glijbaan',
+				`${stroming.id} draagt met ${nr(vaart)} m/s terwijl de buis ${nr(SLIDE_TOWER_SPEC.tube.speed)} m/s opgeeft`,
+			);
+		}
+	}
+
+	const [THREE, { SlideRide }] = await Promise.all([import('three'), import('#/scene/SlideRide')]);
+	const rit = new SlideRide();
+
+	// Instappen kan alleen op de plaat: bovenaan de ladder sta je nog niet in de mond.
+	const instap = ROOF_SLIDE_ENTITY.volumes.find((volume) => volume.tags.includes('slide-entry'));
+	if (!instap) {
+		fout('glijbaan', 'de glijbaan heeft geen instappunt');
+		return;
+	}
+	const mond = geometryBounds(instap.geometry);
+	const voeten = SLIDE_PLATFORM_TOP_Y;
+	if (!rit.accepts(midpoint(mond.minX, mond.maxX), voeten, midpoint(mond.minZ, mond.maxZ))) {
+		fout('glijbaan', 'wie op de plaat in de mond van de buis staat wordt niet meegenomen');
+	}
+	if (rit.accepts(SLIDE_LADDER_X, voeten, SLIDE_LADDER_CLIMB.zTop)) {
+		fout('glijbaan', 'bovenaan de ladder sta je al in de mond: je glijdt weg voor je de plaat op bent');
+	}
+
+	// De rit zelf, in spelerframes, van de mond tot waar hij je loslaat.
+	const punt = new THREE.Vector3();
+	let afstand = 0;
+	const frames = Math.ceil(rit.length / (rit.speed * GLIJ_DT)) + 2;
+	let stappen = 0;
+	while (afstand < rit.length && stappen < frames) {
+		afstand += rit.speed * GLIJ_DT;
+		stappen++;
+		rit.pointAt(afstand, punt);
+		if (punt.y > SLIDE_PLATFORM_TOP_Y + EPS) {
+			fout('glijbaan', `de rit klimt op ${nr(afstand)} m naar ${nr(punt.y)}, boven de plaat waar hij begint`);
+			break;
+		}
+	}
+	if (afstand < rit.length) {
+		fout('glijbaan', `de rit staat na ${nr(stappen)} frames stil op ${nr(afstand)} van de ${nr(rit.length)} m`);
+		return;
+	}
+	rit.pointAt(rit.length, punt);
+	if (!inPool(punt.x, punt.z)) {
+		fout('glijbaan', `de glijbaan laat je los op (${nr(punt.x)}, ${nr(punt.z)}), buiten de waterlijn`);
+	}
+	if (punt.y > POOL_WATER_Y + GLIJ_LOSLAAT) {
+		fout(
+			'glijbaan',
+			`de glijbaan laat je los op ${nr(punt.y)}, meer dan ${nr(GLIJ_LOSLAAT)} m boven de waterspiegel ${nr(POOL_WATER_Y)}`,
+		);
+	}
+	const bodem = poolFloorY(punt.x, punt.z);
+	if (bodem === null) fout('glijbaan', 'waar de rit eindigt heeft het bad geen bodem: je landt op de tegels');
+}
+
 // ── uitvoeren ──────────────────────────────────────────────────────────────
 
 const controles: { naam: string; draai: () => void | Promise<void> }[] = [
@@ -3721,8 +5600,11 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'parkeeruitrit', draai: controleParkeeruitrit },
 	{ naam: 'parkeerschil', draai: controleParkeerschil },
 	{ naam: 'ingang', draai: controleIngang },
+	{ naam: 'hurken', draai: controleHurken },
 	{ naam: 'daklus', draai: controleDaklus },
 	{ naam: 'ladder', draai: controleLadder },
+	{ naam: 'luik', draai: controleLuik },
+	{ naam: 'glijbaan', draai: controleGlijbaan },
 	{ naam: 'glazendak', draai: controleGlazenDak },
 	{ naam: 'zwembad', draai: controleZwembad },
 	{ naam: 'badgasten', draai: controleBadgasten },
@@ -3741,12 +5623,19 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'kaartdekken', draai: controleKaartdekken },
 	{ naam: 'stad', draai: controleStad },
 	{ naam: 'wegen', draai: controleWegen },
+	{ naam: 'slagbomen', draai: controleSlagbomen },
+	{ naam: 'voertuigen', draai: controleVoertuigen },
+	{ naam: 'klemvrij', draai: controleKlemvrij },
+	{ naam: 'motorrit', draai: controleMotorrit },
+	{ naam: 'geulverkeer', draai: controleGeulverkeer },
 	{ naam: 'kaartlabels', draai: controleKaartlabels },
+	{ naam: 'theater', draai: controleTheater },
 	{ naam: 'zonegraaf', draai: controleZonegraaf },
 	{ naam: 'zonecull', draai: controleZonecull },
 	{ naam: 'zichtlijn', draai: controleZichtlijn },
 	{ naam: 'rekenhulpen', draai: controleRekenhulpen },
 	{ naam: 'zoneklokken', draai: controleZoneklokken },
+	{ naam: 'spiegeltekst', draai: controleSpiegeltekst },
 	{ naam: 'kopieen', draai: controleKopieen },
 ];
 

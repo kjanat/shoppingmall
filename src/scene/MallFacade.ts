@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { CARDINAL_OUTWARD } from '#/data/spatial';
 import type { FacadeReliefKind, FacadeReliefPiece } from '#/data/world';
-import { FACADE_OUTWARD, FACADE_SIGN_SPEC, MALL_FACADE_RELIEF, MALL_FACADE_SIGNS } from '#/data/world';
+import { FACADE_SIGN_SPEC, MALL_FACADE_RELIEF, MALL_FACADE_SIGNS } from '#/data/world';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { half, midpoint, span } from '#/util/math';
@@ -107,7 +108,7 @@ export class MallFacade {
 			}),
 		);
 		for (const board of MALL_FACADE_SIGNS) {
-			const outward = FACADE_OUTWARD[board.side];
+			const outward = CARDINAL_OUTWARD[board.side];
 			const width = outward.x === 0 ? span(board.minX, board.maxX) : span(board.minZ, board.maxZ);
 			const geometry = new THREE.PlaneGeometry(
 				width - FACADE_SIGN_SPEC.inset * 2,

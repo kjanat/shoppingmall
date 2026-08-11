@@ -4,10 +4,24 @@ import type { LevelId } from '#/data/levels';
 import { levelAt } from '#/data/levels';
 import type { CollisionWorld } from '#/physics/Collision';
 import { WALK_STEP } from '#/physics/Collision';
-import { AIR_STEP, EYE, GRAVITY, JUMP_V, PLAYER_RADIUS, RUN_SPEED, WALK_SPEED } from '#/player/constants';
-import { CITY_BOUNDS, CITY_GROUND_Y } from '#/scene/city/cityPlan';
+import {
+	AIR_STEP,
+	CROUCH_EYE,
+	CROUCH_HEADROOM,
+	CROUCH_RATE,
+	CROUCH_SPEED,
+	EYE,
+	GRAVITY,
+	JUMP_V,
+	PLAYER_RADIUS,
+	RUN_SPEED,
+	STANCE_SETTLE,
+	STAND_HEADROOM,
+	WALK_SPEED,
+} from '#/player/constants';
+import { CITY_BOUNDS, outsideMallFootprint } from '#/scene/city/cityPlan';
 import { isTypingTarget } from '#/util/dom';
-import { clamp, ease, half } from '#/util/math';
+import { clamp, ease, half, lerp } from '#/util/math';
 
 export { EYE } from '#/player/constants';
 
@@ -89,6 +103,15 @@ export class PlayerControls {
 	/** Water boven de voeten (m) en hoe ver de camera daarvoor al gezakt is. */
 	private wade = 0;
 	private sink = 0;
+	/**
+	 * Hoe diep de knieën gebogen zijn: 0 is rechtop, 1 is volledig gehurkt.
+	 *
+	 * Eén waarde stuurt de ooghoogte, de loopsnelheidsdrempel en de vrije hoogte die
+	 * je nodig hebt. Twee losse waarden lieten je halverwege het strekken al een spleet
+	 * in lopen waar je hoofd nog niet in paste.
+	 */
+	private stance = 0;
+	private crouched = false;
 
 	/**
 	 * Ligt er een E-actie klaar (liftknop, instappen, glijbaan)? App weet dat en
@@ -186,14 +209,29 @@ export class PlayerControls {
 		return this.feetY;
 	}
 
-	/**
-	 * Mag de speler de voetafdruk van de mall uit? Boven straatniveau wel: daar
-	 * houden de gevels hem tegen en is de dakrand een sprong naar de stad. Eronder
-	 * niet — daar ligt alleen de parkeergarage, en die heeft geen buitenwereld.
-	 * De uitrit zelf valt onder de eigen vrijstelling in `resolveCircle`.
-	 */
+	/** Camera height above the feet right now, between the standing and crouching profiles. */
+	get eyeHeight(): number {
+		return lerp(EYE, CROUCH_EYE, this.stance);
+	}
+
 	get unclamped(): boolean {
-		return this.feetY > CITY_GROUND_Y - 0.5;
+		return outsideMallFootprint(this.feetY);
+	}
+
+	/**
+	 * Uit de geometrie stappen waar je in staat, zonder een stap te zetten.
+	 *
+	 * Wie op een opgeslagen punt terugkomt of ergens heen gezet wordt kan in een muur
+	 * of in een voertuig belanden, en daar loop je niet meer uit: elke stap wordt
+	 * teruggeduwd naar waar je al klem stond.
+	 */
+	unstick(): void {
+		const p = this.cam.position;
+		const los = this.world.unstickBody(p.x, p.z, this.feetY, this.unclamped, PLAYER_RADIUS);
+		if (los.x === p.x && los.z === p.z) return;
+		p.x = los.x;
+		p.z = los.z;
+		this.syncFromCamera();
 	}
 
 	/**
@@ -222,7 +260,7 @@ export class PlayerControls {
 			this.vy = 0;
 			this.grounded = true;
 			this.jumpQueued = false;
-			this.cam.position.y = cabinFloorY + EYE + this.bob - this.dip;
+			this.cam.position.y = cabinFloorY + this.eyeHeight + this.bob - this.dip;
 		}
 	}
 
@@ -233,6 +271,17 @@ export class PlayerControls {
 	/** @deprecated use setElevatorRide */
 	snapToElevator(cabinFloorY: number): void {
 		this.setElevatorRide(cabinFloorY);
+	}
+
+	/**
+	 * Past het hoofd op (x, z)?
+	 *
+	 * De eis loopt met de knieën mee in plaats van met de houding die je wilt: zou hij
+	 * meteen op de gehurkte waarde springen, dan kruipt een lichaam dat nog half
+	 * gestrekt is een spleet in waar het niet in past.
+	 */
+	private fits(x: number, z: number): boolean {
+		return this.world.headroomAt(x, z, this.feetY) >= lerp(STAND_HEADROOM, CROUCH_HEADROOM, this.stance);
 	}
 
 	/** External displacement (moving walkway) — applied through collision. */
@@ -248,6 +297,7 @@ export class PlayerControls {
 			!this.grounded,
 			this.unclamped,
 		);
+		if (!this.fits(solved.x, solved.z)) return;
 		p.x = solved.x;
 		p.z = solved.z;
 	}
@@ -257,7 +307,7 @@ export class PlayerControls {
 		const e = new THREE.Euler().setFromQuaternion(this.cam.quaternion, 'YXZ');
 		this.yaw = e.y;
 		this.pitch = clamp(e.x, -PITCH_MAX, PITCH_MAX);
-		this.feetY = this.world.groundHeightAt(this.cam.position.x, this.cam.position.z, this.cam.position.y - EYE);
+		this.feetY = this.world.groundHeightAt(this.cam.position.x, this.cam.position.z, this.cam.position.y - this.eyeHeight);
 		this.vel.set(0, 0, 0);
 		this.vy = 0;
 		this.grounded = true;
@@ -265,6 +315,8 @@ export class PlayerControls {
 		this.dip = 0;
 		this.wade = 0;
 		this.sink = 0;
+		this.stance = 0;
+		this.crouched = false;
 		this.keys.clear();
 		this.axisX = 0;
 		this.axisY = 0;
@@ -336,6 +388,8 @@ export class PlayerControls {
 		this.grounded = true;
 		this.jumpQueued = false;
 		this.wade = 0;
+		this.stance = 0;
+		this.crouched = false;
 	}
 
 	update(dt: number): void {
@@ -351,9 +405,21 @@ export class PlayerControls {
 		}
 
 		const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+		const p = this.cam.position;
 		// Waden: één afgeleide waarde stuurt zowel de rem als hoe diep je wegzakt
-		this.wade = this.world.waterDepthAt(this.cam.position.x, this.cam.position.z, this.feetY);
+		this.wade = this.world.waterDepthAt(p.x, p.z, this.feetY);
 		const wadeT = Math.min(1, this.wade / WADE_DEEP);
+
+		// ── Hurken ───────────────────────────────────────────
+		// Ctrl buigt de knieën, en wie onder iets laags staat blijft gebogen tot er
+		// weer een staande hoogte boven hem is: strekken onder een plaat zet je hoofd
+		// erin. De stand loopt met `ease` en klapt op zijn eindwaarde, want de sprong
+		// vraagt of de knieën écht gestrekt zijn en "bijna" is daar geen antwoord op.
+		const wantsCrouch = this.keys.has('ControlLeft') || this.keys.has('ControlRight');
+		this.crouched = wantsCrouch || this.world.headroomAt(p.x, p.z, this.feetY) < STAND_HEADROOM;
+		const stanceTarget = this.crouched ? 1 : 0;
+		const eased = ease(this.stance, stanceTarget, CROUCH_RATE, dt);
+		this.stance = Math.abs(stanceTarget - eased) < STANCE_SETTLE ? stanceTarget : eased;
 
 		// ── Steering ─────────────────────────────────────────
 		// Q always turns, so a mouseless player is never stuck facing one way. E doet
@@ -407,7 +473,8 @@ export class PlayerControls {
 			wz /= wishLen;
 		}
 
-		const speed = (sprint ? RUN_SPEED : WALK_SPEED) * clamp(wishLen, moving ? 0.4 : 0, 1) * (1 - (1 - WADE_SPEED) * wadeT);
+		const gait = this.crouched ? CROUCH_SPEED : sprint ? RUN_SPEED : WALK_SPEED;
+		const speed = gait * clamp(wishLen, moving ? 0.4 : 0, 1) * (1 - (1 - WADE_SPEED) * wadeT);
 		const tx = wx * speed;
 		const tz = wz * speed;
 		const rate = (moving ? (this.grounded ? ACCEL : AIR_ACCEL) : FRICTION) * dt;
@@ -421,8 +488,10 @@ export class PlayerControls {
 		}
 
 		// ── Jump first so the same frame can clear the atrium void barrier ──
-		// No jumping while riding the lift — would eject you mid-shaft.
-		if (this.jumpQueued && this.grounded && this.elevFloorY === null) {
+		// No jumping while riding the lift — would eject you mid-shaft. Gehurkt springt
+		// hij evenmin: eerst strekken, en pas als dat gelukt is telt de volle JUMP_V.
+		// Anders is een kruipgat een trampoline die je er bovenop zet.
+		if (this.jumpQueued && this.grounded && this.elevFloorY === null && this.stance === 0) {
 			this.vy = JUMP_V;
 			this.grounded = false;
 			// Wie al loopt zet zich af, wie stilstaat springt recht omhoog.
@@ -434,7 +503,6 @@ export class PlayerControls {
 		this.jumpQueued = false;
 
 		// ── Horizontal move + collision ──────────────────────
-		const p = this.cam.position;
 		const wantX = p.x + this.vel.x * dt;
 		const wantZ = p.z + this.vel.z * dt;
 		const solved = this.world.resolveCircle(
@@ -447,13 +515,19 @@ export class PlayerControls {
 			!this.grounded && this.elevFloorY === null,
 			this.unclamped,
 		);
+		// De dozen houden je lichaam tegen; wat er bóven je hangt niet, want een balk
+		// van anderhalve meter hoog raakt je voeten nergens. Rechtop loop je er daarom
+		// niet onderdoor en gehurkt wel.
+		const fits = this.fits(solved.x, solved.z);
+		const nextX = fits ? solved.x : p.x;
+		const nextZ = fits ? solved.z : p.z;
 		// Bleed off speed we lost to a wall so you slide instead of juddering
 		if (dt > 0) {
-			this.vel.x = (solved.x - p.x) / dt;
-			this.vel.z = (solved.z - p.z) / dt;
+			this.vel.x = (nextX - p.x) / dt;
+			this.vel.z = (nextZ - p.z) / dt;
 		}
-		p.x = solved.x;
-		p.z = solved.z;
+		p.x = nextX;
+		p.z = nextZ;
 
 		// ── Vertical: elevator ride OR ramps/gravity ─────────
 		if (this.elevFloorY !== null) {
@@ -499,7 +573,7 @@ export class PlayerControls {
 		this.lean = ease(this.lean, strafe * (sprint ? 0.02 : 0.013), 6, dt);
 		this.sink = ease(this.sink, wadeT * WADE_SINK, 8, dt);
 
-		p.y = this.feetY + EYE + this.bob - this.dip - this.sink;
+		p.y = this.feetY + this.eyeHeight + this.bob - this.dip - this.sink;
 
 		this.cam.rotation.order = 'YXZ';
 		this.cam.rotation.set(this.pitch, this.yaw, -this.lean);
@@ -704,6 +778,8 @@ export class PlayerControls {
 		this.cam.rotation.set(this.pitch, this.yaw, -this.vel.x * 0.004);
 		this.grounded = false;
 		this.wade = 0;
+		this.stance = 0;
+		this.crouched = false;
 	}
 
 	/** Keep yaw in ±π so the minimap needle never wraps oddly. */

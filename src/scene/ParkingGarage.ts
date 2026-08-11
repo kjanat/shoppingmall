@@ -15,6 +15,7 @@ import {
 	PARKING_EXIT_RAMP_ANGLE,
 	PARKING_EXIT_RAMP_LENGTH,
 	PARKING_EXIT_TRENCH,
+	PARKING_EXIT_TRENCH_HEAD,
 	PARKING_EXIT_TRENCH_WALLS,
 	PARKING_SLAB_SPEC,
 	PARKING_WALL_PANELS,
@@ -208,6 +209,19 @@ export class ParkingGarage {
 				},
 			});
 		}
+		// En de kop erboven: tussen het parkeerdak en de begane-grondplaat zat een
+		// spouw van bijna een meter waar de geul met zijn volle hoogte in uitkwam.
+		addBoxMesh(this.group, concrete, {
+			name: 'parking-trench-head',
+			width: span(PARKING_EXIT_TRENCH_HEAD.minX, PARKING_EXIT_TRENCH_HEAD.maxX),
+			height: span(PARKING_EXIT_TRENCH_HEAD.minY, PARKING_EXIT_TRENCH_HEAD.maxY),
+			depth: span(PARKING_EXIT_TRENCH_HEAD.minZ, PARKING_EXIT_TRENCH_HEAD.maxZ),
+			position: {
+				x: midpoint(PARKING_EXIT_TRENCH_HEAD.minX, PARKING_EXIT_TRENCH_HEAD.maxX),
+				y: midpoint(PARKING_EXIT_TRENCH_HEAD.minY, PARKING_EXIT_TRENCH_HEAD.maxY) - GARAGE_Y,
+				z: midpoint(PARKING_EXIT_TRENCH_HEAD.minZ, PARKING_EXIT_TRENCH_HEAD.maxZ),
+			},
+		});
 		this.buildExitChevrons();
 
 		// Sign at ramp mouth (inside garage), hanging from the deck above it.

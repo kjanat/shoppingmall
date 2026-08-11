@@ -4,23 +4,33 @@ import {
 	HELIPAD_DECK_PLAN,
 	HELIPAD_DECK_THICKNESS,
 	HELIPAD_DECK_TOP_Y,
+	HELIPAD_HATCH,
 	HELIPAD_HATCH_FRAME_RAILS,
 	HELIPAD_HATCH_FRAME_SPEC,
+	HELIPAD_HATCH_GATE,
+	HELIPAD_HATCH_SPEC,
 	HELIPAD_PAD_SPEC,
+	mechanismGateBounds,
+	mechanismTriggerBounds,
 	SECRET_STAIRS_OPENING_PLAN,
 	stairConnector,
 } from '#/data/world';
+import type { CollisionWorld, RoofPad } from '#/physics/Collision';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { addBoxMesh } from '#/render/meshFactory';
 import { addXZPlanHole, xzPlanShape } from '#/render/xzShape';
-import { labelCanvas, labelTexture } from '#/util/label';
-import { half, midpoint } from '#/util/math';
+import { backToBackLabel, labelCanvas, labelTexture } from '#/util/label';
+import { clamp, half, midpoint, span } from '#/util/math';
 
 /** Roof Y — top of the mall roof slab. */
 export const ROOF_Y = levelY('roof');
 /** Everything on the helipad stands on the deck, which is a few cm proud of that slab. */
 const DECK_TOP = HELIPAD_DECK_TOP_Y;
+/** Hoever het luikblad opengaat, uit de openstand van zijn eigen mechanisme. */
+const HATCH_OPEN_ANGLE = HELIPAD_HATCH_GATE.openState.rotationRadians ?? 0;
+/** Hoever het plateau in het dek zakt, zodat zijn onderrand niet met de dekplaat vecht. */
+const PAD_SINK = 0.01;
 
 /**
  * Secret service stairs (V1 → dak) + helicopter landing pad on the roof.
@@ -31,8 +41,14 @@ export class Helipad {
 	readonly padCenter = new THREE.Vector3(HELIPAD_PAD_SPEC.center.x, DECK_TOP, HELIPAD_PAD_SPEC.center.z);
 	private materials: THREE.Material[] = [];
 	private pool: LightPool;
+	/** De scharniergroep staat op de noordrand van het gat; het blad hangt er in +z aan. */
+	private readonly hatchLeaf = new THREE.Group();
+	private readonly hatchZone = mechanismTriggerBounds(HELIPAD_HATCH, HELIPAD_HATCH_GATE.id);
+	private readonly hatchFloor: RoofPad;
+	/** 0 = dicht over het trapgat, 1 = rechtop. */
+	private hatchOpen = 0;
 
-	constructor(pool: LightPool) {
+	constructor(pool: LightPool, world: CollisionWorld) {
 		this.pool = pool;
 		this.group.name = 'helipad';
 		this.buildSecretStairs();
@@ -40,6 +56,56 @@ export class Helipad {
 		this.buildPad();
 		this.buildLights();
 		this.buildSigns();
+		this.hatchFloor = this.buildHatch(world);
+	}
+
+	/**
+	 * Het luik boven de geheime trap.
+	 *
+	 * Staat er iemand in de aanwezigheidszone van `HELIPAD_HATCH_GATE`, dan zwaait het
+	 * blad omhoog en ligt het trapgat open; staat er niemand, dan valt het dicht en is
+	 * de vloer daar gewoon het dek. De zone kijkt ook onder het dek, zodat wie de trap
+	 * op klimt niet tegen een dicht luik aan loopt.
+	 */
+	update(dt: number, subject: THREE.Vector3): void {
+		const zone = this.hatchZone;
+		const inside =
+			subject.x > zone.minX &&
+			subject.x < zone.maxX &&
+			subject.z > zone.minZ &&
+			subject.z < zone.maxZ &&
+			subject.y > zone.minY &&
+			subject.y < zone.maxY;
+		const target = inside ? 1 : 0;
+		const step = dt / HELIPAD_HATCH_SPEC.openSeconds;
+		this.hatchOpen = clamp(this.hatchOpen + Math.sign(target - this.hatchOpen) * step, 0, 1);
+		this.hatchLeaf.rotation.x = -HATCH_OPEN_ANGLE * this.hatchOpen;
+		this.hatchFloor.disabled = this.hatchOpen >= HELIPAD_HATCH_SPEC.clearFraction;
+	}
+
+	private buildHatch(world: CollisionWorld): RoofPad {
+		const gate = mechanismGateBounds(HELIPAD_HATCH, HELIPAD_HATCH_GATE.id);
+		const width = span(gate.minX, gate.maxX);
+		const thickness = span(gate.minY, gate.maxY);
+		const depth = span(gate.minZ, gate.maxZ);
+		const leaf = new THREE.Mesh(
+			new THREE.BoxGeometry(width, thickness, depth),
+			this.track(lit({ color: 0x546e7a, metalness: 0.5, roughness: 0.45 })),
+		);
+		leaf.name = 'hatch-lid';
+		leaf.position.set(0, half(thickness), half(depth));
+		leaf.castShadow = true;
+		this.hatchLeaf.position.set(midpoint(gate.minX, gate.maxX), gate.minY, gate.minZ);
+		this.hatchLeaf.add(leaf);
+		this.group.add(this.hatchLeaf);
+		return world.addRoofPad({
+			minX: gate.minX,
+			maxX: gate.maxX,
+			minZ: gate.minZ,
+			maxZ: gate.maxZ,
+			y: ROOF_Y,
+			label: 'helipad_hatch',
+		});
 	}
 
 	private track<T extends THREE.Material>(m: T): T {
@@ -206,6 +272,7 @@ export class Helipad {
 				}),
 			),
 		);
+		deck.name = 'helipad-deck';
 		deck.position.y = DECK_TOP - HELIPAD_DECK_THICKNESS;
 		deck.receiveShadow = true;
 		this.group.add(deck);
@@ -233,8 +300,9 @@ export class Helipad {
 				}),
 			),
 		);
+		pad.name = 'helipad-pad';
 		pad.position.copy(this.padCenter);
-		pad.position.y = DECK_TOP + half(HELIPAD_PAD_SPEC.height) - 0.01;
+		pad.position.y = DECK_TOP + half(HELIPAD_PAD_SPEC.height) - PAD_SINK;
 		pad.receiveShadow = true;
 		this.group.add(pad);
 
@@ -249,6 +317,7 @@ export class Helipad {
 				}),
 			),
 		);
+		ring.name = 'helipad-ring';
 		ring.rotation.x = -Math.PI / 2;
 		ring.position.set(this.padCenter.x, DECK_TOP + 0.12, this.padCenter.z);
 		this.group.add(ring);
@@ -258,6 +327,9 @@ export class Helipad {
 		const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 3.2), hMat);
 		const h2 = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 3.2), hMat);
 		const h3 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.06, 0.45), hMat);
+		h1.name = 'helipad-h-west';
+		h2.name = 'helipad-h-east';
+		h3.name = 'helipad-h-bar';
 		h1.position.set(this.padCenter.x - 1.0, DECK_TOP + 0.14, this.padCenter.z);
 		h2.position.set(this.padCenter.x + 1.0, DECK_TOP + 0.14, this.padCenter.z);
 		h3.position.set(this.padCenter.x, DECK_TOP + 0.14, this.padCenter.z);
@@ -340,15 +412,9 @@ export class Helipad {
 		ctx2.fillStyle = '#ffc107';
 		ctx2.fillText('gele streep · groene knop · E', 256, 115);
 		const tex2 = labelTexture(c2);
-		const liftSign = new THREE.Mesh(
+		const liftSign = backToBackLabel(
 			new THREE.PlaneGeometry(5.5, 1.7),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: tex2,
-					side: THREE.DoubleSide,
-					toneMapped: false,
-				}),
-			),
+			this.track(new THREE.MeshBasicMaterial({ map: tex2, toneMapped: false })),
 		);
 		// South edge of helipad deck → follow yellow path to green call knobs
 		liftSign.position.set(18, DECK_TOP + 2.2, 8.5);

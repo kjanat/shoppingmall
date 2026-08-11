@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { levelY } from '#/data/levels';
-import { PARKING_EXIT_RAMP } from '#/data/world';
+import { MALL_WALL_ENVELOPE, PARKING_EXIT_RAMP } from '#/data/world';
 import { EYE } from '#/player/constants';
+import { CITY_KAVELS, ROAD_RINGS, TRAFFIC_LANE_CLEARANCE } from '#/scene/city/cityPlan';
+import { distanceToSegment2 } from '#/util/geometry2';
 import { midpoint } from '#/util/math';
 import { FULL_MALL_ROUTE, fullMallRoute, profilePoint } from './routes.ts';
 
@@ -42,6 +44,52 @@ describe('full-building performance route', () => {
 		assert.equal(profilePoint('p1-exit-bottom').pose.y, PARKING_EXIT_RAMP.start.y + EYE);
 		assert.equal(profilePoint('p1-exit-mid').pose.y, midpoint(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y) + EYE);
 		assert.equal(profilePoint('p1-exit-top').pose.y, PARKING_EXIT_RAMP.end.y + EYE);
+	});
+
+	test('parks both outdoor viewpoints on the same clear spot, one facing the mall and one facing away', () => {
+		const toward = profilePoint('park-buiten-mall');
+		const away = profilePoint('park-buiten-weg');
+
+		assert.deepEqual(
+			{ x: away.pose.x, y: away.pose.y, z: away.pose.z },
+			{ x: toward.pose.x, y: toward.pose.y, z: toward.pose.z },
+			'the two park poses must differ only in where they look',
+		);
+		for (const { name, pose } of [toward, away]) {
+			const { park } = CITY_KAVELS;
+			assert.ok(
+				pose.x >= park.minX && pose.x <= park.maxX && pose.z >= park.minZ && pose.z <= park.maxZ,
+				`${name} stands outside the park lot`,
+			);
+			for (const ring of ROAD_RINGS) {
+				for (const edge of ring.edges) {
+					const gap = distanceToSegment2(
+						pose.x,
+						pose.z,
+						edge.ox,
+						edge.oz,
+						edge.ox + edge.dx * edge.len,
+						edge.oz + edge.dz * edge.len,
+					);
+					assert.ok(gap >= TRAFFIC_LANE_CLEARANCE, `${name} stands ${gap.toFixed(2)} m from a traffic lane`);
+				}
+			}
+		}
+		// Every corner of the facade envelope in front of the one pose and behind the
+		// other. Per corner rather than per centre: on ninety metres the building still
+		// covers a wide arc, so a centre in front says nothing about its far corner.
+		for (const [viewpoint, expected] of [
+			[toward, true],
+			[away, false],
+		] as const) {
+			const { pose } = viewpoint;
+			for (const cornerX of [MALL_WALL_ENVELOPE.minX, MALL_WALL_ENVELOPE.maxX]) {
+				for (const cornerZ of [MALL_WALL_ENVELOPE.minZ, MALL_WALL_ENVELOPE.maxZ]) {
+					const ahead = (pose.lookX - pose.x) * (cornerX - pose.x) + (pose.lookZ - pose.z) * (cornerZ - pose.z) > 0;
+					assert.equal(ahead, expected, `${viewpoint.name} has facade corner (${cornerX}, ${cornerZ}) on the wrong side`);
+				}
+			}
+		}
 	});
 
 	test('replays one seed exactly and changes only area ordering for another seed', () => {

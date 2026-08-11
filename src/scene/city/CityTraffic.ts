@@ -1,14 +1,16 @@
 import * as THREE from 'three';
+import { MOTORCYCLE_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
+import type { Barriers } from '#/scene/city/Barriers';
 import type { RoadRing, RoutePoint } from '#/scene/city/cityPlan';
-import { EXIT_APRON_TOP_Y, EXIT_BOOM, EXIT_BRANCH_ROUTE, LANE_OFFSET, ROAD_RINGS, TRAFFIC_CAR } from '#/scene/city/cityPlan';
-import { labelCanvas, labelTexture } from '#/util/label';
-import { clamp, half, inverseLerpClamped, lerp } from '#/util/math';
+import { EXIT_BOOM, EXIT_BRANCH_ROUTE, LANE_OFFSET, ROAD_RINGS, TRAFFIC_CAR, TRAFFIC_RIDER } from '#/scene/city/cityPlan';
+import { backToBackLabel, labelCanvas, labelTexture } from '#/util/label';
+import { half, inverseLerpClamped, lerp } from '#/util/math';
 import { at } from '#/util/rand';
 
 /**
- * Ringweg-verkeer: veertien burgerauto's en zes taxi's die eeuwig om een mall
- * rijden waar ze nooit parkeren.
+ * Ringweg-verkeer: veertien burgerauto's, zes taxi's en vier motorrijders die eeuwig
+ * om een mall rijden waar ze nooit parkeren.
  *
  * Tweerichtingsverkeer over twee rijstroken. Iedereen houdt rechts, en op een
  * ring betekent dat: met de klok mee rijd je aan de binnenkant van de rijbaan,
@@ -25,21 +27,71 @@ import { at } from '#/util/rand';
 const RINGS: readonly RoadRing[] = ROAD_RINGS;
 
 const N_CARS = 14;
-const N_TAXIS = 6;
-const N = N_CARS + N_TAXIS;
-/** Om en om over de twee richtingen, zodat het beide kanten op even druk is. */
-const PER_RING = N / RINGS.length;
 /** Welke slots taxi zijn — verspreid, anders lijkt het een taxistandplaats. */
 const TAXI_SLOT = new Set([1, 4, 8, 11, 14, 18]);
+/**
+ * En welke motor. Even en oneven, dus beide richtingen krijgen er twee: staan ze
+ * alle vier op dezelfde ring, dan rijdt de tegenrichting alleen blik.
+ */
+const RIDER_SLOT = new Set([3, 6, 15, 20]);
+/** Elke bezette plaats telt uit zijn eigen lijst; een tweede getal ernaast liep uit de pas. */
+const N = N_CARS + TAXI_SLOT.size + RIDER_SLOT.size;
+/** Om en om over de twee richtingen, zodat het beide kanten op even druk is. */
+const PER_RING = N / RINGS.length;
 
-const GAP_BRAKE = 6; // rem als de voorligger dichterbij is (hart-op-hart)
-const GAP_HOLD = 4.6; // absolute ondergrens, anders schuiven ze in elkaar
 const STOP_GAP = 3.2; // stopstreep: zoveel meter vóór de hoek wachten
 const LIGHT_SEE = 15; // vanaf hier "ziet" de bestuurder het rode licht
 const BRAKE = 9; // m/s² — stevig, maar niemand morst koffie
 const ACCEL = 4; // m/s² — optrekken alsof de benzine gratis is
 
-/** Carrosserie. De remafstand, de botsstraal en de breedte van een rijstrook hangen eraan. */
+/**
+ * Wat er van een carrosserie op de weg te merken is.
+ *
+ * De volgafstanden en de botsstraal stonden hier als drie losse getallen die alle
+ * drie de lengte van een auto in zich hadden zitten, dus een smaller voertuig kon er
+ * niet bij zonder ze te kopiëren. Ze worden nu uit de eigen maat gerekend: een motor
+ * volgt korter en raakt je pas dichterbij, met precies hetzelfde remmodel.
+ */
+export type TrafficProfile = Readonly<{
+	length: number;
+	width: number;
+	/** Rem als de voorligger dichterbij is (hart-op-hart). */
+	brakeGap: number;
+	/** Absolute ondergrens, anders schuiven ze in elkaar. */
+	holdGap: number;
+	/** Botsstraal rond het hart. */
+	hit: number;
+}>;
+
+/** Speling tussen twee stilstaande voertuigen, bovenop de lengte van de achterste. */
+const FOLLOW_CLEARANCE = 0.4;
+/** En hoeveel eerder dan die grens hij van zijn gas gaat. */
+const FOLLOW_SIGHT = 1.8;
+/** Zoveel binnen zijn eigen neus zit de botsstraal. */
+const HIT_INSET = 0.1;
+
+function trafficProfile(body: Readonly<{ length: number; width: number }>): TrafficProfile {
+	return {
+		length: body.length,
+		width: body.width,
+		brakeGap: body.length + FOLLOW_SIGHT,
+		holdGap: body.length + FOLLOW_CLEARANCE,
+		hit: half(body.length) - HIT_INSET,
+	};
+}
+
+/** De twee soorten die de ring rijdt, elk met zijn eigen volgprofiel. */
+export const TRAFFIC_PROFILES = {
+	car: trafficProfile(TRAFFIC_CAR),
+	rider: trafficProfile(TRAFFIC_RIDER),
+} as const;
+
+/** Welk profiel elk slot van het wagenpark rijdt. De controle op de wegen leest hem terug. */
+export const TRAFFIC_FLEET: readonly (keyof typeof TRAFFIC_PROFILES)[] = Array.from({ length: N }, (_unused, slot) =>
+	RIDER_SLOT.has(slot) ? 'rider' : 'car',
+);
+
+/** Carrosserie van een auto. De breedte van een rijstrook hangt eraan. */
 const BODY_L = TRAFFIC_CAR.length;
 const BODY_W = TRAFFIC_CAR.width;
 
@@ -48,14 +100,13 @@ const BODY_W = TRAFFIC_CAR.width;
  * halve rijstrook plus een schouder. LANE_OFFSET ís die halve strook, dus de
  * twee stroken samen dekken de hele rijbaan en er blijft nergens een reepje
  * asfalt over waar niemand voor remt. De schouder houdt het bereik bovendien
- * ruimer dan HIT_R hieronder: alles wat geraakt kan worden, wordt gezien.
+ * ruimer dan de botsstraal van welk profiel dan ook: alles wat geraakt kan worden,
+ * wordt gezien.
  */
 const LANE_SHOULDER = 0.4;
 const ROAD_REACH = LANE_OFFSET + LANE_SHOULDER;
 /** Hoger dan dit en je staat op iets, niet op het asfalt. */
 const ROAD_HEAD = 1.6;
-/** Botsstraal rond het hart van de auto. */
-const HIT_R = half(BODY_L) - 0.1;
 /** Onder deze snelheid tikt hij je alleen aan. */
 const HIT_V = 2.5;
 /** Zo lang blijft één aanrijding staan, anders lanceert de colonne je vier keer. */
@@ -109,14 +160,8 @@ const BRANCH_EVERY = 26;
 const BRANCH_PARK = 6;
 /** Op een helling in een garage rijdt niemand zijn kruissnelheid van de ringweg. */
 const BRANCH_VMAX = 4;
-/** Vanaf hier ziet de slagboom hem aankomen. */
-const BOOM_SEE = 10;
 /** Speling tussen de neus van de wachtende auto en de arm. */
 const BOOM_GAP = 0.4;
-/** Hoe snel de arm van dicht naar open gaat, in standen per seconde. */
-const BOOM_SPEED = 0.8;
-/** Onder deze stand hangt de arm nog in de doorgang. */
-const BOOM_CLEAR = 0.9;
 
 /** Eén recht stuk van de aftakking, met zijn boogafstand, koers en helling voorgekauwd. */
 type BranchLeg = Readonly<{
@@ -165,11 +210,41 @@ function branchArcAtX(x: number): number {
 	return 0;
 }
 
+/**
+ * Boogafstand van een punt dat op de aftakking staat, of null als het ernaast of
+ * erboven ligt. Dezelfde vraag als `ringDistance`, want een voetganger op de
+ * inrit hoort net zo hard geremd te worden als een voorligger op de ring.
+ */
+function branchDistance(p: RoadObstacle): number | null {
+	let best: number | null = null;
+	let bestLat = ROAD_REACH;
+	for (const leg of BRANCH_LEGS) {
+		const dx = leg.to.x - leg.from.x;
+		const dz = leg.to.z - leg.from.z;
+		const run = Math.hypot(dx, dz);
+		if (run <= 0) continue;
+		const ux = dx / run;
+		const uz = dz / run;
+		const u = (p.x - leg.from.x) * ux + (p.z - leg.from.z) * uz;
+		if (u < 0 || u > run) continue;
+		const t = inverseLerpClamped(0, run, u);
+		if (Math.abs(p.y - lerp(leg.from.y, leg.to.y, t)) > ROAD_HEAD) continue;
+		const lat = Math.abs((p.x - leg.from.x) * -uz + (p.z - leg.from.z) * ux);
+		if (lat >= bestLat) continue;
+		bestLat = lat;
+		best = leg.start + leg.len * t;
+	}
+	return best;
+}
+
 /** Waar de auto beneden stilstaat: het knikpunt dat zichzelf als parkeerplek opgeeft. */
 const BRANCH_PARK_S = BRANCH_LEGS.find((leg) => leg.from.park === true)?.start ?? 0;
-const BOOM_S = branchArcAtX(EXIT_BOOM.x);
-/** Waar hij voor een dichte boom stilstaat: met zijn neus vlak voor de arm. */
-const BOOM_STOP_S = BOOM_S - half(BODY_L) - BOOM_GAP;
+const BOOM_S = branchArcAtX(EXIT_BOOM.post.x);
+
+/** Waar dit voertuig voor een dichte boom stilstaat: met zijn eigen neus vlak voor de arm. */
+function boomStop(profile: TrafficProfile): number {
+	return BOOM_S - half(profile.length) - BOOM_GAP;
+}
 
 /** De aftakking hangt aan de binnenste strook: die passeert de mond in de goede richting. */
 const BRANCH_RING = 0;
@@ -188,6 +263,8 @@ const BRANCH_LEAVE_S = branchHook(EXIT_BRANCH_ROUTE[EXIT_BRANCH_ROUTE.length - 1
  */
 type Car = {
 	mesh: THREE.Group;
+	/** Zijn carrosserie op de weg: volgafstand en botsstraal. */
+	profile: TrafficProfile;
 	/** Index in RINGS: welke strook, en dus welke richting. */
 	ri: number;
 	/** Boogafstand op die ring. */
@@ -223,15 +300,14 @@ export class CityTraffic {
 	private readonly obstacleS: (number | null)[] = RINGS.map(() => null);
 	/** Idem voor wie op de aftakking nog een rijstrook in steekt. */
 	private readonly queueS: (number | null)[] = RINGS.map(() => null);
-	/** De arm van de slagboom: 0 = dicht over de heenstrook, 1 = rechtop. */
-	private readonly boomPivot = new THREE.Group();
-	private boomOpen = 0;
-	private boomWant = false;
+	/** De slagbomen van de stad. De inrit heeft er een, en die laat dit verkeer toe. */
+	private readonly barriers: Barriers;
 	/** Aftellen tot de volgende auto de geul in mag. */
 	private branchTimer = BRANCH_EVERY;
 
-	constructor(getPhase: () => string) {
+	constructor(getPhase: () => string, barriers: Barriers) {
 		this.getPhase = getPhase;
+		this.barriers = barriers;
 		this.group.name = 'city_traffic';
 
 		// ── gedeelde onderdelen: één setje geometrie voor het hele wagenpark ──
@@ -253,38 +329,75 @@ export class CityTraffic {
 		);
 		const signMat = this.makeTaxiSignMaterial();
 
-		// ── het wagenpark: 20 groups, ieder een eigen plek op de ring ──
+		// ── de motoren: dezelfde machine als op P1, met de lengte langs x ──
+		const { body: riderBody, seat: riderSeat, wheel: riderWheel, bars: riderBars } = MOTORCYCLE_SPEC;
+		const riderBodyGeo = new THREE.BoxGeometry(riderBody.length, riderBody.height, riderBody.width);
+		const riderSeatGeo = new THREE.BoxGeometry(riderSeat.length, riderSeat.height, riderSeat.width);
+		const riderWheelGeo = new THREE.CylinderGeometry(riderWheel.radius, riderWheel.radius, riderWheel.width, 10);
+		riderWheelGeo.rotateX(Math.PI / 2);
+		const riderBarGeo = new THREE.BoxGeometry(riderBars.thickness, riderBars.thickness, riderBars.width);
+		this.geometries.push(riderBodyGeo, riderSeatGeo, riderWheelGeo, riderBarGeo);
+		const riderPaint = [0x1d1f24, 0xa62828].map((c) => this.track(lit({ color: c, roughness: 0.4, metalness: 0.5 })));
+		const chromeMat = this.track(lit({ color: 0xb0bec5, roughness: 0.25, metalness: 0.8 }));
+
+		// ── het wagenpark: 24 groups, ieder een eigen plek op de ring ──
 		for (let i = 0; i < N; i++) {
 			const taxi = TAXI_SLOT.has(i);
+			const rider = RIDER_SLOT.has(i);
 			const car = new THREE.Group();
 
-			const body = new THREE.Mesh(bodyGeo, taxi ? taxiMat : paint[i % paint.length]);
-			body.position.y = 0.73;
-			car.add(body);
+			if (rider) {
+				const tank = new THREE.Mesh(riderBodyGeo, at(riderPaint, i));
+				tank.position.y = riderBody.centerY;
+				car.add(tank);
 
-			const cabin = new THREE.Mesh(cabinGeo, glassMat);
-			cabin.position.set(-0.3, 1.32, 0);
-			car.add(cabin);
+				const saddle = new THREE.Mesh(riderSeatGeo, wheelMat);
+				saddle.position.set(-riderSeat.offsetZ, riderSeat.centerY, 0);
+				car.add(saddle);
 
-			for (const wx of [-1.4, 1.4]) {
-				for (const wz of [-0.95, 0.95]) {
-					const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-					wheel.position.set(wx, 0.38, wz);
+				for (const side of [-1, 1]) {
+					const wheel = new THREE.Mesh(riderWheelGeo, wheelMat);
+					wheel.rotation.z = Math.PI / 2;
+					wheel.position.set(side * riderWheel.offsetZ, riderWheel.radius, 0);
 					car.add(wheel);
 				}
-			}
 
-			// Koplampen: twee emissive dots, dag en nacht aan. Zuinig is anders.
-			for (const lz of [-0.6, 0.6]) {
+				const bar = new THREE.Mesh(riderBarGeo, chromeMat);
+				bar.position.set(riderBars.offsetZ, riderBars.centerY, 0);
+				car.add(bar);
+
 				const lamp = new THREE.Mesh(lampGeo, lampMat);
-				lamp.position.set(2.12, 0.73, lz);
+				lamp.position.set(MOTORCYCLE_SPEC.headlight.offsetZ, MOTORCYCLE_SPEC.headlight.centerY, 0);
 				car.add(lamp);
-			}
+			} else {
+				const body = new THREE.Mesh(bodyGeo, taxi ? taxiMat : paint[i % paint.length]);
+				body.position.y = 0.73;
+				car.add(body);
 
-			if (taxi) {
-				const sign = new THREE.Mesh(signGeo, signMat);
-				sign.position.set(-0.3, 1.8, 0);
-				car.add(sign);
+				const cabin = new THREE.Mesh(cabinGeo, glassMat);
+				cabin.position.set(-0.3, 1.32, 0);
+				car.add(cabin);
+
+				for (const wx of [-1.4, 1.4]) {
+					for (const wz of [-0.95, 0.95]) {
+						const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+						wheel.position.set(wx, 0.38, wz);
+						car.add(wheel);
+					}
+				}
+
+				// Koplampen: twee emissive dots, dag en nacht aan. Zuinig is anders.
+				for (const lz of [-0.6, 0.6]) {
+					const lamp = new THREE.Mesh(lampGeo, lampMat);
+					lamp.position.set(2.12, 0.73, lz);
+					car.add(lamp);
+				}
+
+				if (taxi) {
+					const sign = backToBackLabel(signGeo, signMat);
+					sign.position.set(-0.3, 1.8, 0);
+					car.add(sign);
+				}
 			}
 
 			this.group.add(car);
@@ -295,6 +408,7 @@ export class CityTraffic {
 			const cruise = 6 + Math.random() * 5;
 			this.cars.push({
 				mesh: car,
+				profile: TRAFFIC_PROFILES[at(TRAFFIC_FLEET, i)],
 				ri,
 				s: ((Math.floor(i / RINGS.length) + 0.4 * Math.random()) / PER_RING) * at(RINGS, ri).perim,
 				branchS: null,
@@ -305,8 +419,6 @@ export class CityTraffic {
 			});
 			this.place(i);
 		}
-
-		this.buildBoom();
 	}
 
 	/** Wie er op de ringweg kan staan (de speler te voet). Geef `null` als hij binnen zit. */
@@ -323,11 +435,6 @@ export class CityTraffic {
 		const phase = this.getPhase();
 		this.hitCooldown = Math.max(0, this.hitCooldown - dt);
 		this.branchTimer = Math.max(0, this.branchTimer - dt);
-		// De arm loopt op wat hij vorige frame zag: de auto's beslissen hieronder of
-		// hij open moet, en anders zakt hij vanzelf weer dicht.
-		this.boomOpen = clamp(this.boomOpen + (this.boomWant ? BOOM_SPEED : -BOOM_SPEED) * dt, 0, 1);
-		this.boomPivot.rotation.x = EXIT_BOOM.openAngle * this.boomOpen;
-		this.boomWant = false;
 		// Eén projectie per ring per frame in plaats van één per auto: de ringen
 		// veranderen niet en de voetganger staat maar op één plek.
 		const obstacle = this.getObstacle?.() ?? null;
@@ -371,12 +478,12 @@ export class CityTraffic {
 			const blocked = phase !== edge.phase;
 
 			// Remmen voor blik of voor rood, anders rustig terug naar kruissnelheid.
-			const mustBrake = sight < GAP_BRAKE || (blocked && distCorner < LIGHT_SEE);
+			const mustBrake = sight < car.profile.brakeGap || (blocked && distCorner < LIGHT_SEE);
 			car.v = mustBrake ? Math.max(0, car.v - BRAKE * dt) : Math.min(car.vmax, car.v + ACCEL * dt);
 
 			// Harde clampen: nooit door de voorligger heen, nooit de hoek op bij rood.
 			let move = car.v * dt;
-			const room = gap - GAP_HOLD;
+			const room = gap - car.profile.holdGap;
 			if (move > room) move = Math.max(0, room);
 			if (blocked) {
 				const line = distCorner - STOP_GAP;
@@ -421,7 +528,7 @@ export class CityTraffic {
 		if (Math.abs(obstacle.y - car.mesh.position.y) > ROAD_HEAD) return;
 		const dx = obstacle.x - car.mesh.position.x;
 		const dz = obstacle.z - car.mesh.position.z;
-		if (dx * dx + dz * dz > HIT_R * HIT_R) return;
+		if (dx * dx + dz * dz > car.profile.hit * car.profile.hit) return;
 		this.hitCooldown = HIT_COOLDOWN;
 		const push = car.v + HIT_PUSH;
 		this.onHit?.(Math.cos(rotY) * push, -Math.sin(rotY) * push, HIT_LIFT);
@@ -442,11 +549,11 @@ export class CityTraffic {
 	 * erachter aankomt remt al voor de wachtende auto, en invoegen is juist wat die
 	 * file weer op gang helpt. Ook achteruit kijken zet de twee op elkaar te wachten.
 	 */
-	private ringHasRoom(): boolean {
+	private ringHasRoom(profile: TrafficProfile): boolean {
 		if (BRANCH_LEAVE_S === null) return false;
 		const perim = at(RINGS, BRANCH_RING).perim;
 		return this.cars.every(
-			(other) => other.branchS !== null || other.ri !== BRANCH_RING || ahead(other.s, BRANCH_LEAVE_S, perim) > GAP_HOLD,
+			(other) => other.branchS !== null || other.ri !== BRANCH_RING || ahead(other.s, BRANCH_LEAVE_S, perim) > profile.holdGap,
 		);
 	}
 
@@ -454,8 +561,10 @@ export class CityTraffic {
 	 * Eén auto op de aftakking: de inrit op, de geul af, beneden even stilstaan,
 	 * omdraaien en wachten tot de ring hem er weer bij laat.
 	 *
-	 * Hetzelfde rem-model als op de ring, alleen is er hier één ding om voor te
-	 * stoppen tegelijk: de slagboom op de heenweg, of het einde van de aftakking.
+	 * Hetzelfde rem-model als op de ring: hij stopt voor de dichtstbijzijnde van de
+	 * slagboom op de heenweg, een voetganger op de inrit, en het einde van de
+	 * aftakking. Zonder die middelste reed hij de speler op de helling omver in
+	 * plaats van erachter te wachten, terwijl hij op de ring keurig voor hem remt.
 	 */
 	private driveBranch(car: Car, i: number, dt: number, obstacle: RoadObstacle | null): void {
 		const s = car.branchS;
@@ -466,12 +575,14 @@ export class CityTraffic {
 			this.place(i);
 			return;
 		}
-		// Zolang hij naar binnen rijdt ziet de boom hem aankomen, en blijft hij open
-		// tot de auto er met carrosserie en al onderdoor is.
-		if (s < BRANCH_PARK_S && s > BOOM_S - BOOM_SEE && s < BOOM_S + BODY_L) this.boomWant = true;
+		// Hij meldt zich bij de bomen die hij tegenkomt; welke opengaat en voor wie
+		// staat op de boom zelf.
+		if (s < BRANCH_PARK_S) this.barriers.approach(car.mesh.position.x, car.mesh.position.z, 'npc-traffic');
 
-		const dicht = s < BOOM_S && this.boomOpen < BOOM_CLEAR;
-		const stop = dicht ? BOOM_STOP_S : BRANCH_LENGTH;
+		const dicht = s < BOOM_S && this.barriers.blocks(EXIT_BOOM.id);
+		let stop = dicht ? boomStop(car.profile) : BRANCH_LENGTH;
+		const voetganger = obstacle === null ? null : branchDistance(obstacle);
+		if (voetganger !== null && voetganger > s) stop = Math.min(stop, voetganger - car.profile.holdGap);
 		const ruimte = Math.max(0, stop - s);
 		const kruis = Math.min(car.vmax, BRANCH_VMAX);
 		// Remmen op remweg en niet op een vaste afstand. Op een vaste afstand stond hij
@@ -494,7 +605,7 @@ export class CityTraffic {
 		car.branchS = next;
 		this.place(i);
 		this.checkHit(car, obstacle, branchLegAt(next).rotY);
-		if (next >= BRANCH_LENGTH && BRANCH_LEAVE_S !== null && this.ringHasRoom()) {
+		if (next >= BRANCH_LENGTH && BRANCH_LEAVE_S !== null && this.ringHasRoom(car.profile)) {
 			car.branchS = null;
 			car.s = BRANCH_LEAVE_S;
 		}
@@ -522,38 +633,6 @@ export class CityTraffic {
 		car.mesh.rotation.set(0, edge.rotY, 0);
 	}
 
-	/**
-	 * De slagboom op de inrit. Zijn arm ligt over de heenstrook en gaat alleen open
-	 * voor wie er echt aankomt; de terugstrook laat hij vrij.
-	 */
-	private buildBoom(): void {
-		const { post, arm, armLength, pivotY, x, postZ } = EXIT_BOOM;
-		const staal = this.track(lit({ color: 0xe8e8e2, roughness: 0.5, metalness: 0.2 }));
-		const rood = this.track(new THREE.MeshBasicMaterial({ color: 0xc62f28, toneMapped: false }));
-		const donker = this.track(lit({ color: 0x3b4046, roughness: 0.8 }));
-
-		const postGeo = new THREE.CylinderGeometry(post.radius, post.radius, post.height, 10);
-		const armGeo = new THREE.BoxGeometry(arm.thickness, arm.thickness, armLength);
-		const sleeveGeo = new THREE.BoxGeometry(arm.thickness + 0.02, arm.thickness + 0.02, arm.sleeveLength);
-		this.geometries.push(postGeo, armGeo, sleeveGeo);
-
-		const paal = new THREE.Mesh(postGeo, donker);
-		paal.position.set(x, EXIT_APRON_TOP_Y + half(post.height), postZ);
-		this.group.add(paal);
-
-		const balk = new THREE.Mesh(armGeo, staal);
-		balk.position.z = -half(armLength);
-		this.boomPivot.add(balk);
-		for (let i = 0; i < arm.sleeves; i++) {
-			const sleeve = new THREE.Mesh(sleeveGeo, rood);
-			sleeve.position.z = -(armLength * (i + 1)) / (arm.sleeves + 1);
-			this.boomPivot.add(sleeve);
-		}
-		this.boomPivot.position.set(x, EXIT_APRON_TOP_Y + pivotY, postZ);
-		this.group.add(this.boomPivot);
-	}
-
-	/** Geel bordje met TAXI erop. Van achteren staat er IXAT — heel authentiek. */
 	private makeTaxiSignMaterial(): THREE.MeshBasicMaterial {
 		const { canvas: c, ctx } = labelCanvas(128, 44);
 		ctx.fillStyle = '#f7c500';
@@ -568,7 +647,7 @@ export class CityTraffic {
 		ctx.fillText('TAXI', 64, 24);
 		const tex = labelTexture(c);
 		this.textures.push(tex);
-		return this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide }));
+		return this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
 	}
 
 	private track<T extends THREE.Material>(m: T): T {

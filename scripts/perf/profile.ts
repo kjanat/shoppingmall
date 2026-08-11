@@ -9,13 +9,13 @@ import { randomInt } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { median } from '#/util/math';
+import { isRecord, readArray, readNumber, readString } from '#/util/values';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
 import { ROOT_DIR, ROUTES_DIR } from './paths.ts';
 import { isSoftwareHeadless } from './playwright.ts';
 import type { RoutePose, Sample } from './probe.ts';
 import { FULL_MALL_ROUTE, profileRoute } from './routes.ts';
-import { isRecord, readArray, readNumber, readString } from './values.ts';
 
 const softwareHeadless = isSoftwareHeadless();
 const WIDTH = softwareHeadless ? 800 : 1600;

@@ -21,13 +21,13 @@
  */
 import { argv } from 'node:process';
 import { midpoint } from '#/util/math';
+import { isRecord, readArray, readNumber, readString } from '#/util/values';
 import type { FrameAccount } from './harness.ts';
 import { bar, frameAccount, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
 import { isSoftwareHeadless } from './playwright.ts';
-import type { Sample } from './probe.ts';
+import type { Sample, ZoneOwnerTiming } from './probe.ts';
 import { profilePoint } from './routes.ts';
-import { isRecord, readArray, readNumber, readString } from './values.ts';
 
 const softwareHeadless = isSoftwareHeadless();
 // Structural checks do not need 1.44 million software-rasterized pixels. Keep
@@ -92,6 +92,55 @@ function passTable(sample: Sample): string {
 		return `    ${p.pass.padEnd(24)} ${p.msPerFrame.toFixed(2).padStart(8)} ms  ${share.toFixed(1).padStart(5)}%  ${p.drawsPerFrame.toFixed(0).padStart(5)} draws`;
 	});
 	return rows.join('\n');
+}
+
+/** How many owners the drawn-per-owner table shows before it stops being a table. */
+const OWNER_ROWS = 14;
+
+function ownerRow(name: string, left: string, middle: string, right: string): string {
+	return `    ${name.padEnd(24)} ${left.padStart(8)} ${middle.padStart(9)} ${right.padStart(10)}`;
+}
+
+/**
+ * Which feature the cull left standing at this pose.
+ *
+ * `batches hidden 210 of 338` is one number carrying two questions: how much the
+ * cull took, and what. Only the second says whether a viewpoint outside the
+ * building is still drawing the building.
+ */
+function drawnByOwner(owners: readonly ZoneOwnerTiming[]): string {
+	const rows = [...owners]
+		.filter((owner) => owner.items > 0)
+		.sort((a, b) => b.kept - a.kept || b.items - a.items)
+		.slice(0, OWNER_ROWS)
+		.map((owner) => ownerRow(owner.name, String(owner.kept), String(owner.hidden), String(owner.items)));
+	return [ownerRow('owner', 'drawn', 'hidden', 'of total'), ...rows].join('\n');
+}
+
+/**
+ * Who still casts into the shadow map here.
+ *
+ * The zone cull takes a batch out with `visible = false` and a loose object out with
+ * an empty layer mask, and both of those remove it from the shadow camera as well.
+ * So this is the whole list of owners the sun is still asked about, which is the
+ * evidence for the claim that the street sees no interior shadows.
+ */
+function castersByOwner(owners: readonly ZoneOwnerTiming[]): string {
+	const rows = [...owners]
+		.filter((owner) => owner.casters > 0)
+		.sort((a, b) => b.castersKept - a.castersKept || b.casters - a.casters)
+		.map((owner) => ownerRow(owner.name, String(owner.castersKept), String(owner.castersHidden), String(owner.casters)));
+	return [ownerRow('owner', 'casting', 'hidden', 'of casters'), ...rows].join('\n');
+}
+
+/** With the cull off nothing is charged, so the rows carry totals and nothing else. */
+function ownerInventory(owners: readonly ZoneOwnerTiming[]): string {
+	const rows = [...owners]
+		.filter((owner) => owner.items > 0)
+		.sort((a, b) => b.items - a.items)
+		.slice(0, OWNER_ROWS)
+		.map((owner) => ownerRow(owner.name, String(owner.items), String(owner.casters), ''));
+	return [ownerRow('owner', 'drawn', 'casting', ''), ...rows].join('\n');
 }
 
 function sweepSample(label: string, sample: Sample): string {
@@ -165,19 +214,36 @@ try {
 		console.log(
 			bar(
 				owner.name,
-				`${Math.round(owner.triangles / 1000)}k triangles, ${owner.sources} sources, ${owner.batches} batches, ${owner.largestRadius.toFixed(1)} m radius${owner.dynamic ? ', dynamic' : ''}`,
+				`${Math.round(owner.triangles / 1000)}k triangles, ${owner.sources} sources (${owner.dynamicSources} dynamic), ${owner.batches} batches, ${owner.largestRadius.toFixed(1)} m radius`,
 			),
 		);
 	}
 
 	console.log(`\n${trimToColumns('── zone culling ────────────────────────────────────────────')}`);
 	if (env.zoneCull) {
-		const { zone, cones, batches, batchesHidden, occupants, occupantsHidden, keptInOwnZone, keptThroughCone } = env.zoneCull;
+		const { zone, enabled, cones, batches, batchesHidden, occupants, occupantsHidden } = env.zoneCull;
+		const { keptInOwnZone, keptThroughCone, owners } = env.zoneCull;
 		console.log(bar('viewer zone', `${zone}, ${cones} portal ${cones === 1 ? 'cone' : 'cones'} in view`));
+		console.log(bar('zone cull', enabled ? 'on' : 'off'));
 		console.log(bar('batches hidden', `${batchesHidden} of ${batches}`));
 		console.log(bar('loose objects hidden', `${occupantsHidden} of ${occupants}`));
 		console.log(bar('kept in the viewer zone', String(keptInOwnZone)));
 		console.log(bar('kept through a portal', String(keptThroughCone)));
+		if (enabled) {
+			console.log('\n  Drawn per owner at this pose:');
+			console.log(drawnByOwner(owners));
+			console.log('\n  Shadow casters this pose still hands the sun:');
+			console.log(castersByOwner(owners));
+			for (const owner of owners) {
+				if (owner.kept + owner.hidden === owner.items) continue;
+				note(
+					`owner ${owner.name} was asked about ${owner.kept + owner.hidden} drawables but owns ${owner.items}; the split below does not add up.`,
+				);
+			}
+		} else {
+			console.log('\n  Per owner, with the cull off so nothing is hidden:');
+			console.log(ownerInventory(owners));
+		}
 	} else {
 		note('the build under test reports no zone culling; draw counts include every zone.');
 	}

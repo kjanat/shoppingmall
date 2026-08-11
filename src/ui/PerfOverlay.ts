@@ -1,8 +1,8 @@
 import { level, levelAt } from '#/data/levels';
-import { EYE } from '#/player/constants';
 import { booleanUrlPref, clearUrlPref } from '#/render/urlPrefs';
 import { ctx2d, qs } from '#/util/dom';
 import { clamp } from '#/util/math';
+import { isRecord } from '#/util/values';
 
 const OPEN_KEY = 'mallsim.perfhud.v1';
 /** Frames kept for the percentiles. ~5 s at 60 fps, much longer when it hurts. */
@@ -77,6 +77,8 @@ export type PerfFrame = {
 	eyeX: number;
 	eyeY: number;
 	eyeZ: number;
+	/** Voethoogte, apart geleverd: gehurkt is de ooghoogte niet meer één vast getal. */
+	feetY: number;
 	/** Genormaliseerde blikrichting van de camera in wereldruimte. */
 	dirX: number;
 	dirY: number;
@@ -121,10 +123,6 @@ function rendererLabels(gl: WebGL2RenderingContext | null): { gpu: string; api: 
 		.replace(/^AMD Radeon\s+/i, 'Radeon ')
 		.trim();
 	return { gpu: gpu || value, api };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
 }
 
 /**
@@ -293,7 +291,7 @@ export class PerfOverlay {
 			const text = value.toFixed(1);
 			return text === '-0.0' ? '0.0' : text;
 		};
-		const feetY = frame.eyeY - EYE;
+		const feetY = frame.feetY;
 		const dek = level(levelAt(feetY)).code;
 		this.setValue('pos', `${co(frame.eyeX)} ${co(feetY)} ${co(frame.eyeZ)} · ${dek}`);
 		this.setValue('cam', `${co(frame.eyeX)} ${co(frame.eyeY)} ${co(frame.eyeZ)}`);

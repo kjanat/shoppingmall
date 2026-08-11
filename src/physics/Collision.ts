@@ -1,3 +1,4 @@
+import { STANDING_PEDESTRIAN } from '#/data/character';
 import type { VerticalConnector } from '#/data/connectors';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT } from '#/data/layout';
 import { LEVELS, levelY } from '#/data/levels';
@@ -15,10 +16,17 @@ import {
 	PARKING_EXIT_RAMP,
 	PARKING_EXIT_WALL_GAP,
 	parkingDeckColliders,
+	parkingExitRampY,
 	parkingExitTrenchColliders,
 	SECRET_STAIRS_OPENING_BOUNDS,
 	SLAB_SPEC_BY_LEVEL,
+	shopRoomDepth,
 	slabOpeningWithin,
+	THEATRE_PLAN,
+	theatreColliders,
+	theatreSurfaces,
+	theatreTreadY,
+	theatreTreadZ,
 	VERTICAL_CONNECTORS,
 } from '#/data/world';
 import {
@@ -29,10 +37,8 @@ import {
 	GARAGE_PLAN,
 	GARAGE_RAMP_LANDINGS,
 	GARAGE_RAMP_RUNS,
-	THEATRE_PLAN,
+	PLAZA_TRENCH_GAP,
 	TOWER_SPECS,
-	theatreTreadY,
-	theatreTreadZ,
 } from '#/scene/city/cityPlan';
 import {
 	POOL_FLOOR_Y,
@@ -43,7 +49,7 @@ import {
 	SLIDE_PLATFORM_TOP_Y,
 } from '#/scene/RoofIsland';
 import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
-import { clamp, half, inverseLerpClamped, lerp, midpoint } from '#/util/math';
+import { clamp, half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 
 export { ESCALATOR_SPEED } from '#/data/world';
 
@@ -60,6 +66,15 @@ export type AABB = {
 	climbable?: boolean;
 	/** Stands outside the mall; only tested for agents that are allowed out there. */
 	outdoor?: boolean;
+	/**
+	 * Zet een gate hierop zodra hij openstaat.
+	 *
+	 * Een slagboom is dezelfde doos, of hij nu ligt of rechtop staat; wat verandert
+	 * is of hij nog in de doorgang hangt. Hem weghalen en teruggooien zou de lijst
+	 * elke keer opnieuw indelen, en dat is precies de lus die per frame drie keer
+	 * over alle dozen loopt.
+	 */
+	disabled?: boolean;
 	/** What this box is, for queries that care about more than a body hitting it. */
 	tags?: readonly string[];
 };
@@ -70,6 +85,7 @@ type BoxOptions = {
 	label?: string;
 	climbable?: boolean;
 	outdoor?: boolean;
+	disabled?: boolean;
 	tags?: readonly string[];
 };
 
@@ -202,6 +218,21 @@ export type Ramp = {
 };
 
 /**
+ * Een vlak dakstuk. `disabled` betekent hier hetzelfde als op een AABB: een luik is
+ * dezelfde plaat of hij nu dicht ligt of openstaat, en wat verandert is of er vloer
+ * boven het gat hangt.
+ */
+export type RoofPad = {
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+	y: number;
+	label?: string;
+	disabled?: boolean;
+};
+
+/**
  * A low deck whose top face is the walkable surface. `nose` rounds off the maxZ end:
  * past `centerZ` the deck is that circle, so the box corners beyond it are not floor.
  */
@@ -270,6 +301,12 @@ export const WALK_STEP = 0.5;
 /** Hoeveel de kerbdoos onder het loopvlak van een platform stopt, zodat je erop kunt staan. */
 const KERB_LIP = 0.04;
 
+/** Zo ver van zijn eigen twee einden af telt een vlucht als "je staat er middenop". */
+export const RAMP_BAND_MARGIN = 0.4;
+/** Speling naast een vlucht waarbinnen je er nog op staat: breedte en lengte apart. */
+const RAMP_PLAN_MARGIN_X = 1;
+const RAMP_PLAN_MARGIN_Z = 1.5;
+
 /**
  * Waar de buitenschil ophoudt. Onder het dakdek houdt hij je binnen, erboven
  * niet: over de dakrand stappen is de sprong naar de stad, en dat is het punt.
@@ -316,7 +353,7 @@ export class CollisionWorld {
 	 * Het SE-dek is opgeknipt rond het gedeelde secret-stairs-trapgat. Een los
 	 * getal hier legde dat gat eerder met een onzichtbare collisionplaat dicht.
 	 */
-	readonly roofPads: { minX: number; maxX: number; minZ: number; maxZ: number; y: number }[] = [
+	readonly roofPads: RoofPad[] = [
 		// Helipad SE deck, in vier stukken om het trapgat heen
 		{
 			minX: HELIPAD_DECK_BOUNDS.minX,
@@ -408,8 +445,8 @@ export class CollisionWorld {
 		this.buildCity();
 	}
 
-	private add(minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions): void {
-		this.boxes.push({
+	private add(minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions): AABB {
+		const box: AABB = {
 			minX,
 			maxX,
 			minZ,
@@ -419,13 +456,22 @@ export class CollisionWorld {
 			label: opts?.label,
 			climbable: opts?.climbable,
 			outdoor: opts?.outdoor,
+			disabled: opts?.disabled,
 			tags: opts?.tags,
-		});
+		};
+		this.boxes.push(box);
+		return box;
 	}
 
-	/** Runtime colliders (WC walls, props added after construct) */
-	addBox(minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions): void {
-		this.add(minX, maxX, minZ, maxZ, opts);
+	/** Runtime colliders (WC walls, props added after construct). Returns the box so a gate can toggle its own. */
+	addBox(minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions): AABB {
+		return this.add(minX, maxX, minZ, maxZ, opts);
+	}
+
+	/** Zelfde afspraak voor een dakstuk: de plaat komt terug, zodat zijn eigenaar hem kan openen. */
+	addRoofPad(pad: RoofPad): RoofPad {
+		this.roofPads.push(pad);
+		return pad;
 	}
 
 	private buildMall(): void {
@@ -508,7 +554,7 @@ export class CollisionWorld {
 			if (s.id === 'info' || s.utility) continue;
 			const y0 = levelY(s.level);
 			const y1 = y0 + 4.5;
-			const roomDepth = s.depth * 0.92;
+			const roomDepth = shopRoomDepth(s);
 			const backCx = s.x - Math.sin(s.rotation) * roomDepth;
 			const backCz = s.z - Math.cos(s.rotation) * roomDepth;
 			const storeCollisionExtent = s.width * 0.48;
@@ -632,14 +678,16 @@ export class CollisionWorld {
 			);
 		});
 
-		const zaal = THEATRE_PLAN.hall;
-		this.add(
-			zaal.minX,
-			zaal.maxX,
-			zaal.minZ,
-			zaal.maxZ,
-			opaque({ minY: -0.5, maxY: THEATRE_PLAN.hallHeight, label: 'city_theatre_hall', outdoor: true }),
-		);
+		// Het theater was één massief blok. Nu het een binnenkant heeft komen zijn
+		// wanden, zijn stoelen en zijn loopvlakken uit de entiteiten zelf: één lijst
+		// coördinaten voor de tekenaar, de wereldcontrole en dit.
+		for (const collider of theatreColliders()) {
+			const doos = { minY: collider.minY, maxY: collider.maxY, label: collider.label, outdoor: true };
+			this.add(collider.minX, collider.maxX, collider.minZ, collider.maxZ, collider.seeThrough ? doos : opaque(doos));
+		}
+		for (const surface of theatreSurfaces()) {
+			this.citySurfaces.push({ ...surface, label: `theatre_${surface.label}` });
+		}
 
 		// Podium en treden zijn loopvlakken; de kerbdozen eromheen dwingen je de
 		// trap op in plaats van tegen de zijkant omhoog.
@@ -793,8 +841,22 @@ export class CollisionWorld {
 	 * voeten ligt waar je ook echt bij kunt: staan op straat naast het theater
 	 * tilt je niet ineens anderhalve meter op het podium.
 	 */
+	/**
+	 * Straatniveau, behalve waar de bestrating een gat houdt.
+	 *
+	 * De mond van de uitritgeul ligt open tot op de helling zes meter lager, en de
+	 * grondvraag gaf daar toch maaiveld terug: je liep over het gat heen alsof er een
+	 * plaat lag. Onderin ligt het loopvlak van de helling, dus wie erin stapt komt
+	 * eronder terecht en rijdt of loopt er via diezelfde helling weer uit.
+	 */
+	private streetSurfaceAt(x: number, z: number): number {
+		const gat = PLAZA_TRENCH_GAP;
+		if (x < gat.minX || x > gat.maxX || z < gat.minZ || z > gat.maxZ) return CITY_GROUND_Y;
+		return parkingExitRampY(x);
+	}
+
 	cityGroundAt(x: number, z: number, currentY: number, step = WALK_STEP): number {
-		let best = CITY_GROUND_Y;
+		let best = this.streetSurfaceAt(x, z);
 		for (const s of this.citySurfaces) {
 			if (s.y <= best) continue;
 			if (x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
@@ -815,33 +877,29 @@ export class CollisionWorld {
 	 * Snap agent Y to solid floor (never float mid-air / through slab).
 	 * Derived from `ramps` so it can't drift out of sync with the built geometry —
 	 * hard-coded windows are what made sims pop on the west stairs.
+	 *
+	 * Halverwege een vlucht is de vlucht zelf de vloer en blijft y staan. Welke
+	 * vluchten dat zijn volgt uit hun eigen twee einden. Twee vaste verdiepingsbanden
+	 * met de naam van de trap erin deden dat eerder, en die naam was `secret_stairs`
+	 * terwijl een helling zijn `connector.id` draagt: geen van beide banden koos ooit
+	 * een andere vlucht dan de lus zonder banden al koos.
 	 */
 	snapFloorY(x: number, z: number, y: number): number {
 		for (const ramp of this.pathRamps) {
 			const surface = pathRampSurface(ramp, x, z, 0.5);
 			if (surface !== null && Math.abs(surface - y) < 1) return surface;
 		}
-		if (y > 0.4 && y < FLOOR_H - 0.4) {
-			for (const r of this.ramps) {
-				if (r.label === 'secret_stairs') continue;
-				if (x < r.minX - 1 || x > r.maxX + 1) continue;
-				if (z < Math.min(r.zBottom, r.zTop) - 1.5) continue;
-				if (z > Math.max(r.zBottom, r.zTop) + 1.5) continue;
-				return y;
-			}
-		}
-		// Mid secret stairs
-		if (y > FLOOR_H + 0.4 && y < ROOF_H - 0.4) {
-			for (const r of this.ramps) {
-				if (r.label !== 'secret_stairs') continue;
-				if (x < r.minX - 1 || x > r.maxX + 1) continue;
-				if (z < Math.min(r.zBottom, r.zTop) - 1.5) continue;
-				if (z > Math.max(r.zBottom, r.zTop) + 1.5) continue;
-				return y;
-			}
+		for (const r of this.ramps) {
+			if (y <= Math.min(r.yBottom, r.yTop) + RAMP_BAND_MARGIN) continue;
+			if (y >= Math.max(r.yBottom, r.yTop) - RAMP_BAND_MARGIN) continue;
+			if (x < r.minX - RAMP_PLAN_MARGIN_X || x > r.maxX + RAMP_PLAN_MARGIN_X) continue;
+			if (z < Math.min(r.zBottom, r.zTop) - RAMP_PLAN_MARGIN_Z) continue;
+			if (z > Math.max(r.zBottom, r.zTop) + RAMP_PLAN_MARGIN_Z) continue;
+			return y;
 		}
 		if (y >= 10) {
 			for (const p of this.roofPads) {
+				if (p.disabled) continue;
 				if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) return p.y;
 			}
 		}
@@ -897,6 +955,7 @@ export class CollisionWorld {
 
 		// Roof deck when you're up there
 		for (const p of this.roofPads) {
+			if (p.disabled) continue;
 			if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
 			if (Math.abs(p.y - currentY) <= step + 0.4 || currentY > FLOOR_H + 2) {
 				return p.y;
@@ -938,14 +997,70 @@ export class CollisionWorld {
 			const h = r.yBottom + (r.yTop - r.yBottom) * t;
 			// Close enough to stand on → ride the incline
 			if (Math.abs(h - currentY) <= step) return h;
-			// Over the slab cut-out there is no floor: drop onto the flight
+			// Over the slab cut-out there is no floor: drop onto the flight. Een vlucht
+			// die op het dak uitkomt heeft dat gat over zijn hele lengte, dus deze regel
+			// draagt ook de geheime trap; een tweede regel met de naam van die trap erin
+			// stond hier en koos nooit iets, want een helling draagt zijn `connector.id`.
 			if (currentY > h && z >= r.openMinZ && z <= r.openMaxZ) return h;
-			// Secret stairs: always prefer incline when in the shaft
-			if (r.label === 'secret_stairs' && currentY > FLOOR_H - 0.5) return h;
 			// Otherwise this is solid slab (or you're walking underneath the flight)
 			return slab;
 		}
 		return slab;
+	}
+
+	/**
+	 * Vrije hoogte boven de voeten op (x, z), en oneindig waar er niets boven hangt.
+	 *
+	 * Alleen materie telt mee, en dat is precies wat `SIGHT_BLOCKING_TAG` op een doos
+	 * zegt. Het atriumhek en de roltrapkokers lopen van de vloer tot boven het dak om
+	 * een lopend lichaam eromheen te sturen; wie die als plafond leest hangt een
+	 * plafond van anderhalve meter over de roltrap en laat de speler daar hurken.
+	 *
+	 * De dekplaten dragen geen doos — een plaat is vloer en geen muur — dus ze worden
+	 * apart gelezen, met dezelfde gatenlijst die `crossesSlab` leest. De straal gaat
+	 * mee omdat `slabOpeningWithin` een vlak wil: op een punt is elk gat leeg en staat
+	 * er ook boven het atrium beton.
+	 *
+	 * Het antwoord is een ondergrens. Een doos begint vaak een halve meter onder zijn
+	 * eigen dek, dus wie een verdieping lager staat leest die onderkant in plaats van
+	 * de plaat en houdt een halve meter over. Te weinig ruimte melden laat je hoogstens
+	 * hurken waar dat niet hoefde; te veel melden zet je hoofd in het beton.
+	 */
+	/**
+	 * Het dichtstbijzijnde punt naast de geometrie waar dit lichaam in staat.
+	 *
+	 * Een herstelde sessie of een teleport zet een lichaam op een punt dat sinds de
+	 * vorige wereld dicht kan zitten, en een rit die niet terugkomt laat je in het
+	 * voertuig staan: dan loop je geen kant meer op, want elke stap wordt teruggeduwd.
+	 * Dezelfde vraag als een stap, alleen zonder stap.
+	 */
+	unstickBody(
+		x: number,
+		z: number,
+		feetY: number,
+		outside: boolean,
+		radius = STANDING_PEDESTRIAN.radius,
+	): { x: number; z: number } {
+		return this.resolveCircle(x, z, feetY, radius, 3, true, false, outside);
+	}
+
+	headroomAt(x: number, z: number, feetY: number, radius = STANDING_PEDESTRIAN.radius): number {
+		let underside = Number.POSITIVE_INFINITY;
+		for (const b of this.boxes) {
+			if (b.disabled) continue;
+			if (b.minY === undefined || b.minY <= feetY || b.minY >= underside) continue;
+			if (!b.tags?.includes(SIGHT_BLOCKING_TAG)) continue;
+			if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
+			underside = b.minY;
+		}
+		const head = { minX: x - radius, maxX: x + radius, minZ: z - radius, maxZ: z + radius };
+		for (const level of LEVELS) {
+			const slab = SLAB_SPEC_BY_LEVEL[level.id];
+			const bottom = slab.topY - slab.thickness;
+			if (bottom <= feetY || bottom >= underside) continue;
+			if (slabOpeningWithin(level.id, head) === null) underside = bottom;
+		}
+		return span(feetY, underside);
 	}
 
 	/**
@@ -977,6 +1092,24 @@ export class CollisionWorld {
 			return { x: 0, z: (speed * run) / Math.hypot(run, rise) };
 		}
 		return null;
+	}
+
+	/**
+	 * De helling van het loopvlak onder een voertuig, langs zijn eigen koers.
+	 *
+	 * De hoogte onder de neus en die onder de staart, over de wielbasis. Elk voertuig
+	 * reed vlak de garagehelling op omdat het alleen zijn eigen middelpunt aan
+	 * `groundHeightAt` vroeg, en één hoogte is geen helling. Dezelfde vraag als daar,
+	 * dus dezelfde platen: de uitrit, de garagespiraal en de stadsdekken.
+	 *
+	 * `wheelbase` is de volle afstand van as tot as; de monsters staan op de assen.
+	 * Positief is neus omhoog.
+	 */
+	surfacePitchAt(x: number, z: number, currentY: number, forwardX: number, forwardZ: number, wheelbase: number): number {
+		const reach = half(wheelbase);
+		const front = this.groundHeightAt(x + forwardX * reach, z + forwardZ * reach, currentY, WALK_STEP + reach);
+		const back = this.groundHeightAt(x - forwardX * reach, z - forwardZ * reach, currentY, WALK_STEP + reach);
+		return Math.atan2(front - back, wheelbase);
 	}
 
 	/** True while the climber is standing on an incline rather than a slab. */
@@ -1037,6 +1170,7 @@ export class CollisionWorld {
 		const unbounded = city || outside;
 		for (let iter = 0; iter < iterations; iter++) {
 			for (const b of this.boxes) {
+				if (b.disabled) continue;
 				if (b.outdoor && !unbounded) continue;
 				if (climb && b.climbable) continue;
 				// Mid-jump the void barrier doesn't exist — that's how you clear

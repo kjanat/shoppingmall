@@ -1,16 +1,21 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
-import { ISLAND_HOP_SPEC } from '#/data/world';
+import { ISLAND_HOP_BANNERS, ISLAND_HOP_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { labelCanvas, labelTexture } from '#/util/label';
-import { half } from '#/util/math';
+import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
+import { half, midpoint, span } from '#/util/math';
 import { tagLevelCulled } from '#/util/visibility';
 
 // ── desk ─────────────────────────────────────────────────
 /** The agent turns slowly on his stool, this far either side of facing you. */
 const SWAY_TEMPO = 0.5;
 const SWAY_AMP = 0.08;
+
+/** Regelhoogte van een banier, als deel van de canvashoogte die hem draagt. */
+const LABEL_TEXT_SCALE = 0.42;
+/** Zijmarge van een banier, als deel van zijn canvasbreedte. */
+const LABEL_SIDE_MARGIN = 0.03;
 
 // ── brochure palm ────────────────────────────────────────
 /** Five fronds fanned out of the trunk: first angle, then the step between them. */
@@ -484,18 +489,28 @@ export class TravelAgency {
 	}
 
 	private buildSigns(): void {
-		// Main fascia sign
-		const main = this.makeSprite('🌴 ISLAND HOP TRAVEL  ·  Epstein Island charters', '#004d40', 512, 64);
-		main.position.set(1.7, 2.55, 0);
-		main.scale.set(3.2, 0.45, 1);
-		this.group.add(main);
-		tagLevelCulled(main);
-
-		const sub = this.makeSprite('vlakbij de juwelen-cave  ·  cash only  ·  NDA at desk', '#b71c1c', 420, 48);
-		sub.position.set(1.7, 2.2, 0);
-		sub.scale.set(2.6, 0.32, 1);
-		this.group.add(sub);
-		tagLevelCulled(sub);
+		// De twee vaandels hangen aan de dozen uit het wereldmodel: dat is de enige
+		// plek waar hun standoff van de lijst en hun onderlinge afstand staan.
+		const copy: Readonly<Record<string, { text: string; bg: string; width: number; height: number }>> = {
+			charter: { text: '🌴 ISLAND HOP TRAVEL  ·  Epstein Island charters', bg: '#004d40', width: 512, height: 64 },
+			'cash-only': { text: 'vlakbij de juwelen-cave  ·  cash only  ·  NDA at desk', bg: '#b71c1c', width: 420, height: 48 },
+		};
+		for (const board of ISLAND_HOP_BANNERS) {
+			const text = copy[board.id];
+			if (!text) continue;
+			const banner = backToBackLabel(
+				new THREE.PlaneGeometry(span(board.minZ, board.maxZ), span(board.minY, board.maxY)),
+				this.track(new THREE.MeshBasicMaterial({ map: this.makeLabel(text.text, text.bg, text.width, text.height) })),
+			);
+			banner.position.set(
+				midpoint(board.minX, board.maxX) - this.pos.x,
+				midpoint(board.minY, board.maxY) - this.pos.y,
+				midpoint(board.minZ, board.maxZ) - this.pos.z,
+			);
+			banner.rotation.y = Math.PI / 2;
+			this.group.add(banner);
+			tagLevelCulled(banner);
+		}
 
 		// Floor A-board
 		const board = new THREE.Mesh(
@@ -512,16 +527,18 @@ export class TravelAgency {
 		this.group.add(board);
 	}
 
-	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
+	private makeLabel(text: string, bg: string, w: number, h: number): THREE.CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
 		ctx.fillStyle = '#fff';
-		ctx.font = `bold ${Math.floor(h * 0.42)}px system-ui`;
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(text, half(w), half(h));
-		const tex = labelTexture(c);
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		const inset = w * LABEL_SIDE_MARGIN;
+		fitText(ctx, text, { x: inset, y: 0, w: w - inset * 2, h }, { size: Math.floor(h * LABEL_TEXT_SCALE), maxLines: 1 });
+		return labelTexture(c);
+	}
+
+	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
+		const tex = this.makeLabel(text, bg, w, h);
+		return new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
 	}
 }

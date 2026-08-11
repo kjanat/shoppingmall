@@ -15,7 +15,8 @@
  */
 import * as THREE from 'three';
 import { zoneMaskAround, zoneMaskOfBounds } from '#/data/zones';
-import type { ZoneCuller } from '#/render/ZoneCuller';
+import { ownerName } from '#/render/sceneOwner';
+import type { ZoneCuller, ZoneOwnerTally } from '#/render/ZoneCuller';
 
 type Occupant = {
 	object: THREE.Object3D;
@@ -25,12 +26,20 @@ type Occupant = {
 	dynamic: boolean;
 	zoneMask: number;
 	sphere: THREE.Sphere;
+	/** De feature die dit object bouwde, en zijn regel in de cull-telling. */
+	ownerName: string;
+	casts: boolean;
+	tally: ZoneOwnerTally | null;
 };
+
+/** Wat één feature aan losse objecten in de scene heeft staan. */
+export type OccupantOwnerStats = { name: string; occupants: number; casters: number };
 
 export type ZoneVisibilityStats = {
 	occupants: number;
 	dynamic: number;
 	hidden: number;
+	owners: readonly OccupantOwnerStats[];
 };
 
 const SCAN_BOX = new THREE.Box3();
@@ -83,7 +92,8 @@ function scannedZoneMask(): number {
 }
 
 export class ZoneVisibility {
-	readonly stats: ZoneVisibilityStats = { occupants: 0, dynamic: 0, hidden: 0 };
+	private readonly ownerRows: OccupantOwnerStats[] = [];
+	readonly stats: ZoneVisibilityStats = { occupants: 0, dynamic: 0, hidden: 0, owners: this.ownerRows };
 	private readonly occupants: Occupant[] = [];
 
 	/**
@@ -96,11 +106,20 @@ export class ZoneVisibility {
 	constructor(scene: THREE.Scene, dynamicRoots: readonly THREE.Object3D[]) {
 		const dynamic = new WeakSet<THREE.Object3D>();
 		for (const root of dynamicRoots) root.traverse((object) => dynamic.add(object));
+		const ownerIndex = new Map<string, OccupantOwnerStats>();
 		scene.traverse((object) => {
 			if (!renderable(object) || object.layers.mask === 0) return;
 			const radius = occupantRadius(object);
 			const zoneMask = scannedZoneMask();
 			object.getWorldPosition(WORLD_POSITION);
+			const name = ownerName(object);
+			const owner = ownerIndex.get(name) ?? { name, occupants: 0, casters: 0 };
+			owner.occupants++;
+			if (object.castShadow) owner.casters++;
+			if (!ownerIndex.has(name)) {
+				ownerIndex.set(name, owner);
+				this.ownerRows.push(owner);
+			}
 			this.occupants.push({
 				object,
 				layers: object.layers.mask,
@@ -108,6 +127,9 @@ export class ZoneVisibility {
 				dynamic: dynamic.has(object),
 				zoneMask,
 				sphere: new THREE.Sphere(WORLD_POSITION.clone(), radius),
+				ownerName: name,
+				casts: object.castShadow,
+				tally: null,
 			});
 		});
 		this.stats.occupants = this.occupants.length;
@@ -131,6 +153,8 @@ export class ZoneVisibility {
 			}
 			const shown = culler.accepts(occupant.zoneMask, occupant.sphere);
 			occupant.object.layers.mask = shown ? occupant.layers : 0;
+			occupant.tally ??= culler.owner(occupant.ownerName);
+			culler.charge(occupant.tally, shown, 1, occupant.casts ? 1 : 0);
 			if (!shown) hidden++;
 		}
 		this.stats.hidden = hidden;

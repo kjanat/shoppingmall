@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { STANDING_PEDESTRIAN } from '#/data/character';
+import type { PedestrianPosture } from '#/data/character';
+import { CROUCHING_PEDESTRIAN, postureHeadroom, STANDING_PEDESTRIAN } from '#/data/character';
 import type { EscalatorSpec } from '#/data/connectors';
 import { CONNECTOR_LIMITS, VerticalConnectorRegistrySchema, validateEscalatorSpec } from '#/data/connectors';
 import { LEVEL_LIMITS, LevelRegistrySchema } from '#/data/levelSchema';
 import { LEVELS, LEVELS_BOTTOM_UP, levelAt } from '#/data/levels';
-import type { InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
-import { PLAN_ENVELOPE_TAG, receiverAccepts, validateSpatialWorld } from '#/data/spatial';
+import type { FlightClearanceGeometry, InteractionReceiver, PlanShape, SpatialVolume, WorldEntity } from '#/data/spatial';
+import { geometryBounds, PLAN_ENVELOPE_TAG, pointInPlan, receiverAccepts, validateSpatialWorld } from '#/data/spatial';
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
 import { CONNECTOR_ENTITIES, ELEVATOR_ENTITY, ESCALATORS, VERTICAL_CONNECTORS, WORLD_ENTITIES } from '#/data/world';
-import { segmentParameter2 } from '#/util/geometry2';
-import { half, lerp } from '#/util/math';
+import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
+import { half, lerp, midpoint } from '#/util/math';
 
 const ZERO_ROTATION = { yaw: 0, pitch: 0, roll: 0 } as const;
 const STATIC_RECEIVER = {
@@ -94,6 +95,74 @@ const OPEN_STAIR: SpatialVolume = {
 	allowsOverlapFrom: ['connector'],
 	tags: ['stairs', 'headroom'],
 };
+
+function clearanceVolume(geometry: FlightClearanceGeometry): SpatialVolume {
+	return {
+		id: 'route-clearance',
+		role: 'connector-clearance',
+		geometry,
+		blocksMovement: false,
+		clearance: { kind: 'clear' },
+		allowsOverlapFrom: ['connector'],
+		tags: ['headroom'],
+	};
+}
+
+/** De oostelijke roltrap nagebouwd tegen één plaat: 0.6 m stijging per meter z. */
+const CLIPPED_FLIGHT: FlightClearanceGeometry = {
+	kind: 'flight-clearance',
+	start: { x: 0, y: 0, z: 8 },
+	end: { x: 0, y: 6, z: -2 },
+	width: 2.2,
+	height: STANDING_PEDESTRIAN.requiredHeadroom,
+};
+const DECK_UNDERSIDE_Y = 5.55;
+const DECK_TOP_Y = 6;
+/** Het gat zoals het met de hand geschreven stond. Het houdt op bij z 1.6. */
+const SHORT_HOLE = { kind: 'rectangle', center: { x: 0, z: -0.5 }, width: 2.6, depth: 4.2, yaw: 0 } as const;
+/** Hetzelfde gat, doorgetrokken tot voorbij het scheerpunt op z 2.417. */
+const DERIVED_HOLE = { kind: 'rectangle', center: { x: 0, z: 0.708 }, width: 2.6, depth: 5.417, yaw: 0 } as const;
+/** De speling waarmee de oude bemonstering de rand van een strook meenam. */
+const SAMPLE_EPSILON = 1e-6;
+
+type ClippedFlightWorld = Readonly<{ entities: readonly WorldEntity[]; flight: FlightClearanceGeometry; slab: SpatialVolume }>;
+
+function clippedFlightWorld(...holes: readonly PlanShape[]): ClippedFlightWorld {
+	const slab = prism('slab', 'support', 0, 3, 6, 20, DECK_UNDERSIDE_Y, DECK_TOP_Y, false, true, holes);
+	return {
+		entities: [entity('deck', 'structure', [slab]), entity('escalator', 'structure', [clearanceVolume(CLIPPED_FLIGHT)])],
+		flight: CLIPPED_FLIGHT,
+		slab,
+	};
+}
+
+/**
+ * De oude bemonstering, uitgeschreven: de hoeken en de middens van het gedeelde
+ * venster, negen punten. Hij staat hier zodat een geval dat ertussendoor valt
+ * blijft bewijzen dat hij het miste.
+ */
+function oldSamplerFindsOverlap(world: ClippedFlightWorld): boolean {
+	const slab = world.slab.geometry;
+	assert.equal(slab.kind, 'prism');
+	if (slab.kind !== 'prism') return false;
+	const flight = world.flight;
+	const reach = geometryBounds(flight);
+	const solid = geometryBounds(slab);
+	const minX = Math.max(reach.minX, solid.minX);
+	const maxX = Math.min(reach.maxX, solid.maxX);
+	const minZ = Math.max(reach.minZ, solid.minZ);
+	const maxZ = Math.min(reach.maxZ, solid.maxZ);
+	for (const x of [minX, midpoint(minX, maxX), maxX]) {
+		for (const z of [minZ, midpoint(minZ, maxZ), maxZ]) {
+			if (!pointInPlan(slab.plan, x, z) || slab.holes.some((hole) => pointInPlan(hole, x, z))) continue;
+			const { start, end } = flight;
+			if (!pointInSegmentStrip2(x, z, start.x, start.z, end.x, end.z, flight.width, SAMPLE_EPSILON)) continue;
+			const surfaceY = lerp(start.y, end.y, segmentParameter2(x, z, start.x, start.z, end.x, end.z));
+			if (slab.minY < surfaceY + flight.height && slab.maxY > surfaceY) return true;
+		}
+	}
+	return false;
+}
 
 describe('authoritative spatial world', () => {
 	test('the level registry enforces identity, top-down order, and plausible deck spacing', () => {
@@ -341,12 +410,20 @@ describe('authoritative spatial world', () => {
 
 		const backdrop = entity('runway', 'fixture', [prism('backdrop', 'solid', 0, 0.5, 5.4, 0.18, 0, 4.2, false, false)]);
 		assert.deepEqual(validateSpatialWorld([floor, shop, backdrop]), [
-			{ code: 'blocked-clearance', message: 'runway.backdrop stands in the frontage of shop', entities: ['shop', 'runway'] },
+			{
+				code: 'blocked-clearance',
+				message: 'runway.backdrop stands in shop.frontage, which is floor kept clear',
+				entities: ['shop', 'runway'],
+			},
 		]);
 
 		const pillar = entity('column', 'structure', [prism('shaft', 'solid', 0, 0.5, 0.7, 0.7, 0, 4, true, true)]);
 		assert.deepEqual(validateSpatialWorld([floor, shop, pillar]), [
-			{ code: 'blocked-clearance', message: 'column.shaft stands in the frontage of shop', entities: ['shop', 'column'] },
+			{
+				code: 'blocked-clearance',
+				message: 'column.shaft stands in shop.frontage, which is floor kept clear',
+				entities: ['shop', 'column'],
+			},
 		]);
 	});
 
@@ -417,6 +494,165 @@ describe('authoritative spatial world', () => {
 		assert.ok(validateSpatialWorld([floor, stairs, tall]).some((problem) => problem.code === 'blocked-clearance'));
 	});
 
+	test('a slab edge between the nine old sample points is found, because the window is solved and no longer sampled', () => {
+		const world = clippedFlightWorld(SHORT_HOLE);
+		assert.deepEqual(validateSpatialWorld(world.entities), [
+			{
+				code: 'blocked-clearance',
+				message: 'deck.slab intersects escalator.route-clearance over z 1.600..2.417',
+				entities: ['deck', 'escalator'],
+			},
+		]);
+
+		// Waarom dit vroeger groen was: de oude vorm nam de hoeken en de middens van
+		// het gedeelde venster, negen punten, en geen ervan valt in de strook
+		// 1.6..2.42. Deze lus is die bemonstering, en hij mag hier niets vinden.
+		assert.equal(oldSamplerFindsOverlap(world), false);
+	});
+
+	test('a hole that covers the flight to beyond the graze point leaves the headroom clear', () => {
+		assert.deepEqual(validateSpatialWorld(clippedFlightWorld(DERIVED_HOLE).entities), []);
+	});
+
+	test('a hole whose coverage is not an interval on the flight axis is reported instead of guessed', () => {
+		const circular = { kind: 'circle', center: { x: 0, z: -0.5 }, radius: 2.1 } as const;
+		assert.deepEqual(validateSpatialWorld(clippedFlightWorld(circular).entities), [
+			{
+				code: 'unmeasurable-clearance',
+				message: "deck.slab meets escalator.route-clearance where hole shape 'circle' is not an axis-aligned rectangle",
+				entities: ['deck', 'escalator'],
+			},
+		]);
+
+		const yawed = { ...SHORT_HOLE, yaw: Math.PI / 3 } as const;
+		assert.deepEqual(
+			validateSpatialWorld(clippedFlightWorld(yawed).entities).map((problem) => problem.code),
+			['unmeasurable-clearance'],
+		);
+	});
+
+	test('a hole that leaves a strip of deck beside the flight covers none of it', () => {
+		const westHalf = { kind: 'rectangle', center: { x: -0.8, z: -0.5 }, width: 1, depth: 4.2, yaw: 0 } as const;
+		assert.deepEqual(validateSpatialWorld(clippedFlightWorld(westHalf).entities), [
+			{
+				code: 'blocked-clearance',
+				message: 'deck.slab intersects escalator.route-clearance over z -2.000..2.417',
+				entities: ['deck', 'escalator'],
+			},
+		]);
+	});
+
+	test('two holes over the same stretch cover it once, so their lengths cannot add up to a floor that is not there', () => {
+		// Samen 7.15 m gat over 4.42 m beton. Afgetrokken heet dat gedekt; als
+		// vereniging blijft de strook achter het kortste gat gewoon staan.
+		const twin = { ...SHORT_HOLE, center: { x: 0, z: -0.55 }, depth: 4.1 } as const;
+		assert.deepEqual(validateSpatialWorld(clippedFlightWorld(SHORT_HOLE, twin).entities), [
+			{
+				code: 'blocked-clearance',
+				message: 'deck.slab intersects escalator.route-clearance over z 1.600..2.417',
+				entities: ['deck', 'escalator'],
+			},
+		]);
+	});
+
+	test('a level flight below the critical height fouls over its whole run', () => {
+		const level: FlightClearanceGeometry = {
+			kind: 'flight-clearance',
+			start: { x: 0, y: 3, z: 0 },
+			end: { x: 0, y: 3, z: 6 },
+			width: 2,
+			height: STANDING_PEDESTRIAN.requiredHeadroom,
+		};
+		const walkway = entity('walkway', 'structure', [clearanceVolume(level)]);
+		const lintel = entity('lintel', 'structure', [prism('beam', 'support', 0, 3, 6, 12, 4, 4.5, false, true)]);
+		assert.deepEqual(validateSpatialWorld([walkway, lintel]), [
+			{
+				code: 'blocked-clearance',
+				message: 'walkway.route-clearance intersects lintel.beam over z 0.000..6.000',
+				entities: ['walkway', 'lintel'],
+			},
+		]);
+
+		const raised = entity('lintel', 'structure', [prism('beam', 'support', 0, 3, 6, 12, 5.3, 5.8, false, true)]);
+		assert.deepEqual(validateSpatialWorld([walkway, raised]), []);
+	});
+
+	test('a bollard under a climbing flight is measured against the flight and not against its bounding box', () => {
+		const flight: FlightClearanceGeometry = {
+			kind: 'flight-clearance',
+			start: { x: 0, y: 0, z: 0 },
+			end: { x: 0, y: 6, z: 10 },
+			width: 2,
+			height: STANDING_PEDESTRIAN.requiredHeadroom,
+		};
+		const stair = entity('stair', 'structure', [clearanceVolume(flight)]);
+		// De omhullende doos van deze vlucht loopt van y 0 tot 8.2 over de hele tien
+		// meter; het loopvlak zelf staat bij z 9 al op 5.4. Een paaltje van een meter
+		// zit dus in die doos en nergens in de weg.
+		const bollard = (centerZ: number): WorldEntity =>
+			entity('bollard', 'structure', [
+				{
+					id: 'post',
+					role: 'solid',
+					geometry: { kind: 'cylinder', center: { x: 0, y: 0.5, z: centerZ }, radius: 0.2, height: 1, axis: 'y' },
+					blocksMovement: true,
+					clearance: { kind: 'fixed-obstruction' },
+					allowsOverlapFrom: [],
+					tags: ['solid'],
+				},
+			]);
+
+		assert.deepEqual(validateSpatialWorld([stair, bollard(9)]), []);
+		// Onderaan diezelfde vlucht staat hetzelfde paaltje er wel in.
+		assert.deepEqual(validateSpatialWorld([stair, bollard(0.5)]), [
+			{
+				code: 'blocked-clearance',
+				message: 'stair.route-clearance intersects bollard.post over z 0.300..0.700',
+				entities: ['stair', 'bollard'],
+			},
+		]);
+	});
+
+	test('a route declared crouch-only is measured against the crouching profile, and the same duct fails as a standing one', () => {
+		assert.ok(postureHeadroom('crouching') < postureHeadroom('standing'));
+		const duct: FlightClearanceGeometry = {
+			kind: 'flight-clearance',
+			start: { x: 0, y: 0, z: 0 },
+			end: { x: 0, y: 0, z: 6 },
+			width: 1,
+			height: CROUCHING_PEDESTRIAN.requiredHeadroom,
+		};
+		const crawlway = (posture: PedestrianPosture): WorldEntity => ({
+			...entity('crawlway', 'structure', [clearanceVolume(duct)]),
+			ports: [
+				{
+					id: 'crawlway-mouth',
+					kind: 'opening',
+					position: { x: 0, y: 0, z: 0 },
+					direction: { x: 0, y: 0, z: 1 },
+					width: 1,
+					height: postureHeadroom(posture),
+					connectsTo: [],
+					oneWay: false,
+					allows: ['walking'],
+					clearanceVolumeId: 'route-clearance',
+					posture,
+				},
+			],
+		});
+
+		assert.deepEqual(validateSpatialWorld([crawlway('crouching')]), []);
+		assert.deepEqual(validateSpatialWorld([crawlway('standing')]), [
+			{
+				code: 'insufficient-headroom',
+				message: `crawlway.crawlway-mouth is walked standing and needs ${STANDING_PEDESTRIAN.requiredHeadroom.toFixed(
+					3,
+				)} m, but route-clearance offers ${CROUCHING_PEDESTRIAN.requiredHeadroom.toFixed(3)} m`,
+				entities: ['crawlway'],
+			},
+		]);
+	});
+
 	test('a helipad slab over a roof opening fails unless its geometry contains the cut-out', () => {
 		const hole = { kind: 'rectangle', center: { x: 0, z: 0 }, width: 2, depth: 3, yaw: 0 } as const;
 		const opening = entity('roof-opening', 'structure', [
@@ -454,10 +690,22 @@ describe('authoritative spatial world', () => {
 					openState: { rotationRadians: Math.PI / 2 },
 					openingSeconds: 0.6,
 					failSafe: 'open',
+					access: { admits: ['pedestrian'] },
 				},
 			],
 		};
 		assert.deepEqual(validateSpatialWorld([opening, automaticHatch]), []);
+
+		const shutToEveryone: WorldEntity = {
+			...automaticHatch,
+			id: 'sealed-hatch',
+			mechanisms: automaticHatch.mechanisms.map((mechanism) => ({ ...mechanism, access: { admits: [] } })),
+		};
+		assert.ok(
+			validateSpatialWorld([opening, shutToEveryone]).some(
+				(problem) => problem.code === 'invalid-interaction' && problem.message.includes('admits no traffic class'),
+			),
+		);
 	});
 
 	test('multi-stop elevator ports are reciprocal', () => {

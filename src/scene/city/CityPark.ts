@@ -2,21 +2,38 @@ import * as THREE from 'three';
 import { lit } from '#/render/material';
 import { distanceToSegment2 } from '#/util/geometry2';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { half, midpoint } from '#/util/math';
+import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
+import { CITY_KAVELS } from './cityPlan';
 
 /**
- * Stadspark op het NW-blok buiten de ringweg (x −90..−56, z −70..−40).
+ * Stadspark op het NW-blok buiten de ringweg.
  * Gras, een slingerend grindpad dat doodloopt op de vijver (bewuste keuze,
  * aldus de landschapsarchitect), 24 bomen, 6 bankjes, 3 lantaarns die licht
  * suggereren zonder de Pi lastig te vallen, een fonteintje en twee eenden.
  * Puur decor vanaf het dak en uit de heli — de sims winkelen, ze recreëren niet.
  */
 
-const CX = -73;
-const CZ = -55;
-const PARK_W = 34;
-const PARK_D = 30;
+/** Onbeplante berm tussen de rand van het kavel en waar het gras begint. */
+const PARK_BERM = 4;
+
+/**
+ * Het gras zelf: het parkkavel min zijn berm.
+ *
+ * Stond hier als vier losse getallen naast `CITY_KAVELS.park`, dezelfde hartlijn maar
+ * een andere rechthoek, en veertien plekken in dit bestand rekenden eraan.
+ */
+export const PARK_LAWN = {
+	minX: CITY_KAVELS.park.minX + PARK_BERM,
+	maxX: CITY_KAVELS.park.maxX - PARK_BERM,
+	minZ: CITY_KAVELS.park.minZ + PARK_BERM,
+	maxZ: CITY_KAVELS.park.maxZ - PARK_BERM,
+} as const;
+
+const CX = midpoint(PARK_LAWN.minX, PARK_LAWN.maxX);
+const CZ = midpoint(PARK_LAWN.minZ, PARK_LAWN.maxZ);
+const PARK_W = span(PARK_LAWN.minX, PARK_LAWN.maxX);
+const PARK_D = span(PARK_LAWN.minZ, PARK_LAWN.maxZ);
 const GROUND_Y = 0.02; // net boven de maaiveldplaat, zie CityRoads
 
 const POND_R = 5;

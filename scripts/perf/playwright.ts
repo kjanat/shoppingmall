@@ -16,8 +16,8 @@ import { blue } from 'ansispeck';
 import { dim, red } from 'ansispeck/safe';
 import type { BrowserContext, Page } from 'playwright';
 import { chromium } from 'playwright';
+import { isRecord, readString } from '#/util/values';
 import { BROWSER_LOCK_PATH as LOCK_PATH, PERF_DIR, PROFILE_DIR as PERF_PROFILE_FRAGMENT } from './paths.ts';
-import { isRecord, readString } from './values.ts';
 
 const MCP_PROFILE_FRAGMENT = String.raw`\.cache\chrome-devtools-mcp\chrome-profile`;
 

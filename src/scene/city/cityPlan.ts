@@ -1,8 +1,11 @@
 import type { Vec2 } from '#/data/spatial';
+import type { BarrierSpec } from '#/data/world';
 import {
+	barrierSpec,
 	ENTRANCE_PORTAL,
 	ENTRANCE_SPEC,
 	MALL_WALL_ENVELOPE,
+	MOTORCYCLE_SPEC,
 	PARKING_EXIT_RAIL_OUTER,
 	PARKING_EXIT_RAMP,
 	PARKING_EXIT_TRENCH,
@@ -10,6 +13,7 @@ import {
 	parkingExitRampY,
 } from '#/data/world';
 import { zoneAt, zoneBit } from '#/data/zones';
+import { PLAYER_RADIUS } from '#/player/constants';
 import { half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 import { at, jitterWith, mulberry32 } from '#/util/rand';
 
@@ -29,6 +33,20 @@ export const CITY_BOUNDS = { minX: -95, maxX: 95, minZ: -75, maxZ: 75 } as const
 
 /** Straatniveau. Buiten de mall ligt hier de vloer, tenzij een citySurface hoger komt. */
 export const CITY_GROUND_Y = 0;
+
+/** Hoever onder straatniveau er nog buitenwereld is om in te staan. */
+const FOOTPRINT_EXEMPT_DROP = 0.5;
+
+/**
+ * Mag wat op deze voethoogte staat de voetafdruk van de mall uit?
+ *
+ * Boven straatniveau wel: daar houden de gevels het tegen en is de dakrand een sprong
+ * naar de stad. Eronder niet, want daar ligt alleen de parkeergarage en die heeft geen
+ * buitenwereld. De uitrit zelf valt onder de eigen vrijstelling in `resolveCircle`.
+ */
+export function outsideMallFootprint(feetY: number): boolean {
+	return feetY > CITY_GROUND_Y - FOOTPRINT_EXEMPT_DROP;
+}
 
 /** Binnenrand van de ringweg. Het plein tussen mall en weg loopt tot hier. */
 export const ROAD_INNER_X = 48;
@@ -124,6 +142,20 @@ export const RING_INNER_WEST_X = -(LANE_X - LANE_OFFSET);
 
 /** Carrosserie van het stadsverkeer. Botsstraal, remafstand en strookbreedte hangen eraan. */
 export const TRAFFIC_CAR = { length: 4.2, width: 1.85 } as const;
+
+/**
+ * En die van de motorrijders op de ring. Ze rijden dezelfde stroken en hetzelfde
+ * remmodel als de auto's; alleen hun eigen maat is kleiner, dus hun volgafstand en
+ * hun botsstraal komen er anders uit. Afgeleid van de motor in het wereldmodel, want
+ * dezelfde machine staat ook op P1 en in de hal geparkeerd.
+ */
+export const TRAFFIC_RIDER = { length: MOTORCYCLE_SPEC.body.length, width: MOTORCYCLE_SPEC.body.width } as const;
+
+/**
+ * Wat een lichaam vrij moet houden van het hart van een rijstrook: een halve auto plus
+ * zichzelf. Wie er dichterbij staat, staat in de strook.
+ */
+export const TRAFFIC_LANE_CLEARANCE = half(TRAFFIC_CAR.width) + PLAYER_RADIUS;
 
 /**
  * Eén zebrapad: balken dwars op de rijrichting. `sideInset` is wat er aan beide
@@ -304,27 +336,19 @@ export const CITY_TRAFFIC_ZONES: number = (() => {
 	return mask;
 })();
 
-/** Vrije ruimte tussen de rijstrook en de paal van de slagboom. */
-const EXIT_BOOM_CLEARANCE = 0.35;
-
-const EXIT_BOOM_POST_Z = EXIT_APRON.maxZ + EXIT_BOOM_CLEARANCE;
-
 /**
  * De slagboom op de inrit. Hij staat naast de heenstrook en zijn arm reikt tot de
  * hartlijn van de geul, dus wie naar binnen wil staat ervoor en wie naar buiten
  * komt rijdt er langs.
+ *
+ * Zijn maten én wie hij doorlaat staan bij de andere bomen in het wereldmodel: de
+ * arm is een `automatic-gate` met een toelatingsbeleid, en dat hoort naast de arm
+ * te staan en niet in de bestuurder die ervoor remt.
  */
-export const EXIT_BOOM = {
-	x: midpoint(EXIT_APRON.minX, EXIT_APRON.maxX),
-	postZ: EXIT_BOOM_POST_Z,
-	/** Van de paal tot de hartlijn van de geul. */
-	armLength: EXIT_BOOM_POST_Z,
-	post: { radius: 0.11, height: 1.05 },
-	pivotY: 1.02,
-	arm: { thickness: 0.14, sleeves: 3, sleeveLength: 0.5 },
-	/** De arm wijst naar −z, dus een positieve hoek om x kantelt hem omhoog. */
-	openAngle: Math.PI / 2,
-} as const;
+export const EXIT_BOOM: BarrierSpec = barrierSpec('parking-exit-boom');
+
+/** Punt van de arm als hij ligt: de hartlijn van de geul. */
+export const EXIT_BOOM_TIP_Z = EXIT_BOOM.post.z + EXIT_BOOM.armSide * EXIT_BOOM.armLength;
 
 /** Hoeveel de plaat voorbij de wereldrand doorloopt, zodat er geen kant in beeld komt. */
 const CITY_GROUND_MARGIN = 25;
@@ -449,31 +473,6 @@ export function planTowers(rand: Rand): TowerSpec[] {
  * dus wie hem hier opvraagt krijgt exact de torens die er staan.
  */
 export const TOWER_SPECS: readonly TowerSpec[] = planTowers(mulberry32(TOWER_SEED));
-
-/**
- * PRAIRIE THEATRE op het NO-kavel: zaalblok, portico op een podium, en een
- * brede trap van vier treden vanaf de stoep. De trap is de enige manier omhoog.
- */
-export const THEATRE_PLAN = {
-	hall: { minX: 58, maxX: 86, minZ: -66, maxZ: -52 },
-	hallHeight: 13,
-	podium: { minX: 57, maxX: 87, minZ: -52, maxZ: -47 },
-	podiumY: 1.5,
-	/** Treden lopen zuidwaarts omlaag vanaf `zTop`; `rise` blijft onder WALK_STEP. */
-	stair: { minX: 62, maxX: 82, zTop: -47, treads: 4, tread: 0.6, rise: 0.3 },
-	columns: { x0: 61.5, pitch: 3, count: 8, z: -50.6, radius: 0.6, bottomY: 1.5, topY: 9.6 },
-} as const;
-
-/** Bovenkant van trede `i`, geteld vanaf de bovenste (die tegen het podium ligt). */
-export function theatreTreadY(i: number): number {
-	return THEATRE_PLAN.stair.rise * (THEATRE_PLAN.stair.treads - i);
-}
-
-/** Z-strook van trede `i`, van boven naar beneden. */
-export function theatreTreadZ(i: number): { minZ: number; maxZ: number } {
-	const { zTop, tread } = THEATRE_PLAN.stair;
-	return { minZ: zTop + i * tread, maxZ: zTop + (i + 1) * tread };
-}
 
 /**
  * De parkeergarage op het ZO-kavel. Het maaiveld-dek is open aan alle zijden,

@@ -10,6 +10,7 @@ import type { StoreCategory, StoreDef } from '#/data/stores';
 import { CATEGORY_LABELS, getKruidvat, requireStore, STORES } from '#/data/stores';
 import type { MallWorldEntity } from '#/data/world';
 import { HELIPAD_PAD_SPEC, WORLD_ENTITIES } from '#/data/world';
+import { ZONE_ENCLOSURES } from '#/data/zones';
 import { POOL_POLYGON, SLIDE_PLATFORM } from '#/scene/RoofIsland';
 import { isTypingTarget, qs } from '#/util/dom';
 import { clamp, half, midpoint, span } from '#/util/math';
@@ -136,6 +137,8 @@ type MapFeature = Readonly<{
 	 * daarna dwars over de parkeeruitrit, terwijl het dek zelf 2,7 m is.
 	 */
 	labelBounds: Bounds2;
+	/** Of hij op het grondvlak van de mall staat. De dekplattegrond tekent alleen die. */
+	inMall: boolean;
 }>;
 
 function oneLine(text: string): string {
@@ -198,8 +201,9 @@ function planShapes(entity: MallWorldEntity, levelId: LevelId): readonly PlanSha
 	const shapes: PlanShape[] = [];
 	const seen = new Set<string>();
 	for (const volume of entity.volumes) {
-		// De pui-vrijloop is gereserveerde vloer, geen ruimte: getekend groeit elke winkel 1.5 m het gangpad in.
-		if (volume.role === 'storefront-clearance') continue;
+		// Gereserveerde vloer is geen ruimte: getekend groeit elke winkel 1,5 m het
+		// gangpad in en zou elk theatergangpad een eigen vorm op de kaart krijgen.
+		if (volume.role === 'storefront-clearance' || volume.role === 'aisle-clearance') continue;
 		if (geometryBounds(volume.geometry).minY > cut) continue;
 		const plan = volumePlan(volume.geometry);
 		const key = planKey(plan);
@@ -228,6 +232,20 @@ function labelShapeBounds(shapes: readonly PlanShape[], anchor: Vec2, fallback: 
 	return best ?? fallback;
 }
 
+/**
+ * De plattegrond gaat over de mall. De schotel gaat over waar je staat.
+ *
+ * Het theater is een tweede gebouw met een binnenkant, en op de dekplattegrond
+ * hoort het niet: die past zich aan zijn ruimste vorm aan, dus vijftig meter
+ * verderop een tweede gebouw erbij tekenen krimpt de mall tot een derde van het
+ * vlak. De schotel is wél wereldbreed — die staat om de speler heen.
+ */
+const MALL_PLAN = at(ZONE_ENCLOSURES, 0).plan;
+
+function touchesPlan(plan: Bounds2, bounds: Bounds2): boolean {
+	return bounds.minX <= plan.maxX && bounds.maxX >= plan.minX && bounds.minZ <= plan.maxZ && bounds.maxZ >= plan.minZ;
+}
+
 /** The map's only source of rooms: every entity the world schema marks visible. */
 function buildFeatures(): Map<LevelId, MapFeature[]> {
 	const byLevel = new Map<LevelId, MapFeature[]>(LEVELS.map((deck): [LevelId, MapFeature[]] => [deck.id, []]));
@@ -249,6 +267,7 @@ function buildFeatures(): Map<LevelId, MapFeature[]> {
 				anchor,
 				bounds,
 				labelBounds: labelShapeBounds(shapes, anchor, bounds),
+				inMall: touchesPlan(MALL_PLAN, bounds),
 			});
 		}
 	}
@@ -273,6 +292,7 @@ const PLAN_FRAME = ((): Bounds2 => {
 	};
 	for (const features of FEATURES_BY_LEVEL.values()) {
 		for (const feature of features) {
+			if (!feature.inMall) continue;
 			frame.minX = Math.min(frame.minX, feature.bounds.minX);
 			frame.maxX = Math.max(frame.maxX, feature.bounds.maxX);
 			frame.minZ = Math.min(frame.minZ, feature.bounds.minZ);
@@ -297,12 +317,19 @@ const LABELS_BY_LEVEL = new Map<LevelId, MapFeature[]>(
 	]),
 );
 
-function featuresOn(levelId: LevelId): readonly MapFeature[] {
-	return FEATURES_BY_LEVEL.get(levelId) ?? [];
+/** Wat een kaart tekent: het gebouw waar de plattegrond over gaat, of de hele wereld. */
+type MapScope = 'mall' | 'world';
+
+function inScope(features: readonly MapFeature[], scope: MapScope): readonly MapFeature[] {
+	return scope === 'world' ? features : features.filter((feature) => feature.inMall);
 }
 
-function labelsOn(levelId: LevelId): readonly MapFeature[] {
-	return LABELS_BY_LEVEL.get(levelId) ?? [];
+function featuresOn(levelId: LevelId, scope: MapScope): readonly MapFeature[] {
+	return inScope(FEATURES_BY_LEVEL.get(levelId) ?? [], scope);
+}
+
+function labelsOn(levelId: LevelId, scope: MapScope): readonly MapFeature[] {
+	return inScope(LABELS_BY_LEVEL.get(levelId) ?? [], scope);
 }
 
 const RECT_CORNERS = [
@@ -619,11 +646,11 @@ function drawLabel(
  * ze kregen een vaste maat en de volle breedte van het tekenvlak, en zo hing
  * BEARD-MAN'S CAVE bijna zes meter buiten de westgevel in de lege achtergrond.
  */
-function planLabels(ctx: LabelMeasure, lvl: LevelId, project: Project, gap: number, room: LabelRoom): LabelPlan {
+function planLabels(ctx: LabelMeasure, lvl: LevelId, scope: MapScope, project: Project, gap: number, room: LabelRoom): LabelPlan {
 	const plan: PlannedLabel[] = [];
 	const unfittable: string[] = [];
 	const placed: ScreenBox[] = [];
-	for (const feature of labelsOn(lvl)) {
+	for (const feature of labelsOn(lvl, scope)) {
 		const style = LAYER_STYLES[feature.layer];
 		if (style.labelColor === null) continue;
 		const text = feature.glyph === '' ? feature.label : `${feature.glyph} ${feature.label}`;
@@ -742,7 +769,7 @@ export function deckLabelPlan(ctx: LabelMeasure, lvl: LevelId, cssW: number): La
 	const scale = bigMapScale(cssW);
 	const sx = (x: number): number => half(cssW) + (x - PLAN_FRAME_CENTER.x) * scale;
 	const sy = (z: number): number => half(cssH) + (z - PLAN_FRAME_CENTER.z) * scale;
-	return planLabels(ctx, lvl, (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED);
+	return planLabels(ctx, lvl, 'mall', (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED);
 }
 
 export function minimapLabelPlan(ctx: LabelMeasure, view: MinimapView): LabelPlan {
@@ -752,6 +779,7 @@ export function minimapLabelPlan(ctx: LabelMeasure, view: MinimapView): LabelPla
 	return planLabels(
 		ctx,
 		view.level,
+		'world',
 		(x, z) => dishProject(x, z, view, center, center, scale),
 		MINI_LABEL_GAP,
 		(point) => dishSpace(point, center, center, radius - MINI_LABEL_INSET, MINI_LABEL_PULL * scale),
@@ -909,7 +937,7 @@ export class KioskOverlay {
         </div>
 
         <div class="hint-bar" id="hint">
-          <b>WASD</b> lopen · <b>Shift</b> rennen · <b>Space</b> spring ·
+          <b>WASD</b> lopen · <b>Shift</b> rennen · <b>Ctrl</b> hurken · <b>Space</b> spring ·
           <b>M</b> kaart · <b>B</b> bewoners · <b>O</b> besturing
         </div>
         <div class="possess-banner hidden" id="possess-banner">GUEST VIEW</div>
@@ -1237,7 +1265,7 @@ export class KioskOverlay {
 		ctx.rotate(this.map.yaw);
 		ctx.scale(scale, scale);
 		ctx.translate(-this.map.x, -this.map.z);
-		this.paintWorld(ctx, lvl, scale);
+		this.paintWorld(ctx, lvl, 'world', scale);
 		ctx.restore();
 
 		// Upright labels for whatever is close by, under the plan's own rules
@@ -1286,8 +1314,8 @@ export class KioskOverlay {
 	}
 
 	/** Every map-visible entity on this deck, painted by its schema layer. */
-	private paintFeatures(ctx: CanvasRenderingContext2D, lvl: LevelId, px: number): void {
-		for (const feature of featuresOn(lvl)) {
+	private paintFeatures(ctx: CanvasRenderingContext2D, lvl: LevelId, scope: MapScope, px: number): void {
+		for (const feature of featuresOn(lvl, scope)) {
 			const style = LAYER_STYLES[feature.layer];
 			ctx.fillStyle = feature.hero ? HERO_FILL : style.fill;
 			ctx.strokeStyle = feature.hero ? HERO_STROKE : style.stroke;
@@ -1344,13 +1372,13 @@ export class KioskOverlay {
 		);
 	}
 
-	private paintWorld(ctx: CanvasRenderingContext2D, lvl: LevelId, scale: number): void {
+	private paintWorld(ctx: CanvasRenderingContext2D, lvl: LevelId, scope: MapScope, scale: number): void {
 		const px = 1 / scale;
 		ctx.lineJoin = 'round';
 		ctx.lineCap = 'round';
 
 		// Rooms, shells, shafts and holes — whatever the schema puts on this deck
-		this.paintFeatures(ctx, lvl, px);
+		this.paintFeatures(ctx, lvl, scope, px);
 
 		if (lvl === 'roof') this.paintRoofLayer(ctx, px);
 
@@ -1450,7 +1478,7 @@ export class KioskOverlay {
 		ctx.translate(half(cssW), half(cssH));
 		ctx.scale(scale, scale);
 		ctx.translate(-PLAN_FRAME_CENTER.x, -PLAN_FRAME_CENTER.z);
-		this.paintWorld(ctx, this.bigLevel, scale);
+		this.paintWorld(ctx, this.bigLevel, 'mall', scale);
 		ctx.restore();
 		this.paintBigLabels(ctx, cssW, cssH, scale, this.bigLevel);
 

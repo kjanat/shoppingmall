@@ -7,19 +7,19 @@ small `/api` for the DJ booth and the voices.
 
 Bun, not npm. There is no Vite in this project.
 
-| Command            | What it does                                                                        |
-| ------------------ | ----------------------------------------------------------------------------------- |
-| `runner install`   | installs deps for current toolchain                                                 |
-| `run dev`          | `bun --hot server/main.ts` on port 5174 (`PORT` overrides)                          |
-| `run build`        | typecheck → world + light checks → `build.ts` → `dist/static` + `dist/mall` binary  |
-| `run build:static` | same, Pages target (no `/api`)                                                      |
-| `run typecheck`    | `tsc --noEmit`                                                                      |
-| `run lint`         | `biome check` (`bun run fmt` to fix + dprint)                                       |
-| `run check`        | world, spatial, math, light, prop, and profiler-route invariants; no browser needed |
-| `run diagnose`     | what a frame is made of (see Performance)                                           |
-| `run bench`        | frame-time benchmark with drift detection                                           |
-| `run profile`      | traverse the named mall route and compare every segment                             |
-| `run live`         | rebuild + swap the Docker container (compose, behind traefik)                       |
+| Command            | What it does                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------- |
+| `runner install`   | installs deps for current toolchain                                                          |
+| `run dev`          | `bun --hot server/main.ts` on port 5174 (`PORT` overrides)                                   |
+| `run build`        | typecheck → world + light checks → `build.ts` → `dist/static` + `dist/mall` binary           |
+| `run build:static` | same, Pages target (no `/api`)                                                               |
+| `run typecheck`    | `tsc --noEmit`                                                                               |
+| `run lint`         | `biome check` (`bun run fmt` to fix + dprint)                                                |
+| `run check`        | world, spatial, math, persist, light, prop, and profiler-route invariants; no browser needed |
+| `run diagnose`     | what a frame is made of (see Performance)                                                    |
+| `run bench`        | frame-time benchmark with drift detection                                                    |
+| `run profile`      | traverse the named mall route and compare every segment                                      |
+| `run live`         | rebuild + swap the Docker container (compose, behind traefik)                                |
 
 Flags pass through the task runner: `bun run bench --samples 8` works.
 
@@ -32,20 +32,27 @@ Flags pass through the task runner: `bun run bench --samples 8` works.
 
 ```
 src/
-  app/App.ts           orchestration, the frame loop, ~2200 lines
-  main.ts              boot; removes #app-loading after `await app.ready`
-  scene/               the mall and everything living in it (plus city/ outside)
-  render/SceneBatcher  merges compatible meshes into BatchedMeshes
-  render/LightPool     the only real point lights (LIGHT_POOL_SLOTS); ~85 virtual lights rent slots
-  physics/Collision.ts AABB world + walkable inclines
-  player/Controls.ts   first-person walking
-  camera/Director.ts   cinematics only
-  data/                stores, waypoint graph, levels, inventory
-  post/Composer.ts     bloom, vignette, ACES, SMAA
-  ui/                  kiosk chrome, minimap, floor plan, settings
-server/                main.ts (serves the game + routes) and api.ts
-scripts/perf/          benchmarking and diagnostics (see below)
-scripts/stub-dom.ts    canvas/audio stubs shared by the headless checks
+  app/App.ts             orchestration, the frame loop, ~2200 lines
+  app/GamePersist.ts     the session boundary; everything read back out of it is parsed
+  main.ts                boot; removes #app-loading after `await app.ready`
+  scene/                 the mall and everything living in it (plus city/ outside)
+  scene/SlideRide.ts     the roof slide read out of its own conveyor emitters
+  scene/Motorcycles.ts   the parked and rideable bikes, from one spot list
+  scene/city/Barriers.ts both booms, their gate colliders and their access policy
+  render/SceneBatcher    merges compatible meshes into BatchedMeshes
+  render/LightPool       the only real point lights (LIGHT_POOL_SLOTS); ~85 virtual lights rent slots
+  render/sceneOwner.ts   the highest named ancestor of an object, for per-owner cull tallies
+  physics/Collision.ts   AABB world + walkable inclines
+  physics/VehicleGround  the ballistic vertical step both player vehicles share
+  player/Controls.ts     first-person walking and crouching
+  camera/Director.ts     cinematics only
+  data/                  stores, waypoint graph, levels, inventory
+  post/Composer.ts       bloom, vignette, ACES, SMAA
+  ui/                    kiosk chrome, minimap, floor plan, settings
+  util/values.ts         the one set of boundary parsers (isRecord, readNumber, …)
+server/                  main.ts (serves the game + routes) and api.ts
+scripts/perf/            benchmarking and diagnostics (see below)
+scripts/stub-dom.ts      canvas, audio and sessionStorage stubs shared by the headless checks
 ```
 
 Aliases: `#/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensions.
@@ -55,8 +62,10 @@ Aliases: `#/` → `src/`, `$/` → repo root. Import with explicit `.ts` extensi
 - Tabs. dprint + Biome, `lineWidth` 130. Run `bun run fmt`.
 - `strict`, plus `noUncheckedIndexedAccess`, `noUnusedLocals`, `noPropertyAccessFromIndexSignature`. Index signatures
   need bracket access (`process.env['PORT']`).
-- **No `any`, no `!`, no `as Type`.** Parse untyped input at the boundary into typed structures instead. See
-  [values](scripts/perf/values.ts) for the pattern (`isRecord`, `readNumber`, `in`-narrowing).
+- **No `any`, no `!`, no `as Type`.** Parse untyped input at the boundary into typed structures instead. The parsers
+  live in [values](src/util/values.ts) (`isRecord`, `readNumber`, `finiteNumber`, `in`-narrowing) and both the perf
+  scripts and [GamePersist](src/app/GamePersist.ts) read through them. A version stamp on a saved session keeps old
+  sessions out and says nothing about the *shape* of what is stored, so parse it anyway.
 - **Never suppress a lint or type error.** No `@ts-ignore`, no `biome-ignore`. Fix the cause.
 - Comments explain *why*, and often name the bug that motivated the code. Match that. Dutch and English both appear;
   follow whichever the file already uses.
@@ -92,7 +101,9 @@ option behind a switch, ship it, say "I built all three, try them". Do not pick 
 
 ## World invariants
 
-[check-world](scripts/check-world.ts), [check-lights](scripts/check-lights.ts), [check-props](scripts/check-props.ts), and the profiler-route tests run on every build (headless, with the canvas and audio stubs from
+[check-world](scripts/check-world.ts), [check-lights](scripts/check-lights.ts), [check-props](scripts/check-props.ts), the
+session-boundary tests in [persist](scripts/persist.test.ts), and the profiler-route tests run on every build (headless,
+with the canvas, audio and storage stubs from
 [stub-dom](scripts/stub-dom.ts)). check-world boots the collision world and the two shop builders and asserts things like: ramps line
 up with the floor holes cut for them, the ladder is actually climbable step by step, swimmers are inside the waterline,
 every shop has inventory. check-lights boots every light-owning feature against one `LightPool` and asserts the scene
@@ -145,6 +156,56 @@ says so and by how many metres, and a declaration that reaches past nothing fail
 row does. There is no entity-level exemption left. `validateSpatialWorld` reports the mirror case as
 `unused-penetration`: a volume that declares metres into another placement class and then cuts into nothing.
 
+`hurken` walks the same entrance line twice, standing and crouched, through a beam hung at exactly the crouching
+profile's headroom in a collision world of its own. Standing has to stop at the beam and crouched has to reach the
+atrium, which only holds while [character](src/data/character.ts) keeps `CROUCHING_PEDESTRIAN` below
+`STANDING_PEDESTRIAN`. It then reads the query the other way round: every flight and the parking exit ramp must offer
+the standing headroom over their whole run, because that headroom is now a condition for walking there at all and a
+route that fails it puts the player on his knees on an escalator. A port that admits walking declares the `posture` it
+is walked in, and `validateSpatialWorld` measures its clearance volume against that profile and reports
+`insufficient-headroom`; a crouch-only duct asks for 1.5 m and the same duct declared standing fails.
+
+`hellinglijn` walks every flight twice, once per query. `groundHeightAt` has to answer with the incline over the whole
+run, and a roof pad lying across a flight is a failure rather than a warning, because that pad closes the stairwell and
+you then walk over it. `snapFloorY` is the same question a sim asks, so it gets the same walk: mid-flight the flight
+carries you, and below its foot the deck does. Which flight carries a body followed from two fixed storey bands with the
+name of the secret stairs written into them, and a flight carries its `connector.id`, so `'secret_stairs'` matched
+nothing: under that staircase a sim hung in the air on V0, and halfway up it snapped to the roof. Both bands are gone
+and the answer comes from each flight's own two ends.
+
+`luik` and `glijbaan` cover the two things the roof gained. `luik` reads the hatch over the secret stairs out of the
+schema (every `automatic-gate` volume names a mechanism on its own entity that admits pedestrians, and the leaf covers
+the whole opening) and then drives it: closed the deck is floor over the hole, a pedestrian walking up at `WALK_SPEED`
+gets it open inside `openingSeconds`, it shuts behind him, and a body coming up the stairs from below opens it too.
+`glijbaan` requires one conveyor emitter per travel surface of the tube, each carrying exactly `tube.speed`, accepts
+boarding at the platform mouth and refuses it at the ladder top, then rides the whole thing frame by frame and demands
+you are released inside the waterline over a pool floor.
+
+`slagbomen`, `voertuigen`, `motorrit` and `geulverkeer` cover the vehicles. `slagbomen` validates `BARRIER_ENTITIES`,
+checks each gate box spans from the barrier's own surface to above its hinge, and drives all three traffic classes at
+every boom, expecting per class the answer the boom's own policy gives. It also refuses a permit nobody can present:
+an admitted class has to be one that `src/` actually announces at a boom, and for `npc-traffic` an authored route
+(`ROAD_RINGS` plus `EXIT_BRANCH_ROUTE`) has to enter that boom's approach strip. The city garage boom admitted
+`npc-traffic` and no sim drives there, so it read exactly like a working gate and never opened; it admits the player's
+vehicle now, which is what the ticket machine beside it is for. This is the same rule as `unused-penetration` and a
+stale exemption row: a declaration matching nothing is a build failure. `voertuigen` measures ramp pitch up, down and
+flat for every wheelbase in `DRIVEABLE_HANDLING`, and the fall off the garage spiral's top landing against real free
+fall. `motorrit` boards the motorcycle, checks the body sits a half turn off the drive heading, drives a second of W and
+requires the displacement to lie on its own forward axis, and compares it against the rental car property by property.
+Property by property matters: two assertions each `||`-ing three conditions printed one fixed pair of numbers, so a
+`boostSpeed` regression reported `accel`, and a zero lean printed "hangs to 0.55 rad and so does not lean further than
+the car (0.12 rad)", a sentence its own numbers refute. `geulverkeer` runs the real `CityTraffic` twice for 120 s, over
+an empty ramp and over an occupied one.
+
+`theater` covers the second building. It walks a pedestrian in through the travee in 5 cm steps and two more at the
+sidelights beside it, which must not get through; requires the shell closed everywhere except that one bay; puts every
+seat on its own row's floor and out of the aisles; requires the portal to exist with both faces so the zone graph joins
+`stad` to `theatre`; and requires the auditorium's own volumes to claim `theatre` alone. The aisles are
+`aisle-clearance` volumes, and `validateSpatialWorld` treats reserved floor the same way whether it is a storefront
+frontage or an aisle. `park` guards the two outdoor measuring poses in the city park, and now also the lawn itself: the
+grass is the park lot inset by its verge, and it used to stand beside `CITY_KAVELS.park` as four hand-typed numbers with
+the same centre and a rectangle eight metres smaller, with nothing comparing the two.
+
 `wegen` reads the ring road's two lanes out of [cityPlan](src/scene/city/cityPlan.ts) and asserts they run in opposite
 directions, that each edge's lane centre lies to the right of the roadway centreline (which is what keeping right on a
 ring means), that `rotY` reproduces the heading, and that the corner tiles still exist. `kaartlabels` plans the labels
@@ -153,7 +214,7 @@ the minimap must name the entrance in full from the pavement in front of it. Bot
 `deckLabelPlan` / `minimapLabelPlan`, measured with [stub-dom](scripts/stub-dom.ts)'s text metric, which is wider per
 glyph than a real monospace at the sizes the map uses, so what fits there fits in the browser.
 
-Three of check-world's controls are source greps rather than world queries, and they share one loop over `src/` and
+Four of check-world's controls are source greps rather than world queries, and they share one loop over `src/` and
 `scripts/` with comments, strings, templates and regexes blanked out. `rekenhulpen` fails a build that divides by two,
 multiplies by a loose `0.5`, calls `MathUtils`, or clamps with a nested `Math.max`/`Math.min` instead of using
 [math](src/util/math.ts). `kopieen` fails a build that defines a second copy of anything [src/util](src/util) already
@@ -161,8 +222,23 @@ exports, reading those names out of the source so a helper added tomorrow guards
 catches the three shapes that carry no name once written out, the jitter `(r - 0.5) * spread`, the plusMinus
 `(r * 2 - 1) * extent`, and the ease factor `Math.min(1, rate * dt)`. `zoneklokken` runs over `src/` alone and fails a
 visibility question whose whole argument is a text literal, which after blanking is a call with empty parentheses:
-that is a simulation clock keyed to a deck somebody typed instead of to where its actors are standing. All three carry
-a table of per-site exemptions where a row that no longer matches anything is itself a build failure.
+that is a simulation clock keyed to a deck somebody typed instead of to where its actors are standing. `spiegeltekst`
+fails a texture on a double-sided plane, which reads mirrored from behind; use `backToBackLabel`. It matches the two
+properties wherever they are written, in one material literal or assigned afterwards (`mat.map = tex` next to a
+`side: THREE.DoubleSide` in the declaration, or a later `mat.side = THREE.DoubleSide`), because the rule is about the
+material and not about the shape it was written in. All four carry a table of per-site exemptions where a row that no
+longer matches anything is itself a build failure.
+
+`validateSpatialWorld` in [spatial](src/data/spatial.ts) reports fourteen problem codes, and the ones added with the
+work above are worth naming. `insufficient-headroom` is the posture case above. `unmeasurable-clearance` is a flight
+whose fouling cannot be solved rather than guessed: a flight running diagonally in plan, or a hole in the deck over it
+that is not an axis-aligned rectangle. `detached-backing` and `unused-standoff` are the two halves of a declared
+`standoff`, a shop back panel standing free of the structure behind it and a declaration that keeps no gap.
+`invalid-interaction` covers a mechanism with no valid moving geometry, one whose gate volume it does not control, and
+one that admits no traffic class at all. A solid measured against a flight's clearance goes through
+`flightClearanceVerdict`, and a cylinder now goes through it too, as the upright box over the cylinder: it used to fall
+past to a bare `true`, and a flight's bounding box is far wider than the flight, so a bollard nine metres up a staircase
+read as standing in it.
 
 ## Performance
 
@@ -233,7 +309,10 @@ snapshot, and until it exists every number above is the *old* build:
    vsync × 1.12, 1 s cooldown. The canvas CSS (100%) upscales the smaller buffer.
 
 5. **Zone and portal culling shipped** ([zones](src/data/zones.ts), [ZoneCuller](src/render/ZoneCuller.ts),
-   [ZoneVisibility](src/render/ZoneVisibility.ts)). Five zones: `stad`, `p1`, `mall-v0`, `mall-v1`, `roof`. A portal is
+   [ZoneVisibility](src/render/ZoneVisibility.ts)). Six zones: `stad`, `p1`, `mall-v0`, `mall-v1`, `roof`, `theatre`.
+   The zone geometry comes from a list of enclosures ([zones](src/data/zones.ts) `ZONE_ENCLOSURES`), each with its own
+   plan, wall envelope, height band and facade-opening solver, so the theatre is a second building rather than a
+   special case; `stad` means "fits inside no single building". A portal is
    any entity owning an `opening-clearance` or `connector-clearance` volume, or one tagged `GLASS_TAG`, so the graph is
    derived from the world model instead of listed a second time. A neighbouring zone is drawn only through the camera
    frustum clipped to the interface between the two zones, which is the hole in the slab or the line of the facade and

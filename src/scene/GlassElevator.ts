@@ -9,7 +9,7 @@ import type { LightPool } from '#/render/LightPool';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { extrudedXZGeometry } from '#/render/xzShape';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { clamp, half, lerp, midpoint } from '#/util/math';
 import { pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
@@ -716,7 +716,7 @@ export class GlassElevator {
 		this.group.add(station);
 	}
 
-	private makeCallSign(text: string, w: number, h: number): THREE.Mesh {
+	private makeCallSign(text: string, w: number, h: number): THREE.Group {
 		const cw = CALL_SIGN_TEX_W;
 		const ch = CALL_SIGN_TEX_H;
 		const { canvas: c, ctx } = labelCanvas(cw, ch);
@@ -731,15 +731,9 @@ export class GlassElevator {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, half(cw), half(ch));
 		const tex = labelTexture(c);
-		return new THREE.Mesh(
+		return backToBackLabel(
 			new THREE.PlaneGeometry(w, h),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: tex,
-					side: THREE.DoubleSide,
-					toneMapped: false,
-				}),
-			),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 	}
 

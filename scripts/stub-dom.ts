@@ -63,6 +63,34 @@ export function stubDocument(): void {
 	};
 }
 
+/** Wat een sessie in het geheugen onthoudt, met de vier methodes die de opslag gebruikt. */
+export type SessieOpslag = {
+	getItem: (sleutel: string) => string | null;
+	setItem: (sleutel: string, waarde: string) => void;
+	removeItem: (sleutel: string) => void;
+	clear: () => void;
+};
+
+/**
+ * `sessionStorage` in het geheugen, zodat de laadgrens van een opgeslagen spel
+ * headless te bevragen is met precies wat een tab erin kan hebben staan.
+ */
+export function stubSessionStorage(): SessieOpslag {
+	const inhoud = new Map<string, string>();
+	const opslag: SessieOpslag = {
+		getItem: (sleutel) => inhoud.get(sleutel) ?? null,
+		setItem: (sleutel, waarde) => {
+			inhoud.set(sleutel, waarde);
+		},
+		removeItem: (sleutel) => {
+			inhoud.delete(sleutel);
+		},
+		clear: () => inhoud.clear(),
+	};
+	(globalThis as unknown as { sessionStorage: unknown }).sessionStorage = opslag;
+	return opslag;
+}
+
 /**
  * WebAudio + de `window`-timers. De disco start muziek zodra je hem aanzet, en
  * de controle op het aantal echte lampen moet hem juist wél kunnen aanzetten.

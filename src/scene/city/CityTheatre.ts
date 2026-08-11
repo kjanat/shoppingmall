@@ -1,26 +1,151 @@
 import * as THREE from 'three';
+import type { Bounds3 } from '#/data/spatial';
+import { geometryBounds } from '#/data/spatial';
+import {
+	mechanismTriggerBounds,
+	THEATRE_AISLES,
+	THEATRE_ENTRANCE_ENTITY,
+	THEATRE_FLOOR_Y,
+	THEATRE_HALL_ENTITY,
+	THEATRE_INTERIOR,
+	THEATRE_PLAN,
+	THEATRE_PORTAL,
+	THEATRE_SHELL_ENTITY,
+	THEATRE_STAGE_TOP_Y,
+	theatreRowBank,
+	theatreRowDeck,
+	theatreRowY,
+	theatreSeatBanks,
+	theatreSeatXs,
+	theatreTreadY,
+	theatreTreadZ,
+} from '#/data/world';
+import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { THEATRE_PLAN, theatreTreadY, theatreTreadZ } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
-import { easeFactor, half, midpoint, span } from '#/util/math';
+import { ease, easeFactor, half, lerp, midpoint, span } from '#/util/math';
+import { at, jitterWith, mulberry32, pickWith } from '#/util/rand';
 
 /**
- * PRAIRIE THEATRE — monumentaal cultuurpaleis op het NO-blok (x 56..88, z -68..-44).
+ * PRAIRIE THEATRE — monumentaal cultuurpaleis op het NO-blok.
  *
  * Zuilen, brede trap, marquee met 40 chase-lampjes en een rood tapijt tot de
  * stoep. Vanavond: De Baard-Dief. Uitverkocht, uiteraard — de hele stad heeft
  * kaartjes en niemand komt, want niemand woont hier (zie CityBuildings).
  *
- * Pi-budget: geen lampen, alleen emissive/basic. De chase loopt via
- * instanceColor op één InstancedMesh en schrijft alleen als de tik verspringt.
+ * Het blok was massief en de deuren waren erop geschilderd. Nu staat er een zaal
+ * achter: foyer met kassa, vijf aflopende rijen, een toneel met een doek erachter
+ * en een handvol bezoekers die al zitten. De maten komen allemaal uit
+ * `THEATRE_PLAN`, want de collision, de zonegraaf en de wereldcontrole lezen
+ * diezelfde zaal.
+ *
+ * Buiten geen lampen, alleen emissive/basic. Binnen wél, want een zaal zonder
+ * licht is een doos: de gangpadlampjes en de toneelwas zijn virtuele lichten uit
+ * de pool en nooit een eigen PointLight.
  */
 
 /** Seconde per chase-stap. Om de tik wisselt ook de kleur — dat heet dramaturgie. */
 const CHASE_TICK = 0.32;
 const BULB_COUNT = 40;
 
+/** Zaad van de zaal: welke stoelen bezet zijn en hoe de bezoekers erin hangen. */
+const HOUSE_SEED = 0x7a1e;
+
+/** Hoeveel bezoekers er zitten. Uitverkocht is een affiche, geen publiek. */
+const AUDIENCE_COUNT = 9;
+
+/** Eén gangpadlampje per rij per gangpad, laag bij de vloer zoals het hoort. */
+const AISLE_LAMP = { height: 0.35, radius: 0.09, intensity: 2.4, distance: 6, decay: 2 } as const;
+
+/** De toneelwas: één licht boven het toneel dat met de voorstelling meeademt. */
+const STAGE_WASH = { height: 5.5, intensity: 26, distance: 26, decay: 2, priority: 2 } as const;
+
+/** Ademhaling van de was, in seconden per hele slag, en hoe diep hij zakt. */
+const STAGE_BREATH = { period: 9, depth: 0.22 } as const;
+
+/** Kroonlijst rondom de schil, en de attiek die de toneeltoren suggereert. */
+const CORNICE = { reach: 0.75, height: 0.9 } as const;
+const ATTIC = { width: 12, depth: 9, height: 2.4 } as const;
+
+/** Wat het kozijn boven de travee voor het glas uitsteekt, en hoe hoog het is. */
+const JAMB = { reach: 0.1, head: 0.35 } as const;
+
+/** Hoe ver een plat vlak boven de plaat eronder ligt; twee centimeter flikkert niet. */
+const CARPET_LIFT = 0.02;
+/** En hoe ver een verticaal vlak voor de wand erachter hangt. */
+const SURFACE_LIFT = 0.01;
+
+const COUNTER_TRIM = 0.04;
+const COUNTER_SIGN_HEIGHT = 0.5;
+const COUNTER_SIGN_Y = 0.75;
+
+/** Affiches in de foyer, naast de travee. */
+const POSTER = { width: 1.4, height: 2.1, centerY: 2.4, offset: 1.4 } as const;
+
+/** Jassen van het publiek. Een zaal in het donker is geen catwalk. */
+const AUDIENCE_COLORS = [0x2c3550, 0x4a2431, 0x1f3a30, 0x513a1c, 0x33303a] as const;
+
+/** Hoeveel een bezoeker scheef in zijn stoel hangt, en hoe traag hij ademt. */
+const SITTER_YAW_SPREAD = 0.3;
+const SITTER_BREATH = { min: 0.7, max: 1.3 } as const;
+
+/** Zithouding: hoe diep het lijf op de zitting zakt en hoe ver de knieën uitsteken. */
+const SITTER = {
+	hipY: 0.44,
+	torso: { width: 0.42, depth: 0.26, height: 0.6 },
+	head: { radius: 0.115 },
+	thigh: { width: 0.15, height: 0.14, length: 0.42 },
+	shin: { width: 0.13, length: 0.44 },
+	arm: { width: 0.1, length: 0.5 },
+	/** Hoe ver de romp per ademhaling naar voren en terug kantelt. */
+	lean: 0.035,
+} as const;
+
+type Sitter = Readonly<{ body: THREE.Object3D; phase: number; rate: number }>;
+
+const TAU = Math.PI * 2;
+
+/** Hoe snel de bladen op de aanwezigheidszone reageren. De openingstijd van het mechanisme. */
+const DOOR_RATE = 1 / THEATRE_PLAN.doors.seconds;
+
+/** Precies de doos die het mechanisme als trigger aanwijst; geen tweede zone ernaast. */
+const DOOR_TRIGGER = mechanismTriggerBounds(THEATRE_ENTRANCE_ENTITY, 'theatre-doors');
+
+function inBounds(box: Bounds3, point: THREE.Vector3): boolean {
+	return (
+		point.x >= box.minX &&
+		point.x <= box.maxX &&
+		point.y >= box.minY &&
+		point.y <= box.maxY &&
+		point.z >= box.minZ &&
+		point.z <= box.maxZ
+	);
+}
+
 export class CityTheatre {
 	readonly group = new THREE.Group();
+
+	/**
+	 * De bezoekers, apart bijgehouden.
+	 *
+	 * `check-props` loopt de directe kinderen van een groep na tegen elk volume dat
+	 * lichamen tegenhoudt, en de tekenaar zet zijn eigen wanden en dekken als kinderen
+	 * in dezelfde groep. Alleen het publiek is een cast, dus alleen het publiek hoort
+	 * die vraag te krijgen.
+	 */
+	readonly audience = new THREE.Group();
+
+	/**
+	 * De twee plekken waar dit systeem staat: de marquee aan de straat en de zaal
+	 * erachter. Ze liggen in verschillende zones, en de LOD-klok leidt daar zijn
+	 * tempo uit af in plaats van er één zone bij op te schrijven.
+	 */
+	readonly marquee = new THREE.Vector3(THEATRE_PORTAL.centerX, THEATRE_FLOOR_Y, THEATRE_PORTAL.outerZ);
+	readonly house = new THREE.Vector3(
+		midpoint(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX),
+		THEATRE_FLOOR_Y,
+		midpoint(THEATRE_INTERIOR.minZ, THEATRE_INTERIOR.maxZ),
+	);
 
 	private readonly materials: THREE.Material[] = [];
 	private readonly geometries: THREE.BufferGeometry[] = [];
@@ -43,22 +168,36 @@ export class CityTheatre {
 	private readonly titleMat: THREE.MeshBasicMaterial;
 	private titleLevel = 1;
 
-	constructor() {
+	/** De twee schuifbladen van de travee, en hoever ze openstaan. */
+	private readonly leaves: { mesh: THREE.Mesh; closedX: number; travel: number }[] = [];
+	private doorOpen = 0;
+
+	private readonly stageWash: LightHandle;
+	private readonly sitters: Sitter[] = [];
+	private readonly head: THREE.SphereGeometry;
+
+	constructor(pool: LightPool) {
 		this.group.name = 'city_theatre';
 
 		this.unitBox = new THREE.BoxGeometry(1, 1, 1);
 		this.unitPlane = new THREE.PlaneGeometry(1, 1);
-		this.geometries.push(this.unitBox, this.unitPlane);
+		this.head = new THREE.SphereGeometry(SITTER.head.radius, 8, 6);
+		this.geometries.push(this.unitBox, this.unitPlane, this.head);
 
 		this.buildBlok();
 		this.buildZuilen();
 		this.bulbs = this.buildMarquee();
 		this.titleMat = this.buildBorden();
 		this.buildTapijt();
+		this.buildFoyer();
+		this.buildZaal();
+		this.buildStoelen();
+		this.stageWash = this.buildZaallicht(pool);
+		this.buildPubliek();
 		this.applyChase(0);
 	}
 
-	update(dt: number, t: number): void {
+	update(dt: number, t: number, viewer: THREE.Vector3): void {
 		const step = Math.floor(t / CHASE_TICK);
 		if (step !== this.lastStep) {
 			this.lastStep = step;
@@ -69,6 +208,20 @@ export class CityTheatre {
 		const target = step % 2 === 0 ? 1 : 0.82;
 		this.titleLevel += (target - this.titleLevel) * easeFactor(6, dt);
 		this.titleMat.color.setScalar(this.titleLevel);
+
+		// De travee gaat open op dezelfde doos die het mechanisme in het wereldmodel
+		// als trigger aanwijst. Een tweede zone hier zou een deur zijn die opengaat op
+		// een andere plek dan het model zegt.
+		const wanted = inBounds(DOOR_TRIGGER, viewer) ? 1 : 0;
+		this.doorOpen = ease(this.doorOpen, wanted, DOOR_RATE, dt);
+		for (const leaf of this.leaves) leaf.mesh.position.x = leaf.closedX + leaf.travel * this.doorOpen;
+
+		// De was ademt; de zaal is dan nooit helemaal stil, ook als er niets speelt.
+		const breath = half(1 + Math.cos((t / STAGE_BREATH.period) * TAU));
+		this.stageWash.intensity = lerp(STAGE_WASH.intensity * (1 - STAGE_BREATH.depth), STAGE_WASH.intensity, breath);
+		for (const sitter of this.sitters) {
+			sitter.body.rotation.x = SITTER.lean * Math.sin(t * sitter.rate + sitter.phase);
+		}
 	}
 
 	dispose(): void {
@@ -96,6 +249,19 @@ export class CityTheatre {
 		return m;
 	}
 
+	/** Dezelfde doos, maar opgegeven zoals het wereldmodel hem opschrijft. */
+	private boxOf(mat: THREE.Material, b: Bounds3): THREE.Mesh {
+		return this.box(
+			mat,
+			span(b.minX, b.maxX),
+			span(b.minY, b.maxY),
+			span(b.minZ, b.maxZ),
+			midpoint(b.minX, b.maxX),
+			midpoint(b.minY, b.maxY),
+			midpoint(b.minZ, b.maxZ),
+		);
+	}
+
 	private makeTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		draw(ctx);
@@ -112,20 +278,31 @@ export class CityTheatre {
 		const deur = lit({ color: 0x2a211b, roughness: 0.7, metalness: 0.15 });
 		this.materials.push(steen, donker, deur);
 
-		// Zaalblok. Ramen heeft een theater niet nodig.
+		// De schil en het dak komen uit het wereldmodel: de wand die je ziet is de wand
+		// waar je tegenaan loopt, en het gat in de zuidgevel is het gat waar de
+		// zonegraaf zijn portaal in vindt.
 		const zaal = THEATRE_PLAN.hall;
 		const zaalH = THEATRE_PLAN.hallHeight;
-		this.box(
-			steen,
-			span(zaal.minX, zaal.maxX),
-			zaalH,
-			span(zaal.minZ, zaal.maxZ),
-			midpoint(zaal.minX, zaal.maxX),
-			half(zaalH),
-			midpoint(zaal.minZ, zaal.maxZ),
-		);
-		this.box(steen, 29.5, 0.9, 15.5, 72, 13.45, -59); // kroonlijst
-		this.box(steen, 12, 2.4, 9, 72, 14.9, -59.5); // attiek — voor de toneeltoren-suggestie
+		for (const volume of THEATRE_SHELL_ENTITY.volumes) {
+			this.boxOf(steen, geometryBounds(volume.geometry)).receiveShadow = true;
+		}
+		// Kroonlijst rondom, en een attiek over de toneeltoren.
+		this.boxOf(steen, {
+			minX: zaal.minX - CORNICE.reach,
+			maxX: zaal.maxX + CORNICE.reach,
+			minZ: zaal.minZ - CORNICE.reach,
+			maxZ: zaal.maxZ + CORNICE.reach,
+			minY: zaalH,
+			maxY: zaalH + CORNICE.height,
+		});
+		this.boxOf(steen, {
+			minX: midpoint(zaal.minX, zaal.maxX) - half(ATTIC.width),
+			maxX: midpoint(zaal.minX, zaal.maxX) + half(ATTIC.width),
+			minZ: THEATRE_INTERIOR.minZ,
+			maxZ: THEATRE_INTERIOR.minZ + ATTIC.depth,
+			minY: zaalH + CORNICE.height,
+			maxY: zaalH + CORNICE.height + ATTIC.height,
+		});
 
 		// Podium (het buiten-soort) met brede trap naar de stoep.
 		const dek = THEATRE_PLAN.podium;
@@ -156,9 +333,53 @@ export class CityTheatre {
 			tree.receiveShadow = true;
 		}
 
-		// Drie dubbele deuren; dicht, want de voorstelling is al begonnen.
-		for (const dx of [68, 72, 76]) {
-			this.box(deur, 2.2, 3.6, 0.15, dx, 3.3, -51.9);
+		this.buildTravee(deur);
+	}
+
+	/**
+	 * De travee: twee vaste zijlichten en een schuifpaar ertussen.
+	 *
+	 * Er stonden drie dubbele deuren op de gevel geschilderd, en daarachter zat het
+	 * massieve blok. Dit is dezelfde vorm als de hoofdingang van de mall, en om
+	 * dezelfde reden: het glas is wat stad en zaal op elkaar laat uitkijken terwijl
+	 * de bladen dicht staan.
+	 */
+	private buildTravee(kozijn: THREE.Material): void {
+		const glas = lit({ color: 0x1b2a2e, roughness: 0.15, metalness: 0.6, transparent: true, opacity: 0.42 });
+		this.materials.push(glas);
+		const { doors } = THEATRE_PLAN;
+		const glasZ = THEATRE_PORTAL.glassZ;
+		const paneel = (minX: number, maxX: number, top: number): THREE.Mesh =>
+			this.boxOf(glas, {
+				minX,
+				maxX,
+				minZ: glasZ - half(doors.thickness),
+				maxZ: glasZ + half(doors.thickness),
+				minY: THEATRE_FLOOR_Y,
+				maxY: THEATRE_FLOOR_Y + top,
+			});
+		paneel(THEATRE_PORTAL.minX, THEATRE_PORTAL.doorMinX, doors.headY);
+		paneel(THEATRE_PORTAL.doorMaxX, THEATRE_PORTAL.maxX, doors.headY);
+		// Kozijn onder de latei, zodat de travee een rand heeft en niet in de steen zweeft.
+		this.boxOf(kozijn, {
+			minX: THEATRE_PORTAL.minX,
+			maxX: THEATRE_PORTAL.maxX,
+			minZ: glasZ - half(doors.thickness) - JAMB.reach,
+			maxZ: glasZ + half(doors.thickness) + JAMB.reach,
+			minY: THEATRE_FLOOR_Y + doors.headY,
+			maxY: THEATRE_FLOOR_Y + doors.headY + JAMB.head,
+		});
+		for (const sign of [-1, 1] as const) {
+			const closedX =
+				sign < 0
+					? midpoint(THEATRE_PORTAL.doorMinX, THEATRE_PORTAL.centerX)
+					: midpoint(THEATRE_PORTAL.centerX, THEATRE_PORTAL.doorMaxX);
+			const mesh = paneel(
+				sign < 0 ? THEATRE_PORTAL.doorMinX : THEATRE_PORTAL.centerX,
+				sign < 0 ? THEATRE_PORTAL.centerX : THEATRE_PORTAL.doorMaxX,
+				doors.leafHeight,
+			);
+			this.leaves.push({ mesh, closedX, travel: sign * THEATRE_PORTAL.doorTravel });
 		}
 	}
 
@@ -411,5 +632,341 @@ export class CityTheatre {
 			lijn.position.set(px, 2.28, -49.25);
 			this.group.add(lijn);
 		}
+	}
+
+	/** Foyer: vloerkleed, de wand naar de zaal met zijn twee doorgangen, kassa en affiches. */
+	private buildFoyer(): void {
+		const pleister = lit({ color: 0x6d3a3f, roughness: 0.95 });
+		const tapijt = lit({ color: 0x5c1226, roughness: 1 });
+		const mahonie = lit({ color: 0x3b2118, roughness: 0.5, metalness: 0.1 });
+		const messing = lit({ color: 0xc9a227, roughness: 0.3, metalness: 0.85 });
+		this.materials.push(pleister, tapijt, mahonie, messing);
+
+		for (const volume of THEATRE_HALL_ENTITY.volumes) {
+			if (!volume.id.startsWith('foyer-')) continue;
+			if (volume.role === 'walkable') continue;
+			this.boxOf(pleister, geometryBounds(volume.geometry)).receiveShadow = true;
+		}
+
+		const vloer = new THREE.Mesh(this.unitPlane, tapijt);
+		vloer.scale.set(span(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX), THEATRE_PLAN.foyer.depth, 1);
+		vloer.rotation.x = -Math.PI / 2;
+		vloer.position.set(
+			midpoint(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX),
+			THEATRE_FLOOR_Y + CARPET_LIFT,
+			THEATRE_INTERIOR.maxZ - half(THEATRE_PLAN.foyer.depth),
+		);
+		vloer.receiveShadow = true;
+		this.group.add(vloer);
+
+		// De kassa, op de plek die het wereldmodel ervoor vrijhoudt.
+		const { kassa } = THEATRE_PLAN.foyer;
+		const balieMinX = THEATRE_INTERIOR.minX + kassa.inset;
+		const balieMinZ = THEATRE_INTERIOR.maxZ - THEATRE_PLAN.foyer.depth + kassa.inset;
+		const balie = {
+			minX: balieMinX,
+			maxX: balieMinX + kassa.width,
+			minZ: balieMinZ,
+			maxZ: balieMinZ + kassa.depth,
+			minY: THEATRE_FLOOR_Y,
+			maxY: THEATRE_FLOOR_Y + kassa.height,
+		};
+		this.boxOf(mahonie, balie).castShadow = true;
+		this.boxOf(messing, { ...balie, minY: balie.maxY, maxY: balie.maxY + COUNTER_TRIM });
+
+		const kassaTex = this.makeTexture(512, 128, (ctx) => {
+			ctx.fillStyle = '#140b12';
+			ctx.fillRect(0, 0, 512, 128);
+			ctx.fillStyle = '#f5c518';
+			ctx.textAlign = 'center';
+			ctx.font = 'bold 62px system-ui,sans-serif';
+			ctx.fillText('KASSA', 256, 62);
+			ctx.font = '30px system-ui,sans-serif';
+			ctx.fillText('UITVERKOCHT — TOCH LEEG', 256, 104);
+		});
+		const bord = new THREE.Mesh(this.unitPlane, this.basic(kassaTex));
+		bord.scale.set(kassa.width, COUNTER_SIGN_HEIGHT, 1);
+		bord.position.set(midpoint(balie.minX, balie.maxX), THEATRE_FLOOR_Y + COUNTER_SIGN_Y, balie.maxZ + SURFACE_LIFT);
+		this.group.add(bord);
+
+		// Affiches op de foyerwand, aan weerszijden van de travee.
+		for (const [index, x] of [THEATRE_PORTAL.minX - POSTER.offset, THEATRE_PORTAL.maxX + POSTER.offset].entries()) {
+			const tex = this.makeTexture(256, 384, (ctx) => {
+				ctx.fillStyle = index === 0 ? '#1d1030' : '#101f18';
+				ctx.fillRect(0, 0, 256, 384);
+				ctx.strokeStyle = '#f5c518';
+				ctx.lineWidth = 4;
+				ctx.strokeRect(10, 10, 236, 364);
+				ctx.fillStyle = '#f2ecdc';
+				ctx.textAlign = 'center';
+				ctx.font = 'bold 34px system-ui,sans-serif';
+				ctx.fillText(index === 0 ? 'DE BAARD-DIEF' : 'MATINEE', 128, 70);
+				ctx.font = 'italic 19px system-ui,sans-serif';
+				ctx.fillText(index === 0 ? '"Hij neemt alles mee."' : '"Elke woensdag, niemand."', 128, 330);
+			});
+			const vlak = new THREE.Mesh(this.unitPlane, this.basic(tex));
+			vlak.scale.set(POSTER.width, POSTER.height, 1);
+			vlak.rotation.y = Math.PI;
+			vlak.position.set(x, THEATRE_FLOOR_Y + POSTER.centerY, THEATRE_INTERIOR.maxZ - SURFACE_LIFT);
+			this.group.add(vlak);
+		}
+	}
+
+	/** Zaal: de aflopende dekken, het toneel en het doek erachter. */
+	private buildZaal(): void {
+		const dekMat = lit({ color: 0x2a1f24, roughness: 0.95 });
+		const loper = lit({ color: 0x7a1230, roughness: 1 });
+		const planken = lit({ color: 0x53381f, roughness: 0.7 });
+		const plafond = lit({ color: 0x241a1f, roughness: 1 });
+		this.materials.push(dekMat, loper, planken, plafond);
+
+		for (const volume of THEATRE_HALL_ENTITY.volumes) {
+			if (volume.role !== 'walkable' || !volume.id.startsWith('house-deck-')) continue;
+			this.boxOf(dekMat, geometryBounds(volume.geometry)).receiveShadow = true;
+		}
+		// De gangpaden krijgen hun eigen loper, precies op de stroken die het model
+		// vrijhoudt: wie het gangpad verzet, verzet de loper mee.
+		for (const aisle of THEATRE_AISLES) {
+			for (let row = 0; row < THEATRE_PLAN.seating.rows; row++) {
+				const deck = theatreRowDeck(row);
+				const strip = new THREE.Mesh(this.unitPlane, loper);
+				strip.scale.set(span(aisle.minX, aisle.maxX), span(deck.minZ, deck.maxZ), 1);
+				strip.rotation.x = -Math.PI / 2;
+				strip.position.set(midpoint(aisle.minX, aisle.maxX), theatreRowY(row) + CARPET_LIFT, midpoint(deck.minZ, deck.maxZ));
+				this.group.add(strip);
+			}
+		}
+
+		for (const volume of THEATRE_HALL_ENTITY.volumes) {
+			if (volume.id === 'stage') this.boxOf(planken, geometryBounds(volume.geometry)).receiveShadow = true;
+			if (volume.id === 'stage-set') this.buildDoek(geometryBounds(volume.geometry));
+		}
+
+		// Plafond, zodat je vanuit de zaal niet tegen de onderkant van de dakplaat kijkt.
+		const onder = new THREE.Mesh(this.unitPlane, plafond);
+		onder.scale.set(span(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX), span(THEATRE_INTERIOR.minZ, THEATRE_INTERIOR.maxZ), 1);
+		onder.rotation.x = Math.PI / 2;
+		onder.position.set(
+			midpoint(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX),
+			THEATRE_PLAN.hallHeight - THEATRE_PLAN.roofThickness - SURFACE_LIFT,
+			midpoint(THEATRE_INTERIOR.minZ, THEATRE_INTERIOR.maxZ),
+		);
+		this.group.add(onder);
+	}
+
+	/** Het doek: geschilderde prairie, met de mall er als silhouet in. */
+	private buildDoek(box: Bounds3): void {
+		const frame = lit({ color: 0x1a1216, roughness: 0.9 });
+		this.materials.push(frame);
+		this.boxOf(frame, box);
+		const tex = this.makeTexture(1024, 384, (ctx) => {
+			const lucht = ctx.createLinearGradient(0, 0, 0, 384);
+			lucht.addColorStop(0, '#2a1c46');
+			lucht.addColorStop(1, '#c2603a');
+			ctx.fillStyle = lucht;
+			ctx.fillRect(0, 0, 1024, 384);
+			ctx.fillStyle = '#1b1220';
+			ctx.fillRect(0, 300, 1024, 84);
+			// De mall aan de horizon, want dat is het enige gebouw dat iemand hier kent.
+			ctx.fillRect(360, 232, 300, 70);
+			ctx.fillRect(430, 206, 160, 28);
+			ctx.fillStyle = '#f5c518';
+			for (let i = 0; i < 9; i++) ctx.fillRect(380 + i * 32, 256, 14, 20);
+			ctx.textAlign = 'center';
+			ctx.font = 'bold 30px system-ui,sans-serif';
+			ctx.fillText('DE BAARD-DIEF', 512, 122);
+		});
+		const doek = new THREE.Mesh(this.unitPlane, this.basic(tex));
+		doek.scale.set(span(box.minX, box.maxX), span(box.minY, box.maxY), 1);
+		doek.position.set(midpoint(box.minX, box.maxX), midpoint(box.minY, box.maxY), box.maxZ + SURFACE_LIFT);
+		this.group.add(doek);
+	}
+
+	/**
+	 * De stoelen, stoel voor stoel op de harten die het wereldmodel uitrekent.
+	 *
+	 * Twee InstancedMeshes voor de hele zaal: zitting en rug. De vakken komen uit
+	 * `theatreSeatBanks`, en die zijn door de gangpaden uit de rij gesneden, dus er
+	 * kan er geen één in een gangpad belanden zonder dat het model dat zegt.
+	 */
+	private buildStoelen(): void {
+		const bekleding = lit({ color: 0x7d1230, roughness: 0.95 });
+		this.materials.push(bekleding);
+		const banks = theatreSeatBanks();
+		const seats = banks.flatMap((bank) => theatreSeatXs(bank).map((x) => ({ x, row: bank.row })));
+		const zit = new THREE.InstancedMesh(this.unitBox, bekleding, seats.length);
+		zit.name = 'theatre_zittingen';
+		const rug = new THREE.InstancedMesh(this.unitBox, bekleding, seats.length);
+		rug.name = 'theatre_ruggen';
+		const { seat, seating } = THEATRE_PLAN;
+		seats.forEach((place, index) => {
+			const floor = theatreRowY(place.row);
+			const strook = theatreRowBank(place.row);
+			const middenZ = midpoint(strook.minZ, strook.maxZ);
+			this.dummy.rotation.set(0, 0, 0);
+			this.dummy.position.set(place.x, floor + seat.seatY, middenZ);
+			this.dummy.scale.set(seat.width, seat.thickness, seating.bankDepth - seat.thickness);
+			this.dummy.updateMatrix();
+			zit.setMatrixAt(index, this.dummy.matrix);
+			this.dummy.position.set(place.x, floor + midpoint(seat.seatY, seat.backHeight), strook.maxZ - half(seat.thickness));
+			this.dummy.scale.set(seat.width, span(seat.seatY, seat.backHeight), seat.thickness);
+			this.dummy.updateMatrix();
+			rug.setMatrixAt(index, this.dummy.matrix);
+		});
+		zit.computeBoundingSphere();
+		rug.computeBoundingSphere();
+		this.instanced.push(zit, rug);
+		this.group.add(zit, rug);
+	}
+
+	/**
+	 * Zaallicht: één lampje per gangpad per rij, en één was boven het toneel.
+	 *
+	 * Allemaal virtuele lichten uit de pool. Een eigen PointLight hier zou
+	 * `NUM_POINT_LIGHTS` verzetten en elk materiaal in het gebouw opnieuw laten
+	 * linken; `check:lights` greept er dan ook op.
+	 */
+	private buildZaallicht(pool: LightPool): LightHandle {
+		const gloed = new THREE.MeshBasicMaterial({ color: 0xffcf8a, toneMapped: false });
+		this.materials.push(gloed);
+		const bolGeo = new THREE.SphereGeometry(AISLE_LAMP.radius, 8, 6);
+		this.geometries.push(bolGeo);
+		for (const aisle of THEATRE_AISLES) {
+			for (let row = 0; row < THEATRE_PLAN.seating.rows; row++) {
+				const deck = theatreRowDeck(row);
+				const y = theatreRowY(row) + AISLE_LAMP.height;
+				for (const x of [aisle.minX, aisle.maxX]) {
+					const bol = new THREE.Mesh(bolGeo, gloed);
+					bol.position.set(x, y, midpoint(deck.minZ, deck.maxZ));
+					this.group.add(bol);
+					pool.register({
+						position: bol.position.clone(),
+						color: 0xffb765,
+						intensity: AISLE_LAMP.intensity,
+						distance: AISLE_LAMP.distance,
+						decay: AISLE_LAMP.decay,
+					});
+				}
+			}
+		}
+		return pool.register({
+			position: new THREE.Vector3(
+				midpoint(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX),
+				THEATRE_STAGE_TOP_Y + STAGE_WASH.height,
+				midpoint(THEATRE_INTERIOR.minZ, THEATRE_INTERIOR.minZ + THEATRE_PLAN.stage.depth),
+			),
+			color: 0xfff0cf,
+			intensity: STAGE_WASH.intensity,
+			distance: STAGE_WASH.distance,
+			decay: STAGE_WASH.decay,
+			priority: STAGE_WASH.priority,
+		});
+	}
+
+	/**
+	 * Het publiek: negen bezoekers die al zitten.
+	 *
+	 * Ze staan op stoelen die het wereldmodel uitdeelt, dus ze zitten per definitie
+	 * niet in een gangpad. Bewegen doen ze alleen met hun romp: wie in het donker
+	 * naar een toneel kijkt loopt nergens heen.
+	 */
+	private buildPubliek(): void {
+		this.audience.name = 'theatre_publiek';
+		this.group.add(this.audience);
+		const rand = mulberry32(HOUSE_SEED);
+		const huid = lit({ color: 0xc99a76, roughness: 0.85 });
+		this.materials.push(huid);
+		const jassen = AUDIENCE_COLORS.map((color) => {
+			const mat = lit({ color, roughness: 0.9 });
+			this.materials.push(mat);
+			return mat;
+		});
+		const plekken = theatreSeatBanks().flatMap((bank) => theatreSeatXs(bank).map((x) => ({ x, row: bank.row })));
+		const gekozen = new Set<number>();
+		for (let n = 0; n < AUDIENCE_COUNT && gekozen.size < plekken.length; n++) {
+			let index = Math.floor(rand() * plekken.length);
+			while (gekozen.has(index)) index = (index + 1) % plekken.length;
+			gekozen.add(index);
+			const plek = at(plekken, index);
+			const strook = theatreRowBank(plek.row);
+			this.audience.add(
+				this.buildBezoeker(plek.x, theatreRowY(plek.row), midpoint(strook.minZ, strook.maxZ), pickWith(jassen, rand), huid, rand),
+			);
+		}
+	}
+
+	/**
+	 * Eén zittend lijf, uit dozen: dijen vooruit, schenen omlaag, romp rechtop en
+	 * een bol erbovenop. De maten hangen aan de zitting, dus wie de stoel verzet
+	 * verplaatst het lijf mee in plaats van het erdoorheen te laten zakken.
+	 */
+	private buildBezoeker(
+		x: number,
+		floor: number,
+		z: number,
+		jas: THREE.Material,
+		huid: THREE.Material,
+		rand: () => number,
+	): THREE.Group {
+		const root = new THREE.Group();
+		root.position.set(x, floor, z);
+		root.rotation.y = jitterWith(SITTER_YAW_SPREAD, rand);
+		// Het heupscharnier: hieronder zit het onderstel dat stil blijft, erboven de
+		// romp die ademt.
+		const hips = new THREE.Group();
+		hips.position.y = SITTER.hipY;
+		root.add(hips);
+		const body = new THREE.Group();
+		hips.add(body);
+
+		const doos = (
+			mat: THREE.Material,
+			w: number,
+			h: number,
+			d: number,
+			px: number,
+			py: number,
+			pz: number,
+			parent: THREE.Object3D,
+		) => {
+			const m = new THREE.Mesh(this.unitBox, mat);
+			m.scale.set(w, h, d);
+			m.position.set(px, py, pz);
+			m.castShadow = true;
+			parent.add(m);
+			return m;
+		};
+
+		const { torso, head, thigh, shin, arm } = SITTER;
+		doos(jas, torso.width, torso.height, torso.depth, 0, half(torso.height), 0, body);
+		const bol = new THREE.Mesh(this.head, huid);
+		bol.position.set(0, torso.height + head.radius, 0);
+		body.add(bol);
+		for (const side of [-1, 1] as const) {
+			const hipX = side * half(torso.width - thigh.width);
+			// Naar het toneel toe is −z, dus de dijen steken die kant op en de schenen
+			// vallen aan het eind ervan omlaag.
+			doos(jas, thigh.width, thigh.height, thigh.length, hipX, 0, -half(thigh.length), hips);
+			doos(jas, shin.width, shin.length, shin.width, hipX, -half(shin.length), -thigh.length, hips);
+			doos(
+				jas,
+				arm.width,
+				arm.width,
+				arm.length,
+				side * half(torso.width + arm.width),
+				half(torso.height),
+				-half(arm.length),
+				body,
+			);
+		}
+		this.sitters.push({ body, phase: rand() * TAU, rate: lerp(SITTER_BREATH.min, SITTER_BREATH.max, rand()) });
+		return root;
+	}
+
+	/** Een onbelicht vlak met een canvas erop: affiches, borden en het doek. */
+	private basic(map: THREE.Texture): THREE.MeshBasicMaterial {
+		const mat = new THREE.MeshBasicMaterial({ map, toneMapped: false });
+		this.materials.push(mat);
+		return mat;
 	}
 }

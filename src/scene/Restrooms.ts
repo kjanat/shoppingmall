@@ -510,9 +510,11 @@ export class Restrooms {
 		ctx.font = 'bold 32px system-ui';
 		ctx.fillText(title, 80, 140);
 		const tex = labelTexture(c);
+		// Enkelzijdig: het bordje ligt plat op de buitenkant van de zijwand, dus de
+		// achterkant zit in het beton en `face` wijst de voorkant al naar buiten.
 		const mesh = new THREE.Mesh(
 			new THREE.PlaneGeometry(0.7, 0.9),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide })),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 		mesh.position.set(x, y, z);
 		mesh.rotation.y = face > 0 ? -Math.PI / 2 : Math.PI / 2;

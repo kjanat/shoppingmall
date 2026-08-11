@@ -292,7 +292,7 @@ export class SettingsPanel {
         </label>
 
         <div class="settings-keys">
-          WASD lopen · Shift rennen · Space springen · Q/E draaien · R/F kijken ·
+          WASD lopen · Shift rennen · Ctrl hurken · Space springen · Q/E draaien · R/F kijken ·
           M kaart · Esc muis los · O besturing
         </div>
         <button type="button" class="settings-reset" id="settings-reset">Standaard herstellen</button>

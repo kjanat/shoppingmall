@@ -16,8 +16,9 @@ import {
 } from '#/data/world';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
+import { SlideRide } from '#/scene/SlideRide';
 import { distanceToSegment2 } from '#/util/geometry2';
-import { fitText, labelCanvas, labelTexture } from '#/util/label';
+import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
@@ -165,8 +166,8 @@ export class RoofIsland {
 	readonly roofPad = { ...ROOF_ISLAND_PAD, y: DECK_Y };
 	/** Landmark voor de kaart/wayfinder */
 	readonly landmark = { x: -19, z: 0, label: '🏝 ROOF ISLAND' };
-	/** De glijbaan-baan — App laat de speler hier overheen glijden (E bovenaan). */
-	slideCurve!: THREE.CatmullRomCurve3;
+	/** De rit door de buis: de bocht die hier getekend wordt is dezelfde die je meeneemt. */
+	readonly ride = new SlideRide();
 
 	private materials: THREE.Material[] = [];
 	private geoms: THREE.BufferGeometry[] = [];
@@ -364,8 +365,7 @@ export class RoofIsland {
 		}
 
 		// De buis: CatmullRom-krul van platform naar het diepe
-		const curve = new THREE.CatmullRomCurve3(tubeSpec.path.map((p) => new THREE.Vector3(p.x, p.y, p.z)));
-		this.slideCurve = curve;
+		const curve = this.ride.curve;
 		const tube = new THREE.Mesh(
 			this.geo(new THREE.TubeGeometry(curve, 48, tubeSpec.radius, 10, false)),
 			this.track(lit({ color: 0xffca28, roughness: 0.35, side: THREE.DoubleSide })),
@@ -459,9 +459,9 @@ export class RoofIsland {
 			384,
 			128,
 		);
-		const sign = new THREE.Mesh(
+		const sign = backToBackLabel(
 			this.geo(new THREE.PlaneGeometry(signSpec.width, signSpec.height)),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide })),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 		sign.position.set(cx + signSpec.offsetX, DECK_Y + signSpec.centerY, cz);
 		sign.rotation.y = -Math.PI / 2;

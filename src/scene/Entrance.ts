@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { levelY } from '#/data/levels';
-import { ENTRANCE_CANOPY_PARTS, ENTRANCE_PORTAL, ENTRANCE_SPEC } from '#/data/world';
+import {
+	ENTRANCE_CANOPY_BAY_ZS,
+	ENTRANCE_CANOPY_PARTS,
+	ENTRANCE_CANOPY_RIB_ZS,
+	ENTRANCE_CANOPY_WASH_Z,
+	ENTRANCE_PORTAL,
+	ENTRANCE_SPEC,
+} from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { ENTRANCE_CARPET } from '#/scene/city/cityPlan';
@@ -107,7 +114,7 @@ export class Entrance {
 			position: new THREE.Vector3(
 				midpoint(ENTRANCE_PORTAL.canopyX, ENTRANCE_PORTAL.outerX),
 				ENTRANCE_SPEC.canopy.topY - ENTRANCE_SPEC.canopy.thickness - CANOPY_LIGHT.drop,
-				ENTRANCE_PORTAL.centerZ,
+				ENTRANCE_CANOPY_WASH_Z,
 			),
 		});
 	}
@@ -322,10 +329,9 @@ export class Entrance {
 
 	/** Luifel op twee kolommen, met ribben en verzonken spots. */
 	private buildCanopy(): void {
-		const { canopy, column, width } = ENTRANCE_SPEC;
+		const { canopy, column } = ENTRANCE_SPEC;
 		const shell = this.track(lit({ color: 0xf2efe9, roughness: 0.7, metalness: 0.1 }));
 		const bronze = this.track(lit({ color: BRONZE, metalness: 0.85, roughness: 0.3 }));
-		const depth = width + canopy.flank * 2;
 		const projection = span(ENTRANCE_PORTAL.canopyX, ENTRANCE_PORTAL.outerX);
 		const centerX = midpoint(ENTRANCE_PORTAL.canopyX, ENTRANCE_PORTAL.outerX);
 
@@ -345,17 +351,14 @@ export class Entrance {
 		}
 
 		const { rib, spot } = canopy;
-		const ribPitch = depth / rib.count;
 		const ribY = canopy.topY - canopy.thickness - rib.drop;
-		for (let i = 0; i < rib.count; i++) {
-			const z = ENTRANCE_PORTAL.centerZ + (i - half(rib.count - 1)) * ribPitch;
+		for (const z of ENTRANCE_CANOPY_RIB_ZS) {
 			this.box(bronze, projection - canopy.trim.reach, rib.height, rib.width, centerX, ribY, z);
 		}
 		// Eén spot per vak tússen twee ribben, en onder de ribben in plaats van ertussenin:
 		// op een eigen steek liepen ze de ribben in en bleef er van elke spot een streepje over.
 		const lampMat = this.track(new THREE.MeshBasicMaterial({ color: LAMP_COLOR, toneMapped: false }));
-		for (let i = 0; i < rib.count - 1; i++) {
-			const z = ENTRANCE_PORTAL.centerZ + (i - half(rib.count - 2)) * ribPitch;
+		for (const z of ENTRANCE_CANOPY_BAY_ZS) {
 			const lamp = new THREE.Mesh(new THREE.CircleGeometry(spot.radius, 12), lampMat);
 			lamp.rotation.x = Math.PI / 2;
 			lamp.position.set(centerX - projection * spot.shift, ribY - half(rib.height) - spot.drop, z);

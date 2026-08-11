@@ -4,6 +4,7 @@ import { getInventory } from '#/data/inventory';
 import { levelY } from '#/data/levels';
 import type { StoreDef } from '#/data/stores';
 import { shopStores } from '#/data/stores';
+import { shopRoomDepth } from '#/data/world';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -66,8 +67,7 @@ export class StockDisplay {
 		g.name = `stock_${store.id}`;
 
 		const w = store.width;
-		const d = store.depth;
-		const roomDepth = d * 0.92;
+		const roomDepth = shopRoomDepth(store);
 		// Open interior: z from ~-0.3 (just inside door) to ~-roomDepth+0.3 (before back wall)
 		const backShelfZ = -roomDepth + 0.55;
 		const midZ = -roomDepth * 0.35;

@@ -1,8 +1,9 @@
 import type { LevelId } from '#/data/levels';
 import { levelY } from '#/data/levels';
-import { ENTRANCE_PORTAL, PARKING_EXIT_RAMP } from '#/data/world';
+import { ENTRANCE_PORTAL, MALL_WALL_ENVELOPE, PARKING_EXIT_RAMP } from '#/data/world';
 import { EYE } from '#/player/constants';
-import { midpoint } from '#/util/math';
+import { CITY_KAVELS, ROAD_INNER_X, ROAD_PLAN, TRAFFIC_LANE_CLEARANCE } from '#/scene/city/cityPlan';
+import { midpoint, span } from '#/util/math';
 import { mulberry32 } from '#/util/rand';
 import type { RoutePose } from './probe.ts';
 
@@ -22,6 +23,24 @@ import type { RoutePose } from './probe.ts';
  * loopt de aftakking waarover auto's de garage in rijden.
  */
 const ENTRANCE_STREET_VIEW = { back: 11, side: 9.5, aim: 6 } as const;
+
+/**
+ * Het standpunt in het stadspark, aan de overkant van de westelijke ringweg.
+ *
+ * Het kavel is niet de grasmat: `CITY_KAVELS.park` loopt tot x −52 en dat ligt tússen
+ * de twee rijstroken, want het kavel houdt alleen de skyline vrij. De oostrand van
+ * het gras is de buitenrand van de rijbaan, en daar hoort een lichaam nog de ruimte
+ * naast te krijgen die een auto in zijn strook inneemt.
+ *
+ * `z` is het hart van het kavel, dus ruim ten noorden van de mall: van hier uit staat
+ * het hele gebouw schuin in beeld en het park in de rug.
+ */
+const PARK_VIEW = {
+	x: -(ROAD_INNER_X + ROAD_PLAN.width + TRAFFIC_LANE_CLEARANCE),
+	z: midpoint(CITY_KAVELS.park.minZ, CITY_KAVELS.park.maxZ),
+	/** Waar de blik op het gebouw landt: het hart van de gevelomtrek, op de eerste verdieping. */
+	aimLevel: 'v1',
+} as const satisfies { x: number; z: number; aimLevel: LevelId };
 
 export type ProfilePoint = { name: string; pose: RoutePose };
 export type ProfileRoute = { id: string; description: string; seed: number | null; points: readonly ProfilePoint[] };
@@ -57,6 +76,40 @@ export const MALL_ROUTE: ProfileRoute = {
 		point('upper-atrium-south', 0, eye('v1'), 9.5, 0, eye('v1'), 0),
 	],
 };
+
+/**
+ * Hetzelfde standpunt met zijn kijkdoel precies in de rug.
+ *
+ * Alleen in het horizontale vlak gespiegeld en de blik blijft op ooghoogte: een
+ * meegespiegelde neerwaartse hoek richt deze pose op het gras twee meter verderop, en
+ * dan meet de tegenmeting de zoden in plaats van de stad erachter.
+ */
+function backTo(name: string, from: ProfilePoint): ProfilePoint {
+	const { pose } = from;
+	return {
+		name,
+		pose: {
+			...pose,
+			lookX: pose.x + span(pose.lookX, pose.x),
+			lookY: pose.y,
+			lookZ: pose.z + span(pose.lookZ, pose.z),
+		},
+	};
+}
+
+/** Vanuit het park op de mall. Het enige standpunt dat het hele gebouw van buiten in beeld heeft. */
+const PARK_TOWARD_MALL = point(
+	'park-buiten-mall',
+	PARK_VIEW.x,
+	eye('v0'),
+	PARK_VIEW.z,
+	midpoint(MALL_WALL_ENVELOPE.minX, MALL_WALL_ENVELOPE.maxX),
+	levelY(PARK_VIEW.aimLevel),
+	midpoint(MALL_WALL_ENVELOPE.minZ, MALL_WALL_ENVELOPE.maxZ),
+);
+
+/** Dezelfde plek met de mall in de rug: wat er van het gebouw overblijft als niets ervan in beeld staat. */
+const PARK_AWAY_FROM_MALL = backTo('park-buiten-weg', PARK_TOWARD_MALL);
 
 type LevelCourse = {
 	entry: ProfilePoint;
@@ -103,6 +156,8 @@ const FULL_COURSE: readonly LevelCourse[] = [
 				ENTRANCE_STREET_VIEW.aim,
 				ENTRANCE_PORTAL.centerZ,
 			),
+			PARK_TOWARD_MALL,
+			PARK_AWAY_FROM_MALL,
 			point('v0-northwest', -14, eye('v0'), -10, 0, eye('v0'), 0),
 		],
 		exit: point('v0-elevator-depart', 16, eye('v0'), -8, 0, eye('p1'), 0),

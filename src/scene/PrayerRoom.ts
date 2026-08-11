@@ -4,7 +4,7 @@ import { levelY } from '#/data/levels';
 import { PRAYER_ROOM_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
-import { fitText, labelCanvas, labelTexture, roundRect, speechTail } from '#/util/label';
+import { backToBackLabel, fitText, labelCanvas, labelTexture, roundRect, speechTail } from '#/util/label';
 import { clamp01, half } from '#/util/math';
 import { at, jitterWith, pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
@@ -855,7 +855,7 @@ export class PrayerRoom {
 	}
 
 	/** Classic sticky note: paper color + sharpie text + slight curl shadow */
-	private makePostIt(lines: string[], bg: string, fg: string, worldW: number, worldH: number): THREE.Mesh {
+	private makePostIt(lines: string[], bg: string, fg: string, worldW: number, worldH: number): THREE.Group {
 		const { canvas: c, ctx } = labelCanvas(256, 256);
 		// Paper
 		ctx.fillStyle = bg;
@@ -881,15 +881,9 @@ export class PrayerRoom {
 			ctx.fillText(line, 128, y);
 		});
 		const tex = labelTexture(c);
-		return new THREE.Mesh(
+		return backToBackLabel(
 			new THREE.PlaneGeometry(worldW, worldH),
-			this.track(
-				new THREE.MeshBasicMaterial({
-					map: tex,
-					toneMapped: false,
-					side: THREE.DoubleSide,
-				}),
-			),
+			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 	}
 
