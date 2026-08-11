@@ -7,6 +7,9 @@ import { SIGHT_BLOCKING_TAG } from '#/data/spatial';
 import { STORES } from '#/data/stores';
 import {
 	atriumPlanterTiers,
+	BACKSTAGE_LANDING,
+	backstageLandingTreadY,
+	backstageLandingTreadZ,
 	CATWALK_DECK,
 	ENTRANCE_PORTAL,
 	ENTRANCE_SPEC,
@@ -707,6 +710,28 @@ export class CollisionWorld {
 		for (let i = 0; i < trap.treads; i++) {
 			const { minZ, maxZ } = theatreTreadZ(i);
 			this.citySurfaces.push({ minX: trap.minX, maxX: trap.maxX, minZ, maxZ, y: theatreTreadY(i), label: `theatre_tread_${i}` });
+		}
+
+		// Het achterbordes bij de artiesteningang, op toneelhoogte, met een trap omlaag.
+		const bordes = BACKSTAGE_LANDING;
+		this.citySurfaces.push({
+			minX: bordes.minX,
+			maxX: bordes.maxX,
+			minZ: bordes.minZ,
+			maxZ: bordes.maxZ,
+			y: bordes.y,
+			label: 'theatre_backstage_landing',
+		});
+		for (let i = 0; i < THEATRE_PLAN.backstage.landing.treads; i++) {
+			const { minZ, maxZ } = backstageLandingTreadZ(i);
+			this.citySurfaces.push({
+				minX: bordes.minX,
+				maxX: bordes.maxX,
+				minZ,
+				maxZ,
+				y: backstageLandingTreadY(i),
+				label: `theatre_backstage_tread_${i}`,
+			});
 		}
 
 		const zuilen = THEATRE_PLAN.columns;

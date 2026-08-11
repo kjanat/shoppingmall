@@ -25,12 +25,35 @@ type Occupant = {
 	radius: number;
 	dynamic: boolean;
 	zoneMask: number;
+	/** Zones die het object verklaart bovenop wat zijn doos raakt; zie `tagZoneSpan`. */
+	declared: number;
 	sphere: THREE.Sphere;
 	/** De feature die dit object bouwde, en zijn regel in de cull-telling. */
 	ownerName: string;
 	casts: boolean;
 	tally: ZoneOwnerTally | null;
 };
+
+/** Zones die een object verklaart bovenop de zones die zijn eigen doos raakt. */
+const zoneSpans = new WeakMap<THREE.Object3D, number>();
+
+/**
+ * Verklaar dat dit object óók bij deze zones hoort, buiten de zones die zijn doos
+ * raakt.
+ *
+ * Een bord op de mond van de roltrap staat met zijn hele lichaam op V0, maar het
+ * hangt aan een connector die V0 en V1 verbindt en hoort vanaf beide dekken te zien
+ * te zijn. Zonder deze verklaring valt het weg zodra de camerazone naar V1 klapt
+ * terwijl de camera nog onder de V1-plaat de schacht in kijkt: geen enkele
+ * V1→V0-portaalkegel dekt het dan, en het verdwijnt terwijl je er recht naar kijkt.
+ */
+export function tagZoneSpan(object: THREE.Object3D, mask: number): void {
+	zoneSpans.set(object, (zoneSpans.get(object) ?? 0) | mask);
+}
+
+function zoneSpanOf(object: THREE.Object3D): number {
+	return zoneSpans.get(object) ?? 0;
+}
 
 /** Wat één feature aan losse objecten in de scene heeft staan. */
 export type OccupantOwnerStats = { name: string; occupants: number; casters: number };
@@ -110,7 +133,8 @@ export class ZoneVisibility {
 		scene.traverse((object) => {
 			if (!renderable(object) || object.layers.mask === 0) return;
 			const radius = occupantRadius(object);
-			const zoneMask = scannedZoneMask();
+			const declared = zoneSpanOf(object);
+			const zoneMask = scannedZoneMask() | declared;
 			object.getWorldPosition(WORLD_POSITION);
 			const name = ownerName(object);
 			const owner = ownerIndex.get(name) ?? { name, occupants: 0, casters: 0 };
@@ -126,6 +150,7 @@ export class ZoneVisibility {
 				radius,
 				dynamic: dynamic.has(object),
 				zoneMask,
+				declared,
 				sphere: new THREE.Sphere(WORLD_POSITION.clone(), radius),
 				ownerName: name,
 				casts: object.castShadow,
@@ -149,7 +174,8 @@ export class ZoneVisibility {
 			if (occupant.dynamic) {
 				occupant.object.getWorldPosition(WORLD_POSITION);
 				occupant.sphere.center.copy(WORLD_POSITION);
-				occupant.zoneMask = zoneMaskAround(WORLD_POSITION.x, WORLD_POSITION.y, WORLD_POSITION.z, occupant.radius);
+				occupant.zoneMask =
+					zoneMaskAround(WORLD_POSITION.x, WORLD_POSITION.y, WORLD_POSITION.z, occupant.radius) | occupant.declared;
 			}
 			const shown = culler.accepts(occupant.zoneMask, occupant.sphere);
 			occupant.object.layers.mask = shown ? occupant.layers : 0;

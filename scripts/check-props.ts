@@ -89,6 +89,10 @@ const casts: { naam: string; level: LevelId; eigen: readonly string[]; group: In
 	// stoel zitten is containment. Elke andere doos in de zaal telt wel: de foyerwand,
 	// de kassa en het doek staan er allemaal binnen handbereik.
 	{ naam: 'Theaterpubliek', level: 'v0', eigen: ['theatre-seating'], group: new CityTheatre(pool).audience },
+	// De aankleedsters zitten op de stoelen die de inrichting-entiteit uitdeelt, dus in
+	// hun eigen stoel zitten is containment. Elke andere doos in de backstage telt wel:
+	// de kaptafels, het rekwisietenrek en de gangwanden staan er binnen handbereik.
+	{ naam: 'Backstage-cast', level: 'v0', eigen: ['theatre-backstage-fixtures'], group: new CityTheatre(pool).backstage },
 ];
 
 for (const cast of casts) {

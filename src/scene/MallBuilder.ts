@@ -18,9 +18,11 @@ import {
 	STAIR_CONNECTORS,
 	shopRoomDepth,
 } from '#/data/world';
+import { zoneBit, zoneOfLevel } from '#/data/zones';
 import { lit } from '#/render/material';
 import { addBoxMesh, addPlaneMesh } from '#/render/meshFactory';
 import { addExtrudedXZMesh } from '#/render/xzShape';
+import { tagZoneSpan } from '#/render/ZoneVisibility';
 import type { EscalatorGeometry } from '#/scene/escalatorGeometry';
 import { deriveEscalatorGeometry } from '#/scene/escalatorGeometry';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
@@ -811,6 +813,11 @@ export class MallBuilder {
 		);
 		const signZ = z0 - dir * apron;
 		sign.position.set(x, gantryH - half((signW * sh) / sw) - geometry.sign.verticalGap, signZ);
+		sign.name = `${spec.id}-sign`;
+		// Het bord staat op V0 maar hoort bij een connector die twee dekken bedient, dus
+		// het is vanaf beide te zien; zonder deze span cullt de zonecull het weg zodra je
+		// bovenaan de rit de V1-zone in klapt.
+		tagZoneSpan(sign, zoneBit(zoneOfLevel(spec.from)) | zoneBit(zoneOfLevel(spec.to)));
 		g.add(sign);
 		for (const side of [-1, 1] as const) {
 			const post = new THREE.Mesh(

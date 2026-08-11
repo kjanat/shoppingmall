@@ -356,8 +356,19 @@ snapshot, and until it exists every number above is the *old* build:
    facade line carries `stad` and interior geometry at once, and nothing yet attributes them per cell.
    **What the shadow pair does and does not say.** Hiding is `layers.mask = 0` on a loose object and
    `visible = false` on a batch, and both take it out of every camera, the shadow camera included, so casters follow
-   the cull by construction. The seven survivors from the street were not attributed per owner, so the pair is
-   evidence that fewer things cast, not proof that none of them is interior. What carries "no interior shadows
+   the cull by construction. The street's surviving casters are attributed per owner now:
+   [ownerName](src/render/sceneOwner.ts) carries two levels (`mall/store_zara` instead of one row saying `mall`).
+   On the build whose `dist/static` bundle hashes to
+   `0bbe615bde36984a1a77030fecbfb71514f0e1cf9d456c45a7a7acbe899f0fc1` (working tree over `84e73c3`) the street pose
+   hands the sun six store back walls (`zara`, `hm`, `mediaworld`, `nike` on V0 and `sephora`, `kruidvat` on V1, one
+   caster each), the two entrance columns and the outdoor palms; `godStatue` and the twelve other store walls are
+   hidden. The six sit exactly on the sight line the entrance bay opens (the V0 north row plus the two V1 north
+   stores nearest the portal centre; `uniqlo`, one bay further west on V1, is hidden), so the glazing is doing
+   portal work there and the survivors are legitimate. From `p1-center` four store walls survive (`gamesman`,
+   `saucy`, `kruidvat`, `sephora`) and the entrance is hidden. The drawn side of that P1 pose keeps most of the V0
+   population (`mallSims` 345 of 371, all 751 palm sources) because their dynamic batches span decks and a batch is
+   kept whole; that is the batch-granularity residual, and per-instance culling inside such batches is the unmeasured
+   lever under Known unknowns. What carries "no interior shadows
    outside" is the `zonecull` control: from the pavement with the building behind you it asserts that a sphere in
    the middle of V0 is rejected, and from the pavement facing the doors that one just inside them is kept.
 

@@ -501,6 +501,25 @@ export function planBounds(shape: PlanShape): Bounds2 {
 	return { minX, maxX, minZ, maxZ };
 }
 
+/** What remains of `vlak` once `gat` is cut out of it: zero to four rectangles. */
+export function boundsMinusHole(vlak: Bounds2, gat: Bounds2): Bounds2[] {
+	const minX = Math.max(vlak.minX, gat.minX);
+	const maxX = Math.min(vlak.maxX, gat.maxX);
+	return [
+		{ ...vlak, maxX: Math.min(vlak.maxX, gat.minX) },
+		{ ...vlak, minX: Math.max(vlak.minX, gat.maxX) },
+		{ minX, maxX, minZ: vlak.minZ, maxZ: Math.min(vlak.maxZ, gat.minZ) },
+		{ minX, maxX, minZ: Math.max(vlak.minZ, gat.maxZ), maxZ: vlak.maxZ },
+	].filter((stuk) => span(stuk.minX, stuk.maxX) > 0 && span(stuk.minZ, stuk.maxZ) > 0);
+}
+
+/** What remains of `vlak` once every hole in `gaten` is cut out of it. */
+export function boundsMinusHoles(vlak: Bounds2, gaten: readonly Bounds2[]): Bounds2[] {
+	let stukken: Bounds2[] = [vlak];
+	for (const gat of gaten) stukken = stukken.flatMap((stuk) => boundsMinusHole(stuk, gat));
+	return stukken;
+}
+
 export function geometryBounds(geometry: SpatialGeometry): Bounds3 {
 	if (geometry.kind === 'prism') return { ...planBounds(geometry.plan), minY: geometry.minY, maxY: geometry.maxY };
 	if (geometry.kind === 'cylinder') {

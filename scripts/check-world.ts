@@ -47,6 +47,10 @@ import {
 	ATRIUM_OPENING,
 	ATRIUM_PLANTER_SPEC,
 	atriumPlanterTiers,
+	BACKSTAGE_CORRIDOR,
+	BACKSTAGE_FLOOR_Y,
+	BACKSTAGE_INTERIOR,
+	BACKSTAGE_LANDING,
 	BARRIER_ENTITIES,
 	BARRIER_HARDWARE,
 	BARRIER_SPECS,
@@ -115,6 +119,8 @@ import {
 	SLIDE_PLATFORM_TOP_Y,
 	SLIDE_TOWER_SPEC,
 	THEATRE_AISLES,
+	THEATRE_ARTIST_PORTAL,
+	THEATRE_BACKSTAGE_DOORS_ENTITY,
 	THEATRE_ENTRANCE_ENTITY,
 	THEATRE_FLOOR_Y,
 	THEATRE_FOYER_ENTITY,
@@ -185,12 +191,15 @@ import {
 	PLAZA_TRENCH_GAP,
 	plazaStations,
 	RING_INNER_WEST_X,
+	ROAD_CROSSINGS,
 	ROAD_PLAN,
 	ROAD_RINGS,
+	roadDashPatches,
 	TOWER_SPECS,
 	TRAFFIC_CAR,
 	TRAFFIC_LANE_CLEARANCE,
 	ZEBRA_WIDTH,
+	zebraBounds,
 } from '#/scene/city/cityPlan';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, poolFloorY, rimDistance } from '#/scene/RoofIsland';
 import { BIG_MAP_MIN_WIDTH, deckLabelPlan, minimapLabelPlan } from '#/ui/KioskOverlay';
@@ -236,6 +245,11 @@ type Vlak = { minX: number; maxX: number; minZ: number; maxZ: number };
 
 function dekt(v: Vlak, x: number, z: number): boolean {
 	return x >= v.minX && x <= v.maxX && z >= v.minZ && z <= v.maxZ;
+}
+
+/** Of twee vlakken elkaar echt overlappen; randen die elkaar net raken tellen niet. */
+function vlakkenOverlappen(a: Vlak, b: Vlak): boolean {
+	return a.minX < b.maxX - EPS && a.maxX > b.minX + EPS && a.minZ < b.maxZ - EPS && a.maxZ > b.minZ + EPS;
 }
 
 // ── bron lezen ─────────────────────────────────────────────────────────────
@@ -3134,6 +3148,22 @@ function controleWegen(): void {
 	eist(asfalt, 'this.makeCornerTexture()', 'de eigen hoektegel van de ringweg');
 	eist(asfalt, 'const EW_LEN = 2 * ROAD_INNER_X', 'oost-weststroken die bij de hoektegels ophouden');
 	eist(asfalt, 'const NS_LEN = 2 * ROAD_INNER_Z', 'noord-zuidstroken die bij de hoektegels ophouden');
+	eist(asfalt, 'roadDashPatches()', 'de middenstreep als losse rechthoeken uit het wegenplan');
+
+	// De middenstreep staat als losse rechthoekjes met de zebrapaden eruit gesneden, net als
+	// de garagebelijning om de kolomvoeten. Een streep die een oversteek kruist tekent een
+	// ononderbroken plus over de zebra, wat in de vorige texture-opzet gebeurde.
+	const zebras = ROAD_CROSSINGS.map(zebraBounds);
+	for (const streep of roadDashPatches()) {
+		for (const zebra of zebras) {
+			if (vlakkenOverlappen(streep, zebra)) {
+				fout(
+					'wegen',
+					`een streep van de middenstreep bij (${nr(midpoint(streep.minX, streep.maxX))}, ${nr(midpoint(streep.minZ, streep.maxZ))}) loopt door een zebrapad heen`,
+				);
+			}
+		}
+	}
 
 	controleRijders();
 	controleAftakking();
@@ -4898,20 +4928,16 @@ async function controleTheater(): Promise<void> {
 		maxY: THEATRE_PLAN.hallHeight,
 	});
 	// De noord- en zuidkap lopen over de volle breedte en dekken dus de vier hoeken;
-	// de zij-wanden zijn alleen verantwoordelijk voor wat daartussen overblijft. Dat
-	// de kappen die breedte werkelijk halen blijkt uit hun eigen twee regels: over de
-	// hele hal gemeten laat noord niets vallen en zuid alleen de travee.
-	const dichteZijden: readonly CardinalSide[] = ['north', 'west', 'east'];
+	// de zij-wanden zijn alleen verantwoordelijk voor wat daartussen overblijft. De
+	// zijgevels lopen nu de volle diepte van de zaal én de backstage, dus over die
+	// hele lengte gemeten laten west en oost niets vallen; noord laat alleen de
+	// artiesteningang vallen en zuid alleen de travee.
+	const gevelNoordZ = THEATRE_PLAN.hall.minZ - THEATRE_PLAN.backstage.depth;
+	const dichteZijden: readonly CardinalSide[] = ['west', 'east'];
 	for (const kant of dichteZijden) {
-		const langsZ = kant === 'west' || kant === 'east';
 		const opening = theatreOpeningWithin(
 			kant,
-			langsZ
-				? overDeHeleGevel(
-						THEATRE_PLAN.hall.minZ + THEATRE_PLAN.wallThickness,
-						THEATRE_PLAN.hall.maxZ - THEATRE_PLAN.wallThickness,
-					)
-				: overDeHeleGevel(THEATRE_PLAN.hall.minX, THEATRE_PLAN.hall.maxX),
+			overDeHeleGevel(gevelNoordZ + THEATRE_PLAN.wallThickness, THEATRE_PLAN.hall.maxZ - THEATRE_PLAN.wallThickness),
 		);
 		if (opening === null) continue;
 		fout('theater', `de ${kant}gevel van het theater staat open van ${nr(opening.minU)} tot ${nr(opening.maxU)}`);
@@ -4927,6 +4953,22 @@ async function controleTheater(): Promise<void> {
 		fout(
 			'theater',
 			`de travee meet x ${nr(travee.minU)}..${nr(travee.maxU)} tot y ${nr(travee.maxY)} in plaats van ${nr(THEATRE_PORTAL.minX)}..${nr(THEATRE_PORTAL.maxX)} tot ${nr(THEATRE_FLOOR_Y + THEATRE_PLAN.doors.headY)}`,
+		);
+	}
+	// De achtergevel laat precies één gat vallen: de artiesteningang, over de as van
+	// de backstage-gang en op toneelhoogte.
+	const artiesten = theatreOpeningWithin('north', overDeHeleGevel(THEATRE_PLAN.hall.minX, THEATRE_PLAN.hall.maxX));
+	const artiestenTop = BACKSTAGE_FLOOR_Y + THEATRE_PLAN.backstage.door.headY;
+	if (artiesten === null) {
+		fout('theater', 'de noordgevel van het theater is dicht, dus er is geen artiesteningang');
+	} else if (
+		!bijna(artiesten.minU, THEATRE_ARTIST_PORTAL.minX) ||
+		!bijna(artiesten.maxU, THEATRE_ARTIST_PORTAL.maxX) ||
+		!bijna(artiesten.maxY, artiestenTop)
+	) {
+		fout(
+			'theater',
+			`de artiesteningang meet x ${nr(artiesten.minU)}..${nr(artiesten.maxU)} tot y ${nr(artiesten.maxY)} in plaats van ${nr(THEATRE_ARTIST_PORTAL.minX)}..${nr(THEATRE_ARTIST_PORTAL.maxX)} tot ${nr(artiestenTop)}`,
 		);
 	}
 
@@ -4977,23 +5019,27 @@ async function controleTheater(): Promise<void> {
 		fout('theater', `een stoelenblok staat in ${zonesOfMask(stoelMasker).join(' en ')} in plaats van alleen in theatre`);
 	}
 
-	// 5. De zonegraaf: het theater is een eigen zone, en de travee is het enige wat
-	// hem aan de stad knoopt. Geen tweede portaal, en geen handmatige lijst.
+	// 5. De zonegraaf: het theater is een eigen zone, en precies twee openingen knopen
+	// hem aan de stad — de travee vooraan en de artiesteningang achter. De deur vanaf
+	// het toneel ligt binnen de zone en is dus geen portaal. Geen handmatige lijst.
 	const portalen = ZONE_PORTALS.filter((portaal) => zonesOfMask(portaal.mask).includes('theatre'));
-	if (portalen.length !== 1 || portalen[0]?.id !== THEATRE_ENTRANCE_ENTITY.id) {
+	const gevonden = new Set(portalen.map((portaal) => portaal.id));
+	const verwachtePortalen = [THEATRE_ENTRANCE_ENTITY.id, THEATRE_BACKSTAGE_DOORS_ENTITY.id];
+	if (portalen.length !== verwachtePortalen.length || verwachtePortalen.some((id) => !gevonden.has(id))) {
 		fout(
 			'theater',
-			`de zaal hangt aan ${portalen.length === 0 ? 'geen enkel portaal' : portalen.map((portaal) => portaal.id).join(' en ')} in plaats van alleen aan ${THEATRE_ENTRANCE_ENTITY.id}`,
+			`de zaal hangt aan ${portalen.length === 0 ? 'geen enkel portaal' : portalen.map((portaal) => portaal.id).join(' en ')} in plaats van aan ${verwachtePortalen.join(' en ')}`,
 		);
 	}
-	const portaal = portalen[0];
-	if (portaal) {
+	for (const id of verwachtePortalen) {
+		const portaal = portalen.find((kandidaat) => kandidaat.id === id);
+		if (!portaal) continue;
 		for (const [van, naar] of [
 			['stad', 'theatre'],
 			['theatre', 'stad'],
 		] as [ZoneId, ZoneId][]) {
 			if (portaal.faces.some((vlak) => vlak.from === van && vlak.to === naar)) continue;
-			fout('theater', `de travee levert geen doorkijk van ${van} naar ${naar}`);
+			fout('theater', `${id} levert geen doorkijk van ${van} naar ${naar}`);
 		}
 	}
 	if (!reachableZones('theatre').includes('mall-v0')) {
@@ -5016,6 +5062,47 @@ async function controleTheater(): Promise<void> {
 			if (gat >= GEBOUWEN_VRIJE_RUIMTE) continue;
 			fout('theater', `${a.id} en ${b.id} staan ${nr(gat)} m uit elkaar; onder ${nr(GEBOUWEN_VRIJE_RUIMTE)} m deelt één doos ze`);
 		}
+	}
+
+	// 7. De artiesteningang: van het achterbordes in 5 cm-stappen door de deur, de
+	// backstage-gang in en een kleedkamer in. De backstage doet mee in de zaalzone,
+	// dus dat is waar de wandeling hoort te eindigen.
+	const bordesZ = midpoint(BACKSTAGE_LANDING.minZ, BACKSTAGE_LANDING.maxZ);
+	const gangZ = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
+	const kleedkamerX = midpoint(BACKSTAGE_INTERIOR.minX, BACKSTAGE_CORRIDOR.minX);
+	const artiestenIn = volgPolylijn(
+		[
+			[THEATRE_ARTIST_PORTAL.centerX, bordesZ],
+			[THEATRE_ARTIST_PORTAL.centerX, gangZ],
+			[kleedkamerX, gangZ],
+		],
+		BACKSTAGE_FLOOR_Y,
+	);
+	if (artiestenIn.klacht !== null) {
+		fout('theater', `de artiestenwandeling strandt: ${artiestenIn.klacht}`);
+	} else if (zoneAt(artiestenIn.x, artiestenIn.y, artiestenIn.z) !== 'theatre') {
+		fout(
+			'theater',
+			`de artiestenwandeling eindigt op (${nr(artiestenIn.x)}, ${nr(artiestenIn.z)}) in ${zoneAt(artiestenIn.x, artiestenIn.y, artiestenIn.z)}`,
+		);
+	}
+
+	// En naast de deur komt niemand door de dichte achtergevel. Vlak naast de opening
+	// staat de noordwand massief; een voetganger die daar naar binnen loopt hoort erop
+	// stuk te lopen in plaats van de backstage in te glippen.
+	const dichteWandX = THEATRE_ARTIST_PORTAL.minX - PLAYER_RADIUS - 0.1;
+	const dichteWand = volgPolylijn(
+		[
+			[dichteWandX, bordesZ],
+			[dichteWandX, gangZ],
+		],
+		BACKSTAGE_FLOOR_Y,
+	);
+	if (zoneAt(dichteWand.x, dichteWand.y, dichteWand.z) === 'theatre') {
+		fout(
+			'theater',
+			`door de dichte achtergevel (x ${nr(dichteWandX)}) komt de voetganger tot z ${nr(dichteWand.z)} de backstage in`,
+		);
 	}
 
 	await controleZaalcull(stoelMasker);
@@ -5219,6 +5306,88 @@ async function controleZonecull(): Promise<void> {
 				);
 			}
 		}
+	}
+}
+
+/** Stappen over de rit: fijn genoeg om het cull-venster onder de bovenplaat te raken. */
+const RITSTAPPEN = 24;
+/** Ooghoogte op de trap, zoals de rest van de zonecull-controle rekent. */
+const RITOOG = 1.6;
+
+/**
+ * Het roltrapbord blijft de hele rit te zien.
+ *
+ * Het bord staat met zijn hele doos op V0, maar het hangt aan de mond van een
+ * roltrap die V0 en V1 verbindt. Rijd je omhoog, dan klapt de camerazone naar V1
+ * op `levelAt`'s grens, een halve meter onder de V1-plaat, terwijl de camera nog de
+ * schacht in kijkt. In die band dekt geen enkele V1→V0-portaalkegel het bord op x 22
+ * — het atriumgat ligt op x −8..8 en het roltrapgat op de plaathoogte bóven de
+ * camera — dus de zonecull haalde het weg terwijl je er recht naar keek. `tagZoneSpan`
+ * geeft het de zones van zijn eigen connector; deze controle rijdt de trap op en eist
+ * dat het bord getekend blijft zolang het in beeld staat.
+ */
+async function controleRoltrapbord(): Promise<void> {
+	stubDocument();
+	const [THREE, { MallBuilder }, { ZoneCuller }, { ZoneVisibility }] = await Promise.all([
+		import('three'),
+		import('#/scene/MallBuilder'),
+		import('#/render/ZoneCuller'),
+		import('#/render/ZoneVisibility'),
+	]);
+	const scene = new THREE.Scene();
+	scene.add(new MallBuilder().build());
+	scene.updateMatrixWorld(true);
+
+	const culler = new ZoneCuller();
+	const visibility = new ZoneVisibility(scene, []);
+	const camera = new THREE.PerspectiveCamera(70, 16 / 9, 0.1, 500);
+	const frustum = new THREE.Frustum();
+	const viewProjection = new THREE.Matrix4();
+	const box = new THREE.Box3();
+	const center = new THREE.Vector3();
+	const size = new THREE.Vector3();
+
+	for (const spec of VERTICAL_CONNECTORS) {
+		if (spec.kind !== 'escalator') continue;
+		const naam = `${spec.id}-sign`;
+		let bord: import('three').Object3D | null = null;
+		scene.traverse((obj) => {
+			if (obj.name === naam) bord = obj;
+		});
+		if (bord === null) {
+			fout('roltrapbord', `de roltrap ${spec.id} heeft geen bord ${naam} in de scene`);
+			continue;
+		}
+		const sign: import('three').Object3D = bord;
+		box.setFromObject(sign, true);
+		box.getCenter(center);
+		box.getSize(size);
+		const straal = half(Math.hypot(size.x, size.y, size.z));
+
+		let inBeeld = 0;
+		for (let i = 0; i <= RITSTAPPEN; i++) {
+			const t = i / RITSTAPPEN;
+			const y = levelY(spec.from) + RITOOG + t * (levelY(spec.to) - levelY(spec.from));
+			const z = lerp(spec.zBottom, spec.zTop, t);
+			camera.position.set(spec.x, y, z);
+			camera.lookAt(center.x, center.y, center.z);
+			camera.updateMatrixWorld(true);
+			camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+			camera.updateProjectionMatrix();
+			viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+			frustum.setFromProjectionMatrix(viewProjection, camera.coordinateSystem);
+			culler.update(camera, zoneAt(spec.x, y, z));
+			visibility.apply(culler);
+			if (!frustum.intersectsSphere(new THREE.Sphere(center.clone(), straal))) continue;
+			inBeeld++;
+			if (sign.layers.mask === 0) {
+				fout(
+					'roltrapbord',
+					`${naam} verdwijnt op y ${nr(y)}, z ${nr(z)} (zone ${zoneAt(spec.x, y, z)}) terwijl het in beeld staat`,
+				);
+			}
+		}
+		if (inBeeld === 0) fout('roltrapbord', `${naam} kwam de hele rit niet in beeld; de controle test niets`);
 	}
 }
 
@@ -5632,6 +5801,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'theater', draai: controleTheater },
 	{ naam: 'zonegraaf', draai: controleZonegraaf },
 	{ naam: 'zonecull', draai: controleZonecull },
+	{ naam: 'roltrapbord', draai: controleRoltrapbord },
 	{ naam: 'zichtlijn', draai: controleZichtlijn },
 	{ naam: 'rekenhulpen', draai: controleRekenhulpen },
 	{ naam: 'zoneklokken', draai: controleZoneklokken },

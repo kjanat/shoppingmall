@@ -1,4 +1,5 @@
-import type { Vec2 } from '#/data/spatial';
+import type { Bounds2, Vec2 } from '#/data/spatial';
+import { boundsMinusHoles } from '#/data/spatial';
 import type { BarrierSpec } from '#/data/world';
 import {
 	barrierSpec,
@@ -28,8 +29,12 @@ import { at, jitterWith, mulberry32 } from '#/util/rand';
 
 export type Rect = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
 
-/** De wereldrand. Collision klemt hierop, de drone ook. */
-export const CITY_BOUNDS = { minX: -95, maxX: 95, minZ: -75, maxZ: 75 } as const;
+/**
+ * De wereldrand. Collision klemt hierop, de drone ook. De noordrand ligt verder dan
+ * de zuidrand omdat het theater in de noordoosthoek zijn backstage en achterbordes
+ * achter zich heeft staan; zonder die ruimte klemt collision je de artiesteningang in.
+ */
+export const CITY_BOUNDS = { minX: -95, maxX: 95, minZ: -88, maxZ: 75 } as const;
 
 /** Straatniveau. Buiten de mall ligt hier de vloer, tenzij een citySurface hoger komt. */
 export const CITY_GROUND_Y = 0;
@@ -190,6 +195,73 @@ function crossing(id: string): RoadCrossing {
 
 /** De oversteek waar de loper van de hoofdingang op uitkomt. */
 export const ENTRANCE_CROSSING = crossing('west');
+
+/**
+ * De onderbroken middenstreep, in meters: streep plus gat is één tegel, en de streep
+ * ligt gecentreerd in de tegel met aan beide uiteinden een half gat. Zo eindigt een
+ * rechte strook halverwege een gat en sluit de bocht erachter op hetzelfde ritme aan.
+ * De maat staat hier omdat de tekenaar hem in de bocht als kwartcirkel en op het rechte
+ * stuk als losse rechthoeken uitzet, en `wegen` naleest dat geen streep een zebra kruist.
+ */
+export const ROAD_DASH = { length: 3.25, gap: 4.75, width: 0.33 } as const;
+
+/** Streep plus gat: de lengte van één tegel van de middenstreep. */
+export const ROAD_DASH_TILE = ROAD_DASH.length + ROAD_DASH.gap;
+
+/**
+ * De beschilderde vlek van een oversteekplaats: de balken vullen `ZEBRA_WIDTH` langs de
+ * rijrichting en `ROAD_PLAN.width` min de twee `sideInset` dwars daarop. `rotY` nul legt
+ * de rijrichting langs x, dus dan is de langsmaat de x-maat.
+ */
+export function zebraBounds(plek: RoadCrossing): Bounds2 {
+	const along = half(ZEBRA_WIDTH);
+	const across = half(span(ZEBRA_PLAN.sideInset, ROAD_PLAN.width - ZEBRA_PLAN.sideInset));
+	const langsX = plek.rotY === 0;
+	return {
+		minX: plek.x - (langsX ? along : across),
+		maxX: plek.x + (langsX ? along : across),
+		minZ: plek.z - (langsX ? across : along),
+		maxZ: plek.z + (langsX ? across : along),
+	};
+}
+
+/**
+ * De strepen van de middenstreep op de vier rechte stukken, elk als eigen rechthoek en
+ * met de zebrapaden eruit gesneden, net als de garagebelijning om de kolomvoeten heen.
+ * Een onderbroken middenstreep die een oversteek kruist tekent een ononderbroken plus
+ * over de zebra; die verdween in de vorige opzet in een doorlopende texture-tegel.
+ *
+ * Elke strook krijgt een heel aantal tegels zodat hij halverwege een gat eindigt, en de
+ * streeplengte rekt met de tegel mee: op een strook die niet precies op de tegel uitkomt
+ * blijft het ritme zo gelijk aan dat van de bocht erachter.
+ */
+export function roadDashPatches(): readonly Bounds2[] {
+	const holes = ROAD_CROSSINGS.map(zebraBounds);
+	const halfWidth = half(ROAD_DASH.width);
+	const strips = [
+		{ axis: 'x', fixed: LANE_Z, reach: ROAD_INNER_X },
+		{ axis: 'x', fixed: -LANE_Z, reach: ROAD_INNER_X },
+		{ axis: 'z', fixed: LANE_X, reach: ROAD_INNER_Z },
+		{ axis: 'z', fixed: -LANE_X, reach: ROAD_INNER_Z },
+	] as const;
+	const dashes: Bounds2[] = [];
+	for (const strip of strips) {
+		const length = span(-strip.reach, strip.reach);
+		const tiles = Math.max(1, Math.round(length / ROAD_DASH_TILE));
+		const step = length / tiles;
+		const halfDash = half(ROAD_DASH.length * (step / ROAD_DASH_TILE));
+		for (let i = 0; i < tiles; i++) {
+			const tileStart = -strip.reach + i * step;
+			const center = midpoint(tileStart, tileStart + step);
+			const rect: Bounds2 =
+				strip.axis === 'x'
+					? { minX: center - halfDash, maxX: center + halfDash, minZ: strip.fixed - halfWidth, maxZ: strip.fixed + halfWidth }
+					: { minX: strip.fixed - halfWidth, maxX: strip.fixed + halfWidth, minZ: center - halfDash, maxZ: center + halfDash };
+			dashes.push(...boundsMinusHoles(rect, holes));
+		}
+	}
+	return dashes;
+}
 
 /**
  * Het plein rond de mall: de ring tussen de gevel en de binnenrand van de ringweg.
@@ -416,10 +488,12 @@ export type TowerSpec = Readonly<{ x: number; z: number; w: number; d: number; h
 
 /**
  * Kavels van theater, garage en park — daar bouwt de skyline niet overheen.
- * "Building's in the way" was letterlijk waar: torens verzwolgen de marquee.
+ * "Building's in the way" was letterlijk waar: torens verzwolgen de marquee. Het
+ * theaterkavel reikt nu tot achter de backstage en zijn achterbordes, zodat er geen
+ * toren tegen de artiesteningang komt te staan.
  */
 export const CITY_KAVELS = {
-	theatre: { minX: 52, maxX: 90, minZ: -70, maxZ: -40 },
+	theatre: { minX: 52, maxX: 90, minZ: -87, maxZ: -40 },
 	garage: { minX: 52, maxX: 90, minZ: 40, maxZ: 72 },
 	park: { minX: -94, maxX: -52, minZ: -74, maxZ: -36 },
 } as const satisfies Record<string, Rect>;

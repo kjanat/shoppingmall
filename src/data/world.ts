@@ -24,6 +24,7 @@ import type {
 	WorldEntity,
 } from '#/data/spatial';
 import {
+	boundsMinusHoles,
 	CARDINAL_OUTWARD,
 	GLASS_TAG,
 	geometryBounds,
@@ -4489,18 +4490,6 @@ export function parkingPillarFootprints(): readonly Bounds2[] {
 	}));
 }
 
-/** Wat er van `vlak` overblijft als `gat` eruit gesneden is: nul tot vier rechthoeken. */
-function planMinusHole(vlak: Bounds2, gat: Bounds2): Bounds2[] {
-	const minX = Math.max(vlak.minX, gat.minX);
-	const maxX = Math.min(vlak.maxX, gat.maxX);
-	return [
-		{ ...vlak, maxX: Math.min(vlak.maxX, gat.minX) },
-		{ ...vlak, minX: Math.max(vlak.minX, gat.maxX) },
-		{ minX, maxX, minZ: vlak.minZ, maxZ: Math.min(vlak.maxZ, gat.minZ) },
-		{ minX, maxX, minZ: Math.max(vlak.minZ, gat.maxZ), maxZ: vlak.maxZ },
-	].filter((stuk) => span(stuk.minX, stuk.maxX) > 0 && span(stuk.minZ, stuk.maxZ) > 0);
-}
-
 export type ParkingPaintPatch = Readonly<{
 	id: string;
 	kind: 'bay' | 'lane';
@@ -4510,9 +4499,7 @@ export type ParkingPaintPatch = Readonly<{
 }>;
 
 function paintAround(id: string, kind: ParkingPaintPatch['kind'], vlak: Bounds2, gaten: readonly Bounds2[]): ParkingPaintPatch[] {
-	let stukken: Bounds2[] = [vlak];
-	for (const gat of gaten) stukken = stukken.flatMap((stuk) => planMinusHole(stuk, gat));
-	return stukken
+	return boundsMinusHoles(vlak, gaten)
 		.filter(
 			(stuk) => span(stuk.minX, stuk.maxX) >= PARKING_PAINT_MIN_SIDE && span(stuk.minZ, stuk.maxZ) >= PARKING_PAINT_MIN_SIDE,
 		)
@@ -5146,6 +5133,36 @@ export const THEATRE_PLAN = {
 	/** Twee gangpaden overlangs, elk `offset` uit de as van de zaal. */
 	aisle: { width: 1.4, offset: 6 },
 	seat: { pitch: 0.55, width: 0.46, seatY: 0.44, backHeight: 0.95, thickness: 0.07 },
+	/**
+	 * De backstage achter het toneel: een gang over de as met een kleedkamer aan
+	 * weerszijden, een rekwisietenrek in de gang, een deur vanaf het toneel door de
+	 * tussenwand en een artiesteningang in de achtergevel. De vloer ligt gelijk met de
+	 * toneelvloer (`STAGE_TOP_Y`), dus de deur vanaf het podium is vlak; de zaal loopt
+	 * er van daaraf trapsgewijs vanaf.
+	 */
+	backstage: {
+		/** Diepte van het bijgebouw, noordwaarts vanaf de achterwand van de zaal. */
+		depth: 10,
+		/** Binnenwanden van gang en kleedkamers; dunner dan de schil. */
+		wallThickness: 0.2,
+		/** Vrije hoogte van de backstage: vloer plus dit is het plafond. */
+		ceiling: 2.8,
+		/** De gang over de as, van de artiesteningang naar de deur vanaf het toneel. */
+		corridorWidth: 3,
+		/** Deuropening van de gang naar een kleedkamer: breedte, hart in de diepte, hoogte. */
+		roomDoor: { width: 2, centerZ: -74.5, headY: 2.4 },
+		/** Het rekwisietenrek in de gang: een kledingroede met kostuums eraan. */
+		rack: { length: 2.6, depth: 0.6, height: 1.9, centerZ: -72 },
+		/** Een kaptafel met spiegel en twee stoelen tegen de buitenwand van elke kleedkamer. */
+		vanity: { width: 2.4, depth: 0.6, height: 0.78, mirror: { width: 2, height: 1.3, centerY: 1.45 } },
+		chair: { width: 0.5, depth: 0.5, seatY: 0.46, backHeight: 0.85 },
+		/** De artiesteningang en de deur vanaf het toneel: allebei een schuifpaar. */
+		door: { width: 3, headY: 2.6, leafHeight: 2.5, thickness: 0.12, seconds: 1.4 },
+		/** Aanwezigheidszone van elk schuifpaar, gemeten vanaf de deurvlakken. */
+		trigger: { outreach: 2, inreach: 1.6, height: 2.4 },
+		/** Het achterbordes met zijn trap: buiten-circulatie zoals de voorportiek. */
+		landing: { depth: 3, width: 5, treads: 6, tread: 0.55 },
+	},
 } as const;
 
 /** Bovenkant van trede `i`, geteld vanaf de bovenste (die tegen het podium ligt). */
@@ -5165,7 +5182,25 @@ const THEATRE_CENTER: Vec2 = {
 	z: midpoint(THEATRE_PLAN.hall.minZ, THEATRE_PLAN.hall.maxZ),
 };
 const THEATRE_HALL_WIDTH = span(THEATRE_PLAN.hall.minX, THEATRE_PLAN.hall.maxX);
-const THEATRE_HALL_DEPTH = span(THEATRE_PLAN.hall.minZ, THEATRE_PLAN.hall.maxZ);
+
+/**
+ * De volledige voetafdruk: de zaal plus de backstage die er noordelijk tegenaan
+ * ligt. De schil, de gevelcontrole en de zone `theatre` lezen deze rechthoek; de
+ * zaal zelf blijft `THEATRE_PLAN.hall`, zodat de stoelen en het toneel niet mee
+ * verschuiven. Alleen `minZ` schuift naar het noorden, dus de zuidgevel met de
+ * travee en `THEATRE_ENVELOPE.maxZ` blijven precies waar ze stonden.
+ */
+const THEATRE_FOOTPRINT: Bounds2 = {
+	minX: THEATRE_PLAN.hall.minX,
+	maxX: THEATRE_PLAN.hall.maxX,
+	minZ: THEATRE_PLAN.hall.minZ - THEATRE_PLAN.backstage.depth,
+	maxZ: THEATRE_PLAN.hall.maxZ,
+};
+const THEATRE_FOOTPRINT_CENTER: Vec2 = {
+	x: midpoint(THEATRE_FOOTPRINT.minX, THEATRE_FOOTPRINT.maxX),
+	z: midpoint(THEATRE_FOOTPRINT.minZ, THEATRE_FOOTPRINT.maxZ),
+};
+const THEATRE_FOOTPRINT_DEPTH = span(THEATRE_FOOTPRINT.minZ, THEATRE_FOOTPRINT.maxZ);
 
 /**
  * De hartlijn van de schil: de rechthoek waar de wanden omheen staan.
@@ -5175,10 +5210,10 @@ const THEATRE_HALL_DEPTH = span(THEATRE_PLAN.hall.minZ, THEATRE_PLAN.hall.maxZ);
  * wat een dorpel die de gevel doorsnijdt herkenbaar maakt als doorsnijding.
  */
 export const THEATRE_ENVELOPE: Bounds2 = {
-	minX: THEATRE_PLAN.hall.minX + half(THEATRE_WALL_T),
-	maxX: THEATRE_PLAN.hall.maxX - half(THEATRE_WALL_T),
-	minZ: THEATRE_PLAN.hall.minZ + half(THEATRE_WALL_T),
-	maxZ: THEATRE_PLAN.hall.maxZ - half(THEATRE_WALL_T),
+	minX: THEATRE_FOOTPRINT.minX + half(THEATRE_WALL_T),
+	maxX: THEATRE_FOOTPRINT.maxX - half(THEATRE_WALL_T),
+	minZ: THEATRE_FOOTPRINT.minZ + half(THEATRE_WALL_T),
+	maxZ: THEATRE_FOOTPRINT.maxZ - half(THEATRE_WALL_T),
 };
 
 /** Het binnenvlak van de schil: hier begint de zaal. */
@@ -5302,23 +5337,108 @@ export const THEATRE_PORTAL = {
 	doorTravel: half(span(THEATRE_DOOR_BAY.minX, THEATRE_DOOR_BAY.maxX) - THEATRE_PLAN.doors.sidelight * 2),
 } as const;
 
+const THEATRE_ARTIST_BAY = {
+	minX: THEATRE_FOOTPRINT_CENTER.x - half(THEATRE_PLAN.backstage.door.width),
+	maxX: THEATRE_FOOTPRINT_CENTER.x + half(THEATRE_PLAN.backstage.door.width),
+} as const;
+
+/**
+ * De artiesteningang in de achtergevel, over de as van de backstage-gang.
+ *
+ * Dezelfde vorm als de travee, maar zonder zijlichten: één schuifpaar in het gat.
+ * De backstage-vloer ligt op toneelhoogte, dus de dorpel en de latei worden vanaf
+ * `THEATRE_STAGE_TOP_Y` gemeten en niet vanaf de foyervloer.
+ */
+export const THEATRE_ARTIST_PORTAL = {
+	minX: THEATRE_ARTIST_BAY.minX,
+	maxX: THEATRE_ARTIST_BAY.maxX,
+	centerX: THEATRE_FOOTPRINT_CENTER.x,
+	/** Buitenvlak van de achtergevel, binnenvlak, en het glasvlak ertussen. */
+	outerZ: THEATRE_FOOTPRINT.minZ,
+	innerZ: THEATRE_FOOTPRINT.minZ + THEATRE_WALL_T,
+	glassZ: THEATRE_ENVELOPE.minZ,
+	doorTravel: half(THEATRE_PLAN.backstage.door.width),
+} as const;
+
+// ── de maten van de backstage achter het toneel ─────────────────────────────
+
+const BS = THEATRE_PLAN.backstage;
+
+/** Vloerhoogte van de backstage: gelijk met het toneel, dus de deur erheen is vlak. */
+export const BACKSTAGE_FLOOR_Y = THEATRE_STAGE_TOP_Y;
+/** Plafond van de kleedkamers: de vloer plus de vrije hoogte. */
+export const BACKSTAGE_CEILING_Y = BACKSTAGE_FLOOR_Y + BS.ceiling;
+
+/** Het binnenvlak van de backstage: van de tussenwand tot de achtergevel. */
+export const BACKSTAGE_INTERIOR: Bounds2 = {
+	minX: THEATRE_INTERIOR.minX,
+	maxX: THEATRE_INTERIOR.maxX,
+	minZ: THEATRE_FOOTPRINT.minZ + THEATRE_WALL_T,
+	maxZ: THEATRE_PLAN.hall.minZ,
+};
+
+/** De gang over de as, tussen de twee kleedkamers, van de achtergevel tot het toneel. */
+export const BACKSTAGE_CORRIDOR = {
+	minX: THEATRE_FOOTPRINT_CENTER.x - half(BS.corridorWidth),
+	maxX: THEATRE_FOOTPRINT_CENTER.x + half(BS.corridorWidth),
+} as const;
+
+/** De tussenwand tussen toneel en backstage: waar de oude noordgevel stond. */
+const BACKSTAGE_PARTITION = { minZ: THEATRE_PLAN.hall.minZ, maxZ: THEATRE_INTERIOR.minZ } as const;
+
+const BACKSTAGE_ROOM_DOOR = {
+	minZ: BS.roomDoor.centerZ - half(BS.roomDoor.width),
+	maxZ: BS.roomDoor.centerZ + half(BS.roomDoor.width),
+} as const;
+const BACKSTAGE_ROOM_DOOR_TOP = BACKSTAGE_FLOOR_Y + BS.roomDoor.headY;
+const BACKSTAGE_DOOR_TOP = BACKSTAGE_FLOOR_Y + BS.door.headY;
+
+/** Het hart in de diepte van een kleedkamer: waar de kaptafel en de stoelen om draaien. */
+const BACKSTAGE_ROOM_CENTER_Z = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
+
+/**
+ * Het achterbordes buiten de artiesteningang, op toneelhoogte, met een trap omlaag
+ * naar het maaiveld. Buiten-circulatie zoals de voorportiek: geen wereldentiteit maar
+ * loopvlakken die de collision en de tekenaar uit dezelfde maten lezen.
+ */
+export const BACKSTAGE_LANDING = {
+	minX: THEATRE_ARTIST_PORTAL.centerX - half(BS.landing.width),
+	maxX: THEATRE_ARTIST_PORTAL.centerX + half(BS.landing.width),
+	minZ: THEATRE_ARTIST_PORTAL.outerZ - BS.landing.depth,
+	maxZ: THEATRE_ARTIST_PORTAL.outerZ,
+	y: BACKSTAGE_FLOOR_Y,
+} as const;
+
+/** Rise per trede: de bordeshoogte in gelijke stappen naar het maaiveld op y 0. */
+const BACKSTAGE_LANDING_RISE = BACKSTAGE_FLOOR_Y / BS.landing.treads;
+
+/** Bovenkant van trede `i`, geteld vanaf het bordes omlaag naar het maaiveld. */
+export function backstageLandingTreadY(i: number): number {
+	return BACKSTAGE_FLOOR_Y - (i + 1) * BACKSTAGE_LANDING_RISE;
+}
+
+/** Z-strook van trede `i`, noordwaarts weglopend van de noordrand van het bordes. */
+export function backstageLandingTreadZ(i: number): Readonly<{ minZ: number; maxZ: number }> {
+	return { minZ: BACKSTAGE_LANDING.minZ - (i + 1) * BS.landing.tread, maxZ: BACKSTAGE_LANDING.minZ - i * BS.landing.tread };
+}
+
 /** De vier wanden van de schil, elk tegen de binnenkant van zijn eigen gevelvlak. */
 const THEATRE_WALL_PANELS = cardinalWallPanels({
-	center: THEATRE_CENTER,
-	offset: { x: half(THEATRE_HALL_WIDTH) - half(THEATRE_WALL_T), z: half(THEATRE_HALL_DEPTH) - half(THEATRE_WALL_T) },
+	center: THEATRE_FOOTPRINT_CENTER,
+	offset: { x: half(THEATRE_HALL_WIDTH) - half(THEATRE_WALL_T), z: half(THEATRE_FOOTPRINT_DEPTH) - half(THEATRE_WALL_T) },
 	// De noord- en zuidkap lopen over de volle breedte; de zij-wanden stoppen ervoor,
 	// zodat de vier kasten elkaar in de hoeken raken zonder in elkaar te staan.
-	span: { width: THEATRE_HALL_WIDTH, depth: THEATRE_HALL_DEPTH - THEATRE_WALL_T * 2 },
+	span: { width: THEATRE_HALL_WIDTH, depth: THEATRE_FOOTPRINT_DEPTH - THEATRE_WALL_T * 2 },
 	thickness: THEATRE_WALL_T,
 });
 
 export type TheatreWallSpec = Readonly<{ id: string; side: CardinalSide } & Bounds3>;
 
 /**
- * De schil als dozen, met de travee uit de zuidgevel gesneden: twee wangen ernaast
- * en een latei erboven. Dezelfde ingreep als bij de westgevel van de mall, en om
- * dezelfde reden: het gat dat deze lijst laat vallen ís de opening die de zonegraaf
- * erin vindt.
+ * De schil als dozen, met de travee uit de zuidgevel en de artiesteningang uit de
+ * noordgevel gesneden: telkens twee wangen ernaast en een latei erboven. Dezelfde
+ * ingreep als bij de westgevel van de mall, en om dezelfde reden: het gat dat deze
+ * lijst laat vallen ís de opening die de zonegraaf erin vindt.
  */
 export const THEATRE_WALL_SPECS: readonly TheatreWallSpec[] = THEATRE_WALL_PANELS.flatMap((panel): TheatreWallSpec[] => {
 	const box = {
@@ -5329,19 +5449,35 @@ export const THEATRE_WALL_SPECS: readonly TheatreWallSpec[] = THEATRE_WALL_PANEL
 		minZ: panel.center.z - half(panel.size.depth),
 		maxZ: panel.center.z + half(panel.size.depth),
 	};
-	if (panel.id !== 'south') return [{ id: `theatre-wall-${panel.id}`, side: panel.id, ...box }];
-	return [
-		{ id: 'theatre-wall-south-west', side: panel.id, ...box, maxX: THEATRE_PORTAL.minX },
-		{ id: 'theatre-wall-south-east', side: panel.id, ...box, minX: THEATRE_PORTAL.maxX },
-		{
-			id: 'theatre-wall-south-head',
-			side: panel.id,
-			...box,
-			minX: THEATRE_PORTAL.minX,
-			maxX: THEATRE_PORTAL.maxX,
-			minY: THEATRE_FLOOR_Y + THEATRE_PLAN.doors.headY,
-		},
-	];
+	if (panel.id === 'south') {
+		return [
+			{ id: 'theatre-wall-south-west', side: panel.id, ...box, maxX: THEATRE_PORTAL.minX },
+			{ id: 'theatre-wall-south-east', side: panel.id, ...box, minX: THEATRE_PORTAL.maxX },
+			{
+				id: 'theatre-wall-south-head',
+				side: panel.id,
+				...box,
+				minX: THEATRE_PORTAL.minX,
+				maxX: THEATRE_PORTAL.maxX,
+				minY: THEATRE_FLOOR_Y + THEATRE_PLAN.doors.headY,
+			},
+		];
+	}
+	if (panel.id === 'north') {
+		return [
+			{ id: 'theatre-wall-north-west', side: panel.id, ...box, maxX: THEATRE_ARTIST_PORTAL.minX },
+			{ id: 'theatre-wall-north-east', side: panel.id, ...box, minX: THEATRE_ARTIST_PORTAL.maxX },
+			{
+				id: 'theatre-wall-north-head',
+				side: panel.id,
+				...box,
+				minX: THEATRE_ARTIST_PORTAL.minX,
+				maxX: THEATRE_ARTIST_PORTAL.maxX,
+				minY: THEATRE_STAGE_TOP_Y + THEATRE_PLAN.backstage.door.headY,
+			},
+		];
+	}
+	return [{ id: `theatre-wall-${panel.id}`, side: panel.id, ...box }];
 });
 
 function theatrePanelOfWall(wall: TheatreWallSpec): FacadePanel {
@@ -5403,6 +5539,50 @@ function theatreFoyerWallVolumes(): readonly SpatialVolume[] {
 	return volumes;
 }
 
+/**
+ * De loopvlakken van de backstage: de vloer op toneelhoogte, de dorpel onder de deur
+ * vanaf het toneel, en de dorpel onder de artiesteningang in de achtergevel.
+ *
+ * Ze horen in `THEATRE_HALL_ENTITY` en niet in de backstage-entiteit, want ze raken
+ * de toneelvloer en de gangvloer aan; twee loopvlakken uit verschillende entiteiten
+ * die tegen elkaar liggen melden `coplanar-surface`.
+ */
+function backstageFloorVolumes(): readonly SpatialVolume[] {
+	return [
+		theatreBox(
+			'backstage-floor',
+			{ ...BACKSTAGE_INTERIOR, minY: THEATRE_PLAN.baseY, maxY: BACKSTAGE_FLOOR_Y },
+			'walkable',
+			false,
+		),
+		theatreBox(
+			'stage-door-sill',
+			{
+				minX: BACKSTAGE_CORRIDOR.minX,
+				maxX: BACKSTAGE_CORRIDOR.maxX,
+				...BACKSTAGE_PARTITION,
+				minY: THEATRE_PLAN.baseY,
+				maxY: BACKSTAGE_FLOOR_Y,
+			},
+			'walkable',
+			false,
+		),
+		theatreBox(
+			'artist-door-sill',
+			{
+				minX: THEATRE_ARTIST_PORTAL.minX,
+				maxX: THEATRE_ARTIST_PORTAL.maxX,
+				minZ: THEATRE_ARTIST_PORTAL.outerZ,
+				maxZ: THEATRE_ARTIST_PORTAL.innerZ,
+				minY: THEATRE_PLAN.baseY,
+				maxY: BACKSTAGE_FLOOR_Y,
+			},
+			'walkable',
+			false,
+		),
+	];
+}
+
 /** De naam die de kaart aan het theater geeft. De controle op de schotel leest hem terug. */
 export const THEATRE_LABEL = 'PRAIRIE THEATRE';
 
@@ -5439,7 +5619,7 @@ export const THEATRE_SHELL_ENTITY: MallWorldEntity = {
 	transform: { position: { x: THEATRE_CENTER.x, y: THEATRE_FLOOR_Y, z: THEATRE_CENTER.z }, rotation: ZERO_ROTATION },
 	volumes: [
 		...THEATRE_WALL_SPECS.map((wall) => theatreBox(wall.id, wall)),
-		theatreBox('roof', { ...THEATRE_PLAN.hall, minY: THEATRE_CEILING_Y, maxY: THEATRE_PLAN.hallHeight }),
+		theatreBox('roof', { ...THEATRE_FOOTPRINT, minY: THEATRE_CEILING_Y, maxY: THEATRE_PLAN.hallHeight }),
 	],
 	ports: NO_PORTS,
 	placement: structurePlacement(),
@@ -5518,6 +5698,9 @@ export const THEATRE_HALL_ENTITY: MallWorldEntity = {
 			minY: THEATRE_STAGE_TOP_Y,
 			maxY: THEATRE_STAGE_TOP_Y + THEATRE_PLAN.stage.set.height,
 		}),
+		// De backstage-loopvlakken horen bij de zaal, niet bij de backstage-wanden: één
+		// vloerentiteit, anders melden twee aangrenzende vlakken `coplanar-surface`.
+		...backstageFloorVolumes(),
 	],
 	ports: NO_PORTS,
 	placement: structurePlacement(),
@@ -5759,12 +5942,381 @@ export const THEATRE_FOYER_ENTITY: MallWorldEntity = roomEntity({
 	tags: ['theatre', 'foyer'],
 });
 
+// ── de backstage achter het toneel: wanden, deuren en inrichting ─────────────
+// (de maten en de vloer staan hierboven, bij de zaal, in één vloerentiteit)
+
+/** Eén gangwand met de kleedkamerdeur eruit: twee stukken en een latei erboven. */
+function backstageCorridorWall(id: string, minX: number, maxX: number): readonly SpatialVolume[] {
+	const full = { minX, maxX, minY: BACKSTAGE_FLOOR_Y, maxY: THEATRE_CEILING_Y };
+	return [
+		theatreBox(`${id}-north`, { ...full, minZ: BACKSTAGE_INTERIOR.minZ, maxZ: BACKSTAGE_ROOM_DOOR.minZ }),
+		theatreBox(`${id}-south`, { ...full, minZ: BACKSTAGE_ROOM_DOOR.maxZ, maxZ: BACKSTAGE_INTERIOR.maxZ }),
+		theatreBox(`${id}-lintel`, {
+			...full,
+			minZ: BACKSTAGE_ROOM_DOOR.minZ,
+			maxZ: BACKSTAGE_ROOM_DOOR.maxZ,
+			minY: BACKSTAGE_ROOM_DOOR_TOP,
+		}),
+	];
+}
+
+/**
+ * De backstage als bouwwerk: de tussenwand met de deur naar het toneel eruit, en de
+ * twee gangwanden met elk een kleedkamerdeur. De vloer en de twee dorpels zitten in
+ * `THEATRE_HALL_ENTITY`, want álle loopvlakken van het theater horen in één entiteit:
+ * twee aangrenzende vlakken uit verschillende entiteiten zouden `coplanar-surface`
+ * melden.
+ */
+export const THEATRE_BACKSTAGE_ENTITY: MallWorldEntity = {
+	id: 'theatre-backstage',
+	label: 'Prairie Theatre backstage',
+	category: 'theatre',
+	levels: ['v0'],
+	transform: {
+		position: { x: THEATRE_FOOTPRINT_CENTER.x, y: BACKSTAGE_FLOOR_Y, z: BACKSTAGE_INTERIOR.minZ },
+		rotation: ZERO_ROTATION,
+	},
+	volumes: [
+		// De tussenwand naar het toneel, met de deur eruit: twee wangen en een latei.
+		theatreBox('partition-west', {
+			minX: BACKSTAGE_INTERIOR.minX,
+			maxX: BACKSTAGE_CORRIDOR.minX,
+			...BACKSTAGE_PARTITION,
+			minY: THEATRE_PLAN.baseY,
+			maxY: THEATRE_CEILING_Y,
+		}),
+		theatreBox('partition-east', {
+			minX: BACKSTAGE_CORRIDOR.maxX,
+			maxX: BACKSTAGE_INTERIOR.maxX,
+			...BACKSTAGE_PARTITION,
+			minY: THEATRE_PLAN.baseY,
+			maxY: THEATRE_CEILING_Y,
+		}),
+		theatreBox('partition-head', {
+			minX: BACKSTAGE_CORRIDOR.minX,
+			maxX: BACKSTAGE_CORRIDOR.maxX,
+			...BACKSTAGE_PARTITION,
+			minY: BACKSTAGE_DOOR_TOP,
+			maxY: THEATRE_CEILING_Y,
+		}),
+		...backstageCorridorWall('corridor-west', BACKSTAGE_CORRIDOR.minX - BS.wallThickness, BACKSTAGE_CORRIDOR.minX),
+		...backstageCorridorWall('corridor-east', BACKSTAGE_CORRIDOR.maxX, BACKSTAGE_CORRIDOR.maxX + BS.wallThickness),
+	],
+	ports: NO_PORTS,
+	placement: structurePlacement(),
+	kinematics: { kind: 'static' },
+	mechanisms: NO_MECHANISMS,
+	receiver: STATIC_RECEIVER,
+	emitters: NO_EMITTERS,
+	map: map('structure', 'BACKSTAGE', 60),
+	tags: ['theatre', 'backstage', 'structural'],
+};
+
+const BACKSTAGE_ARTIST_DOORS: ClearanceMechanism = {
+	id: 'backstage-artist-doors',
+	kind: 'sliding',
+	stateId: 'backstage-artist-open',
+	movingVolumeIds: ['artist-leaf-west', 'artist-leaf-east'],
+	triggerVolumeId: 'artist-presence',
+	openState: { translation: { x: THEATRE_ARTIST_PORTAL.doorTravel, y: 0, z: 0 } },
+	openingSeconds: BS.door.seconds,
+	failSafe: 'open',
+	access: { admits: ['pedestrian'] },
+};
+
+const BACKSTAGE_STAGE_DOORS: ClearanceMechanism = {
+	id: 'backstage-stage-doors',
+	kind: 'sliding',
+	stateId: 'backstage-stage-open',
+	movingVolumeIds: ['stage-leaf-west', 'stage-leaf-east'],
+	triggerVolumeId: 'stage-presence',
+	openState: { translation: { x: half(BS.door.width), y: 0, z: 0 } },
+	openingSeconds: BS.door.seconds,
+	failSafe: 'open',
+	access: { admits: ['pedestrian'] },
+};
+
+/** Een schuifblad van een backstage-deur, staand in het gegeven z-vlak. */
+function backstageLeaf(
+	id: string,
+	minX: number,
+	maxX: number,
+	glassZ: number,
+	mechanismId: string,
+	glass: boolean,
+): SpatialVolume {
+	const leaf: SpatialVolume = {
+		id,
+		role: 'solid',
+		geometry: {
+			kind: 'prism',
+			plan: rectangle(midpoint(minX, maxX), glassZ, span(minX, maxX), BS.door.thickness),
+			minY: BACKSTAGE_FLOOR_Y,
+			maxY: BACKSTAGE_FLOOR_Y + BS.door.leafHeight,
+			holes: [],
+		},
+		blocksMovement: false,
+		clearance: { kind: 'automatic-gate', mechanismId },
+		allowsOverlapFrom: STRUCTURAL_OVERLAP,
+		tags: ['door-leaf'],
+	};
+	return glass ? glazed(leaf) : leaf;
+}
+
+function backstageTriggerVolume(id: string, box: Bounds2): SpatialVolume {
+	return {
+		id,
+		role: 'trigger',
+		geometry: {
+			kind: 'prism',
+			plan: rectangle(
+				midpoint(box.minX, box.maxX),
+				midpoint(box.minZ, box.maxZ),
+				span(box.minX, box.maxX),
+				span(box.minZ, box.maxZ),
+			),
+			minY: BACKSTAGE_FLOOR_Y,
+			maxY: BACKSTAGE_FLOOR_Y + BS.trigger.height,
+			holes: [],
+		},
+		blocksMovement: false,
+		clearance: { kind: 'clear' },
+		allowsOverlapFrom: STRUCTURAL_OVERLAP,
+		tags: ['trigger', 'presence'],
+	};
+}
+
+/**
+ * De twee deuren van de backstage: de artiesteningang in de achtergevel en de deur
+ * vanaf het toneel in de tussenwand.
+ *
+ * De artiesteningang snijdt de gevellijn, dus hem ziet de zonegraaf als portaal dat
+ * de stad en het theater aan elkaar knoopt; de toneeldeur ligt binnen de zone en
+ * verbindt geen twee zones. `validateSpatialWorld` laat allebei alleen door omdat er
+ * een mechanisme aan hangt dat voetgangers toelaat.
+ */
+export const THEATRE_BACKSTAGE_DOORS_ENTITY: MallWorldEntity = {
+	id: 'theatre-backstage-doors',
+	label: 'Backstage doors',
+	category: 'opening',
+	levels: ['v0'],
+	transform: {
+		position: { x: THEATRE_ARTIST_PORTAL.centerX, y: BACKSTAGE_FLOOR_Y, z: THEATRE_ARTIST_PORTAL.glassZ },
+		rotation: ZERO_ROTATION,
+	},
+	volumes: [
+		clearancePrism(
+			'artist-threshold',
+			rectangle(
+				THEATRE_ARTIST_PORTAL.centerX,
+				midpoint(THEATRE_ARTIST_PORTAL.outerZ, THEATRE_ARTIST_PORTAL.innerZ + BS.trigger.inreach),
+				BS.door.width,
+				span(THEATRE_ARTIST_PORTAL.outerZ, THEATRE_ARTIST_PORTAL.innerZ + BS.trigger.inreach),
+			),
+			BACKSTAGE_FLOOR_Y,
+			BACKSTAGE_DOOR_TOP,
+			'opening-clearance',
+		),
+		backstageLeaf(
+			'artist-leaf-west',
+			THEATRE_ARTIST_PORTAL.minX,
+			THEATRE_ARTIST_PORTAL.centerX,
+			THEATRE_ARTIST_PORTAL.glassZ,
+			BACKSTAGE_ARTIST_DOORS.id,
+			true,
+		),
+		backstageLeaf(
+			'artist-leaf-east',
+			THEATRE_ARTIST_PORTAL.centerX,
+			THEATRE_ARTIST_PORTAL.maxX,
+			THEATRE_ARTIST_PORTAL.glassZ,
+			BACKSTAGE_ARTIST_DOORS.id,
+			true,
+		),
+		backstageTriggerVolume('artist-presence', {
+			minX: THEATRE_ARTIST_PORTAL.minX - BS.trigger.inreach,
+			maxX: THEATRE_ARTIST_PORTAL.maxX + BS.trigger.inreach,
+			minZ: THEATRE_ARTIST_PORTAL.outerZ - BS.trigger.outreach,
+			maxZ: THEATRE_ARTIST_PORTAL.innerZ + BS.trigger.inreach,
+		}),
+		clearancePrism(
+			'stage-threshold',
+			rectangle(
+				THEATRE_FOOTPRINT_CENTER.x,
+				midpoint(BACKSTAGE_PARTITION.minZ, BACKSTAGE_PARTITION.maxZ),
+				BS.door.width,
+				span(BACKSTAGE_PARTITION.minZ, BACKSTAGE_PARTITION.maxZ),
+			),
+			BACKSTAGE_FLOOR_Y,
+			BACKSTAGE_DOOR_TOP,
+			'connector-clearance',
+		),
+		backstageLeaf(
+			'stage-leaf-west',
+			BACKSTAGE_CORRIDOR.minX,
+			THEATRE_FOOTPRINT_CENTER.x,
+			midpoint(BACKSTAGE_PARTITION.minZ, BACKSTAGE_PARTITION.maxZ),
+			BACKSTAGE_STAGE_DOORS.id,
+			false,
+		),
+		backstageLeaf(
+			'stage-leaf-east',
+			THEATRE_FOOTPRINT_CENTER.x,
+			BACKSTAGE_CORRIDOR.maxX,
+			midpoint(BACKSTAGE_PARTITION.minZ, BACKSTAGE_PARTITION.maxZ),
+			BACKSTAGE_STAGE_DOORS.id,
+			false,
+		),
+		backstageTriggerVolume('stage-presence', {
+			minX: BACKSTAGE_CORRIDOR.minX - BS.trigger.inreach,
+			maxX: BACKSTAGE_CORRIDOR.maxX + BS.trigger.inreach,
+			minZ: BACKSTAGE_PARTITION.minZ - BS.trigger.inreach,
+			maxZ: BACKSTAGE_PARTITION.maxZ + BS.trigger.inreach,
+		}),
+	],
+	ports: [
+		{
+			id: 'backstage-street',
+			kind: 'door',
+			position: { x: THEATRE_ARTIST_PORTAL.centerX, y: BACKSTAGE_FLOOR_Y, z: THEATRE_ARTIST_PORTAL.outerZ },
+			direction: { x: 0, y: 0, z: -1 },
+			width: BS.door.width,
+			height: BS.door.headY,
+			connectsTo: ['backstage-corridor'],
+			oneWay: false,
+			allows: ['walking', 'service'],
+			posture: 'standing',
+			clearanceVolumeId: 'artist-threshold',
+		},
+		{
+			id: 'backstage-corridor',
+			kind: 'door',
+			position: { x: THEATRE_ARTIST_PORTAL.centerX, y: BACKSTAGE_FLOOR_Y, z: THEATRE_ARTIST_PORTAL.innerZ },
+			direction: { x: 0, y: 0, z: 1 },
+			width: BS.door.width,
+			height: BS.door.headY,
+			connectsTo: ['backstage-street'],
+			oneWay: false,
+			allows: ['walking', 'service'],
+			posture: 'standing',
+			clearanceVolumeId: 'artist-threshold',
+		},
+		{
+			id: 'backstage-stage',
+			kind: 'door',
+			position: { x: THEATRE_FOOTPRINT_CENTER.x, y: BACKSTAGE_FLOOR_Y, z: BACKSTAGE_PARTITION.maxZ },
+			direction: { x: 0, y: 0, z: 1 },
+			width: BS.door.width,
+			height: BS.door.headY,
+			connectsTo: ['backstage-wings'],
+			oneWay: false,
+			allows: ['walking', 'service'],
+			posture: 'standing',
+			clearanceVolumeId: 'stage-threshold',
+		},
+		{
+			id: 'backstage-wings',
+			kind: 'door',
+			position: { x: THEATRE_FOOTPRINT_CENTER.x, y: BACKSTAGE_FLOOR_Y, z: BACKSTAGE_PARTITION.minZ },
+			direction: { x: 0, y: 0, z: -1 },
+			width: BS.door.width,
+			height: BS.door.headY,
+			connectsTo: ['backstage-stage'],
+			oneWay: false,
+			allows: ['walking', 'service'],
+			posture: 'standing',
+			clearanceVolumeId: 'stage-threshold',
+		},
+	],
+	placement: structurePlacement(),
+	kinematics: { kind: 'static' },
+	mechanisms: [BACKSTAGE_ARTIST_DOORS, BACKSTAGE_STAGE_DOORS],
+	receiver: STATIC_RECEIVER,
+	emitters: NO_EMITTERS,
+	map: map('circulation', 'ARTIESTEN', 84),
+	tags: ['theatre', 'backstage', 'entrance', 'circulation', 'must-remain-clear'],
+};
+
+/** De kaptafel, twee stoelen en, in de oostkamer, de spiegelmaat leest de tekenaar hieruit. */
+function backstageVanity(id: string, wallX: number, inward: 1 | -1): readonly SpatialVolume[] {
+	const front = wallX + inward * BS.vanity.depth;
+	const tableMinZ = BACKSTAGE_ROOM_CENTER_Z - half(BS.vanity.width);
+	const table = theatreBox(
+		`${id}-table`,
+		{
+			minX: Math.min(wallX, front),
+			maxX: Math.max(wallX, front),
+			minZ: tableMinZ,
+			maxZ: tableMinZ + BS.vanity.width,
+			minY: BACKSTAGE_FLOOR_Y,
+			maxY: BACKSTAGE_FLOOR_Y + BS.vanity.height,
+		},
+		'solid',
+		true,
+	);
+	const chairFrontX = wallX + inward * (BS.vanity.depth + BS.chair.depth);
+	const chairs = [-1, 1].map((sign) => {
+		const chairCenterZ = BACKSTAGE_ROOM_CENTER_Z + sign * BS.vanity.width * 0.28;
+		return theatreBox(
+			`${id}-chair-${sign < 0 ? 'a' : 'b'}`,
+			{
+				minX: Math.min(wallX + inward * BS.vanity.depth, chairFrontX),
+				maxX: Math.max(wallX + inward * BS.vanity.depth, chairFrontX),
+				minZ: chairCenterZ - half(BS.chair.width),
+				maxZ: chairCenterZ + half(BS.chair.width),
+				minY: BACKSTAGE_FLOOR_Y,
+				maxY: BACKSTAGE_FLOOR_Y + BS.chair.backHeight,
+			},
+			'solid',
+			true,
+		);
+	});
+	return [table, ...chairs];
+}
+
+/**
+ * De inrichting van de backstage: een kaptafel met twee stoelen tegen de buitenwand
+ * van elke kleedkamer, en een rekwisietenrek in de gang. Meubels, dus ze houden een
+ * lichaam tegen; `validateSpatialWorld` weigert er een dat in een wand of in een
+ * naburige entiteit steekt, en `check-props` een cast die erin gaat staan.
+ */
+export const THEATRE_BACKSTAGE_FIXTURES_ENTITY: MallWorldEntity = roomEntity({
+	id: 'theatre-backstage-fixtures',
+	label: 'Backstage fittings',
+	category: 'theatre',
+	level: 'v0',
+	center: { x: THEATRE_FOOTPRINT_CENTER.x, z: BACKSTAGE_ROOM_CENTER_Z },
+	placementClass: 'fixture',
+	volumes: [
+		...backstageVanity('vanity-west', BACKSTAGE_INTERIOR.minX, 1),
+		...backstageVanity('vanity-east', BACKSTAGE_INTERIOR.maxX, -1),
+		theatreBox(
+			'prop-rack',
+			{
+				minX: BACKSTAGE_CORRIDOR.minX,
+				maxX: BACKSTAGE_CORRIDOR.minX + BS.rack.depth,
+				minZ: BS.rack.centerZ - half(BS.rack.length),
+				maxZ: BS.rack.centerZ + half(BS.rack.length),
+				minY: BACKSTAGE_FLOOR_Y,
+				maxY: BACKSTAGE_FLOOR_Y + BS.rack.height,
+			},
+			'solid',
+			true,
+		),
+	],
+	map: map('fixture', 'KLEEDKAMERS', 56),
+	tags: ['theatre', 'backstage', 'dressing'],
+});
+
 export const THEATRE_ENTITIES: readonly MallWorldEntity[] = [
 	THEATRE_SHELL_ENTITY,
 	THEATRE_HALL_ENTITY,
 	THEATRE_ENTRANCE_ENTITY,
 	THEATRE_SEATING_ENTITY,
 	THEATRE_FOYER_ENTITY,
+	THEATRE_BACKSTAGE_ENTITY,
+	THEATRE_BACKSTAGE_DOORS_ENTITY,
+	THEATRE_BACKSTAGE_FIXTURES_ENTITY,
 ];
 
 /**
@@ -5791,13 +6343,24 @@ export function theatreColliders(): readonly (WorldCollider & Readonly<{ seeThro
 	);
 }
 
-/** De loopvlakken binnen het theater: de foyer, elk zaaldek en het toneel. */
+/** De loopvlakken binnen het theater: de foyer, elk zaaldek, het toneel en de backstage. */
 export function theatreSurfaces(): readonly Readonly<Bounds2 & { y: number; label: string }>[] {
-	return THEATRE_HALL_ENTITY.volumes.flatMap((volume) => {
-		if (volume.role !== 'walkable') return [];
-		const bounds = geometryBounds(volume.geometry);
-		return [{ minX: bounds.minX, maxX: bounds.maxX, minZ: bounds.minZ, maxZ: bounds.maxZ, y: bounds.maxY, label: volume.id }];
-	});
+	return THEATRE_ENTITIES.flatMap((entity) =>
+		entity.volumes.flatMap((volume) => {
+			if (volume.role !== 'walkable') return [];
+			const bounds = geometryBounds(volume.geometry);
+			return [
+				{
+					minX: bounds.minX,
+					maxX: bounds.maxX,
+					minZ: bounds.minZ,
+					maxZ: bounds.maxZ,
+					y: bounds.maxY,
+					label: volume.id,
+				},
+			];
+		}),
+	);
 }
 
 export const WORLD_ENTITIES: readonly MallWorldEntity[] = [

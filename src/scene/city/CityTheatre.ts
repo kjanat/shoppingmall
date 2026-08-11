@@ -2,8 +2,19 @@ import * as THREE from 'three';
 import type { Bounds3 } from '#/data/spatial';
 import { geometryBounds } from '#/data/spatial';
 import {
+	BACKSTAGE_CEILING_Y,
+	BACKSTAGE_CORRIDOR,
+	BACKSTAGE_FLOOR_Y,
+	BACKSTAGE_INTERIOR,
+	BACKSTAGE_LANDING,
+	backstageLandingTreadY,
+	backstageLandingTreadZ,
 	mechanismTriggerBounds,
 	THEATRE_AISLES,
+	THEATRE_ARTIST_PORTAL,
+	THEATRE_BACKSTAGE_DOORS_ENTITY,
+	THEATRE_BACKSTAGE_ENTITY,
+	THEATRE_BACKSTAGE_FIXTURES_ENTITY,
 	THEATRE_ENTRANCE_ENTITY,
 	THEATRE_FLOOR_Y,
 	THEATRE_HALL_ENTITY,
@@ -136,6 +147,14 @@ export class CityTheatre {
 	readonly audience = new THREE.Group();
 
 	/**
+	 * De backstage-cast: de aankleedsters aan de kaptafels. Apart bijgehouden om
+	 * dezelfde reden als het publiek — `check-props` vraagt of ze in een doos staan
+	 * die ze niet bezitten, en de wanden en meubels van de backstage horen die vraag
+	 * niet te krijgen.
+	 */
+	readonly backstage = new THREE.Group();
+
+	/**
 	 * De twee plekken waar dit systeem staat: de marquee aan de straat en de zaal
 	 * erachter. Ze liggen in verschillende zones, en de LOD-klok leidt daar zijn
 	 * tempo uit af in plaats van er één zone bij op te schrijven.
@@ -172,6 +191,15 @@ export class CityTheatre {
 	private readonly leaves: { mesh: THREE.Mesh; closedX: number; travel: number }[] = [];
 	private doorOpen = 0;
 
+	/** De backstage-schuifdeuren, elk aan het eigen mechanisme uit het wereldmodel. */
+	private readonly backstageDoors: {
+		trigger: Bounds3;
+		rate: number;
+		travel: THREE.Vector3;
+		open: number;
+		leaves: { mesh: THREE.Mesh; closed: THREE.Vector3 }[];
+	}[] = [];
+
 	private readonly stageWash: LightHandle;
 	private readonly sitters: Sitter[] = [];
 	private readonly head: THREE.SphereGeometry;
@@ -194,6 +222,7 @@ export class CityTheatre {
 		this.buildStoelen();
 		this.stageWash = this.buildZaallicht(pool);
 		this.buildPubliek();
+		this.buildBackstage(pool);
 		this.applyChase(0);
 	}
 
@@ -215,6 +244,12 @@ export class CityTheatre {
 		const wanted = inBounds(DOOR_TRIGGER, viewer) ? 1 : 0;
 		this.doorOpen = ease(this.doorOpen, wanted, DOOR_RATE, dt);
 		for (const leaf of this.leaves) leaf.mesh.position.x = leaf.closedX + leaf.travel * this.doorOpen;
+
+		for (const door of this.backstageDoors) {
+			const open = inBounds(door.trigger, viewer) ? 1 : 0;
+			door.open = ease(door.open, open, door.rate, dt);
+			for (const leaf of door.leaves) leaf.mesh.position.copy(leaf.closed).addScaledVector(door.travel, door.open);
+		}
 
 		// De was ademt; de zaal is dan nooit helemaal stil, ook als er niets speelt.
 		const breath = half(1 + Math.cos((t / STAGE_BREATH.period) * TAU));
@@ -961,6 +996,190 @@ export class CityTheatre {
 		}
 		this.sitters.push({ body, phase: rand() * TAU, rate: lerp(SITTER_BREATH.min, SITTER_BREATH.max, rand()) });
 		return root;
+	}
+
+	/**
+	 * De backstage achter het toneel: vloer, wanden en plafond uit de entiteiten, de
+	 * twee deuren, de kaptafels met spiegels en stoelen, het rekwisietenrek, het
+	 * achterbordes met zijn trap, en een paar gangplafondlampen uit de pool.
+	 *
+	 * Alles leest uit dezelfde volumes die de collision en de wereldcontrole lezen,
+	 * dus wie een wand verzet verzet de mesh mee. De spiegels zijn enkelzijdige
+	 * vlakken: een textuur op een dubbelzijdig vlak leest van achteren gespiegeld.
+	 */
+	private buildBackstage(pool: LightPool): void {
+		const steen = lit({ color: 0x8a8378, roughness: 0.95 });
+		const vloerMat = lit({ color: 0x3a352f, roughness: 0.92 });
+		const plafondMat = lit({ color: 0x2a2622, roughness: 1 });
+		const hout = lit({ color: 0x4a3524, roughness: 0.6, metalness: 0.05 });
+		const staal = lit({ color: 0x6b7078, roughness: 0.4, metalness: 0.7 });
+		const stof = lit({ color: 0x4a5a52, roughness: 0.95 });
+		const deurMat = lit({ color: 0x2a211b, roughness: 0.7, metalness: 0.15 });
+		const glasMat = lit({ color: 0x1b2a2e, roughness: 0.15, metalness: 0.6, transparent: true, opacity: 0.42 });
+		this.materials.push(steen, vloerMat, plafondMat, hout, staal, stof, deurMat, glasMat);
+
+		const midX = midpoint(BACKSTAGE_INTERIOR.minX, BACKSTAGE_INTERIOR.maxX);
+		const midZ = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
+		const breedte = span(BACKSTAGE_INTERIOR.minX, BACKSTAGE_INTERIOR.maxX);
+		const diepte = span(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
+
+		const vloer = new THREE.Mesh(this.unitPlane, vloerMat);
+		vloer.scale.set(breedte, diepte, 1);
+		vloer.rotation.x = -Math.PI / 2;
+		vloer.position.set(midX, BACKSTAGE_FLOOR_Y + CARPET_LIFT, midZ);
+		vloer.receiveShadow = true;
+		this.group.add(vloer);
+
+		const plafond = new THREE.Mesh(this.unitPlane, plafondMat);
+		plafond.scale.set(breedte, diepte, 1);
+		plafond.rotation.x = Math.PI / 2;
+		plafond.position.set(midX, BACKSTAGE_CEILING_Y, midZ);
+		this.group.add(plafond);
+
+		for (const volume of THEATRE_BACKSTAGE_ENTITY.volumes) {
+			this.boxOf(steen, geometryBounds(volume.geometry)).receiveShadow = true;
+		}
+
+		// Elk blad schuift in update() de openState van zijn eigen mechanisme na, op
+		// dezelfde triggerdoos die het wereldmodel aanwijst; de travee doet het net zo.
+		for (const mechanism of THEATRE_BACKSTAGE_DOORS_ENTITY.mechanisms) {
+			const translation = mechanism.openState.translation;
+			if (!translation) throw new Error(`backstage-mechanisme ${mechanism.id} schuift maar heeft geen translation`);
+			const leaves: { mesh: THREE.Mesh; closed: THREE.Vector3 }[] = [];
+			for (const id of mechanism.movingVolumeIds) {
+				const volume = THEATRE_BACKSTAGE_DOORS_ENTITY.volumes.find((kandidaat) => kandidaat.id === id);
+				if (!volume) throw new Error(`backstage-mechanisme ${mechanism.id} beweegt ${id}, maar dat volume bestaat niet`);
+				const mesh = this.boxOf(id.startsWith('artist-leaf') ? glasMat : deurMat, geometryBounds(volume.geometry));
+				leaves.push({ mesh, closed: mesh.position.clone() });
+			}
+			this.backstageDoors.push({
+				trigger: mechanismTriggerBounds(THEATRE_BACKSTAGE_DOORS_ENTITY, mechanism.id),
+				rate: 1 / mechanism.openingSeconds,
+				travel: new THREE.Vector3(translation.x, translation.y, translation.z),
+				open: 0,
+				leaves,
+			});
+		}
+
+		// Kaptafels, stoelen en het rekwisietenrek uit de inrichting-entiteit.
+		for (const volume of THEATRE_BACKSTAGE_FIXTURES_ENTITY.volumes) {
+			const mat = volume.id === 'prop-rack' ? staal : volume.id.includes('chair') ? stof : hout;
+			const mesh = this.boxOf(mat, geometryBounds(volume.geometry));
+			mesh.castShadow = true;
+		}
+		this.buildBackstageKostuums();
+		this.buildBackstageSpiegel(BACKSTAGE_INTERIOR.minX, 1);
+		this.buildBackstageSpiegel(BACKSTAGE_INTERIOR.maxX, -1);
+		this.buildBackstageBordes(steen);
+		this.buildBackstageLicht(pool);
+		this.buildAankleedsters();
+	}
+
+	/** Een handvol kostuums aan het rek: platte kleurvlakken die eronderuit hangen. */
+	private buildBackstageKostuums(): void {
+		const rack = THEATRE_PLAN.backstage.rack;
+		const kleuren = [0x7a1230, 0x1f3a30, 0x513a1c, 0x2c3550] as const;
+		const x = BACKSTAGE_CORRIDOR.minX + half(rack.depth);
+		for (const [index, kleur] of kleuren.entries()) {
+			const mat = lit({ color: kleur, roughness: 0.95 });
+			this.materials.push(mat);
+			const t = (index + 0.5) / kleuren.length;
+			const z = lerp(rack.centerZ - half(rack.length) + 0.2, rack.centerZ + half(rack.length) - 0.2, t);
+			this.box(mat, 0.16, 1.1, 0.34, x, BACKSTAGE_FLOOR_Y + rack.height - 0.6, z).castShadow = true;
+		}
+	}
+
+	/**
+	 * Een spiegel boven de kaptafel: een lijst met een enkelzijdig glasvlak dat de
+	 * kamer in kijkt. Enkelzijdig met opzet — een textuur op een dubbelzijdig vlak
+	 * leest van achteren gespiegeld, en daar is `spiegeltekst` voor.
+	 */
+	private buildBackstageSpiegel(wallX: number, inward: 1 | -1): void {
+		const { mirror } = THEATRE_PLAN.backstage.vanity;
+		const lijst = lit({ color: 0x8a6d2f, roughness: 0.45, metalness: 0.7 });
+		this.materials.push(lijst);
+		const z = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
+		const y = BACKSTAGE_FLOOR_Y + mirror.centerY;
+		this.box(lijst, 0.1, mirror.height + 0.16, mirror.width + 0.16, wallX + inward * 0.03, y, z).castShadow = true;
+		const tex = this.makeTexture(128, 256, (ctx) => {
+			const grad = ctx.createLinearGradient(0, 0, 0, 256);
+			grad.addColorStop(0, '#dfe6ea');
+			grad.addColorStop(0.5, '#aab6bd');
+			grad.addColorStop(1, '#7d8a90');
+			ctx.fillStyle = grad;
+			ctx.fillRect(0, 0, 128, 256);
+		});
+		const glas = new THREE.Mesh(this.unitPlane, this.basic(tex));
+		glas.scale.set(mirror.width, mirror.height, 1);
+		glas.rotation.y = inward > 0 ? Math.PI / 2 : -Math.PI / 2;
+		glas.position.set(wallX + inward * 0.06, y, z);
+		this.group.add(glas);
+	}
+
+	/** Het achterbordes met zijn trap, uit dezelfde maten als de collision. */
+	private buildBackstageBordes(mat: THREE.Material): void {
+		const bordes = BACKSTAGE_LANDING;
+		this.box(
+			mat,
+			span(bordes.minX, bordes.maxX),
+			bordes.y,
+			span(bordes.minZ, bordes.maxZ),
+			midpoint(bordes.minX, bordes.maxX),
+			half(bordes.y),
+			midpoint(bordes.minZ, bordes.maxZ),
+		).receiveShadow = true;
+		for (let i = 0; i < THEATRE_PLAN.backstage.landing.treads; i++) {
+			const top = backstageLandingTreadY(i);
+			const { minZ, maxZ } = backstageLandingTreadZ(i);
+			this.box(
+				mat,
+				span(bordes.minX, bordes.maxX),
+				top,
+				span(minZ, maxZ),
+				midpoint(bordes.minX, bordes.maxX),
+				half(top),
+				midpoint(minZ, maxZ),
+			).receiveShadow = true;
+		}
+	}
+
+	/** Gangplafondlampen: één in de gang en één boven elke kaptafel, uit de pool. */
+	private buildBackstageLicht(pool: LightPool): void {
+		const gloed = new THREE.MeshBasicMaterial({ color: 0xfff2d8, toneMapped: false });
+		this.materials.push(gloed);
+		const bolGeo = new THREE.SphereGeometry(0.12, 8, 6);
+		this.geometries.push(bolGeo);
+		const y = BACKSTAGE_CEILING_Y - 0.2;
+		const roomZ = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
+		const plekken: readonly (readonly [number, number])[] = [
+			[THEATRE_ARTIST_PORTAL.centerX, roomZ],
+			[midpoint(BACKSTAGE_INTERIOR.minX, BACKSTAGE_CORRIDOR.minX), roomZ],
+			[midpoint(BACKSTAGE_CORRIDOR.maxX, BACKSTAGE_INTERIOR.maxX), roomZ],
+		];
+		for (const [x, z] of plekken) {
+			const bol = new THREE.Mesh(bolGeo, gloed);
+			bol.position.set(x, y, z);
+			this.group.add(bol);
+			pool.register({ position: bol.position.clone(), color: 0xffe6b0, intensity: 5, distance: 7, decay: 2 });
+		}
+	}
+
+	/** Twee aankleedsters aan de kaptafels: een cast, dus `check-props` telt ze. */
+	private buildAankleedsters(): void {
+		this.backstage.name = 'theatre_backstage_cast';
+		this.group.add(this.backstage);
+		const rand = mulberry32(0x4b1d);
+		const huid = lit({ color: 0xc99a76, roughness: 0.85 });
+		const jas = lit({ color: 0x30323a, roughness: 0.9 });
+		this.materials.push(huid, jas);
+		for (const id of ['vanity-west-chair-a', 'vanity-east-chair-a']) {
+			const chair = THEATRE_BACKSTAGE_FIXTURES_ENTITY.volumes.find((volume) => volume.id === id);
+			if (!chair) continue;
+			const box = geometryBounds(chair.geometry);
+			this.backstage.add(
+				this.buildBezoeker(midpoint(box.minX, box.maxX), BACKSTAGE_FLOOR_Y, midpoint(box.minZ, box.maxZ), jas, huid, rand),
+			);
+		}
 	}
 
 	/** Een onbelicht vlak met een canvas erop: affiches, borden en het doek. */

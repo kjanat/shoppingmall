@@ -6,9 +6,12 @@ import {
 	LANE_X,
 	LANE_Z,
 	ROAD_CROSSINGS,
+	ROAD_DASH,
+	ROAD_DASH_TILE,
 	ROAD_INNER_X,
 	ROAD_INNER_Z,
 	ROAD_PLAN,
+	roadDashPatches,
 	ZEBRA_PLAN,
 } from '#/scene/city/cityPlan';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -30,16 +33,17 @@ import { at } from '#/util/rand';
 const ROAD_W = ROAD_PLAN.width;
 const HALF_W = half(ROAD_W);
 const ROAD_Y = 0.03; // net boven de maaiveldplaat, anders z-fight bingo
+const DASH_Y = 0.05; // de losse middenstreep, net boven het asfalt en onder de zebra
 const ZEBRA_Y = 0.06;
 /** Hoever de inrit over het asfalt van de ringweg heen loopt. */
 const APRON_OVERLAP = 0.15;
 /** Dik genoeg om onder de bestrating ernaast door te lopen. */
 const APRON_THICKNESS = 0.2;
 
-/** De onderbroken middenstreep in meters. Streep plus gat is één texture-tegel. */
-const DASH_LEN = 3.25;
-const DASH_GAP = 4.75;
-const TILE_LEN = DASH_LEN + DASH_GAP; // 8 m
+/** De onderbroken middenstreep in meters, uit het wegenplan. Streep plus gat is één tegel. */
+const DASH_LEN = ROAD_DASH.length;
+const DASH_GAP = ROAD_DASH.gap;
+const TILE_LEN = ROAD_DASH_TILE; // 8 m
 /** Oost-west stroken lopen tot aan de hoektegels: x van -48 tot 48. */
 const EW_LEN = 2 * ROAD_INNER_X;
 /** Noord-zuid stroken idem: z van -34 tot 34. */
@@ -52,11 +56,11 @@ const NS_LEN = 2 * ROAD_INNER_Z;
 const ROAD_PX = 128;
 const TILE_PX = 256;
 const M_TO_ROAD_PX = ROAD_PX / ROAD_W;
-const M_TO_TILE_PX = TILE_PX / TILE_LEN;
 /** Kantlijn: hoever van de rand af, en hoe dik. */
 const EDGE_INSET_PX = 5;
 const EDGE_PX = 3;
-const DASH_PX = 6;
+/** Streepdikte in texels, uit de metermaat van het wegenplan: één bron voor bocht en recht stuk. */
+const DASH_PX = ROAD_DASH.width * M_TO_ROAD_PX;
 const SPECKLE_PX = 2;
 /** Vlekjes per strooktegel; asfalt zonder textuur is gewoon een sombere plane. */
 const SPECKLES_PER_TILE = 220;
@@ -107,6 +111,7 @@ export class CityRoads {
 	private textures: THREE.Texture[] = [];
 	private heads: Head[] = [];
 	private zebras!: THREE.InstancedMesh;
+	private dashes!: THREE.InstancedMesh;
 
 	// Lampmaterialen — gedeeld over alle koppen, we wisselen alleen referenties
 	private redOn!: THREE.Material;
@@ -123,6 +128,7 @@ export class CityRoads {
 		this.group.name = 'city_roads';
 		this.buildLampMaterials();
 		this.buildStrips();
+		this.buildDashes();
 		this.buildZebras();
 		this.buildApron();
 		this.buildTrafficLights();
@@ -150,6 +156,7 @@ export class CityRoads {
 
 	dispose(): void {
 		this.zebras.dispose();
+		this.dashes.dispose();
 		for (const m of this.materials) m.dispose();
 		for (const g of this.geometries) g.dispose();
 		for (const t of this.textures) t.dispose();
@@ -170,13 +177,10 @@ export class CityRoads {
 	}
 
 	/**
-	 * Asfalt-tegel voor een recht stuk: doorgetrokken kantlijnen en een
-	 * onderbroken middenstreep. U loopt langs de rijrichting, dus RepeatWrapping
-	 * op wrapS maakt er vanzelf een nette dash van.
-	 *
-	 * De streep ligt gecentreerd in de tegel, met aan beide uiteinden een half
-	 * gat, en `len` wordt op een heel aantal tegels afgerond. Zo eindigt elke
-	 * strook halverwege een gat en sluit de bocht erachter op het ritme aan.
+	 * Asfalt-tegel voor een recht stuk: alleen doorgetrokken kantlijnen. De
+	 * middenstreep zit niet meer in de tegel maar staat als losse rechthoekjes uit
+	 * `roadDashPatches`, zodat de zebrapaden er als gaten uit gesneden zijn; een
+	 * doorlopende texture-dash tekende een ononderbroken plus over de oversteek.
 	 */
 	private makeAsphaltTexture(len: number): THREE.Texture {
 		const { canvas: c, ctx } = labelCanvas(TILE_PX, ROAD_PX);
@@ -184,8 +188,6 @@ export class CityRoads {
 		ctx.fillStyle = PAINT_EDGE;
 		ctx.fillRect(0, EDGE_INSET_PX, TILE_PX, EDGE_PX);
 		ctx.fillRect(0, ROAD_PX - EDGE_INSET_PX - EDGE_PX, TILE_PX, EDGE_PX);
-		ctx.fillStyle = PAINT_DASH;
-		ctx.fillRect(half(DASH_GAP) * M_TO_TILE_PX, half(ROAD_PX) - half(DASH_PX), DASH_LEN * M_TO_TILE_PX, DASH_PX);
 		const tex = labelTexture(c);
 		tex.wrapS = THREE.RepeatWrapping;
 		tex.repeat.set(Math.max(1, Math.round(len / TILE_LEN)), 1);
@@ -282,6 +284,32 @@ export class CityRoads {
 				this.group.add(tile);
 			}
 		}
+	}
+
+	// ── middenstreep ───────────────────────────────────────
+
+	/**
+	 * De losse strepen van de middenstreep uit `roadDashPatches`, één InstancedMesh voor
+	 * alle strepen: een eenheidsvlak dat per streep op zijn eigen rechthoek geschaald
+	 * wordt. Ze zijn er als aparte rechthoekjes uit gesneden waar een zebrapad de rijbaan
+	 * kruist; in de texture liep de streep er nog dwars doorheen.
+	 */
+	private buildDashes(): void {
+		const patches = roadDashPatches();
+		const geo = new THREE.PlaneGeometry(1, 1);
+		geo.rotateX(-Math.PI / 2);
+		this.geometries.push(geo);
+		const mat = this.track(lit({ color: PAINT_DASH, roughness: 0.9 }));
+		this.dashes = new THREE.InstancedMesh(geo, mat, patches.length);
+		const dummy = new THREE.Object3D();
+		patches.forEach((patch, index) => {
+			dummy.position.set(midpoint(patch.minX, patch.maxX), DASH_Y, midpoint(patch.minZ, patch.maxZ));
+			dummy.scale.set(span(patch.minX, patch.maxX), 1, span(patch.minZ, patch.maxZ));
+			dummy.updateMatrix();
+			this.dashes.setMatrixAt(index, dummy.matrix);
+		});
+		this.dashes.instanceMatrix.needsUpdate = true;
+		this.group.add(this.dashes);
 	}
 
 	// ── zebrapaden ─────────────────────────────────────────
