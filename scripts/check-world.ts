@@ -7212,7 +7212,16 @@ async function controleColosseum(): Promise<void> {
 
 // ── uitvoeren ──────────────────────────────────────────────────────────────
 
-const controles: { naam: string; draai: () => void | Promise<void> }[] = [
+export type Wereldcontrole = { naam: string; draai: () => void | Promise<void> };
+
+/**
+ * De controles zelf, zodat de testrunner er één test per stuk van maakt.
+ *
+ * Dit bestand was een script met een exit-code, dus 63 controles waren in `bun test`
+ * één regel: een nieuwe arm veranderde het testaantal niet en een rode wereld was
+ * één rode test. De lijst is de tabel; [wereld](scripts/world.test.ts) loopt hem af.
+ */
+export const controles: Wereldcontrole[] = [
 	{ naam: 'voorraad', draai: controleVoorraad },
 	{ naam: 'lift', draai: controleLift },
 	{ naam: 'hellingen', draai: controleHellingen },
@@ -7278,19 +7287,27 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'startbit', draai: controleStartbit },
 ];
 
-for (const c of controles) {
+/** Wat déze controle te melden heeft, los van alle andere. */
+export async function draaiControle(controle: Wereldcontrole): Promise<string[]> {
+	const vanaf = fouten.length;
 	try {
-		await c.draai();
+		await controle.draai();
 	} catch (e) {
-		fout(c.naam, `controle kon niet draaien: ${e instanceof Error ? e.message : String(e)}`);
+		fout(controle.naam, `controle kon niet draaien: ${e instanceof Error ? e.message : String(e)}`);
 	}
+	return fouten.slice(vanaf);
 }
 
-if (fouten.length === 0) {
-	console.log(`check-world: ${controles.length} controles geslaagd`);
-} else {
-	console.error(`check-world: ${fouten.length} ${fouten.length === 1 ? 'probleem' : 'problemen'} in de wereld\n`);
-	for (const f of fouten) console.error(`  ✗ ${f}`);
-	console.error('');
-	process.exitCode = 1;
+// Als script: alles achter elkaar met één exit-code, want de build hangt eraan.
+if (import.meta.main) {
+	for (const c of controles) await draaiControle(c);
+
+	if (fouten.length === 0) {
+		console.log(`check-world: ${controles.length} controles geslaagd`);
+	} else {
+		console.error(`check-world: ${fouten.length} ${fouten.length === 1 ? 'probleem' : 'problemen'} in de wereld\n`);
+		for (const f of fouten) console.error(`  ✗ ${f}`);
+		console.error('');
+		process.exitCode = 1;
+	}
 }
