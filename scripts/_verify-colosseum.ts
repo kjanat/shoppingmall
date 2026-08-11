@@ -7,13 +7,12 @@ import { launchPerfBrowser } from './perf/playwright.ts';
 import { probeSource } from './perf/probe.ts';
 
 const VIEWPORT = { width: 1500, height: 1100 } as const;
-const SHOT_TIMEOUT_MS = 180_000;
+const SHOT_TIMEOUT_MS = 300_000;
 const REPAINT_MS = 900;
 
 const POSES = [
-	{ name: 'a-ring-eye', x: 0, y: 1.7, z: 46, lookX: 0, lookY: 9, lookZ: 104 },
-	{ name: 'b-high-oblique', x: -74, y: 44, z: 38, lookX: 0, lookY: 10, lookZ: 104 },
-	{ name: 'c-inside-cavea', x: 0, y: 8, z: 110, lookX: 0, lookY: 11, lookZ: 78 },
+	{ name: 'c1-midtribune', x: 0, y: 10.5, z: 133, lookX: 0, lookY: 7, lookZ: 74 },
+	{ name: 'c2-arenafloor', x: 0, y: 2.5, z: 114, lookX: 0, lookY: 12, lookZ: 80 },
 ] as const;
 
 const outputDir = argv[2] ?? '/home/kjanat/.claude/jobs/8868c721/tmp';

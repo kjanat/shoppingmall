@@ -324,33 +324,52 @@ export class CityFavela {
 	private buildTerrain(): void {
 		const dirt = lit({ color: 0x4a3a28, roughness: 0.98 });
 		const path = lit({ color: 0x5a4a38, roughness: 0.97 });
-		this.materials.push(dirt, path);
+		const fill = lit({ color: 0x3a2a1c, roughness: 0.98 });
+		this.materials.push(dirt, path, fill);
 		const { minX, maxX, minZ, maxZ } = FAVELA_PLAN;
-		// Stepped ground strips following the slope (not one flat slab).
-		const strips = 8;
+		const depth = span(minZ, maxZ) + 2;
+		const zc = midpoint(minZ, maxZ);
+		// Solid fill under each strip from y=0 up to terrace — kills the “floating hill” look.
+		const strips = 16;
 		for (let i = 0; i < strips; i++) {
 			const u0 = i / strips;
 			const u1 = (i + 1) / strips;
 			const x0 = lerp(maxX, minX, u0);
 			const x1 = lerp(maxX, minX, u1);
-			const y = favelaGroundY(midpoint(x0, x1), midpoint(minZ, maxZ));
-			const w = Math.abs(x1 - x0) + 0.4;
-			const mesh = new THREE.Mesh(this.unit, dirt);
-			mesh.scale.set(w, 0.35, span(minZ, maxZ) + 1);
-			mesh.position.set(midpoint(x0, x1), y - 0.1, midpoint(minZ, maxZ));
-			mesh.receiveShadow = true;
-			this.group.add(mesh);
+			const top = favelaGroundY(midpoint(x0, x1), zc);
+			const w = Math.abs(x1 - x0) + 0.35;
+			const h = Math.max(0.4, top + 0.25);
+			const bulk = new THREE.Mesh(this.unit, fill);
+			bulk.scale.set(w, h, depth);
+			bulk.position.set(midpoint(x0, x1), half(h) - 0.15, zc);
+			bulk.receiveShadow = true;
+			bulk.castShadow = true;
+			this.group.add(bulk);
+			// Walk plate on top
+			const deck = new THREE.Mesh(this.unit, dirt);
+			deck.scale.set(w + 0.1, 0.2, depth - 0.4);
+			deck.position.set(midpoint(x0, x1), top + 0.08, zc);
+			deck.receiveShadow = true;
+			this.group.add(deck);
 		}
-		// Main alley climbing west.
-		const alley = new THREE.Mesh(this.unit, path);
-		alley.scale.set(span(minX, maxX) + 2, 0.12, 2.4);
-		alley.position.set(
-			midpoint(minX, maxX),
-			favelaGroundY(midpoint(minX, maxX), midpoint(minZ, maxZ)) + 0.05,
-			midpoint(minZ, maxZ),
-		);
-		alley.receiveShadow = true;
-		this.group.add(alley);
+		// Stair alley climbing west (visible steps)
+		const alleySteps = 28;
+		for (let i = 0; i < alleySteps; i++) {
+			const u = (i + 0.5) / alleySteps;
+			const x = lerp(maxX + 1.5, minX + 1, u);
+			const y = favelaGroundY(x, zc);
+			const step = new THREE.Mesh(this.unit, path);
+			step.scale.set(1.35, 0.28, 3.6);
+			step.position.set(x, y + 0.12, zc);
+			step.receiveShadow = true;
+			this.group.add(step);
+		}
+		// Approach pad from the ring road (no gap under the first houses)
+		const apron = new THREE.Mesh(this.unit, path);
+		apron.scale.set(6, 0.35, depth * 0.85);
+		apron.position.set(maxX + 2.5, 0.15, zc);
+		apron.receiveShadow = true;
+		this.group.add(apron);
 	}
 
 	private buildShacks(): void {
@@ -1083,7 +1102,7 @@ export function favelaColliders(): readonly BoxCollider[] {
 	});
 }
 
-/** Walkable terrace strips so you can climb between shacks. */
+/** Walkable terraces + stair alley + road apron. */
 export function favelaSurfaces(): readonly Readonly<{
 	minX: number;
 	maxX: number;
@@ -1093,21 +1112,72 @@ export function favelaSurfaces(): readonly Readonly<{
 	label: string;
 }>[] {
 	const { minX, maxX, minZ, maxZ } = FAVELA_PLAN;
-	const strips = 8;
+	const zc = midpoint(minZ, maxZ);
 	const out: { minX: number; maxX: number; minZ: number; maxZ: number; y: number; label: string }[] = [];
+	const strips = 16;
 	for (let i = 0; i < strips; i++) {
 		const u0 = i / strips;
 		const u1 = (i + 1) / strips;
 		const x0 = lerp(maxX, minX, u0);
 		const x1 = lerp(maxX, minX, u1);
-		const y = favelaGroundY(midpoint(x0, x1), midpoint(minZ, maxZ));
+		const y = favelaGroundY(midpoint(x0, x1), zc);
 		out.push({
-			minX: Math.min(x0, x1) - 0.2,
-			maxX: Math.max(x0, x1) + 0.2,
-			minZ: minZ - 0.5,
-			maxZ: maxZ + 0.5,
-			y: y + 0.08,
+			minX: Math.min(x0, x1) - 0.15,
+			maxX: Math.max(x0, x1) + 0.15,
+			minZ: minZ - 0.4,
+			maxZ: maxZ + 0.4,
+			y: y + 0.14,
 			label: `favela_terrace_${i}`,
+		});
+	}
+	// Climb alley center
+	const alleySteps = 28;
+	for (let i = 0; i < alleySteps; i++) {
+		const u = (i + 0.5) / alleySteps;
+		const x = lerp(maxX + 1.5, minX + 1, u);
+		const y = favelaGroundY(x, zc);
+		out.push({
+			minX: x - 0.75,
+			maxX: x + 0.75,
+			minZ: zc - 2,
+			maxZ: zc + 2,
+			y: y + 0.22,
+			label: `favela_stair_${i}`,
+		});
+	}
+	// Street apron
+	out.push({
+		minX: maxX,
+		maxX: maxX + 6,
+		minZ: minZ - 0.5,
+		maxZ: maxZ + 0.5,
+		y: 0.22,
+		label: 'favela_apron',
+	});
+	return out;
+}
+
+/** Fill colliders under the slope so you cannot walk under a “floating” hill. */
+export function favelaFillColliders(): readonly BoxCollider[] {
+	const { minX, maxX, minZ, maxZ } = FAVELA_PLAN;
+	const zc = midpoint(minZ, maxZ);
+	const depth = span(minZ, maxZ);
+	const out: BoxCollider[] = [];
+	const strips = 16;
+	for (let i = 0; i < strips; i++) {
+		const u0 = i / strips;
+		const u1 = (i + 1) / strips;
+		const x0 = lerp(maxX, minX, u0);
+		const x1 = lerp(maxX, minX, u1);
+		const top = favelaGroundY(midpoint(x0, x1), zc);
+		out.push({
+			minX: Math.min(x0, x1),
+			maxX: Math.max(x0, x1),
+			minZ: zc - half(depth),
+			maxZ: zc + half(depth),
+			minY: -0.5,
+			maxY: top - 0.05,
+			label: `favela_fill_${i}`,
 		});
 	}
 	return out;

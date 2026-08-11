@@ -3,15 +3,17 @@ import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { COLOSSEUM_PLAN } from '#/scene/city/cityPlan';
 import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
-import { clamp, half, lerp, span } from '#/util/math';
+import { clamp, half, lerp, midpoint, span } from '#/util/math';
 
 export type GateState = 'closed' | 'opening' | 'open' | 'closing';
 
 /**
- * CityColosseum — Monumental Solid Stone Ancient Roman Colosseum.
- * Constructed with heavy 3D masonry: solid stepped Cavea seating bowl,
- * 4-story outer arcade facade with Roman columns and semi-circular arch vaults,
- * solid floor decks, subterranean Hypogeum pit, and Imperial Pulvinar Box.
+ * CityColosseum — a monumental Roman amphitheatre read as one closed elliptical
+ * ring of masonry. The arcades are holes in a solid wall, not columns holding up
+ * air: every tier is a dark recessed wall behind light piers and round arches, a
+ * solid attic caps the ring with a flat cornice, and the seating descends inward
+ * as a stepped cavea to the sand arena. Two axial gates (north Porta Libitinaria,
+ * south Porta Triumphalis) are the only breaks in the shell.
  */
 export class CityColosseum {
 	readonly group = new THREE.Group();
@@ -20,7 +22,10 @@ export class CityColosseum {
 	private readonly geometries: THREE.BufferGeometry[] = [];
 	private readonly textures: THREE.Texture[] = [];
 
-	// Subterranean Cage Gates
+	/** Ellipse squash: the z-radius is this much larger than the x-radius. */
+	private readonly aspect = COLOSSEUM_PLAN.radiusZ / COLOSSEUM_PLAN.radiusX;
+
+	// Subterranean cage gates that rise into the arena.
 	private northGateMesh: THREE.Mesh | null = null;
 	private southGateMesh: THREE.Mesh | null = null;
 	private northGateY = 0;
@@ -28,33 +33,30 @@ export class CityColosseum {
 	private gateState: GateState = 'closed';
 	private gateProgress = 0;
 
-	// Torch flame materials
 	private flameMaterials: THREE.MeshBasicMaterial[] = [];
 
 	constructor(world?: CollisionWorld) {
 		this.group.name = 'city_colosseum';
 
 		this.buildSubterraneanHypogeum();
-		this.buildSolidSeatingBowl();
-		this.buildFacadeArcades();
+		this.buildArenaAndPodium();
+		this.buildCavea();
+		this.buildFacade();
+		this.buildInnerArticulation();
 		this.buildImperialPulvinar();
 		this.buildSubterraneanGates();
-		this.buildTorchesAndBanners();
+		this.buildTorches();
 		this.buildSign();
 
-		if (world) {
-			this.registerColliders(world);
-		}
+		if (world) this.registerColliders(world);
 	}
 
 	update(dt: number, time: number): void {
-		// Torch braziers pulsing illumination
 		const pulse = 0.82 + 0.18 * Math.sin(time * 5.5);
 		for (const flameMat of this.flameMaterials) {
 			flameMat.color.setRGB(1.0 * pulse, 0.52 * pulse, 0.08 * pulse);
 		}
 
-		// Gate animation
 		if (this.gateState === 'opening') {
 			this.gateProgress = clamp(this.gateProgress + dt * 0.8, 0, 1);
 			if (this.gateProgress >= 1) this.gateState = 'open';
@@ -78,14 +80,67 @@ export class CityColosseum {
 		for (const t of this.textures) t.dispose();
 	}
 
-	private addMesh(geo: THREE.BufferGeometry, mat: THREE.Material, parent = this.group): THREE.Mesh {
-		const m = new THREE.Mesh(geo, mat);
+	// ── geometry helpers ────────────────────────────────────────────────────
+
+	private track<T extends THREE.BufferGeometry>(geo: T): T {
+		this.geometries.push(geo);
+		return geo;
+	}
+
+	private addMesh(geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D = this.group): THREE.Mesh {
+		const m = new THREE.Mesh(this.track(geo), mat);
 		m.castShadow = true;
 		m.receiveShadow = true;
 		parent.add(m);
-		this.geometries.push(geo);
 		return m;
 	}
+
+	/** A point on the ground ellipse at angle `a` and x-radius `rx`. */
+	private onEllipse(a: number, rx: number): [number, number] {
+		return [COLOSSEUM_PLAN.x + Math.cos(a) * rx, COLOSSEUM_PLAN.z + Math.sin(a) * rx * this.aspect];
+	}
+
+	/** A closed or open elliptical ring wall, squashed from a cylinder of x-radius `rx`. */
+	private ringWall(
+		rx: number,
+		yCenter: number,
+		height: number,
+		mat: THREE.Material,
+		opts: { openEnded?: boolean; radialTop?: number } = {},
+	): THREE.Mesh {
+		const geo = new THREE.CylinderGeometry(opts.radialTop ?? rx, rx, height, 56, 1, opts.openEnded ?? false);
+		const ring = this.addMesh(geo, mat);
+		ring.scale.set(1, 1, this.aspect);
+		ring.position.set(COLOSSEUM_PLAN.x, yCenter, COLOSSEUM_PLAN.z);
+		return ring;
+	}
+
+	/** A box whose long axis follows the ellipse tangent at angle `a`. */
+	private tangentBox(
+		a: number,
+		rx: number,
+		width: number,
+		height: number,
+		depth: number,
+		yCenter: number,
+		mat: THREE.Material,
+	): void {
+		const [x, z] = this.onEllipse(a, rx);
+		const geo = new THREE.BoxGeometry(width, height, depth);
+		const box = this.addMesh(geo, mat);
+		box.position.set(x, yCenter, z);
+		box.rotation.y = -a;
+	}
+
+	/** Half the angular reach of a gate opening, wide enough for the axial tunnel. */
+	private readonly gateCos = 0.14;
+
+	/** True where the shell opens for one of the two axial gates (north −z, south +z). */
+	private nearGate(a: number): boolean {
+		return Math.abs(Math.cos(a)) < this.gateCos;
+	}
+
+	// ── the underground ─────────────────────────────────────────────────────
 
 	private buildSubterraneanHypogeum(): void {
 		const { x: cx, z: cz, arenaRadiusX, arenaRadiusZ, hypogeumDepth } = COLOSSEUM_PLAN;
@@ -95,191 +150,228 @@ export class CityColosseum {
 		const ironMat = lit({ color: 0x1e1e1e, roughness: 0.5, metalness: 0.8 });
 		this.materials.push(stoneMat, woodMat, ironMat);
 
-		// Subterranean Floor Slab
 		const floorGeo = new THREE.BoxGeometry(arenaRadiusX * 1.8, 0.5, arenaRadiusZ * 1.8);
 		const floor = this.addMesh(floorGeo, stoneMat);
 		floor.position.set(cx, -hypogeumDepth, cz);
 
-		// Subterranean Corridor Walls
 		for (let i = -2; i <= 2; i += 2) {
 			const offsetZ = i * 5;
 			const wallGeo = new THREE.BoxGeometry(arenaRadiusX * 1.6, hypogeumDepth, 1.2);
 			const wall = this.addMesh(wallGeo, stoneMat);
 			wall.position.set(cx, -half(hypogeumDepth), cz + offsetZ);
 
-			// Iron Cage Grids along subterranean corridors
 			for (let dx = -12; dx <= 12; dx += 8) {
 				const cageGeo = new THREE.BoxGeometry(0.15, hypogeumDepth, 3.2);
 				const cage = this.addMesh(cageGeo, ironMat);
 				cage.position.set(cx + dx, -half(hypogeumDepth), cz + offsetZ + 2.4);
 			}
 		}
+	}
 
-		// Central Wooden Arena Platform over Hypogeum
+	// ── the sand and the barrier wall around it ──────────────────────────────
+
+	private buildArenaAndPodium(): void {
+		const { x: cx, z: cz, arenaRadiusX, archesPerLevel } = COLOSSEUM_PLAN;
+
 		const sandMat = lit({ color: 0xd4b880, roughness: 0.95 });
-		this.materials.push(sandMat);
+		const woodMat = lit({ color: 0x3d2b1c, roughness: 0.85 });
+		const podiumMat = lit({ color: 0x8f7f68, roughness: 0.85 });
+		const podiumCapMat = lit({ color: 0xbfb08c, roughness: 0.8 });
+		this.materials.push(sandMat, woodMat, podiumMat, podiumCapMat);
 
-		const arenaFloorGeo = new THREE.CylinderGeometry(arenaRadiusX, arenaRadiusX, 0.4, 36);
+		// Flat sand floor sitting on the trapdoor deck over the hypogeum.
+		const arenaFloorGeo = new THREE.CylinderGeometry(arenaRadiusX, arenaRadiusX, 0.4, 48);
 		const arenaFloor = this.addMesh(arenaFloorGeo, sandMat);
-		arenaFloor.scale.set(1, 1, arenaRadiusZ / arenaRadiusX);
+		arenaFloor.scale.set(1, 1, this.aspect);
 		arenaFloor.position.set(cx, 0.1, cz);
 
-		// Timber Trapdoor Cover
 		const timberGeo = new THREE.BoxGeometry(9.0, 0.2, 17.0);
 		const timber = this.addMesh(timberGeo, woodMat);
 		timber.position.set(cx, 0.12, cz);
-	}
 
-	private buildSolidSeatingBowl(): void {
-		const { x: cx, z: cz, arenaRadiusX, arenaRadiusZ, radiusX, radiusZ } = COLOSSEUM_PLAN;
-
-		const marbleMat = lit({ color: 0xe8dbca, roughness: 0.5 });
-		const stoneMat = lit({ color: 0xad9c86, roughness: 0.8 });
-		const darkStoneMat = lit({ color: 0x786956, roughness: 0.85 });
-		this.materials.push(marbleMat, stoneMat, darkStoneMat);
-
-		// Solid Arena Podium Wall (2.8m high masonry wall around sand floor)
-		const podiumRadiusX = arenaRadiusX + 0.6;
-		const podiumRadiusZ = arenaRadiusZ + 0.6;
-		const podiumGeo = new THREE.CylinderGeometry(podiumRadiusX, podiumRadiusX, 2.8, 36, 1, true);
-		const podium = this.addMesh(podiumGeo, stoneMat);
-		podium.scale.set(1, 1, podiumRadiusZ / podiumRadiusX);
-		podium.position.set(cx, 1.4, cz);
-
-		// 3 Solid Stepped Cavea Seating Rings (Ima, Media, Summa Cavea)
-		// Ima Cavea (Patrician Marble Tier)
-		const imaInnerX = arenaRadiusX + 0.8;
-		const imaOuterX = arenaRadiusX + 5.0;
-		const imaGeo = new THREE.CylinderGeometry(imaOuterX, imaInnerX, 3.2, 36, 1, false);
-		const ima = this.addMesh(imaGeo, marbleMat);
-		ima.scale.set(1, 1, (arenaRadiusZ + 5.0) / imaOuterX);
-		ima.position.set(cx, 3.0, cz);
-
-		// Media Cavea (Middle Citizen Tier)
-		const mediaInnerX = imaOuterX + 0.2;
-		const mediaOuterX = imaOuterX + 5.5;
-		const mediaGeo = new THREE.CylinderGeometry(mediaOuterX, mediaInnerX, 5.0, 36, 1, false);
-		const media = this.addMesh(mediaGeo, stoneMat);
-		media.scale.set(1, 1, (arenaRadiusZ + 10.5) / mediaOuterX);
-		media.position.set(cx, 6.5, cz);
-
-		// Summa Cavea (Upper Plebeian Tier)
-		const summaInnerX = mediaOuterX + 0.2;
-		const summaOuterX = radiusX - 2.5;
-		const summaGeo = new THREE.CylinderGeometry(summaOuterX, summaInnerX, 6.5, 36, 1, false);
-		const summa = this.addMesh(summaGeo, darkStoneMat);
-		summa.scale.set(1, 1, (radiusZ - 2.5) / summaOuterX);
-		summa.position.set(cx, 11.5, cz);
-
-		// Colonnade Portico Ring on Top Seating Deck
-		const porticoGeo = new THREE.CylinderGeometry(radiusX - 2.0, radiusX - 2.8, 0.6, 36, 1, false);
-		const portico = this.addMesh(porticoGeo, marbleMat);
-		portico.scale.set(1, 1, (radiusZ - 2.0) / (radiusX - 2.0));
-		portico.position.set(cx, 15.0, cz);
-
-		// Radial Stairways (Vomitoria Exit Paths cutting through seating bowl)
-		const stairways = 8;
-		for (let i = 0; i < stairways; i++) {
-			const angle = (i / stairways) * Math.PI * 2;
-			const sx = cx + Math.cos(angle) * half(arenaRadiusX + radiusX);
-			const sz = cz + Math.sin(angle) * half(arenaRadiusZ + radiusZ);
-
-			const stairGeo = new THREE.BoxGeometry(2.6, 12.0, span(arenaRadiusX, radiusX));
-			const stair = this.addMesh(stairGeo, darkStoneMat);
-			stair.position.set(sx, 7.5, sz);
-			stair.rotation.y = angle + Math.PI / 2;
+		// The podium: a faceted barrier wall right at the sand, broken only by the
+		// two gates. Its cap is a lighter band so the arena reads as walled, not open.
+		const podiumRx = arenaRadiusX + 1.0;
+		const podiumHeight = 3.0;
+		const chord = 2 * podiumRx * Math.sin(Math.PI / archesPerLevel) * 1.3;
+		for (let i = 0; i < archesPerLevel; i++) {
+			const a = (i / archesPerLevel) * Math.PI * 2;
+			if (this.nearGate(a)) continue;
+			this.tangentBox(a, podiumRx, chord, podiumHeight, 0.8, half(podiumHeight), podiumMat);
+			this.tangentBox(a, podiumRx, chord, 0.4, 1.0, podiumHeight, podiumCapMat);
 		}
 	}
 
-	private buildFacadeArcades(): void {
-		const { x: cx, z: cz, radiusX, radiusZ, wallHeight, levels } = COLOSSEUM_PLAN;
+	// ── the seating bowl ─────────────────────────────────────────────────────
 
-		const travertineMat = lit({ color: 0xd6caa8, roughness: 0.8 });
-		const darkTravertine = lit({ color: 0x8a7b66, roughness: 0.85 });
-		const corniceMat = lit({ color: 0xe0d4c0, roughness: 0.7 });
-		const statueMat = lit({ color: 0xede9e1, roughness: 0.3 });
-		this.materials.push(travertineMat, darkTravertine, corniceMat, statueMat);
+	/** How high the seating climbs; the inner wall above it carries a top gallery. */
+	private readonly caveaTopY = 16.5;
 
-		const tierH = wallHeight / levels;
-		const archesPerTier = 32;
+	private buildCavea(): void {
+		const { radiusX, arenaRadiusX } = COLOSSEUM_PLAN;
 
-		// 4 Solid Outer Wall Arcade Shells
-		for (let lvl = 0; lvl < levels; lvl++) {
-			const yBase = lvl * tierH;
-			const tierInset = lvl * 0.6;
-			const rx = radiusX - tierInset;
-			const rz = radiusZ - tierInset;
+		// Two tints that differ enough to read as alternating rows from the sand, a
+		// dark nose line at each step edge, and dark stairs for the radial aisles.
+		const lightRow = lit({ color: 0xe6dabd, roughness: 0.6 });
+		const darkRow = lit({ color: 0x8a7862, roughness: 0.85 });
+		const noseMat = lit({ color: 0x453c2d, roughness: 0.95 });
+		const aisleMat = lit({ color: 0x5a4f3c, roughness: 0.9 });
+		this.materials.push(lightRow, darkRow, noseMat, aisleMat);
 
-			// Story Solid Outer Ring Wall
-			const wallGeo = new THREE.CylinderGeometry(rx, rx - 1.2, tierH, 48, 1, true);
-			const wall = this.addMesh(wallGeo, travertineMat);
-			wall.scale.set(1, 1, rz / rx);
-			wall.position.set(cx, yBase + half(tierH), cz);
+		// Concentric filled rows rising from the podium to the facade foot. Each row is
+		// a solid tier taller than the one inside it; from the sand the visible riser
+		// band alternates tint and a dark nosing draws the step edge, so the bowl reads
+		// as seating instead of one smooth funnel.
+		const rows = 12;
+		const innerRx = arenaRadiusX + 1.6;
+		const outerRx = radiusX - 3.0;
+		const innerTopY = 3.0;
+		const rowTopY = (t: number): number => lerp(innerTopY, this.caveaTopY, t);
+		const rowRx = (t: number): number => lerp(innerRx, outerRx, t);
+		for (let k = 0; k < rows; k++) {
+			const t = k / (rows - 1);
+			const rx = rowRx(t);
+			const topY = rowTopY(t);
+			this.ringWall(rx, half(topY), topY, k % 2 === 0 ? lightRow : darkRow);
+			// A thin dark ring standing proud of the step's top edge: the nosing that
+			// separates one row from the next when the risers are seen from below.
+			this.ringWall(rx + 0.15, topY - 0.12, 0.28, noseMat, { openEnded: true });
+		}
 
-			// Story Cornice Belt Ring
-			const corniceGeo = new THREE.CylinderGeometry(rx + 0.4, rx + 0.4, 0.6, 48, 1, false);
-			const cornice = this.addMesh(corniceGeo, corniceMat);
-			cornice.scale.set(1, 1, (rz + 0.4) / (rx + 0.4));
-			cornice.position.set(cx, yBase + tierH, cz);
-
-			// Exterior Classical Columns & Arch Vaults around perimeter
-			for (let i = 0; i < archesPerTier; i++) {
-				const angle = (i / archesPerTier) * Math.PI * 2;
-				const px = cx + Math.cos(angle) * (rx + 0.2);
-				const pz = cz + Math.sin(angle) * (rz + 0.2);
-				const rotY = angle + Math.PI / 2;
-
-				if (lvl < 3) {
-					// Round Roman Columns against piers
-					const colGeo = new THREE.CylinderGeometry(0.55, 0.6, tierH * 0.8, 12);
-					const column = this.addMesh(colGeo, corniceMat);
-					column.position.set(px, yBase + half(tierH * 0.8), pz);
-
-					// Curved Arch Header Vault
-					const archVaultGeo = new THREE.CylinderGeometry(1.6, 1.6, 1.4, 12, 1, false, 0, Math.PI);
-					const archVault = this.addMesh(archVaultGeo, darkTravertine);
-					archVault.position.set(px, yBase + tierH * 0.72, pz);
-					archVault.rotation.z = Math.PI / 2;
-					archVault.rotation.y = rotY;
-
-					// Story 1: Carved Marble Statues inside every arch bay
-					if (lvl === 1 && i % 2 === 0) {
-						const statueGeo = new THREE.CylinderGeometry(0.35, 0.45, 2.4, 8);
-						const statue = this.addMesh(statueGeo, statueMat);
-						statue.position.set(px, yBase + 1.5, pz);
-					}
-				} else {
-					// Story 4: Attic Wall Pilasters & Rectangular Windows
-					const pilasterGeo = new THREE.BoxGeometry(0.8, tierH, 0.4);
-					const pilaster = this.addMesh(pilasterGeo, corniceMat);
-					pilaster.position.set(px, yBase + half(tierH), pz);
-					pilaster.rotation.y = rotY;
-
-					if (i % 2 === 0) {
-						const winGeo = new THREE.BoxGeometry(1.4, 1.8, 0.5);
-						const win = this.addMesh(winGeo, darkTravertine);
-						win.position.set(px, yBase + half(tierH), pz);
-						win.rotation.y = rotY;
-					}
-				}
+		// Radial vomitoria: a flight of dark treads down each aisle, cutting the bands
+		// so the rows do not read as one unbroken ring.
+		const aisles = 8;
+		for (let i = 0; i < aisles; i++) {
+			const a = (i / aisles) * Math.PI * 2 + Math.PI / aisles;
+			if (this.nearGate(a)) continue;
+			for (let k = 0; k < rows; k++) {
+				const t = k / (rows - 1);
+				const [x, z] = this.onEllipse(a, rowRx(t));
+				const tread = new THREE.BoxGeometry(2.2, 0.35, 1.6);
+				const step = this.addMesh(tread, aisleMat);
+				step.position.set(x, rowTopY(t) + 0.06, z);
+				step.rotation.y = -a;
 			}
 		}
+	}
 
-		// Velarium Awning Masts along Top Attic Rim
-		const woodMastMat = lit({ color: 0x543a24, roughness: 0.85 });
-		this.materials.push(woodMastMat);
+	/**
+	 * The inner face above the seating: cornice bands and pilaster ribs per bay, plus
+	 * a short top gallery, so the wall between the top row and the attic is broken up
+	 * instead of standing as one blank sweep behind the arena.
+	 */
+	private buildInnerArticulation(): void {
+		const { radiusX, wallHeight, levels, archesPerLevel } = COLOSSEUM_PLAN;
 
-		const mastCount = 32;
-		for (let i = 0; i < mastCount; i++) {
-			const angle = (i / mastCount) * Math.PI * 2;
-			const mx = cx + Math.cos(angle) * (radiusX - 1.8);
-			const mz = cz + Math.sin(angle) * (radiusZ - 1.8);
+		const corniceMat = lit({ color: 0xe4d9c2, roughness: 0.7 });
+		const ribMat = lit({ color: 0xbfb08c, roughness: 0.8 });
+		const galleryMat = lit({ color: 0xd6caa8, roughness: 0.8 });
+		this.materials.push(corniceMat, ribMat, galleryMat);
 
-			const mastGeo = new THREE.CylinderGeometry(0.18, 0.22, 6.5, 8);
-			const mast = this.addMesh(mastGeo, woodMastMat);
-			mast.position.set(mx, wallHeight + 3.25, mz);
+		const tierH = wallHeight / levels;
+		const innerRx = radiusX - 2.4;
+
+		// Cornice bands at the tier lines that sit above the seating.
+		for (const y of [this.caveaTopY, 3 * tierH]) {
+			this.ringWall(innerRx + 0.3, y, 0.6, corniceMat);
+		}
+
+		// Pilaster ribs per bay from the top row to the crown, and a short gallery
+		// column in front of each, so the upper wall reads as an arcade from inside.
+		for (let i = 0; i < archesPerLevel; i++) {
+			const a = (i / archesPerLevel) * Math.PI * 2;
+			this.tangentBox(a, innerRx, 0.7, span(this.caveaTopY, wallHeight), 0.4, midpoint(this.caveaTopY, wallHeight), ribMat);
+			const [gx, gz] = this.onEllipse(a, innerRx - 0.6);
+			const colGeo = new THREE.CylinderGeometry(0.3, 0.34, span(this.caveaTopY, 3 * tierH), 10);
+			const col = this.addMesh(colGeo, galleryMat);
+			col.position.set(gx, midpoint(this.caveaTopY, 3 * tierH), gz);
 		}
 	}
+
+	// ── the outer wall: arcades that read as holes in solid mass ──────────────
+
+	private buildFacade(): void {
+		const { radiusX, wallHeight, levels, archesPerLevel } = COLOSSEUM_PLAN;
+
+		const travertineMat = lit({ color: 0xd6caa8, roughness: 0.8 });
+		const pierMat = lit({ color: 0xc9bc9a, roughness: 0.8 });
+		const shadowMat = lit({ color: 0x5b503f, roughness: 0.95 });
+		const corniceMat = lit({ color: 0xe4d9c2, roughness: 0.7 });
+		this.materials.push(travertineMat, pierMat, shadowMat, corniceMat);
+
+		const tierH = wallHeight / levels;
+		const pierRx = radiusX;
+		const darkRx = radiusX - 2.6;
+		const chord = 2 * pierRx * Math.sin(Math.PI / archesPerLevel);
+		const pierWidth = chord * 0.44;
+		const openingHalf = chord * 0.28;
+
+		// Plinth: one solid band at the foot so the ground arcade sits on stone.
+		this.ringWall(radiusX + 0.3, 0.6, 1.2, corniceMat);
+
+		for (let lvl = 0; lvl < levels - 1; lvl++) {
+			const yBase = lvl * tierH;
+
+			// The recessed wall the arches open into. Ground tier keeps the two gates
+			// open with per-bay dark panels; the upper tiers are a closed dark ring.
+			if (lvl === 0) {
+				const panelChord = chord * 1.25;
+				for (let i = 0; i < archesPerLevel; i++) {
+					const a = (i / archesPerLevel) * Math.PI * 2;
+					if (this.nearGate(a)) continue;
+					this.tangentBox(a, darkRx, panelChord, tierH, 0.6, yBase + half(tierH), shadowMat);
+				}
+			} else {
+				this.ringWall(darkRx, yBase + half(tierH), tierH, shadowMat);
+			}
+
+			// Piers and their round arches, one bay at a time, gates left open.
+			for (let i = 0; i < archesPerLevel; i++) {
+				const a = (i / archesPerLevel) * Math.PI * 2;
+				if (this.nearGate(a)) continue;
+				this.tangentBox(a, pierRx, pierWidth, tierH, 2.4, yBase + half(tierH), pierMat);
+				this.buildArch(a, pierRx, openingHalf, yBase + tierH * 0.66, pierMat);
+			}
+
+			// Entablature: a continuous cornice band capping the tier.
+			this.ringWall(radiusX + 0.5, yBase + tierH, 0.7, corniceMat, { openEnded: false });
+		}
+
+		// The attic: a solid closed ring, tall and unbroken, with shallow pilasters
+		// and recessed square windows. This is the closed crown, and it carries the
+		// flat rim instead of a fence of masts.
+		const atticBase = (levels - 1) * tierH;
+		this.ringWall(radiusX - 0.4, atticBase + half(tierH), tierH, travertineMat);
+		for (let i = 0; i < archesPerLevel; i++) {
+			const a = (i / archesPerLevel) * Math.PI * 2;
+			this.tangentBox(a, radiusX, 0.8, tierH, 0.4, atticBase + half(tierH), corniceMat);
+			if (i % 2 === 0) {
+				this.tangentBox(a, radiusX - 0.5, 1.4, 1.8, 0.5, atticBase + half(tierH), shadowMat);
+			}
+		}
+		// The crowning cornice: one clean horizontal rim around the top.
+		this.ringWall(radiusX + 0.6, wallHeight, 0.9, corniceMat);
+
+		// The two gate portals: a tall arch marks each axial entrance, sitting flush
+		// in the wall face, with the opening itself left clear for the tunnel.
+		for (const a of [half(Math.PI), half(Math.PI) * 3]) {
+			this.buildArch(a, pierRx - 0.4, openingHalf * 1.7, tierH * 2 - 1.2, corniceMat);
+		}
+	}
+
+	/** A semicircular arch frame standing over one bay opening, facing outward. */
+	private buildArch(a: number, rx: number, openingHalf: number, springY: number, mat: THREE.Material): void {
+		const geo = new THREE.RingGeometry(openingHalf, openingHalf + 0.7, 14, 1, 0, Math.PI);
+		const arch = new THREE.Mesh(this.track(geo), mat);
+		arch.castShadow = true;
+		arch.receiveShadow = true;
+		const [x, z] = this.onEllipse(a, rx + 0.1);
+		arch.position.set(x, springY, z);
+		arch.rotation.y = -a + half(Math.PI);
+		this.group.add(arch);
+	}
+
+	// ── the imperial box on the north podium ──────────────────────────────────
 
 	private buildImperialPulvinar(): void {
 		const { x: cx, z: cz, arenaRadiusZ } = COLOSSEUM_PLAN;
@@ -289,105 +381,98 @@ export class CityColosseum {
 		const marbleMat = lit({ color: 0xfaf8f5, roughness: 0.3 });
 		this.materials.push(goldMat, imperialRedMat, marbleMat);
 
-		// Imperial Pulvinar Pavilion on North Podium Wall
-		const boxZ = cz - arenaRadiusZ + 0.8;
-		const boxY = 3.8;
+		const boxZ = cz - arenaRadiusZ + 0.6;
+		const boxY = 3.4;
 
-		// Balcony Platform Floor
-		const floorGeo = new THREE.BoxGeometry(11.0, 0.7, 5.5);
+		const floorGeo = new THREE.BoxGeometry(11.0, 0.7, 5.0);
 		const floor = this.addMesh(floorGeo, marbleMat);
 		floor.position.set(cx, boxY, boxZ);
 
-		// Ornate Double Corinthian Columns
 		for (const side of [-4.5, -1.5, 1.5, 4.5]) {
-			const colGeo = new THREE.CylinderGeometry(0.32, 0.38, 3.8, 12);
+			const colGeo = new THREE.CylinderGeometry(0.32, 0.38, 3.6, 12);
 			const col = this.addMesh(colGeo, marbleMat);
-			col.position.set(cx + side, boxY + 2.2, boxZ + 2.0);
+			col.position.set(cx + side, boxY + 2.1, boxZ + 1.8);
 
 			const capGeo = new THREE.BoxGeometry(0.7, 0.45, 0.7);
 			const cap = this.addMesh(capGeo, goldMat);
-			cap.position.set(cx + side, boxY + 4.0, boxZ + 2.0);
+			cap.position.set(cx + side, boxY + 3.9, boxZ + 1.8);
 		}
 
-		// Imperial Canopy Roof & Red Backdrop
-		const roofGeo = new THREE.BoxGeometry(11.5, 0.7, 5.8);
+		const roofGeo = new THREE.BoxGeometry(11.5, 0.7, 5.4);
 		const roof = this.addMesh(roofGeo, imperialRedMat);
-		roof.position.set(cx, boxY + 4.4, boxZ);
+		roof.position.set(cx, boxY + 4.2, boxZ);
 
 		const backGeo = new THREE.BoxGeometry(11.2, 1.8, 0.15);
 		const back = this.addMesh(backGeo, imperialRedMat);
-		back.position.set(cx, boxY + 3.3, boxZ - 2.4);
+		back.position.set(cx, boxY + 3.1, boxZ - 2.2);
 
-		// Emperor's Golden Throne
 		const seatGeo = new THREE.BoxGeometry(1.6, 0.65, 1.4);
 		const seat = this.addMesh(seatGeo, goldMat);
-		seat.position.set(cx, boxY + 0.65, boxZ - 0.6);
+		seat.position.set(cx, boxY + 0.65, boxZ - 0.4);
 
 		const backrestGeo = new THREE.BoxGeometry(1.6, 1.8, 0.28);
 		const backrest = this.addMesh(backrestGeo, goldMat);
-		backrest.position.set(cx, boxY + 1.5, boxZ - 1.2);
+		backrest.position.set(cx, boxY + 1.5, boxZ - 1.0);
 
 		const cushionGeo = new THREE.BoxGeometry(1.4, 0.22, 1.2);
 		const cushion = this.addMesh(cushionGeo, imperialRedMat);
-		cushion.position.set(cx, boxY + 0.75, boxZ - 0.6);
+		cushion.position.set(cx, boxY + 0.75, boxZ - 0.4);
 
-		// Golden Eagle Aquila on peak
 		const eagleGeo = new THREE.BoxGeometry(1.5, 1.0, 0.35);
 		const eagle = this.addMesh(eagleGeo, goldMat);
-		eagle.position.set(cx, boxY + 5.2, boxZ + 2.2);
+		eagle.position.set(cx, boxY + 5.0, boxZ + 2.0);
 	}
+
+	// ── the arena cage gates ──────────────────────────────────────────────────
 
 	private buildSubterraneanGates(): void {
 		const { x: cx, z: cz, arenaRadiusZ } = COLOSSEUM_PLAN;
 
 		const ironMat = lit({ color: 0x1a1a1a, roughness: 0.4, metalness: 0.9 });
-		const archMat = lit({ color: 0x7c6e5e, roughness: 0.8 });
+		const archMat = lit({ color: 0x6f6252, roughness: 0.85 });
 		this.materials.push(ironMat, archMat);
 
-		// North Gate (Porta Libitinaria)
-		const northZ = cz - arenaRadiusZ;
-		const northArchGeo = new THREE.BoxGeometry(6.5, 5.5, 1.8);
-		const northArch = this.addMesh(northArchGeo, archMat);
-		northArch.position.set(cx, 2.75, northZ);
+		for (const dir of [-1, 1]) {
+			const gz = cz + dir * (arenaRadiusZ + 0.4);
 
-		const northGateGeo = new THREE.BoxGeometry(5.2, 4.2, 0.2);
-		const northGate = this.addMesh(northGateGeo, ironMat);
-		northGate.position.set(cx, 2.1, northZ);
-		this.northGateMesh = northGate;
-		this.northGateY = 2.1;
+			const archGeo = new THREE.BoxGeometry(6.5, 5.5, 1.6);
+			const arch = this.addMesh(archGeo, archMat);
+			arch.position.set(cx, 2.75, gz);
 
-		// South Gate (Porta Triumphalis)
-		const southZ = cz + arenaRadiusZ;
-		const southArchGeo = new THREE.BoxGeometry(6.5, 5.5, 1.8);
-		const southArch = this.addMesh(southArchGeo, archMat);
-		southArch.position.set(cx, 2.75, southZ);
-
-		const southGateGeo = new THREE.BoxGeometry(5.2, 4.2, 0.2);
-		const southGate = this.addMesh(southGateGeo, ironMat);
-		southGate.position.set(cx, 2.1, southZ);
-		this.southGateMesh = southGate;
-		this.southGateY = 2.1;
+			const gateGeo = new THREE.BoxGeometry(5.2, 4.2, 0.2);
+			const gate = this.addMesh(gateGeo, ironMat);
+			gate.position.set(cx, 2.1, gz);
+			if (dir < 0) {
+				this.northGateMesh = gate;
+				this.northGateY = 2.1;
+			} else {
+				this.southGateMesh = gate;
+				this.southGateY = 2.1;
+			}
+		}
 	}
 
-	private buildTorchesAndBanners(): void {
-		const { x: cx, z: cz, arenaRadiusX, arenaRadiusZ } = COLOSSEUM_PLAN;
+	// ── braziers on the podium rim ─────────────────────────────────────────────
+
+	private buildTorches(): void {
+		const { arenaRadiusX } = COLOSSEUM_PLAN;
 
 		const flameBasicMat = new THREE.MeshBasicMaterial({ color: 0xff7700, toneMapped: false });
 		this.materials.push(flameBasicMat);
 		this.flameMaterials.push(flameBasicMat);
 
-		// Flame Torches on Arena Wall
 		const torchCount = 14;
 		for (let i = 0; i < torchCount; i++) {
-			const angle = (i / torchCount) * Math.PI * 2;
-			const tx = cx + Math.cos(angle) * (arenaRadiusX + 0.5);
-			const tz = cz + Math.sin(angle) * (arenaRadiusZ + 0.5);
-
+			const a = (i / torchCount) * Math.PI * 2;
+			if (this.nearGate(a)) continue;
+			const [tx, tz] = this.onEllipse(a, arenaRadiusX + 1.4);
 			const flameGeo = new THREE.ConeGeometry(0.38, 1.1, 6);
-			const flameMesh = this.addMesh(flameGeo, flameBasicMat);
-			flameMesh.position.set(tx, 3.7, tz);
+			const flame = this.addMesh(flameGeo, flameBasicMat);
+			flame.position.set(tx, 3.7, tz);
 		}
 	}
+
+	// ── the sign over the south gate ───────────────────────────────────────────
 
 	private buildSign(): void {
 		const { x: cx, z: cz, arenaRadiusZ } = COLOSSEUM_PLAN;
@@ -408,50 +493,43 @@ export class CityColosseum {
 		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
 		this.materials.push(mat);
 
-		const geo = new THREE.PlaneGeometry(18, 3.0);
-		this.geometries.push(geo);
-
+		const geo = this.track(new THREE.PlaneGeometry(18, 3.0));
 		const sign = backToBackLabel(geo, mat);
-		sign.position.set(cx, 7.5, cz - arenaRadiusZ - 5.5);
+		sign.position.set(cx, COLOSSEUM_PLAN.wallHeight + 2.5, cz + arenaRadiusZ + 6.5);
 		this.group.add(sign);
 	}
 
+	// ── collision: the shell is closed for pedestrians except at the gates ─────
+
 	private registerColliders(world: CollisionWorld): void {
-		const { x: cx, z: cz, arenaRadiusX, arenaRadiusZ, radiusX, radiusZ, wallHeight } = COLOSSEUM_PLAN;
+		const { radiusX, arenaRadiusX, wallHeight } = COLOSSEUM_PLAN;
 
-		// Main Arena Sand Floor Surface
-		world.boxes.push({
-			minX: cx - arenaRadiusX,
-			maxX: cx + arenaRadiusX,
-			minZ: cz - arenaRadiusZ,
-			maxZ: cz + arenaRadiusZ,
-			minY: -0.1,
-			maxY: 0.1,
-			label: 'colosseum_arena_floor',
-			outdoor: true,
-		});
+		// The two axial approach tunnels stay clear; the walkable sand is city ground.
+		this.ringColliders(world, radiusX, 0, wallHeight, 'colosseum_facade');
+		this.ringColliders(world, arenaRadiusX + 1.0, 0, 3.0, 'colosseum_podium');
+	}
 
-		// Outer Ring Facade Boundary Colliders
-		world.boxes.push({
-			minX: cx - radiusX - 2,
-			maxX: cx + radiusX + 2,
-			minZ: cz - radiusZ - 2,
-			maxZ: cz - radiusZ,
-			minY: 0,
-			maxY: wallHeight,
-			label: 'colosseum_north_facade',
-			outdoor: true,
-		});
-
-		world.boxes.push({
-			minX: cx - radiusX - 2,
-			maxX: cx + radiusX + 2,
-			minZ: cz + radiusZ,
-			maxZ: cz + radiusZ + 2,
-			minY: 0,
-			maxY: wallHeight,
-			label: 'colosseum_south_facade',
-			outdoor: true,
-		});
+	/** A closed ring of axis-aligned wall boxes around the ellipse, open at the two gates. */
+	private ringColliders(world: CollisionWorld, rx: number, minY: number, maxY: number, label: string): void {
+		const segments = 72;
+		const thickness = 1.6;
+		const h = half(thickness);
+		for (let i = 0; i < segments; i++) {
+			const a0 = (i / segments) * Math.PI * 2;
+			const a1 = ((i + 1) / segments) * Math.PI * 2;
+			if (this.nearGate(midpoint(a0, a1))) continue;
+			const [x0, z0] = this.onEllipse(a0, rx);
+			const [x1, z1] = this.onEllipse(a1, rx);
+			world.boxes.push({
+				minX: Math.min(x0, x1) - h,
+				maxX: Math.max(x0, x1) + h,
+				minZ: Math.min(z0, z1) - h,
+				maxZ: Math.max(z0, z1) + h,
+				minY,
+				maxY,
+				label,
+				outdoor: true,
+			});
+		}
 	}
 }

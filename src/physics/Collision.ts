@@ -41,7 +41,7 @@ import {
 	theatreTreadZ,
 	VERTICAL_CONNECTORS,
 } from '#/data/world';
-import { favelaColliders, favelaSurfaces } from '#/scene/city/CityFavela';
+import { favelaColliders, favelaFillColliders, favelaSurfaces } from '#/scene/city/CityFavela';
 import { rioMountainColliders, rioMountainSurfaces } from '#/scene/city/CityRioMountain';
 import {
 	CITY_BOUNDS,
@@ -742,6 +742,15 @@ export class CollisionWorld {
 		}
 		for (const surface of rioMountainSurfaces()) {
 			this.citySurfaces.push({ ...surface, label: surface.label });
+		}
+		for (const collider of favelaFillColliders()) {
+			this.add(
+				collider.minX,
+				collider.maxX,
+				collider.minZ,
+				collider.maxZ,
+				opaque({ minY: collider.minY, maxY: collider.maxY, label: collider.label, outdoor: true }),
+			);
 		}
 		for (const collider of favelaColliders()) {
 			this.add(

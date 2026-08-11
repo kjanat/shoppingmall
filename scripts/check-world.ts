@@ -190,6 +190,7 @@ import {
 	CITY_GROUND_PLANE_Y,
 	CITY_GROUND_Y,
 	CITY_KAVELS,
+	COLOSSEUM_PLAN,
 	deckDoorways,
 	ENTRANCE_CARPET,
 	ENTRANCE_CROSSING,
@@ -6942,6 +6943,92 @@ function controleUfoplafond(): void {
 	}
 }
 
+// ── het colosseum: de schil is dicht behalve de twee poorten ──────────────────
+//
+// Het bouwwerk was drie keer "one big hole with some sticks": een gladde tobbe met
+// een krans masten. Of het als colosseum leest zit in het beeld en dat toetst een
+// screenshot. Wat een controle wél vasthoudt is de belofte eronder: de elliptische
+// ring staat dicht voor een voetganger, op de twee axiale poorten na, en door zo'n
+// poort loop je over de podiumopening tot op het zand. De oude schil had alleen een
+// noord- en een zuidstrip, dus van opzij liep je er dwars doorheen. Dit is de
+// tegenhanger van het theater: er wél in komen door de poort, en er naast de poort
+// juist niet.
+
+async function controleColosseum(): Promise<void> {
+	const { x: cx, z: cz, radiusX, radiusZ, arenaRadiusX } = COLOSSEUM_PLAN;
+	stubDocument();
+	const { CityColosseum } = await import('#/scene/city/CityColosseum');
+	const colo = new CollisionWorld();
+	const bouwwerk = new CityColosseum(colo);
+
+	const straal = PLAYER_RADIUS;
+	// Eén voetganger die een rechte lijn afloopt in deze eigen wereld; hij geeft terug
+	// waar hij bleef en of de schil hem tegenhield.
+	const loop = (vanX: number, vanZ: number, naarX: number, naarZ: number): { x: number; z: number; gestopt: boolean } => {
+		const stappen = Math.max(1, Math.ceil(Math.hypot(naarX - vanX, naarZ - vanZ) / POLYLIJN_STAP));
+		let x = vanX;
+		let z = vanZ;
+		for (let k = 1; k <= stappen; k++) {
+			const t = k / stappen;
+			const wensX = lerp(vanX, naarX, t);
+			const wensZ = lerp(vanZ, naarZ, t);
+			const grond = colo.groundHeightAt(wensX, wensZ, CITY_GROUND_Y, WALK_STEP);
+			const los = colo.resolveCircle(wensX, wensZ, grond, straal, 3, true, false, true);
+			if (Math.hypot(los.x - wensX, los.z - wensZ) > 1e-4) return { x, z, gestopt: true };
+			x = wensX;
+			z = wensZ;
+		}
+		return { x, z, gestopt: false };
+	};
+
+	// De schil bestaat: zonder een gesloten gevelring is de rest van deze controle leeg.
+	const gevelDozen = colo.boxes.filter((doos) => doos.label === 'colosseum_facade').length;
+	if (gevelDozen < 24) {
+		fout('colosseum', `de gevelring telt maar ${gevelDozen} collisiondozen; dat is geen gesloten schil`);
+	}
+
+	// 1. Twee punten waar de schil je moet tegenhouden: recht op de oost- en de
+	// westflank, allebei geen poort. Je hoort op de muur te stranden, ruim buiten de arena.
+	for (const [naam, ax] of [
+		['de oostflank', 1],
+		['de westflank', -1],
+	] as [string, number][]) {
+		const verslag = loop(cx + ax * (radiusX + 2), cz, cx, cz);
+		if (!verslag.gestopt) {
+			fout(
+				'colosseum',
+				`via ${naam} loopt de voetganger de schil door tot (${nr(verslag.x)}, ${nr(verslag.z)}) — de ring is lek`,
+			);
+		} else if (Math.abs(verslag.x - cx) < arenaRadiusX) {
+			fout(
+				'colosseum',
+				`via ${naam} komt de voetganger tot (${nr(verslag.x)}, ${nr(verslag.z)}), binnen de arena — de schil houdt te laat tegen`,
+			);
+		}
+	}
+
+	// 2. Door de noordpoort loop je wél naar binnen: van de gevelmond over de
+	// podiumopening tot in het hart, en de arenavloer draagt je op straatniveau.
+	const poort = loop(cx, cz - radiusZ + 0.5, cx, cz);
+	if (poort.gestopt) {
+		fout(
+			'colosseum',
+			`door de noordpoort strandt de voetganger al op (${nr(poort.x)}, ${nr(poort.z)}) in plaats van het zand te halen`,
+		);
+	} else if (Math.hypot(poort.x - cx, poort.z - cz) > 1.0) {
+		fout(
+			'colosseum',
+			`door de noordpoort eindigt de wandeling op (${nr(poort.x)}, ${nr(poort.z)}), niet in het hart van de arena`,
+		);
+	}
+	const zand = colo.groundHeightAt(cx, cz, CITY_GROUND_Y, WALK_STEP);
+	if (!bijna(zand, CITY_GROUND_Y, WALK_STEP)) {
+		fout('colosseum', `de arenavloer ligt op ${nr(zand)} in plaats van op zandniveau (${nr(CITY_GROUND_Y)})`);
+	}
+
+	bouwwerk.dispose();
+}
+
 // ── uitvoeren ──────────────────────────────────────────────────────────────
 
 const controles: { naam: string; draai: () => void | Promise<void> }[] = [
@@ -6994,6 +7081,7 @@ const controles: { naam: string; draai: () => void | Promise<void> }[] = [
 	{ naam: 'geulverkeer', draai: controleGeulverkeer },
 	{ naam: 'kaartlabels', draai: controleKaartlabels },
 	{ naam: 'theater', draai: controleTheater },
+	{ naam: 'colosseum', draai: controleColosseum },
 	{ naam: 'neerslag', draai: controleNeerslag },
 	{ naam: 'ufoplafond', draai: controleUfoplafond },
 	{ naam: 'zonegraaf', draai: controleZonegraaf },

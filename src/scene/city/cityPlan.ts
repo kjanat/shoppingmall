@@ -624,8 +624,8 @@ export const CITY_KAVELS = {
 	con: { minX: CON_LOT.minX, maxX: CON_LOT.maxX, minZ: CON_LOT.minZ, maxZ: CON_LOT.maxZ },
 	/** SW Corcovado knock-off — towers stay off the rock. */
 	rio: { minX: -140, maxX: -58, minZ: 36, maxZ: 92 },
-	/** Favela on the mall-facing slope of the mountain (between rock and west ring). */
-	favela: { minX: -82, maxX: -48, minZ: 40, maxZ: 88 },
+	/** Favela on the mall-facing slope — overlaps mountain east stairs so the climb is continuous. */
+	favela: { minX: -92, maxX: -46, minZ: 40, maxZ: 90 },
 	/** The Roman Mega Colosseum south of the ring road. */
 	colosseum: { minX: -42, maxX: 42, minZ: 68, maxZ: 178 },
 } as const satisfies Record<string, Rect>;
@@ -672,10 +672,10 @@ export const FAVELA_PLAN = {
 	maxX: CITY_KAVELS.favela.maxX,
 	minZ: CITY_KAVELS.favela.minZ,
 	maxZ: CITY_KAVELS.favela.maxZ,
-	/** Lowest terrace (near the ring). */
-	yLow: 0.4,
-	/** Highest terrace (against the rock). */
-	yHigh: 28,
+	/** Lowest terrace (near the ring) — street level, no float. */
+	yLow: 0.05,
+	/** Highest terrace (against the rock mid-slope). */
+	yHigh: 32,
 	cols: 12,
 	rows: 14,
 	/** Deterministic layout seed. */
@@ -683,10 +683,15 @@ export const FAVELA_PLAN = {
 	label: 'SLOPPENWIJK',
 } as const;
 
-/** Ground height under a favela cell: climbs west toward the mountain. */
+/**
+ * Ground height under a favela cell: climbs west toward the mountain.
+ * Matches the Montanha east-face climb so houses sit on the rock, not in the air.
+ */
 export function favelaGroundY(x: number, _z: number): number {
 	const t = inverseLerpClamped(FAVELA_PLAN.maxX, FAVELA_PLAN.minX, x);
-	return lerp(FAVELA_PLAN.yLow, FAVELA_PLAN.yHigh, t);
+	// Ease in so the road edge stays near street level (no floating skirt).
+	const eased = t * t;
+	return lerp(FAVELA_PLAN.yLow, FAVELA_PLAN.yHigh, eased);
 }
 
 const KAVELS: readonly Rect[] = Object.values(CITY_KAVELS);
