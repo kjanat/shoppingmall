@@ -3,6 +3,20 @@
 		"bun": {
 			"type": "http",
 			"url": "https://bun.sh/docs/mcp"
+		},
+		"blender-mcp": {
+			"type": "stdio",
+			"command": "uvx",
+			"args": [
+				"--with",
+				"mcp[cli]<2",
+				"--from",
+				"git+https://projects.blender.org/lab/blender_mcp.git@main#subdirectory=mcp",
+				"blender-mcp"
+			],
+			"env": {
+				"UV_PYTHON": "3.11"
+			}
 		}
 	}
 }
