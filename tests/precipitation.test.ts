@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { coversColumn, ZONE_ENCLOSURES } from '#/data/zones';
 import { midpoint } from '#/util/math';
-import { stubDocument } from '$/scripts/stub-dom.ts';
+import { stubDocument } from './helpers/stub-dom.ts';
 
 /**
  * Rain and snow fall outside, never through a roof.

@@ -2,32 +2,32 @@ import { describe, expect, test } from 'bun:test';
 import { join, resolve } from 'node:path';
 
 /**
- * Een shebang belooft dat het bestand zelf te starten is; zonder x-bit is dat gelogen.
+ * A shebang promises the file can be started on its own; without the x bit that is a lie.
  *
- * `./scripts/dinges.ts` geeft dan "permission denied" en de shebang staat er puur voor
- * de sier. Git bewaart het bit, dus het gaat ook mee naar een verse kloon.
+ * `./scripts/thing.ts` then answers "permission denied" and the shebang is decoration.
+ * Git stores the bit, so it travels to a fresh clone as well.
  */
 
-const WORTEL = resolve(import.meta.dir, '..');
-const MAPPEN = ['scripts', 'src', 'server', 'tests'];
+const ROOT = resolve(import.meta.dir, '..');
+const DIRS = ['scripts', 'src', 'server', 'tests'];
 
-/** De bestanden die zeggen dat je ze kunt starten; die belofte is wat hier getest wordt. */
-async function metShebang(): Promise<string[]> {
-	const uit: string[] = [];
-	for (const map of MAPPEN) {
-		for await (const naam of new Bun.Glob('**/*.ts').scan({ cwd: join(WORTEL, map) })) {
-			const pad = join(map, naam);
-			if ((await Bun.file(join(WORTEL, pad)).text()).startsWith('#!')) uit.push(pad);
+/** The files that claim you can start them; that claim is what this tests. */
+async function withShebang(): Promise<string[]> {
+	const out: string[] = [];
+	for (const dir of DIRS) {
+		for await (const name of new Bun.Glob('**/*.ts').scan({ cwd: join(ROOT, dir) })) {
+			const path = join(dir, name);
+			if ((await Bun.file(join(ROOT, path)).text()).startsWith('#!')) out.push(path);
 		}
 	}
-	return uit.sort();
+	return out.sort();
 }
 
-const SHEBANGS = await metShebang();
+const SHEBANGS = await withShebang();
 
-describe('een shebang belooft dat je het bestand kunt starten', () => {
-	test.each(SHEBANGS)('%s', async (pad) => {
-		const bits = (await Bun.file(join(WORTEL, pad)).stat()).mode;
-		expect(bits & 0o111, `${pad} heeft geen uitvoerrecht: chmod +x ${pad}`).toBeGreaterThan(0);
+describe('a shebang promises you can start the file', () => {
+	test.each(SHEBANGS)('%s', async (path) => {
+		const mode = (await Bun.file(join(ROOT, path)).stat()).mode;
+		expect(mode & 0o111, `${path} has no execute bit: chmod +x ${path}`).toBeGreaterThan(0);
 	});
 });

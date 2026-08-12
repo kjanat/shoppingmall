@@ -4,7 +4,7 @@ import type { Object3D, PointLight, Scene, SpotLight } from 'three';
 import { MALL_SLAB_SPECS } from '#/data/world';
 import { CollisionWorld } from '#/physics/Collision';
 import { LIGHT_POOL_SLOTS, type LightPool } from '#/render/LightPool';
-import { stubAudio, stubDocument } from '$/scripts/stub-dom.ts';
+import { stubAudio, stubDocument } from './helpers/stub-dom.ts';
 
 /**
  * Het aantal echte puntlichten in de mall ligt vast.

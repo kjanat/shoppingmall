@@ -1,6 +1,6 @@
 # AGENTS.md
 
-WRITE AND COMMUNICATE IN FUCKING ENGLISH.
+WRITE AND COMMUNICATE IN FUCKING ENGLISH. WORLD MAY BE IN DUTCH. THE REST SURE AINT.
 
 Mall Sim — a first-person Three.js shopping mall (Prairie Lakes / Kruidvat)
 served by a Bun server that also hosts a small `/api` for the DJ booth and the

@@ -3,30 +3,30 @@ import type { Object3D } from 'three';
 import type { LevelId } from '#/data/levels';
 import { geometryBounds } from '#/data/spatial';
 import { PARKED_MOTORCYCLE_SPOTS, WORLD_ENTITIES } from '#/data/world';
-import { stubDocument } from '$/scripts/stub-dom.ts';
+import { stubDocument } from './helpers/stub-dom.ts';
 
 /**
- * Scene-props tegen het wereldmodel: niets wat een bouwer los neerzet mag in een
- * volume staan dat lichamen tegenhoudt.
+ * Scene props against the world model: nothing a builder places by hand may stand inside
+ * a volume that stops bodies.
  *
- * De AL ZUT-man stond tot zijn middel in de tiki-bar-counter en geen regel zag het,
- * want validateSpatialWorld werkt op WORLD_ENTITIES en de cast is scene-geplaatst.
- * In je eigen kamer staan is containment en geen fout: elke cast noemt daarom de
- * entiteiten die van hem zijn, en alles daarbuiten telt.
+ * The AL ZUT man stood waist deep in the tiki bar counter and no rule saw it, because
+ * validateSpatialWorld works on WORLD_ENTITIES and the cast is scene placed. Standing in
+ * your own room is containment and not a fault, so every cast names the entities that
+ * belong to it and everything else counts.
  */
 
-type Doos = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; wie: string };
-type Cast = { naam: string; level: LevelId; eigen: readonly string[]; group: Object3D };
+type Box = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; who: string };
+type Cast = { name: string; level: LevelId; own: readonly string[]; group: Object3D };
 
-function nr(v: number): string {
-	return Number(v.toFixed(3)).toString();
+function nr(value: number): string {
+	return Number(value.toFixed(3)).toString();
 }
 
-function dozenOp(level: LevelId): Doos[] {
+function boxesOn(level: LevelId): Box[] {
 	return WORLD_ENTITIES.filter((entity) => entity.levels.includes(level)).flatMap((entity) =>
 		entity.volumes
 			.filter((volume) => volume.blocksMovement)
-			.map((volume) => ({ ...geometryBounds(volume.geometry), wie: `${entity.id}.${volume.id}` })),
+			.map((volume) => ({ ...geometryBounds(volume.geometry), who: `${entity.id}.${volume.id}` })),
 	);
 }
 
@@ -42,60 +42,62 @@ const [{ LightPool }, { PoolPeople }, { TravelAgency }, { DJBartek }, { Motorcyc
 ]);
 
 /**
- * Wereldposities van de direct geplaatste kinderen. De groep zelf staat vaak op een
- * offset, dus lokaal vergelijken plaatst alles op de oorsprong en vindt niets.
+ * World positions of the directly placed children. The group itself often sits at an
+ * offset, so comparing locally puts everything at the origin and finds nothing.
  */
-function wereldposities(group: Object3D): { x: number; y: number; z: number }[] {
+function worldPositions(group: Object3D): { x: number; y: number; z: number }[] {
 	group.updateMatrixWorld(true);
-	return group.children.map((kind) => {
-		const p = kind.getWorldPosition(new Vector3());
+	return group.children.map((child) => {
+		const p = child.getWorldPosition(new Vector3());
 		return { x: p.x, y: p.y, z: p.z };
 	});
 }
 
-function propsInVreemdeDozen(cast: Cast): string[] {
-	const dozen = dozenOp(cast.level).filter((doos) => !cast.eigen.some((id) => doos.wie.startsWith(`${id}.`)));
-	const uit: string[] = [];
-	for (const p of wereldposities(cast.group)) {
-		for (const doos of dozen) {
-			if (p.x <= doos.minX || p.x >= doos.maxX || p.z <= doos.minZ || p.z >= doos.maxZ) continue;
-			if (p.y < doos.minY || p.y > doos.maxY) continue;
-			uit.push(`prop op (${nr(p.x)}, ${nr(p.y)}, ${nr(p.z)}) staat in ${doos.wie}`);
+function propsInForeignBoxes(cast: Cast): string[] {
+	const boxes = boxesOn(cast.level).filter((box) => !cast.own.some((id) => box.who.startsWith(`${id}.`)));
+	const out: string[] = [];
+	for (const p of worldPositions(cast.group)) {
+		for (const box of boxes) {
+			if (p.x <= box.minX || p.x >= box.maxX || p.z <= box.minZ || p.z >= box.maxZ) continue;
+			if (p.y < box.minY || p.y > box.maxY) continue;
+			out.push(`prop at (${nr(p.x)}, ${nr(p.y)}, ${nr(p.z)}) stands in ${box.who}`);
 		}
 	}
-	return uit;
+	return out;
 }
+
+const CAST_NAMES = ['PoolPeople', 'TravelAgency', 'DJBartek', 'Motorcycles P1', 'Theatre audience', 'Backstage cast'];
 
 let casts: Cast[] = [];
 
 beforeAll(() => {
 	const pool = new LightPool(new Scene());
-	const theater = new CityTheatre(pool);
+	const theatre = new CityTheatre(pool);
 	casts = [
-		{ naam: 'PoolPeople', level: 'roof', eigen: [], group: new PoolPeople().group },
-		{ naam: 'TravelAgency', level: 'v0', eigen: ['shop-island_hop'], group: new TravelAgency(pool).group },
-		{ naam: 'DJBartek', level: 'v0', eigen: [], group: new DJBartek(pool).group },
-		// De motoren staan tussen de kolommen op P1, waar een vaste plaatsing net zo goed
-		// een meter mis kan zitten als de crew-man dat deed.
+		{ name: 'PoolPeople', level: 'roof', own: [], group: new PoolPeople().group },
+		{ name: 'TravelAgency', level: 'v0', own: ['shop-island_hop'], group: new TravelAgency(pool).group },
+		{ name: 'DJBartek', level: 'v0', own: [], group: new DJBartek(pool).group },
+		// The bikes stand between the columns on P1, where a fixed placement can be a metre
+		// off just as easily as the crew man was.
 		{
-			naam: 'Motorcycles P1',
+			name: 'Motorcycles P1',
 			level: 'p1',
-			eigen: ['parking-motorcycles'],
+			own: ['parking-motorcycles'],
 			group: new Motorcycles(PARKED_MOTORCYCLE_SPOTS).group,
 		},
-		// In zijn eigen stoel zitten is containment; de foyerwand, de kassa en het doek
-		// staan binnen handbereik en tellen wel.
-		{ naam: 'Theaterpubliek', level: 'v0', eigen: ['theatre-seating'], group: theater.audience },
-		{ naam: 'Backstage-cast', level: 'v0', eigen: ['theatre-backstage-fixtures'], group: theater.backstage },
+		// Sitting in your own seat is containment; the foyer wall, the box office and the
+		// curtain all stand within arm's reach and do count.
+		{ name: 'Theatre audience', level: 'v0', own: ['theatre-seating'], group: theatre.audience },
+		{ name: 'Backstage cast', level: 'v0', own: ['theatre-backstage-fixtures'], group: theatre.backstage },
 	];
 });
 
-describe('scene-props staan vrij van volumes die lichamen tegenhouden', () => {
-	test.each(['PoolPeople', 'TravelAgency', 'DJBartek', 'Motorcycles P1', 'Theaterpubliek', 'Backstage-cast'])('%s', (naam) => {
-		const cast = casts.find((kandidaat) => kandidaat.naam === naam);
-		expect(cast, `${naam} wordt niet meer gebouwd`).toBeDefined();
+describe('scene props stand clear of volumes that stop bodies', () => {
+	test.each(CAST_NAMES)('%s', (name) => {
+		const cast = casts.find((candidate) => candidate.name === name);
+		expect(cast, `${name} is no longer built`).toBeDefined();
 		if (!cast) return;
-		const staanVast = propsInVreemdeDozen(cast);
-		expect(staanVast, `${naam}: ${staanVast.join(' · ')}`).toBeEmpty();
+		const stuck = propsInForeignBoxes(cast);
+		expect(stuck, `${name}: ${stuck.join(' · ')}`).toBeEmpty();
 	});
 });

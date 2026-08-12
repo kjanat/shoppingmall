@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, test } from 'node:test';
 import { loadGame, type PersistedGame, saveGame } from '#/app/GamePersist';
-import { stubSessionStorage } from '$/scripts/stub-dom.ts';
+import { stubSessionStorage } from './helpers/stub-dom.ts';
 
 /**
  * De laadgrens van een opgeslagen spel.
