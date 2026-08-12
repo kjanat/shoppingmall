@@ -32,7 +32,7 @@
 		"static": "run build.ts --static",
 		"test": "bun test",
 		"typecheck": "tsc --noEmit",
-		"volta:pin": "volta pin node@latest npm@11 && node --version > .node-version; run -qq fmt package.json || true"
+		"volta:pin": "volta pin node@latest npm@11; node --version > .node-version; run -qq fmt package.json || true"
 	},
 	"dependencies": {
 		"@elevenlabs/elevenlabs-js": "^2.60",
