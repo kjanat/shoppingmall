@@ -1,7 +1,10 @@
 # AGENTS.md
 
-Mall Sim — a first-person Three.js shopping mall (Prairie Lakes / Kruidvat) served by a Bun server that also hosts a
-small `/api` for the DJ booth and the voices.
+WRITE AND COMMUNICATE IN FUCKING ENGLISH.
+
+Mall Sim — a first-person Three.js shopping mall (Prairie Lakes / Kruidvat)
+served by a Bun server that also hosts a small `/api` for the DJ booth and the
+voices.
 
 ## Commands
 
