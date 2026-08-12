@@ -5,6 +5,7 @@ import { poolFloorY } from '#/data/pool';
 import { planBounds } from '#/data/spatial';
 import { SLAB_SPEC_BY_LEVEL } from '#/data/world';
 import { CollisionWorld, RAMP_BAND_MARGIN, WALK_STEP } from '#/physics/Collision';
+import { CITY_BOUNDS, CITY_GROUND_Y } from '#/scene/city/cityPlan';
 import { half, midpoint } from '#/util/math';
 
 /**
@@ -115,6 +116,18 @@ function surfaceUnder(x: number, z: number, eye: number, floor: number): string 
 			Math.abs(candidate.y - floor) <= EPS,
 	);
 	if (pad) return `the ${pad.label ?? 'roof'} pad`;
+	// The path ramps (the parking exit, the garage spiral) are the one surface `snapFloorY`
+	// reads before anything else, and it accepts one within a whole metre of the query.
+	const run = world.pathRamps.find((candidate) => {
+		const halfWidth = half(candidate.width);
+		return (
+			x >= Math.min(candidate.start.x, candidate.end.x) - halfWidth &&
+			x <= Math.max(candidate.start.x, candidate.end.x) + halfWidth &&
+			z >= Math.min(candidate.start.z, candidate.end.z) - halfWidth &&
+			z <= Math.max(candidate.start.z, candidate.end.z) + halfWidth
+		);
+	});
+	if (run) return `the ground under the ${run.label} ramp run`;
 	return world.onRamp(x, z, eye) ? 'a ramp band with no ramp under it' : 'the slab';
 }
 
@@ -141,6 +154,33 @@ describe.each(LEVELS.map((level) => level.id))('standing on %s', (id) => {
 	const found = disagreementsFrom(levelY(id));
 
 	test('the two floor readers answer the same over the whole deck', () => {
+		const complaints = [...found].map(([answers, where]) => `${where.columns} columns where ${answers}, e.g. ${where.sample}`);
+		expect(complaints, complaints.join('\n')).toBeEmpty();
+	});
+});
+
+/**
+ * The same question outdoors, where the deck sweep above never goes. It walks the mall
+ * footprint, and the city has its own surfaces under both readers: the garage decks and their
+ * spiral, the theatre podium and its stair, the plaza. Sims drive and walk out there.
+ */
+describe('outside the building', () => {
+	const found = new Map<string, Disagreement>();
+	for (let x = CITY_BOUNDS.minX; x <= CITY_BOUNDS.maxX; x += 2) {
+		for (let z = CITY_BOUNDS.minZ; z <= CITY_BOUNDS.maxZ; z += 2) {
+			if (world.insideMallPlan(x, z)) continue;
+			const eye = CITY_GROUND_Y + 0.05;
+			const ground = world.groundHeightAt(x, z, eye, WALK_STEP);
+			const sim = world.snapFloorY(x, z, eye);
+			if (Math.abs(ground - sim) <= EPS) continue;
+			const key = `the player gets ${nr(ground)} on ${surfaceUnder(x, z, eye, ground)} and a sim ${nr(sim)}`;
+			const seen = found.get(key);
+			if (seen) seen.columns++;
+			else found.set(key, { columns: 1, sample: `(${nr(x)}, ${nr(z)})` });
+		}
+	}
+
+	test('the two floor readers answer the same over the city', () => {
 		const complaints = [...found].map(([answers, where]) => `${where.columns} columns where ${answers}, e.g. ${where.sample}`);
 		expect(complaints, complaints.join('\n')).toBeEmpty();
 	});
