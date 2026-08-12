@@ -30,7 +30,7 @@ const SAMPLES = 400;
 const BELOW_THE_FOOT = [RAMP_BAND_MARGIN * 2, 1, 2];
 
 const DECK_HEIGHTS = [...LEVELS.map((level) => level.y), ...world.platforms.map((platform) => platform.y)];
-const CONNECTOR_IDS = new Set(VERTICAL_CONNECTORS.map((connector) => connector.id));
+const CONNECTOR_IDS = new Set<string>(VERTICAL_CONNECTORS.map((connector) => connector.id));
 
 function rampOf(label: string): Ramp {
 	const ramp = world.ramps.find((candidate) => candidate.label === label);
@@ -172,7 +172,9 @@ type PadOverlap = { fromZ: number; toZ: number; y: number };
 function walkFlight(ramp: Ramp): { faults: LineFault[]; pad: PadOverlap | null } {
 	const lanes = [ramp.minX + 0.1, midpoint(ramp.minX, ramp.maxX), ramp.maxX - 0.1];
 	const faults: LineFault[] = [];
-	let pad: PadOverlap | null = null;
+	let padY: number | null = null;
+	let padFromZ = Number.POSITIVE_INFINITY;
+	let padToZ = Number.NEGATIVE_INFINITY;
 	for (const x of lanes) {
 		for (let i = 0; i <= SAMPLES; i++) {
 			const t = i / SAMPLES;
@@ -195,14 +197,16 @@ function walkFlight(ramp: Ramp): { faults: LineFault[]; pad: PadOverlap | null }
 					Math.abs(candidate.y - ground) <= 1e-4,
 			);
 			if (roofPad) {
-				pad = { fromZ: Math.min(pad?.fromZ ?? z, z), toZ: Math.max(pad?.toZ ?? z, z), y: roofPad.y };
+				padY = roofPad.y;
+				padFromZ = Math.min(padFromZ, z);
+				padToZ = Math.max(padToZ, z);
 				continue;
 			}
 			faults.push({ x, z, ground, line });
 			break;
 		}
 	}
-	return { faults, pad };
+	return { faults, pad: padY === null ? null : { fromZ: padFromZ, toZ: padToZ, y: padY } };
 }
 
 describe.each(world.ramps.map((ramp) => ramp.label))('walking flight %s', (label) => {
@@ -222,6 +226,26 @@ describe.each(world.ramps.map((ramp) => ramp.label))('walking flight %s', (label
 			? `a roof pad (y ${nr(walk.pad.y)}) lies over z ${nr(walk.pad.fromZ)}..${nr(walk.pad.toZ)}, so you walk over the stairwell`
 			: '';
 		expect(walk.pad, message).toBeNull();
+	});
+
+	/**
+	 * `onRamp` used to carry a fixed 0.6..FLOOR_H−0.6 band, which knew a V0→V1 flight and
+	 * declared the secret stairs and the slide ladder flat floor. The band comes from each
+	 * flight's own two ends now.
+	 */
+	test('onRamp knows this flight over its own height', () => {
+		const heart = midpoint(ramp.minX, ramp.maxX);
+		const midY = midpoint(ramp.yBottom, ramp.yTop);
+		const midZ = lerp(ramp.zBottom, ramp.zTop, (midY - ramp.yBottom) / (ramp.yTop - ramp.yBottom));
+		expect(world.onRamp(heart, midZ, midY), 'halfway up the flight onRamp says you stand on flat floor').toBeTrue();
+
+		const footY = Math.min(ramp.yBottom, ramp.yTop);
+		const footZ = ramp.yBottom < ramp.yTop ? ramp.zBottom : ramp.zTop;
+		expect(world.onRamp(heart, footZ, footY - 1), 'a metre under its foot onRamp still counts you on the flight').toBeFalse();
+
+		const headY = Math.max(ramp.yBottom, ramp.yTop);
+		const headZ = ramp.yBottom < ramp.yTop ? ramp.zTop : ramp.zBottom;
+		expect(world.onRamp(heart, headZ, headY + 1), 'a metre over its head onRamp still counts you on the flight').toBeFalse();
 	});
 
 	test('a sim halfway up stands on the flight', () => {

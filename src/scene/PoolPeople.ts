@@ -21,7 +21,7 @@ const RIM_CLEAR = 0.2;
 const CREW_CLEAR = 0.45;
 
 /** Straal van de parasolkap; ook waarmee hij van het bord af gehouden wordt. */
-export const PARASOL_CANOPY_RADIUS = 0.95;
+const PARASOL_CANOPY_RADIUS = 0.95;
 /** Speling tussen de rand van die kap en de rand van het tiki-bar-bord. */
 const PARASOL_SIGN_CLEAR = 0.2;
 /** Hoever west van de bar de paal staat, waar hij door niemand heen steekt. */
@@ -35,7 +35,7 @@ const PARASOL_X = -15.6;
  * daarom zuidwaarts tot zijn kap voorbij de rand van dat bord valt, en die rand komt
  * uit het bord zelf.
  */
-export const PARASOL_POSITION = {
+const PARASOL_POSITION = {
 	x: PARASOL_X,
 	z: TIKI_BAR_SPEC.center.z + half(TIKI_BAR_SPEC.sign.width) + PARASOL_CANOPY_RADIUS + PARASOL_SIGN_CLEAR,
 } as const;
@@ -115,8 +115,7 @@ const REST_Y = SEAT_TOP + LOUNGER.towelH;
 const RECLINE = Math.PI / 2 - LOUNGER.backTilt;
 const BACK_C = Math.cos(LOUNGER.backTilt);
 const BACK_S = Math.sin(LOUNGER.backTilt);
-// Voorvlak van de leuning als lijn in yz: normaal (BACK_C, BACK_S) door het
-// onderste punt. Afstand van een punt tot dat vlak = hoeveel het vrij zit.
+// Voorvlak van de leuning als lijn in yz: normaal (BACK_C, BACK_S) door het onderste punt. Afstand van een punt tot dat vlak = hoeveel het vrij zit.
 const BACK_FOOT_Y = LOUNGER.backY - half(LOUNGER.backLen) * BACK_S + half(LOUNGER.backH) * BACK_C;
 const BACK_FOOT_Z = LOUNGER.backZ + half(LOUNGER.backLen) * BACK_C + half(LOUNGER.backH) * BACK_S;
 
@@ -145,8 +144,7 @@ const CLEAR = 0.01;
  * Zittend-achterover, volledig uit de stoel afgeleid: het heupscharnier staat
  * één dijstraal boven de handdoek (een vlakke dij zou hem net raken; door de
  * knielift hieronder zweeft hij ruim een centimeter) en de rug staat evenwijdig
- * aan het voorvlak van de leuning, op één rompstraal plus een centimeter
- * speling.
+ * aan het voorvlak van de leuning, op één rompstraal plus een centimeter speling.
  */
 const LOUNGE_HIP_Y = REST_Y + THIGH_R;
 const LOUNGE_ROOT_Y = LOUNGE_HIP_Y - HIP_Y;
@@ -156,9 +154,8 @@ const LOUNGE_ROOT_Z = BACK_FOOT_Z + (TORSO_R + CLEAR - (LOUNGE_WAIST_Y - BACK_FO
 /** Zijwaarts net genoeg dat de hand langs de romp valt, plus wat lucht. */
 const LOUNGE_ARM_Z = Math.asin((TORSO_R + HAND_R - SHOULDER_X) / ARM_LEN) + 0.15;
 /**
- * Recht omlaag kan niet: daar zit de leuning. De arm zakt dus naar voren tot
- * dijhoogte. Erop landen doet de hand niet: de zijwaartse hoek hierboven moet
- * eerst om de romp heen en zet hem daarmee naast de heup.
+ * Recht omlaag kan niet: daar zit de leuning. De arm zakt dus naar voren tot dijhoogte.
+ * Erop landen doet de hand niet: de zijwaartse hoek hierboven moet eerst om de romp heen en zet hem daarmee naast de heup.
  */
 const LOUNGE_ARM_X =
 	RECLINE -
@@ -167,13 +164,11 @@ const LOUNGE_ARM_X =
 	);
 
 /**
- * Beenhoeken voor één been: knie `lift` omhoog uit de heup, kuit daarna omlaag
- * tot hij op het ligvlak rust, voet gekanteld tot de hiel de handdoek raakt.
+ * Beenhoeken voor één been: knie `lift` omhoog uit de heup, kuit daarna omlaag tot hij op het ligvlak rust, voet gekanteld tot de hiel de handdoek raakt.
  */
 function loungeLeg(lift: number): { thigh: number; knee: number; foot: number } {
 	const kneeY = LOUNGE_HIP_Y + THIGH_LEN * Math.sin(lift);
-	// De kuit is dikker dan de enkel, dus die raakt het ligvlak het eerst: buig
-	// de knie tot de onderste kuitbol op speling boven het frame hangt.
+	// De kuit is dikker dan de enkel, dus die raakt het ligvlak het eerst: buig de knie tot de onderste kuitbol op speling boven het frame hangt.
 	const bend = Math.asin((kneeY - SEAT_TOP - CLEAR - CALF_R) / CALF_LOW);
 	// En kantel de voet tot de hiel de handdoek raakt; tenen dus omhoog.
 	const footY = kneeY - CALF_LEN * Math.sin(bend) + FOOT_FWD * Math.cos(bend);
@@ -230,15 +225,13 @@ export class PoolPeople {
 	}
 
 	update(dt: number, t: number): void {
-		// Dobberen: sinus op y, plus een tergend langzame draai (dt-gedreven,
-		// zodat de rotatie framerate-onafhankelijk blijft).
+		// Dobberen: sinus op y, plus een tergend langzame draai (dt-gedreven, zodat de rotatie framerate-onafhankelijk blijft).
 		for (const s of this.swimmers) {
 			s.root.position.y = s.baseY + Math.sin(t * s.speed + s.phase) * 0.055;
 			s.root.rotation.y += s.spin * dt;
 		}
 
-		// AL ZUT CREW: af en toe synchroon knikken. Geen aanleiding, gewoon
-		// vier mannen die het collectief ergens mee eens zijn.
+		// AL ZUT CREW: af en toe synchroon knikken. Geen aanleiding, gewoon vier mannen die het collectief ergens mee eens zijn.
 		const c = t % NOD_PERIOD;
 		const nod = c < NOD_TIME ? Math.sin((c / NOD_TIME) * Math.PI * 2) * 0.16 : 0;
 		for (const head of this.crewHeads) {
@@ -262,8 +255,7 @@ export class PoolPeople {
 
 	/** Eén set geometries voor iedereen — de Pi telt draw calls, geen dijen. */
 	private buildShared() {
-		// Hourglass-profiel in body-space: taille op de origin, schouders +0.54
-		// (zelfde les als de Catwalk: onder→boven, anders kijk je door haar heen).
+		// Hourglass-profiel in body-space: taille op de origin, schouders +0.54 (zelfde les als de Catwalk: onder→boven, anders kijk je door haar heen).
 		const femaleProfile: THREE.Vector2[] = [
 			new THREE.Vector2(0.001, -0.12),
 			new THREE.Vector2(0.205, -0.12),
@@ -751,3 +743,15 @@ export class PoolPeople {
 		return g;
 	}
 }
+
+export {
+	CREW_CLEAR,
+	PARASOL_CANOPY_RADIUS,
+	PARASOL_POSITION,
+	PARASOL_SIGN_CLEAR,
+	PARASOL_X,
+	RIM_CLEAR,
+	RIM_SINK,
+	SWIM_CLEAR,
+	SWIM_CLEAR_RING,
+};
