@@ -113,6 +113,23 @@ describe.each(VERTICAL_CONNECTORS.map((connector) => connector.id))('%s', (id) =
 			`the ${nr(opening.size.width)} m opening is narrower than the ${nr(span(collision.minX, collision.maxX))} m collision box, so the truss pokes through the slab`,
 		).toBeGreaterThanOrEqual(span(collision.minX, collision.maxX) - 1e-3);
 	});
+
+	/**
+	 * Walking the line never reaches the `openMinZ`/`openMaxZ` arm of `groundHeightAt`: on the
+	 * line the flight is already within `step` and an earlier branch answers. Stepping into the
+	 * stairwell from the deck above is what reads the hole band. Only the connectors pierce a
+	 * deck, so only they have somewhere to fall from.
+	 */
+	test('stepping into the hole from the deck above drops you onto the flight', () => {
+		const ramp = rampOf(id);
+		const z = midpoint(ramp.openMinZ, ramp.openMaxZ);
+		const t = (z - ramp.zBottom) / (ramp.zTop - ramp.zBottom);
+		const line = lerp(ramp.yBottom, ramp.yTop, t);
+		expect(
+			world.groundHeightAt(midpoint(ramp.minX, ramp.maxX), z, ramp.yTop + 1, WALK_STEP),
+			'over the open flight the deck above still carries you',
+		).toBeCloseTo(line, 6);
+	});
 });
 
 /**
@@ -205,26 +222,6 @@ describe.each(world.ramps.map((ramp) => ramp.label))('walking flight %s', (label
 			? `a roof pad (y ${nr(walk.pad.y)}) lies over z ${nr(walk.pad.fromZ)}..${nr(walk.pad.toZ)}, so you walk over the stairwell`
 			: '';
 		expect(walk.pad, message).toBeNull();
-	});
-
-	/**
-	 * Walking the line never reaches the `openMinZ`/`openMaxZ` arm of `groundHeightAt`: at
-	 * the line the flight is already within `step` and answers one branch earlier. Stepping
-	 * into the stairwell from the deck above is what reads the hole band, so it gets its own
-	 * drop, and the deck a step beyond the band has to stay solid under the same feet.
-	 */
-	test('stepping into the hole from above drops you onto the flight', () => {
-		const heart = midpoint(ramp.minX, ramp.maxX);
-		const z = midpoint(
-			Math.max(ramp.openMinZ, Math.min(ramp.zBottom, ramp.zTop)),
-			Math.min(ramp.openMaxZ, Math.max(ramp.zBottom, ramp.zTop)),
-		);
-		const t = (z - ramp.zBottom) / (ramp.zTop - ramp.zBottom);
-		const line = lerp(ramp.yBottom, ramp.yTop, t);
-		expect(
-			world.groundHeightAt(heart, z, ramp.yTop + 1, WALK_STEP),
-			'over the open flight the deck still carries you',
-		).toBeCloseTo(line, 6);
 	});
 
 	test('a sim halfway up stands on the flight', () => {
