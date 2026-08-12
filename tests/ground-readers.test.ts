@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { MALL_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
 import { poolFloorY } from '#/data/pool';
+import { planBounds } from '#/data/spatial';
+import { SLAB_SPEC_BY_LEVEL } from '#/data/world';
 import { CollisionWorld, RAMP_BAND_MARGIN, WALK_STEP } from '#/physics/Collision';
 import { half, midpoint } from '#/util/math';
 
@@ -71,12 +73,15 @@ describe('the player floor and the sim floor agree', () => {
 });
 
 /**
- * The sweep above stays at one eye height and skips every column whose floor sits above the
- * roof deck, so it never reaches a platform. `snapFloorY` reads the pool, the roof pads, the
- * slabs and the roof-reaching flights, and `world.platforms` appears in none of them: a sim
- * asking for the floor on the catwalk, on the planter tiers or on the slide platform is
- * answered with the slab underneath. That is the same disagreement the describe above exists
- * to forbid, on the one surface it cannot see.
+ * Everything below is the same question the describe above asks, put where that sweep cannot
+ * look. It stands at one eye height on the roof and skips every column whose floor sits above
+ * the deck, so a platform and a hole one storey down are both outside it.
+ */
+
+/**
+ * `snapFloorY` reads the pool, the roof pads, the slabs and the roof-reaching flights, and
+ * `world.platforms` appears in none of them: a sim asking for the floor on the catwalk, on the
+ * planter tiers or on the slide platform is answered with the slab underneath.
  */
 describe.each(world.platforms.map((platform) => platform.label))('a sim on the %s deck', (label) => {
 	const platform = world.platforms.find((candidate) => candidate.label === label);
@@ -90,5 +95,39 @@ describe.each(world.platforms.map((platform) => platform.label))('a sim on the %
 			world.snapFloorY(x, z, standing),
 			`the player floor is ${nr(world.groundHeightAt(x, z, standing, WALK_STEP))} and a sim is dropped to ${nr(world.snapFloorY(x, z, standing))}`,
 		).toBeCloseTo(world.groundHeightAt(x, z, standing, WALK_STEP), 6);
+	});
+});
+
+/**
+ * A hole in a deck is a hole for both readers.
+ *
+ * `snapFloorY` handles the roof-reaching flights and the pool inside an `if (y >= 10)`, and
+ * below that height nothing looks at the slab holes at all: the fallthrough returns the storey
+ * the height falls in. Standing on V1 over the atrium the player is given the ground floor and
+ * a sim the deck it is standing over, six metres of nothing between them. The roof got this
+ * treatment when a sim was caught hovering over the secret stairs; V1 never did.
+ *
+ * The lift shaft is the control: its cabin floor closes the hole, and there the two agree.
+ */
+const SLAB_HOLES = Object.entries(SLAB_SPEC_BY_LEVEL).flatMap(([level, spec]) =>
+	spec.holes.map((hole, index) => {
+		const bounds = planBounds(hole);
+		return {
+			name: `${level} hole ${index} at (${nr(midpoint(bounds.minX, bounds.maxX))}, ${nr(midpoint(bounds.minZ, bounds.maxZ))})`,
+			x: midpoint(bounds.minX, bounds.maxX),
+			z: midpoint(bounds.minZ, bounds.maxZ),
+			standing: spec.topY + 0.05,
+		};
+	}),
+);
+
+describe.each(SLAB_HOLES.map((hole) => hole.name))('%s', (name) => {
+	const hole = SLAB_HOLES.find((candidate) => candidate.name === name);
+	if (!hole) throw new Error(`no hole ${name}`);
+
+	test('is as open to a sim as it is to the player', () => {
+		const player = world.groundHeightAt(hole.x, hole.z, hole.standing, WALK_STEP);
+		const sim = world.snapFloorY(hole.x, hole.z, hole.standing);
+		expect(sim, `the player drops to ${nr(player)} and a sim stands on ${nr(sim)}`).toBeCloseTo(player, 6);
 	});
 });
