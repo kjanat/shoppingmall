@@ -231,8 +231,8 @@ import { BIG_MAP_MIN_WIDTH, deckLabelPlan, minimapLabelPlan } from '#/ui/KioskOv
 import { distanceToSegment2 } from '#/util/geometry2';
 import { clamp, ease, half, lerp, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
-import { profilePoint } from './perf/routes.ts';
-import { stubDocument, stubTextMeasure } from './stub-dom.ts';
+import { profilePoint } from '$/scripts/perf/routes.ts';
+import { stubDocument, stubTextMeasure } from '$/scripts/stub-dom.ts';
 
 assertCanonicalLevelRegistry();
 assertValidVerticalConnectorRegistry(VERTICAL_CONNECTORS);
