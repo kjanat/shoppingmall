@@ -1,0 +1,62 @@
+import type { PedestrianPosture } from '#/data/character';
+import { postureHeadroom } from '#/data/character';
+import { levelY } from '#/data/levels';
+import type { CollisionWorld } from '#/physics/Collision';
+import { WALK_STEP } from '#/physics/Collision';
+import { PLAYER_RADIUS } from '#/player/constants';
+import { span } from '#/util/math';
+import { nr, world } from './world.ts';
+
+/**
+ * One pedestrian walking a straight line, step by step, and how far it got. Whether that is
+ * far enough or much too far is the caller's question.
+ *
+ * Posture rides along because a pedestrian meets two kinds of obstacle: the body runs into
+ * boxes and the head meets a beam the feet never touch. A walk that only resolves the circle
+ * passes straight under a closed shutter.
+ */
+
+/** Well outside the facade, on the pavement. */
+export const STREET_X = -50;
+/** Roughly one frame of walking. */
+export const WALK_PROBE_STEP = 0.05;
+/** How much of a step has to survive collision before the walk counts as stopped. */
+const PROGRESS = 0.5;
+/** Past this the pedestrian is being steered around something rather than walking straight. */
+const SIDEWAYS = 0.05;
+
+export type Walk = { x: number; complaint: string | null };
+export type Walker = Readonly<{ world: CollisionWorld; posture: PedestrianPosture }>;
+
+export const UPRIGHT: Walker = { world, posture: 'standing' };
+
+export function walkAlongAxis(z: number, from: number, to: number, who: Walker = UPRIGHT): Walk {
+	const deckY = levelY('v0');
+	const direction = Math.sign(to - from);
+	const needed = postureHeadroom(who.posture);
+	let x = from;
+	let y = deckY;
+	// One step of slack: the last one carries past the target rather than up to it.
+	const steps = Math.ceil(span(0, Math.abs(to - from)) / WALK_PROBE_STEP) + 1;
+	for (let i = 0; i < steps && (to - x) * direction > 0; i++) {
+		const wanted = x + direction * WALK_PROBE_STEP;
+		const ground = who.world.groundHeightAt(wanted, z, y, WALK_STEP);
+		if (Math.abs(ground - deckY) > 1e-6) {
+			return {
+				x,
+				complaint: `at x ${nr(wanted)} (z ${nr(z)}) the floor sits at ${nr(ground)} instead of deck height ${nr(deckY)}`,
+			};
+		}
+		// As the player, not airborne, and outdoors: the pavement outside the facade is where
+		// the walk starts, and the indoor form of the query has no colliders there.
+		const solved = who.world.resolveCircle(wanted, z, ground, PLAYER_RADIUS, 3, true, false, true);
+		if ((solved.x - x) * direction < WALK_PROBE_STEP * PROGRESS) return { x, complaint: null };
+		if (who.world.headroomAt(solved.x, z, ground) < needed) return { x, complaint: null };
+		if (Math.abs(solved.z - z) > SIDEWAYS) {
+			return { x: solved.x, complaint: `at x ${nr(wanted)} the pedestrian is pushed sideways to z ${nr(solved.z)}` };
+		}
+		x = solved.x;
+		y = ground;
+	}
+	return { x, complaint: null };
+}

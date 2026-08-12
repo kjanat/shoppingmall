@@ -3,17 +3,9 @@ import { WALK_STEP } from '#/physics/Collision';
 import { PLAYER_RADIUS } from '#/player/constants';
 import { EPS, nr, world } from './helpers/world.ts';
 
-/**
- * Stand on a platform deck and that deck is the floor, with nothing pushing you off it.
- *
- * A platform is a low deck whose top face you walk on, so the two questions a body asks
- * there are what it stands on and whether it may stand there. Both are asked over the
- * whole deck: a platform that only answers in the middle is one you slide off the edge of.
- */
-
-/** Sweep spacing over a deck; a body is 0.64 m across, so nothing body-sized hides between samples. */
+/** Half a body across, so nothing body-sized fits between two samples. */
 const STEP = 0.25;
-/** Start just inside the edge: exactly on the boundary the deck itself is ambiguous. */
+/** On the boundary itself a deck neither covers nor does not cover; start inside it. */
 const INSET = 0.05;
 
 type Sweep = { wrongFloor: { x: number; z: number; ground: number }[]; pushedOff: { x: number; z: number }[] };

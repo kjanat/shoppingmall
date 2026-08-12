@@ -8,22 +8,12 @@ import { RAMP_BAND_MARGIN, WALK_STEP } from '#/physics/Collision';
 import { half, lerp, midpoint, span } from '#/util/math';
 import { EPS, nr, world } from './helpers/world.ts';
 
-/**
- * Every flight, the hole cut for it, and the line you walk over it.
- *
- * The slab, the renderer and collision read one manifest, so the thing to check is the
- * manifest against what collision built out of it, and then the flight itself under a
- * body. A hole a metre beside its stairs is a hole you fall through, a flight that only
- * carries you along its centre line is a flight with a slot in it, and a roof pad lying
- * across one closes the stairwell you were about to descend.
- */
-
-/** How far a floor hole may reach past the flight it was cut for. */
+/** A hole is cut around the landings, so it may reach this far past the flight and no further. */
 const HOLE_MARGIN = 0.8;
-/** Samples along a flight; the escalators run 12 m, so this is roughly every 3 cm. */
+/** The longest flight runs 12 m, so this samples it roughly every 3 cm. */
 const SAMPLES = 400;
-/** Heights below a flight's foot where a body is certainly off it and on the deck. */
-const BELOW_THE_FOOT: readonly number[] = [RAMP_BAND_MARGIN * 2, 1, 2];
+/** Just outside the ramp band, and then two heights no reading tolerance reaches. */
+const BELOW_THE_FOOT = [RAMP_BAND_MARGIN * 2, 1, 2];
 
 const DECK_HEIGHTS = [...LEVELS.map((level) => level.y), ...world.platforms.map((platform) => platform.y)];
 
@@ -91,11 +81,6 @@ describe.each(world.ramps.map((ramp) => ramp.label))('flight %s', (label) => {
 	});
 });
 
-/**
- * The floor plate, the renderer and the flight read the same slab manifest. Check the
- * data itself: a check on the literal source would reject a valid refactor while proving
- * nothing about the hole that ends up in the deck.
- */
 describe('the slab manifest is cut where something climbs through it', () => {
 	test(`${ATRIUM_OPENING.id} is cut out of the ${SLAB_SPEC_BY_LEVEL.v1.id}`, () => {
 		expect(cutsRectangle(SLAB_SPEC_BY_LEVEL.v1.holes, ATRIUM_OPENING.center, ATRIUM_OPENING.size)).toBeTrue();
@@ -154,7 +139,6 @@ describe.each(VERTICAL_CONNECTORS.map((connector) => connector.id))('%s and the 
 	});
 });
 
-/** The manifest cuts the atrium; collision has to let you fall through it. */
 describe('the atrium hole is open where the manifest cuts it', () => {
 	const insideEdge = 0.1;
 	const outsideEdge = 0.5;
@@ -186,12 +170,7 @@ describe('the atrium hole is open where the manifest cuts it', () => {
 type LineFault = { x: number; z: number; ground: number; line: number };
 type PadOverlap = { fromZ: number; toZ: number; y: number };
 
-/**
- * Walk one flight down three lanes and report what the world answered.
- *
- * Along the edges of the tread band and not only over its heart: a flight that carries
- * you on its centre line alone is a flight with a slot in it.
- */
+/** Three lanes and not only the centre line: a flight can carry you down its heart and nowhere else. */
 function walkFlight(ramp: Ramp): { faults: LineFault[]; pad: PadOverlap | null } {
 	const lanes = [ramp.minX + 0.1, midpoint(ramp.minX, ramp.maxX), ramp.maxX - 0.1];
 	const faults: LineFault[] = [];
@@ -203,7 +182,8 @@ function walkFlight(ramp: Ramp): { faults: LineFault[]; pad: PadOverlap | null }
 			const line = lerp(ramp.yBottom, ramp.yTop, t);
 			const ground = world.groundHeightAt(x, z, line, WALK_STEP);
 			if (Math.abs(ground - line) <= 1e-4) continue;
-			// At the top of a climb a platform may take over: that is where you step onto it.
+			// Near the top of a climb the landing platform is the floor, and that is where you
+			// step off; below it the flight still owes you its own surface.
 			const platform = world.platforms.find(
 				(candidate) => world.platformCovers(candidate, x, z) && Math.abs(candidate.y - ground) <= 1e-4,
 			);
@@ -239,10 +219,6 @@ describe.each(world.ramps.map((ramp) => ramp.label))('walking flight %s', (label
 		expect(walk.faults, message).toBeEmpty();
 	});
 
-	/**
-	 * A failure and not a warning: a roof pad over a flight closes the stairwell and you
-	 * then walk over it. The pads allowed to do this are already cut around their hole.
-	 */
 	test('no roof pad lies across it', () => {
 		const message = walk.pad
 			? `a roof pad (y ${nr(walk.pad.y)}) lies over z ${nr(walk.pad.fromZ)}..${nr(walk.pad.toZ)}, so you walk over the stairwell`
@@ -250,16 +226,9 @@ describe.each(world.ramps.map((ramp) => ramp.label))('walking flight %s', (label
 		expect(walk.pad, message).toBeNull();
 	});
 
-	/**
-	 * Where the player asks `groundHeightAt`, a sim asks `snapFloorY`, and over the same
-	 * flight the two have to say the same thing. Which flight carries a sim used to follow
-	 * from two fixed storey bands with the name of the secret stairs written into them, and
-	 * that name matched nothing: under those stairs a sim hung in the air on V0 and halfway
-	 * up it snapped to the roof pad.
-	 */
 	test('a sim halfway up stands on the flight', () => {
 		const heart = midpoint(ramp.minX, ramp.maxX);
-		// The band is open at both ends: on the boundary itself the slab still carries you.
+		// The ramp band is open at both ends: on the boundary itself the slab still carries you.
 		const lowest = Math.min(ramp.yBottom, ramp.yTop) + RAMP_BAND_MARGIN;
 		const highest = Math.max(ramp.yBottom, ramp.yTop) - RAMP_BAND_MARGIN;
 		const wrong: { z: number; y: number; snapped: number }[] = [];
