@@ -85,6 +85,39 @@ describe('the player floor and the sim floor agree', () => {
  */
 type Disagreement = { columns: number; sample: string };
 
+/**
+ * What the player is standing on there, so a failing row says which surface to go and look at.
+ * A surface only counts when it sits at the height the player was given: in plan a roof pad
+ * covers most of the building, and it would be named at every storey.
+ */
+function surfaceUnder(x: number, z: number, eye: number, floor: number): string {
+	const platform = world.platforms.find(
+		(candidate) => world.platformCovers(candidate, x, z) && Math.abs(candidate.y - floor) <= EPS,
+	);
+	if (platform) return `the ${platform.label} platform`;
+	const ramp = world.ramps.find(
+		(candidate) =>
+			x >= candidate.minX &&
+			x <= candidate.maxX &&
+			z >= Math.min(candidate.zBottom, candidate.zTop) &&
+			z <= Math.max(candidate.zBottom, candidate.zTop) &&
+			floor >= Math.min(candidate.yBottom, candidate.yTop) - EPS &&
+			floor <= Math.max(candidate.yBottom, candidate.yTop) + EPS,
+	);
+	if (ramp) return `the ${ramp.label} flight`;
+	const pad = world.roofPads.find(
+		(candidate) =>
+			!candidate.disabled &&
+			x >= candidate.minX &&
+			x <= candidate.maxX &&
+			z >= candidate.minZ &&
+			z <= candidate.maxZ &&
+			Math.abs(candidate.y - floor) <= EPS,
+	);
+	if (pad) return `the ${pad.label ?? 'roof'} pad`;
+	return world.onRamp(x, z, eye) ? 'a ramp band with no ramp under it' : 'the slab';
+}
+
 function disagreementsFrom(deck: number): Map<string, Disagreement> {
 	const halfWidth = half(MALL_FOOTPRINT.width);
 	const halfDepth = half(MALL_FOOTPRINT.depth);
@@ -95,7 +128,7 @@ function disagreementsFrom(deck: number): Map<string, Disagreement> {
 			const ground = world.groundHeightAt(x, z, eye, WALK_STEP);
 			const sim = world.snapFloorY(x, z, eye);
 			if (Math.abs(ground - sim) <= EPS) continue;
-			const key = `the player gets ${nr(ground)} and a sim ${nr(sim)}`;
+			const key = `the player gets ${nr(ground)} on ${surfaceUnder(x, z, eye, ground)} and a sim ${nr(sim)}`;
 			const seen = found.get(key);
 			if (seen) seen.columns++;
 			else found.set(key, { columns: 1, sample: `(${nr(x)}, ${nr(z)})` });
