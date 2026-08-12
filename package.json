@@ -33,7 +33,7 @@
 	},
 	"dependencies": {
 		"@elevenlabs/elevenlabs-js": "^2.60",
-		"@openrouter/sdk": "^1.2",
+		"@openrouter/sdk": "^1.2.28",
 		"ansispeck": "^0.4",
 		"gsap": "^3.15",
 		"postprocessing": "^6.39",
@@ -46,7 +46,7 @@
 		"dprint": "^0.55",
 		"dreamcli": "https://pkg.pr.new/@kjanat/dreamcli@b0467356628bf845111f2716eaf435396fcba65c",
 		"playwright": "^1.62.1",
-		"runner-run": "^0.24.0",
+		"runner-run": "^0.25.0",
 		"typescript": "^7",
 		"zod": "^4.4.3"
 	},
