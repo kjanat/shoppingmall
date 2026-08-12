@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { describe, expect, test } from 'bun:test';
 import { controles, draaiControle } from '$/scripts/check-world.ts';
 

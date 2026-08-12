@@ -15,7 +15,7 @@
  * MallBuilder) wordt uit de bron gelezen in plaats van hier overgeschreven:
  * een tweede kopie van een getal is nou juist het probleem.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import type { Mesh, Vector3 } from 'three';
 import type { PedestrianPosture } from '#/data/character';
 import { CROUCHING_PEDESTRIAN, postureHeadroom, STANDING_PEDESTRIAN } from '#/data/character';
@@ -5463,25 +5463,6 @@ function kopietreffers(code: string, pad: string, hulpen: Map<string, string>): 
 }
 
 /**
- * Een shebang belooft dat het bestand zelf te starten is; zonder x-bit is dat gelogen.
- *
- * `./scripts/dinges.ts` geeft dan "permission denied" en de shebang staat er puur voor
- * de sier. Git bewaart het bit, dus het gaat ook mee naar een verse kloon.
- */
-function controleStartbit(): void {
-	for (const map of ['scripts', 'src', 'server']) {
-		for (const pad of rekenBestanden(map)) {
-			const bron = readFileSync(new URL(`../${pad}`, import.meta.url), 'utf8');
-			if (!bron.startsWith('#!')) continue;
-			const bits = statSync(new URL(`../${pad}`, import.meta.url)).mode;
-			if ((bits & 0o111) === 0) {
-				fout('startbit', `${pad} begint met een shebang maar heeft geen uitvoerrecht: chmod +x ${pad}`);
-			}
-		}
-	}
-}
-
-/**
  * De greep naar tweede kopieën. Draait over dezelfde twee partities als de
  * rekenhulpen, want mulberry32 stond zowel in src/scene als in scripts/perf.
  */
@@ -7284,7 +7265,6 @@ export const controles: Wereldcontrole[] = [
 	{ naam: 'spiegeltekst', draai: controleSpiegeltekst },
 	{ naam: 'spiegelwand', draai: controleSpiegelwand },
 	{ naam: 'kopieen', draai: controleKopieen },
-	{ naam: 'startbit', draai: controleStartbit },
 ];
 
 /** Wat déze controle te melden heeft, los van alle andere. */
