@@ -55,7 +55,7 @@ function sampleDeck(): { pool: Sample[]; hole: Sample[]; disagreeing: Sample[] }
 
 const SAMPLES = sampleDeck();
 
-describe('the two floor readers', () => {
+describe('groundHeightAt for the player and snapFloorY for the sims', () => {
 	describe('at one eye height on the roof', () => {
 		test('the sweep hits the pool basin', () => {
 			expect(SAMPLES.pool, 'no pool point sampled at roof height, so basin consistency is never touched').not.toBeEmpty();
