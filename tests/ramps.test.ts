@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { VerticalConnectorRegistrySchema, VerticalConnectorSchema } from '#/data/connectors';
 import { ATRIUM_VOID } from '#/data/layout';
 import { LEVELS, levelY } from '#/data/levels';
 import { VERTICAL_CONNECTORS } from '#/data/world';
@@ -10,16 +11,17 @@ import { EPS, nr, world } from './helpers/world.ts';
 /**
  * What a body finds where the mall changes storey.
  *
- * Most of the authored side is closed off elsewhere and is deliberately not repeated here.
- * `connectorRamp` copies the collision fields of a connector straight into its ramp, so
- * comparing those two proves nothing, and the slab holes are generated out of
- * `VERTICAL_CONNECTORS` by `connectorOpeningPlansAt`, so a hole cannot go missing without
- * its connector going with it. The zod registry in [connectors](src/data/connectors.ts) runs
- * at import and already rejects a collision box that misses the flight, an opening narrower
- * than the flight, and an escalator without a carry speed.
+ * Two things are deliberately not repeated here, because they cannot drift. `connectorRamp`
+ * copies the collision fields of a connector straight into its ramp, so comparing those two
+ * compares a value with itself, and the slab holes are generated out of `VERTICAL_CONNECTORS`
+ * by `connectorOpeningPlansAt`, so a hole cannot go missing without its connector going too.
  *
- * What is left is what nothing else holds: a ramp written by hand instead of derived, the
- * relation between an opening and the collision box rather than the flight, and the walk.
+ * The authored rules themselves live in the zod registry in
+ * [connectors](src/data/connectors.ts), and that schema turned out to run nowhere: the deleted
+ * world check was its only caller, `build.ts` runs only the level registry, and the spatial
+ * tests parse hand-made variants. So the registry is parsed here, and the rest of this file is
+ * what neither the schema nor the generator holds: a ramp written by hand instead of derived,
+ * the opening against the collision box rather than against the flight, and the walk.
  */
 
 /** A hole is cut around the landings, so it may reach this far past the flight and no further. */
@@ -37,6 +39,28 @@ function rampOf(label: string): Ramp {
 	if (!ramp) throw new Error(`no ramp ${label} in the collision world`);
 	return ramp;
 }
+
+/**
+ * Every rule the connector schema encodes, applied to the connectors the game actually ships:
+ * the incline range, the opening against the flight, the collision box against the flight, a
+ * carry speed on an escalator, tread and riser against one step, the landing over its
+ * endpoint. Parsed per connector as well as as a registry, because the registry rules (unique
+ * ids, unique opening ids) fail without naming a culprit and the per-connector parse names one.
+ */
+describe('the authored connectors', () => {
+	test('the registry parses', () => {
+		const result = VerticalConnectorRegistrySchema.safeParse(VERTICAL_CONNECTORS);
+		const issues = result.success ? [] : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
+		expect(issues, issues.join('\n')).toBeEmpty();
+	});
+
+	test.each(VERTICAL_CONNECTORS.map((connector) => connector.id))('%s parses on its own', (id) => {
+		const connector = VERTICAL_CONNECTORS.find((candidate) => candidate.id === id);
+		const result = VerticalConnectorSchema.safeParse(connector);
+		const issues = result.success ? [] : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
+		expect(issues, issues.join('\n')).toBeEmpty();
+	});
+});
 
 /**
  * For a connector these are the zod schema over again; for a ramp written straight into
