@@ -59,7 +59,7 @@ describe('the roadway', () => {
 	});
 });
 
-describe.each(ROAD_RINGS.map((lane) => lane.turn))('lane %s', (turn) => {
+describe.each(ROAD_RINGS.map((lane) => lane.turn))('lane %d', (turn) => {
 	const lane = ROAD_RINGS.find((candidate) => candidate.turn === turn);
 	if (!lane) throw new Error(`no lane ${turn}`);
 
@@ -67,7 +67,7 @@ describe.each(ROAD_RINGS.map((lane) => lane.turn))('lane %s', (turn) => {
 		expect(lane.edges.length, `it has ${lane.edges.length} edges`).toBe(4);
 	});
 
-	test.each(lane.edges.map((_edge, index) => index))('edge %s keeps right of the centreline', (index) => {
+	test.each(lane.edges.map((_edge, index) => index))('edge %d keeps right of the centreline', (index) => {
 		const edge = at(lane.edges, index);
 		const alongX = edge.dz === 0;
 		const centre = alongX ? edge.oz : edge.ox;
@@ -82,13 +82,13 @@ describe.each(ROAD_RINGS.map((lane) => lane.turn))('lane %s', (turn) => {
 		expect(Math.abs(sideways), 'it lies at the wrong distance from the centreline').toBeCloseTo(LANE_OFFSET, 9);
 	});
 
-	test.each(lane.edges.map((_edge, index) => index))('edge %s points its nose along its own direction', (index) => {
+	test.each(lane.edges.map((_edge, index) => index))('edge %d points its nose along its own direction', (index) => {
 		const edge = at(lane.edges, index);
 		expect(Math.cos(edge.rotY), 'the nose does not face the direction of travel').toBeCloseTo(edge.dx, 9);
 		expect(Math.sin(edge.rotY), 'the nose does not face the direction of travel').toBeCloseTo(-edge.dz, 9);
 	});
 
-	test.each(lane.edges.map((_edge, index) => index))('edge %s listens to the phase of its own axis', (index) => {
+	test.each(lane.edges.map((_edge, index) => index))('edge %d listens to the phase of its own axis', (index) => {
 		const edge = at(lane.edges, index);
 		const alongX = edge.dz === 0;
 		expect(edge.phase, `it runs along ${alongX ? 'x' : 'z'}`).toBe(alongX ? 'ns' : 'ew');
@@ -178,7 +178,7 @@ describe('the motorcycle against the car', () => {
 	});
 });
 
-describe.each(ROAD_RINGS.map((_lane, index) => index))('direction %s of the ring', (ring) => {
+describe.each(ROAD_RINGS.map((_lane, index) => index))('direction %d of the ring', (ring) => {
 	test('carries at least one motorcycle', () => {
 		const riders = TRAFFIC_FLEET.filter((kind, slot) => kind === 'rider' && slot % ROAD_RINGS.length === ring).length;
 		expect(riders, 'no motorcycle drives this way, so it is sheet metal only').toBeGreaterThan(0);
@@ -234,7 +234,7 @@ describe('the branch to the garage', () => {
 	const steepest =
 		span(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y) / span(PARKING_EXIT_RAMP.end.x, PARKING_EXIT_RAMP.start.x);
 
-	test.each(EXIT_BRANCH_ROUTE.slice(0, -1).map((_point, index) => index))('leg %s of the route', (index) => {
+	test.each(EXIT_BRANCH_ROUTE.slice(0, -1).map((_point, index) => index))('leg %d of the route', (index) => {
 		const from = at(EXIT_BRANCH_ROUTE, index);
 		const to = at(EXIT_BRANCH_ROUTE, index + 1);
 		const dx = to.x - from.x;
@@ -257,7 +257,7 @@ describe('the branch to the garage', () => {
 	});
 
 	test.each(EXIT_BRANCH_ROUTE.filter((point) => point.x >= mouth - EPS).map((_point, index) => index))(
-		'point %s inside the trench lies on the ramp and between its walls',
+		'point %d inside the trench lies on the ramp and between its walls',
 		(index) => {
 			const point = at(
 				EXIT_BRANCH_ROUTE.filter((candidate) => candidate.x >= mouth - EPS),

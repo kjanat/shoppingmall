@@ -58,7 +58,7 @@ describe('the roof edge', () => {
 		[-(EDGE_X - 0.5), 0],
 		[0, EDGE_Z - 0.5],
 		[0, -(EDGE_Z - 0.5)],
-	])('inside the edge at (%s, %s) the roof carries you', (x, z) => {
+	])('inside the edge at (%d, %d) the roof carries you', (x, z) => {
 		expect(world.groundHeightAt(x, z, ROOF, WALK_STEP)).toBeCloseTo(ROOF, 6);
 	});
 
@@ -67,7 +67,7 @@ describe('the roof edge', () => {
 		[-(EDGE_X + 1.5), 0],
 		[0, EDGE_Z + 1.5],
 		[0, -(EDGE_Z + 1.5)],
-	])('beside the roof at (%s, %s) nothing pushes you back', (x, z) => {
+	])('beside the roof at (%d, %d) nothing pushes you back', (x, z) => {
 		const solved = world.resolveCircle(x, z, ROOF, PLAYER_RADIUS, 3, true, true, true);
 		expect(
 			Math.hypot(solved.x - x, solved.z - z),
@@ -89,12 +89,12 @@ describe('the roof edge', () => {
 				[0, -(EDGE_Z + 1.5)],
 			] as [number, number][]
 		).map(([x, z]): [number, number] => (x < 0 && z === 0 ? [x, PLAZA_TRENCH_GAP.maxZ + 1.5] : [x, z])),
-	)('beside the roof at (%s, %s) there is street below', (x, z) => {
+	)('beside the roof at (%d, %d) there is street below', (x, z) => {
 		expect(world.groundHeightAt(x, z, ROOF, WALK_STEP), 'you would be walking on air').toBeCloseTo(CITY_GROUND_Y, 6);
 	});
 });
 
-describe.each(TOWER_SPECS.map((_tower, index) => index))('tower %s', (index) => {
+describe.each(TOWER_SPECS.map((_tower, index) => index))('tower %d', (index) => {
 	const tower = TOWER_SPECS[index];
 	if (!tower) throw new Error(`no tower ${index}`);
 	const footprint = planBounds({ kind: 'rectangle', center: { x: tower.x, z: tower.z }, width: tower.w, depth: tower.d, yaw: 0 });
@@ -175,7 +175,7 @@ describe('the theatre stair', () => {
 describe.each([
 	[66, 51],
 	[76, 59],
-])('the garage ground deck at (%s, %s)', (x, z) => {
+])('the garage ground deck at (%d, %d)', (x, z) => {
 	const ground = world.groundHeightAt(x, z, CITY_GROUND_Y, WALK_STEP);
 
 	test('is the floor there', () => {

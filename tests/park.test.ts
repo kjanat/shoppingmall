@@ -99,7 +99,7 @@ describe.each([
 	const lookX = span(pose.x, pose.lookX);
 	const lookZ = span(pose.z, pose.lookZ);
 
-	test.each(CORNERS.map((_corner, index) => index))(`corner %s ${inView ? 'in view' : 'at its back'}`, (index) => {
+	test.each(CORNERS.map((_corner, index) => index))(`corner %d ${inView ? 'in view' : 'at its back'}`, (index) => {
 		const corner = CORNERS[index];
 		if (!corner) return;
 		const ahead = lookX * span(pose.x, corner[0]) + lookZ * span(pose.z, corner[1]) > 0;

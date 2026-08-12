@@ -114,7 +114,7 @@ describe('the column to the sky is open', () => {
 		[CX - half(arenaRadiusX), CZ],
 		[CX, CZ + half(arenaRadiusZ)],
 		[CX, CZ - half(arenaRadiusZ)],
-	])('over the arena at (%s, %s)', (x, z) => {
+	])('over the arena at (%d, %d)', (x, z) => {
 		ray.set(new THREE.Vector3(x, 1, z), up);
 		const lid = ray.intersectObject(structure.group, true).find((hit) => hit.point.y < wallHeight - 0.01);
 		expect(

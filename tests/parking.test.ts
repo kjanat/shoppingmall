@@ -118,7 +118,7 @@ describe('the rail along the exit', () => {
 		);
 	});
 
-	describe.each([-1, 1] as const)('on the %s side', (side) => {
+	describe.each([-1, 1] as const)('on the %d side', (side) => {
 		const midZ = side * PARKING_EXIT_RAIL.offsetZ;
 		const head = PARKING_EXIT_RAIL_HEADS.find(
 			(candidate) => midZ >= candidate.minZ - MARGIN && midZ <= candidate.maxZ + MARGIN && candidate.minX <= mouth + MARGIN,
@@ -309,7 +309,7 @@ describe('the shell around P1', () => {
 		expect(holes, holes.join('\n')).toBeEmpty();
 	});
 
-	test.each([-PARKING_EXIT_RAIL_OUTER, PARKING_EXIT_RAIL_OUTER])('the retaining wall at z %s pushes you back', (z) => {
+	test.each([-PARKING_EXIT_RAIL_OUTER, PARKING_EXIT_RAIL_OUTER])('the retaining wall at z %d pushes you back', (z) => {
 		const x = midpoint(PARKING_EXIT_TRENCH.minX, PARKING_EXIT_TRENCH.coverX);
 		const solved = world.resolveCircle(x, z, parkingExitRampY(x), PLAYER_RADIUS, 3, true, false, true);
 		expect(
@@ -416,14 +416,14 @@ describe('the chevron patch on the exit ramp', () => {
 		})),
 	);
 
-	test.each(corners.map((_corner, index) => index))('corner %s lies in the plane of the incline', (index) => {
+	test.each(corners.map((_corner, index) => index))('corner %d lies in the plane of the incline', (index) => {
 		const corner = corners[index];
 		if (!corner) return;
 		const gap = corner.y - parkingExitRampY(corner.x);
 		expect(gap, `the corner at (${nr(corner.x)}, ${nr(corner.z)}) hangs askew over the incline`).toBeCloseTo(expected, 4);
 	});
 
-	test.each(corners.map((_corner, index) => index))('corner %s stays on the incline', (index) => {
+	test.each(corners.map((_corner, index) => index))('corner %d stays on the incline', (index) => {
 		const corner = corners[index];
 		if (!corner) return;
 		expect(corner.x, 'the patch reaches past the foot of the incline').toBeGreaterThanOrEqual(PARKING_EXIT_RAMP.end.x - MARGIN);

@@ -177,14 +177,14 @@ describe('the atrium void', () => {
 		[0, -(half(ATRIUM_VOID.depth) + outsideEdge)],
 	];
 
-	test.each(inside)('inside the void at (%s, %s) you drop to the ground floor', (x, z) => {
+	test.each(inside)('inside the void at (%d, %d) you drop to the ground floor', (x, z) => {
 		expect(world.groundHeightAt(x, z, levelY('v1'), WALK_STEP), 'there is floor here while the slab is cut open').toBeCloseTo(
 			levelY('v0'),
 			6,
 		);
 	});
 
-	test.each(outside)('beside the void at (%s, %s) the deck carries you', (x, z) => {
+	test.each(outside)('beside the void at (%d, %d) the deck carries you', (x, z) => {
 		expect(world.groundHeightAt(x, z, levelY('v1'), WALK_STEP), 'no slab beside the atrium').toBeCloseTo(levelY('v1'), 6);
 	});
 });
@@ -293,7 +293,7 @@ describe.each(world.ramps.map((ramp) => ramp.label))('walking flight %s', (label
 		expect(wrong, message).toBeEmpty();
 	});
 
-	test.each(BELOW_THE_FOOT)('a sim %s m below its foot is not held up by it', (below) => {
+	test.each(BELOW_THE_FOOT)('a sim %d m below its foot is not held up by it', (below) => {
 		const heart = midpoint(ramp.minX, ramp.maxX);
 		const footY = Math.min(ramp.yBottom, ramp.yTop);
 		const footZ = ramp.yBottom < ramp.yTop ? ramp.zBottom : ramp.zTop;

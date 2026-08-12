@@ -438,7 +438,7 @@ describe('the auditorium seen from outside', () => {
 	});
 
 	test.each([THEATRE_INTERIOR.minZ, -THEATRE_INTERIOR.minZ])(
-		'from the shop floor looking at z %s the hall does not exist',
+		'from the shop floor looking at z %d the hall does not exist',
 		(z) => {
 			look({ x: 0, y: V0 + 1.6, z: 0 }, { x: THEATRE_PORTAL.centerX, y: V0 + 1.6, z }, 'mall-v0');
 			expect(culler.seesZone('theatre'), 'the hall is called visible while no portal leads there').toBeFalse();

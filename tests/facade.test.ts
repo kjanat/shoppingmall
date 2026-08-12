@@ -336,7 +336,7 @@ describe('the plaza', () => {
 		expect(furniture, 'the plaza has no street furniture, so it stays a hectare of grey').not.toBeEmpty();
 	});
 
-	test.each(furniture.map((_spot, index) => index))('street furniture %s stands where it may', (index) => {
+	test.each(furniture.map((_spot, index) => index))('street furniture %d stands where it may', (index) => {
 		const spot = furniture[index];
 		if (!spot) return;
 		const where = `(${nr(spot.x)}, ${nr(spot.z)})`;
@@ -373,7 +373,7 @@ describe('the city ground', () => {
 		[CITY_BOUNDS.maxX, CITY_BOUNDS.minZ],
 		[CITY_BOUNDS.minX, CITY_BOUNDS.maxZ],
 		[CITY_BOUNDS.maxX, CITY_BOUNDS.maxZ],
-	])('covers the world corner (%s, %s)', (x, z) => {
+	])('covers the world corner (%d, %d)', (x, z) => {
 		expect(covers(CITY_GROUND_PLAN, x, z), 'you look under the world at this corner').toBeTrue();
 	});
 

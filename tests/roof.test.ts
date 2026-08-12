@@ -125,7 +125,7 @@ describe('the roof deck', () => {
 		[-edgeX - GRID, 0],
 		[0, edgeZ + GRID],
 		[0, -edgeZ - GRID],
-	])('just past the edge at (%s, %s) nothing carries you', (x, z) => {
+	])('just past the edge at (%d, %d) nothing carries you', (x, z) => {
 		expect(
 			Math.abs(world.groundHeightAt(x, z, ROOF, WALK_STEP) - ROOF) > EPS,
 			'the floor still carries at roof height outside the roof',
@@ -144,7 +144,7 @@ describe('the roof deck', () => {
 		[-edgeX + (PLAYER_RADIUS + GRID), 15],
 		[0, edgeZ - (PLAYER_RADIUS + GRID)],
 		[0, -edgeZ + (PLAYER_RADIUS + GRID)],
-	])('inside the edge at (%s, %s) a dip still lands on the roof', (x, z) => {
+	])('inside the edge at (%d, %d) a dip still lands on the roof', (x, z) => {
 		expect(
 			world.groundHeightAt(x, z, V1 + 3, WALK_STEP),
 			'you sink through the roof into the building instead of staying on it',

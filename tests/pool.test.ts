@@ -122,7 +122,7 @@ describe('the bathers', () => {
 		expect(BATHERS.length, 'fewer bathers found than the cast has; are they in a subgroup now?').toBeGreaterThanOrEqual(6);
 	});
 
-	test.each(BATHERS.map((_, index) => index))('bather %s lies inside the waterline', (index) => {
+	test.each(BATHERS.map((_, index) => index))('bather %d lies inside the waterline', (index) => {
 		const bather = BATHERS[index];
 		if (!bather) return;
 		const { x, z } = bather.position;

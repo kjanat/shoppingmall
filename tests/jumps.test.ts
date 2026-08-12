@@ -82,7 +82,7 @@ describe('climbing the atrium planter and jumping the balustrade', () => {
 	});
 
 	// The whole climb, tier by tier: each jump starts where the previous one puts you down.
-	describe.each(FRAME_TIMES)('at %s s a frame', (frameTime) => {
+	describe.each(FRAME_TIMES)('at %d s a frame', (frameTime) => {
 		test.each([
 			['onto the bench', bench.maxX + PLAYER_RADIUS, V1, bench.topY],
 			['onto the basin', bench.standMinX, bench.topY, planter.topY],
@@ -187,7 +187,7 @@ describe('the crouch jump clears what a standing jump cannot', () => {
 	});
 	const startX = ledge.minX - PLAYER_RADIUS - 0.02;
 
-	describe.each(FRAME_TIMES)('at %s s a frame', (frameTime) => {
+	describe.each(FRAME_TIMES)('at %d s a frame', (frameTime) => {
 		test('a standing jump does not reach the ledge', () => {
 			const landing = jumpOntoLedge(ledgeWorld, startX, cell.z, V0, false, frameTime);
 			expect(landing, `a standing jump already clears ${nr(LEDGE_HEIGHT)} m, so crouching proves nothing`).not.toBeCloseTo(

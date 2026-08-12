@@ -254,7 +254,7 @@ describe('the entrance as it reads from the street', () => {
 		).toBeLessThanOrEqual(ENTRANCE_PORTAL.canopyX - mastFoot);
 	});
 
-	test.each([-1, 1] as const)('the flag mast on side %s stands on the pavement', (side) => {
+	test.each([-1, 1] as const)('the flag mast on side %d stands on the pavement', (side) => {
 		const x = ENTRANCE_PORTAL.flagX;
 		const z = ENTRANCE_PORTAL.centerZ + side * ENTRANCE_PORTAL.flagOffsetZ;
 		expect(
@@ -276,7 +276,7 @@ describe('the entrance as it reads from the street', () => {
 		).toBeLessThanOrEqual(ribY - half(canopy.rib.height));
 	});
 
-	test.each(ENTRANCE_CANOPY_BAY_ZS.map((_z, index) => index))('spot %s sits in a bay between the ribs', (index) => {
+	test.each(ENTRANCE_CANOPY_BAY_ZS.map((_z, index) => index))('spot %d sits in a bay between the ribs', (index) => {
 		const spotZ = at(ENTRANCE_CANOPY_BAY_ZS, index);
 		const clear = canopy.spot.radius + half(canopy.rib.width);
 		const fouling = ENTRANCE_CANOPY_RIB_ZS.filter((ribZ) => Math.abs(spotZ - ribZ) < clear).map(
