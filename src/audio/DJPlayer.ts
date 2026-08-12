@@ -13,7 +13,7 @@ export type Track = {
 	title: string;
 	url: string;
 	bytes: number;
-	/** From yt-dlp's info.json sidecar — absent for hand-dropped files. */
+	/** From the crate database; absent for hand-dropped files. */
 	artist?: string;
 	seconds?: number;
 	videoId?: string;

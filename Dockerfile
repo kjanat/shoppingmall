@@ -17,7 +17,7 @@ RUN bun build.ts
 
 # ── runtime: ./mall ──────────────────────────────────────────────────────
 FROM alpine:3 AS runtime
-RUN apk add --no-cache ffmpeg ca-certificates libstdc++ libgcc \
+RUN apk add --no-cache ffmpeg ca-certificates libstdc++ libgcc su-exec \
   && addgroup -S mall && adduser -S -G mall mall
 ARG TARGETARCH
 ARG _YTARCH=${TARGETARCH/amd64/}
@@ -33,9 +33,10 @@ COPY --chown=mall:mall public ./public
 RUN mkdir -p public/dj-music && chown -R mall:mall public
 COPY --from=build --chown=mall:mall /app/dist/mall ./mall
 COPY --from=build --chown=mall:mall /app/dist/static ./dist/static
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
-USER mall
 EXPOSE 5174
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["bun", "-e", "fetch('http://localhost:5174/api/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+ENTRYPOINT ["docker-entrypoint"]
 CMD ["./mall"]

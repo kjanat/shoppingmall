@@ -18,6 +18,15 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { OpenRouter } from '@openrouter/sdk';
 import { env } from 'bun';
 import { isRecord, readNumber, readString } from '#/util/values.ts';
+import type { CrateTrack } from './djCrate.ts';
+import {
+	AUDIO_EXTENSIONS,
+	DjCrate,
+	importLegacySidecars,
+	isAudioFileName,
+	parseYtDlpOutput,
+	YT_DLP_META_PRINT,
+} from './djCrate.ts';
 import { clientIp, isOurs } from './net.ts';
 
 const BOOT = Date.now();
@@ -28,10 +37,23 @@ function uptimeSeconds(): number {
 
 /** Music library. public/ is read from the working directory, like public/ in main.ts. */
 const MUSIC_DIR = resolve('public/dj-music');
-const AUDIO_EXT = new Set(['.mp3', '.m4a', '.ogg', '.webm', '.wav', '.opus']);
+const CRATE_DIR = join(MUSIC_DIR, '.mall');
+const AUDIO_EXT = new Set<string>(AUDIO_EXTENSIONS);
 
 export async function ensureMusicDir(): Promise<void> {
 	await mkdir(MUSIC_DIR, { recursive: true });
+}
+
+let crate: DjCrate | undefined;
+let legacyImport: Promise<number> | undefined;
+
+async function ensureCrate(): Promise<DjCrate> {
+	await ensureMusicDir();
+	await mkdir(CRATE_DIR, { recursive: true });
+	crate ??= new DjCrate(join(CRATE_DIR, 'crate.sqlite'));
+	legacyImport ??= importLegacySidecars(MUSIC_DIR, crate);
+	await legacyImport;
+	return crate;
 }
 
 export type TrackMeta = {
@@ -39,44 +61,16 @@ export type TrackMeta = {
 	title: string;
 	url: string;
 	bytes: number;
-	/** From the yt-dlp sidecar, when the track came in through a request. */
+	/** From the crate database, when the track came in through a request. */
 	artist?: string;
 	seconds?: number;
 	videoId?: string;
 	sourceUrl?: string;
 };
 
-/**
- * yt-dlp's `--write-info-json` sidecar. The filename mangles the title
- * (slashes and quotes get replaced), so the real one lives here.
- */
-async function readInfoJson(audioFile: string): Promise<Partial<TrackMeta>> {
-	const sidecar = Bun.file(join(MUSIC_DIR, `${basename(audioFile, extname(audioFile))}.info.json`));
-	try {
-		if (!(await sidecar.exists())) return {};
-		const info = (await sidecar.json()) as {
-			title?: string;
-			track?: string;
-			artist?: string;
-			uploader?: string;
-			duration?: number;
-			id?: string;
-			webpage_url?: string;
-		};
-		return {
-			title: info.track ?? info.title,
-			artist: info.artist ?? info.uploader,
-			seconds: typeof info.duration === 'number' ? Math.round(info.duration) : undefined,
-			videoId: info.id,
-			sourceUrl: info.webpage_url,
-		};
-	} catch {
-		return {};
-	}
-}
-
 async function listPlaylist(): Promise<TrackMeta[]> {
-	await ensureMusicDir();
+	const crate = await ensureCrate();
+	const metadata = new Map(crate.allTracks().map((track) => [track.file, track]));
 	const names: string[] = [];
 	for await (const name of new Bun.Glob('*').scan({ cwd: MUSIC_DIR, onlyFiles: true })) {
 		if (AUDIO_EXT.has(extname(name).toLowerCase())) names.push(name);
@@ -84,18 +78,19 @@ async function listPlaylist(): Promise<TrackMeta[]> {
 	return (
 		await Promise.all(
 			names.map(async (f) => {
-				const [meta, stat] = await Promise.all([readInfoJson(f), Bun.file(join(MUSIC_DIR, f)).stat()]);
+				const meta = metadata.get(f);
+				const stat = await Bun.file(join(MUSIC_DIR, f)).stat();
 				return {
 					file: f,
-					title: meta.title ?? basename(f, extname(f)).replace(/[_-]+/g, ' '),
+					title: meta?.title ?? basename(f, extname(f)).replace(/[_-]+/g, ' '),
 					// Stream via the API, not `./dj-music/…`: static serving reads the dist/ copy in preview,
 					// which doesn't contain tracks downloaded after the build — the API always reads live from public/.
 					url: `/api/dj/file/${encodeURIComponent(f)}`,
 					bytes: stat.size,
-					...(meta.artist ? { artist: meta.artist } : {}),
-					...(meta.seconds ? { seconds: meta.seconds } : {}),
-					...(meta.videoId ? { videoId: meta.videoId } : {}),
-					...(meta.sourceUrl ? { sourceUrl: meta.sourceUrl } : {}),
+					...(meta?.artist ? { artist: meta.artist } : {}),
+					...(meta?.durationSeconds !== undefined ? { seconds: meta.durationSeconds } : {}),
+					...(meta?.youtubeId ? { videoId: meta.youtubeId } : {}),
+					...(meta?.sourceUrl ? { sourceUrl: meta.sourceUrl } : {}),
 				};
 			}),
 		)
@@ -520,10 +515,12 @@ async function newestMusicFile(beforeMs: number): Promise<string | undefined> {
 	return stamped.filter((t) => t.mtime >= beforeMs - 500).sort((a, b) => b.mtime - a.mtime)[0]?.file;
 }
 
-async function runYtDlpUrl(watchUrl: string): Promise<{ ok: boolean; log: string; file?: string }> {
+async function runYtDlpUrl(
+	watchUrl: string,
+): Promise<{ ok: boolean; log: string; file?: string; metadata?: CrateTrack; dump?: string }> {
 	await ensureMusicDir();
 	const before = Date.now();
-	const outTpl = join(MUSIC_DIR, '%(title).80s.%(ext)s');
+	const outTpl = join(MUSIC_DIR, '%(title).80s [%(id)s].%(ext)s');
 	{
 		// Direct URL — no ytsearch. Audio-only from the start: `-f bestaudio`
 		// stops yt-dlp from ever pulling a video stream just to strip it again,
@@ -555,11 +552,11 @@ async function runYtDlpUrl(watchUrl: string): Promise<{ ok: boolean; log: string
 			'15',
 			'-o',
 			outTpl,
-			// Sidecar with the real title, uploader and duration — the filename
-			// mangles all three (slashes, quotes, 80-char cap). One track, so no
-			// playlist metafiles; --clean-info-json is on by default.
-			'--write-info-json',
-			'--no-write-playlist-metafiles',
+			// Capture metadata after conversion, when filepath names the final mp3.
+			// SQLite replaces sidecars so playlist reads need no extra file per track.
+			'--no-write-info-json',
+			'--print',
+			YT_DLP_META_PRINT,
 			// Prefer clients that still get media (ytsearch was the flaky bit)
 			'--extractor-args',
 			'youtube:player_client=android,web',
@@ -576,12 +573,20 @@ async function runYtDlpUrl(watchUrl: string): Promise<{ ok: boolean; log: string
 				new Response(proc.stderr).text(),
 				proc.exited,
 			]);
-			const file = await newestMusicFile(before);
+			const fileFromDisk = await newestMusicFile(before);
+			const capture = parseYtDlpOutput(out, fileFromDisk) ?? parseYtDlpOutput(err, fileFromDisk);
+			const capturedFile = capture?.track.file;
+			const file = capturedFile && (await Bun.file(join(MUSIC_DIR, capturedFile)).exists()) ? capturedFile : fileFromDisk;
+			const logOutput = [out, err]
+				.flatMap((stream) => stream.split('\n'))
+				.filter((line) => !line.trim().startsWith('MALLMETA:'))
+				.join('\n');
 			return {
 				// 101 = --match-filter rejected it; still not a crash
 				ok: (code === 0 || code === 101) && !!file,
-				log: `${out}${err}`.slice(-2500),
+				log: logOutput.slice(-2500),
 				file,
+				...(capture ? { metadata: capture.track, dump: capture.dump } : {}),
 			};
 		} catch (e) {
 			return { ok: false, log: String(e) };
@@ -599,7 +604,7 @@ async function requestTrack(
 		.slice(0, 100);
 	if (!clean) return { ok: false, log: 'empty query' };
 
-	await ensureMusicDir();
+	const crate = await ensureCrate();
 	let watchUrl = '';
 	let title: string | undefined;
 	let videoId: string | undefined;
@@ -619,6 +624,14 @@ async function requestTrack(
 		}
 	}
 
+	if (videoId) {
+		const existing = crate.trackByYoutubeId(videoId);
+		if (existing && (await Bun.file(join(MUSIC_DIR, existing.file)).exists())) {
+			log += `[crate] already have ${existing.file}\n`;
+			return { ok: true, log: log.slice(-3000), file: existing.file, title: existing.title, videoId };
+		}
+	}
+
 	// Fallback: yt-dlp's own search (often flaky / 403)
 	if (!watchUrl) {
 		watchUrl = `ytsearch1:${clean}`;
@@ -627,12 +640,21 @@ async function requestTrack(
 
 	const dl = await runYtDlpUrl(watchUrl);
 	log += dl.log;
+	if (dl.ok && dl.file) {
+		const metadata = dl.metadata ?? {
+			file: dl.file,
+			title: title ?? basename(dl.file, extname(dl.file)),
+			downloadedAt: Date.now(),
+			...(videoId ? { youtubeId: videoId } : {}),
+		};
+		crate.saveTrack({ ...metadata, file: dl.file, requestedQuery: clean, downloadedAt: Date.now() }, dl.dump);
+	}
 	return {
 		ok: dl.ok,
 		log: log.slice(-3000),
 		file: dl.file,
-		title,
-		videoId,
+		title: dl.metadata?.title ?? title,
+		videoId: dl.metadata?.youtubeId ?? videoId,
 	};
 }
 
@@ -777,6 +799,7 @@ export async function handleApi(req: Request, peer: string): Promise<Response> {
 		if (url.startsWith('/api/dj/file/') && req.method === 'GET') {
 			const name = decodeURIComponent(url.replace('/api/dj/file/', ''));
 			const safe = basename(name);
+			if (!isAudioFileName(name)) return json(404, { error: 'not found' });
 			const track = Bun.file(join(MUSIC_DIR, safe));
 			if (!(await track.exists())) return json(404, { error: 'not found' });
 
