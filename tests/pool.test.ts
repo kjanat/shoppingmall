@@ -4,6 +4,7 @@ import { poolFloorY } from '#/data/pool';
 import { geometryBounds } from '#/data/spatial';
 import { TIKI_BAR_SPEC, WORLD_ENTITIES } from '#/data/world';
 import { WALK_STEP } from '#/physics/Collision';
+import { STAND_HEADROOM } from '#/player/constants';
 import { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_WATER_Y, rimDistance } from '#/scene/RoofIsland';
 import { half } from '#/util/math';
 import { read } from './helpers/source-scan.ts';
@@ -55,6 +56,49 @@ describe('the basin', () => {
 			0,
 		);
 		expect(world.waterDepthAt(POOL_CENTER.x, POOL_CENTER.z, ROOF + 5), 'water reported well above the pool').toBe(0);
+	});
+});
+
+/**
+ * Getting out of the pool again.
+ *
+ * The basin is a pit in the roof slab, open to the sky. `groundHeightAt` knows that, because
+ * `poolFloorY` comes before the roof pads, but `headroomAt` read the roof slab as a ceiling
+ * 0.6 m over the bottom. `fits()` demands standing headroom, so on the deep bottom you could
+ * not take a step and sat stuck. The deck sweep in [headroom](tests/headroom.test.ts) cannot
+ * see this: it only samples columns whose floor is the deck itself, and the basin is below it.
+ */
+describe('the deep end lets a body stand up', () => {
+	const STEP = 0.75;
+	const samples: { x: number; z: number; bottom: number; free: number }[] = [];
+	for (let x = POOL_CENTER.x - 8; x <= POOL_CENTER.x + 8; x += STEP) {
+		for (let z = POOL_CENTER.z - 5; z <= POOL_CENTER.z + 5; z += STEP) {
+			const bottom = poolFloorY(x, z);
+			if (bottom === null) continue;
+			samples.push({ x, z, bottom, free: world.headroomAt(x, z, bottom) });
+		}
+	}
+	const deepest = samples.toSorted((a, b) => a.bottom - b.bottom)[0];
+
+	test('the sweep is inside the waterline at all', () => {
+		expect(samples, 'not a single point inside the waterline sampled, so this touches no pool').not.toBeEmpty();
+	});
+
+	test('the sweep reaches the deep end', () => {
+		expect(
+			Math.abs((deepest?.bottom ?? 0) - POOL_FLOOR_Y),
+			`the deepest sample is ${nr(deepest?.bottom ?? 0)} and the bottom is ${nr(POOL_FLOOR_Y)}`,
+		).toBeLessThanOrEqual(STEP);
+	});
+
+	test('a standing body fits everywhere on the bottom', () => {
+		const stuck = samples
+			.filter((sample) => sample.free < STAND_HEADROOM)
+			.map(
+				(sample) =>
+					`(${nr(sample.x)}, ${nr(sample.z)}) on bottom ${nr(sample.bottom)} has ${nr(sample.free)} m of headroom against the ${nr(STAND_HEADROOM)} m standing needs`,
+			);
+		expect(stuck, stuck.join('\n')).toBeEmpty();
 	});
 });
 

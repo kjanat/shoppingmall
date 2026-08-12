@@ -70,13 +70,9 @@ export type SessionStorage = {
 	clear: () => void;
 };
 
-/**
- * `sessionStorage` in memory, so the load boundary of a saved game can be questioned
- * headlessly with exactly what a tab can hold.
- */
-export function stubSessionStorage(): SessionStorage {
+function memoryStorage(): SessionStorage {
 	const contents = new Map<string, string>();
-	const storage: SessionStorage = {
+	return {
 		getItem: (key) => contents.get(key) ?? null,
 		setItem: (key, value) => {
 			contents.set(key, value);
@@ -86,7 +82,22 @@ export function stubSessionStorage(): SessionStorage {
 		},
 		clear: () => contents.clear(),
 	};
+}
+
+/**
+ * `sessionStorage` in memory, so the load boundary of a saved game can be questioned
+ * headlessly with exactly what a tab can hold.
+ */
+export function stubSessionStorage(): SessionStorage {
+	const storage = memoryStorage();
 	(globalThis as unknown as { sessionStorage: unknown }).sessionStorage = storage;
+	return storage;
+}
+
+/** The same in memory for `localStorage`, which is where the graphics preferences live. */
+export function stubLocalStorage(): SessionStorage {
+	const storage = memoryStorage();
+	(globalThis as unknown as { localStorage: unknown }).localStorage = storage;
 	return storage;
 }
 

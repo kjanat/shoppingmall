@@ -217,6 +217,24 @@ export function withoutText(text: string): string {
 	return out.join('');
 }
 
+/** The body of a class method, from its opening brace to the matching close. */
+export function methodBody(text: string, name: string): string {
+	const head = text.indexOf(`private ${name}(`);
+	if (head < 0) throw new Error(`no method ${name} in the source any more — renamed or rewritten?`);
+	const open = text.indexOf('{', head);
+	if (open < 0) throw new Error(`method ${name} has no body`);
+	let depth = 0;
+	for (let i = open; i < text.length; i++) {
+		const char = text[i];
+		if (char === '{') depth++;
+		else if (char === '}') {
+			depth--;
+			if (depth === 0) return text.slice(open + 1, i);
+		}
+	}
+	throw new Error(`the body of ${name} never closes`);
+}
+
 /** The arguments of every call `pattern` finds, split at depth one. */
 export function callArguments(text: string, pattern: RegExp): { name: string; args: string[]; index: number }[] {
 	const out: { name: string; args: string[]; index: number }[] = [];

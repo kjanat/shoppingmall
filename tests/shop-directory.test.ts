@@ -5,6 +5,7 @@ import { geometryBounds } from '#/data/spatial';
 import { STORES, shopStores } from '#/data/stores';
 import { entitiesOnLevel, levelsContaining, WORLD_ENTITIES } from '#/data/world';
 import { span } from '#/util/math';
+import { stubDocument } from './helpers/stub-dom.ts';
 
 /**
  * The directory, the waypoint graph and the world model describe the same shops.
@@ -16,6 +17,45 @@ import { span } from '#/util/math';
 const EPS = 1e-6;
 const NODE_IDS = new Set(NODES.map((node) => node.id));
 const SHOPS = shopStores();
+
+stubDocument();
+const { Scene } = await import('three');
+const [{ LightPool }, { MallBuilder }, { StockDisplay }] = await Promise.all([
+	import('#/render/LightPool'),
+	import('#/scene/MallBuilder'),
+	import('#/scene/StockDisplay'),
+]);
+
+/**
+ * Pods and shelves cover exactly `shopStores()`. A utility destination is a name on the plan and
+ * nothing else: when only MallBuilder filtered on that and StockDisplay walked STORES itself,
+ * there was a ten-metre rack on the landing deck of the helipad, and nine more elsewhere. Both
+ * builders are really built here, because ticking off the list says nothing about who uses it.
+ */
+const mall = new MallBuilder();
+mall.build();
+// The shelves rent their till lamps from the light pool; how many there are is not the question
+// here, and the light tests answer it.
+const stock = new StockDisplay(new LightPool(new Scene()));
+const BUILT: readonly [string, ReadonlySet<string>][] = [
+	['a shop pod', new Set(mall.storeMeshes.keys())],
+	['shelves', new Set(stock.registers.keys())],
+];
+
+describe.each(BUILT.map(([what]) => what))('%s', (what) => {
+	const built = BUILT.find(([candidate]) => candidate === what)?.[1] ?? new Set<string>();
+
+	test('is built for every shop in the directory', () => {
+		const missing = SHOPS.filter((shop) => !built.has(shop.id)).map((shop) => `${shop.id} gets none`);
+		expect(missing, missing.join('\n')).toBeEmpty();
+	});
+
+	test('is built for nothing else', () => {
+		const expected = new Set(SHOPS.map((shop) => shop.id));
+		const extra = [...built].filter((id) => !expected.has(id)).map((id) => `${id} is a utility destination and gets one anyway`);
+		expect(extra, extra.join('\n')).toBeEmpty();
+	});
+});
 
 describe('the store directory holds together', () => {
 	test('no store id appears twice', () => {
