@@ -1,12 +1,26 @@
 import { describe, expect, test } from 'bun:test';
 import { ATRIUM_VOID } from '#/data/layout';
 import { LEVELS, levelY } from '#/data/levels';
-import type { PlanShape } from '#/data/spatial';
-import { ATRIUM_OPENING, SLAB_SPEC_BY_LEVEL, VERTICAL_CONNECTORS } from '#/data/world';
+import { VERTICAL_CONNECTORS } from '#/data/world';
 import type { Ramp } from '#/physics/Collision';
 import { RAMP_BAND_MARGIN, WALK_STEP } from '#/physics/Collision';
 import { half, lerp, midpoint, span } from '#/util/math';
 import { EPS, nr, world } from './helpers/world.ts';
+
+/**
+ * What a body finds where the mall changes storey.
+ *
+ * Most of the authored side is closed off elsewhere and is deliberately not repeated here.
+ * `connectorRamp` copies the collision fields of a connector straight into its ramp, so
+ * comparing those two proves nothing, and the slab holes are generated out of
+ * `VERTICAL_CONNECTORS` by `connectorOpeningPlansAt`, so a hole cannot go missing without
+ * its connector going with it. The zod registry in [connectors](src/data/connectors.ts) runs
+ * at import and already rejects a collision box that misses the flight, an opening narrower
+ * than the flight, and an escalator without a carry speed.
+ *
+ * What is left is what nothing else holds: a ramp written by hand instead of derived, the
+ * relation between an opening and the collision box rather than the flight, and the walk.
+ */
 
 /** A hole is cut around the landings, so it may reach this far past the flight and no further. */
 const HOLE_MARGIN = 0.8;
@@ -16,6 +30,7 @@ const SAMPLES = 400;
 const BELOW_THE_FOOT = [RAMP_BAND_MARGIN * 2, 1, 2];
 
 const DECK_HEIGHTS = [...LEVELS.map((level) => level.y), ...world.platforms.map((platform) => platform.y)];
+const CONNECTOR_IDS = new Set(VERTICAL_CONNECTORS.map((connector) => connector.id));
 
 function rampOf(label: string): Ramp {
 	const ramp = world.ramps.find((candidate) => candidate.label === label);
@@ -23,39 +38,26 @@ function rampOf(label: string): Ramp {
 	return ramp;
 }
 
-function cutsRectangle(
-	holes: readonly PlanShape[],
-	center: { x: number; z: number },
-	size: { width: number; depth: number },
-): boolean {
-	return holes.some(
-		(plan) =>
-			plan.kind === 'rectangle' &&
-			Math.abs(plan.center.x - center.x) <= EPS &&
-			Math.abs(plan.center.z - center.z) <= EPS &&
-			Math.abs(plan.width - size.width) <= EPS &&
-			Math.abs(plan.depth - size.depth) <= EPS,
-	);
-}
-
+/**
+ * For a connector these are the zod schema over again; for a ramp written straight into
+ * `CollisionWorld.ramps` they are the only reading of it there is, and that is the case this
+ * loop exists for.
+ */
 describe.each(world.ramps.map((ramp) => ramp.label))('flight %s', (label) => {
 	const ramp = rampOf(label);
 	const lowZ = Math.min(ramp.zBottom, ramp.zTop);
 	const highZ = Math.max(ramp.zBottom, ramp.zTop);
 
-	test('has a walkable footprint', () => {
+	test('runs uphill over a footprint with area', () => {
 		expect(ramp.minX, `minX ${nr(ramp.minX)} does not sit left of maxX ${nr(ramp.maxX)}`).toBeLessThan(ramp.maxX);
 		expect(span(lowZ, highZ), 'the flight has no length in z').toBeGreaterThan(EPS);
 		expect(ramp.yTop, `yTop ${nr(ramp.yTop)} does not sit above yBottom ${nr(ramp.yBottom)}`).toBeGreaterThan(ramp.yBottom);
 	});
 
-	test('has a hole with a front and a back', () => {
+	test('opens the deck above it over the flight and no further', () => {
 		expect(ramp.openMinZ, `openMinZ ${nr(ramp.openMinZ)} does not come before openMaxZ ${nr(ramp.openMaxZ)}`).toBeLessThan(
 			ramp.openMaxZ,
 		);
-	});
-
-	test('keeps its hole over the flight', () => {
 		expect(
 			ramp.openMinZ,
 			`the hole starts at ${nr(ramp.openMinZ)}, more than ${nr(HOLE_MARGIN)} m before the flight (${nr(lowZ)})`,
@@ -79,67 +81,46 @@ describe.each(world.ramps.map((ramp) => ramp.label))('flight %s', (label) => {
 			`${end} ${nr(y)} is neither a deck nor a platform height (${DECK_HEIGHTS.map(nr).join(', ')})`,
 		).toBeTrue();
 	});
-});
 
-describe('the slab manifest is cut where something climbs through it', () => {
-	test(`${ATRIUM_OPENING.id} is cut out of the ${SLAB_SPEC_BY_LEVEL.v1.id}`, () => {
-		expect(cutsRectangle(SLAB_SPEC_BY_LEVEL.v1.holes, ATRIUM_OPENING.center, ATRIUM_OPENING.size)).toBeTrue();
-	});
-
-	test.each(VERTICAL_CONNECTORS.map((connector) => connector.id))('%s', (id) => {
-		const connector = VERTICAL_CONNECTORS.find((candidate) => candidate.id === id);
-		if (!connector) throw new Error(`no connector ${id}`);
+	test('is either a connector or a ramp somebody decided to write by hand', () => {
 		expect(
-			cutsRectangle(SLAB_SPEC_BY_LEVEL[connector.to].holes, connector.opening.center, connector.opening.size),
-			`${connector.opening.id} is missing from the shared ${connector.to} slab manifest`,
+			CONNECTOR_IDS.has(label) || label === 'slide_ladder',
+			`${label} is a new hand-written ramp; the zod registry never sees it, so decide here what holds it`,
 		).toBeTrue();
 	});
 });
 
-describe.each(VERTICAL_CONNECTORS.map((connector) => connector.id))('%s and the ramp built from it', (id) => {
+/**
+ * The collision box is authored beside the flight rather than from it, so it can sit
+ * off-centre or reach wider than the hole above it while the schema is satisfied: the schema
+ * relates each of them to the flight and never to each other.
+ */
+describe.each(VERTICAL_CONNECTORS.map((connector) => connector.id))('%s', (id) => {
 	const connector = VERTICAL_CONNECTORS.find((candidate) => candidate.id === id);
 	if (!connector) throw new Error(`no connector ${id}`);
-	const ramp = rampOf(connector.id);
+	const { collision, opening } = connector;
 
-	test('runs down the middle of its ramp', () => {
-		expect(connector.x, 'the connector x does not sit on the middle of its ramp').toBeCloseTo(midpoint(ramp.minX, ramp.maxX), 3);
-	});
-
-	test.each([
-		['zBottom', connector.zBottom, ramp.zBottom],
-		['zTop', connector.zTop, ramp.zTop],
-	] as const)('%s matches the ramp', (_end, authored, built) => {
-		expect(authored).toBeCloseTo(built, 3);
-	});
-
-	test('cuts the z span the ramp reckons with', () => {
-		const extent = half(connector.opening.size.depth);
-		expect(connector.opening.center.z - extent, 'the near edge of the hole is not where the ramp opens').toBeCloseTo(
-			ramp.openMinZ,
-			3,
-		);
-		expect(connector.opening.center.z + extent, 'the far edge of the hole is not where the ramp opens').toBeCloseTo(
-			ramp.openMaxZ,
+	test('has its collision box centred on the flight', () => {
+		expect(midpoint(collision.minX, collision.maxX), 'the collision box hangs to one side of the flight').toBeCloseTo(
+			connector.x,
 			3,
 		);
 	});
 
-	test('cuts a hole at least as wide as the flight', () => {
+	test('has a hole at least as wide as its collision box', () => {
 		expect(
-			connector.opening.size.width,
-			`the opening is narrower than the ramp, so the truss pokes through the slab`,
-		).toBeGreaterThanOrEqual(span(ramp.minX, ramp.maxX) - 1e-3);
-	});
-
-	test('carries its steps at the speed the ramp uses', () => {
-		const authored = 'carrySpeed' in connector.collision ? connector.collision.carrySpeed : undefined;
-		if (authored === undefined) return;
-		expect(ramp.carrySpeed, `${id} names a step speed but the ramp has none: the treads move and you do not`).toBeDefined();
-		expect(ramp.carrySpeed ?? 0).toBeCloseTo(authored, 6);
+			opening.size.width,
+			`the ${nr(opening.size.width)} m opening is narrower than the ${nr(span(collision.minX, collision.maxX))} m collision box, so the truss pokes through the slab`,
+		).toBeGreaterThanOrEqual(span(collision.minX, collision.maxX) - 1e-3);
 	});
 });
 
-describe('the atrium hole is open where the manifest cuts it', () => {
+/**
+ * The atrium is the one opening authored twice: `ATRIUM_OPENING` cuts the slab and
+ * `ATRIUM_VOID` is what the rest of the mall measures the void with. Sampling the second
+ * against the world built from the first is what ties them together.
+ */
+describe('the atrium void is open in the deck that declares it', () => {
 	const insideEdge = 0.1;
 	const outsideEdge = 0.5;
 	const inside: [number, number][] = [
@@ -155,14 +136,14 @@ describe('the atrium hole is open where the manifest cuts it', () => {
 		[0, -(half(ATRIUM_VOID.depth) + outsideEdge)],
 	];
 
-	test.each(inside)('inside the hole at (%s, %s) you drop to the ground floor', (x, z) => {
-		expect(world.groundHeightAt(x, z, levelY('v1'), WALK_STEP), 'there is floor here while the manifest cuts a hole').toBeCloseTo(
+	test.each(inside)('inside the void at (%s, %s) you drop to the ground floor', (x, z) => {
+		expect(world.groundHeightAt(x, z, levelY('v1'), WALK_STEP), 'there is floor here while the slab is cut open').toBeCloseTo(
 			levelY('v0'),
 			6,
 		);
 	});
 
-	test.each(outside)('beside the hole at (%s, %s) the deck carries you', (x, z) => {
+	test.each(outside)('beside the void at (%s, %s) the deck carries you', (x, z) => {
 		expect(world.groundHeightAt(x, z, levelY('v1'), WALK_STEP), 'no slab beside the atrium').toBeCloseTo(levelY('v1'), 6);
 	});
 });
@@ -224,6 +205,26 @@ describe.each(world.ramps.map((ramp) => ramp.label))('walking flight %s', (label
 			? `a roof pad (y ${nr(walk.pad.y)}) lies over z ${nr(walk.pad.fromZ)}..${nr(walk.pad.toZ)}, so you walk over the stairwell`
 			: '';
 		expect(walk.pad, message).toBeNull();
+	});
+
+	/**
+	 * Walking the line never reaches the `openMinZ`/`openMaxZ` arm of `groundHeightAt`: at
+	 * the line the flight is already within `step` and answers one branch earlier. Stepping
+	 * into the stairwell from the deck above is what reads the hole band, so it gets its own
+	 * drop, and the deck a step beyond the band has to stay solid under the same feet.
+	 */
+	test('stepping into the hole from above drops you onto the flight', () => {
+		const heart = midpoint(ramp.minX, ramp.maxX);
+		const z = midpoint(
+			Math.max(ramp.openMinZ, Math.min(ramp.zBottom, ramp.zTop)),
+			Math.min(ramp.openMaxZ, Math.max(ramp.zBottom, ramp.zTop)),
+		);
+		const t = (z - ramp.zBottom) / (ramp.zTop - ramp.zBottom);
+		const line = lerp(ramp.yBottom, ramp.yTop, t);
+		expect(
+			world.groundHeightAt(heart, z, ramp.yTop + 1, WALK_STEP),
+			'over the open flight the deck still carries you',
+		).toBeCloseTo(line, 6);
 	});
 
 	test('a sim halfway up stands on the flight', () => {
