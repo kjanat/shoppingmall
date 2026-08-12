@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { MALL_FOOTPRINT } from '#/data/layout';
-import { levelY } from '#/data/levels';
+import { LEVELS, levelY } from '#/data/levels';
 import { poolFloorY } from '#/data/pool';
 import { planBounds } from '#/data/spatial';
 import { SLAB_SPEC_BY_LEVEL } from '#/data/world';
@@ -77,6 +77,41 @@ describe('the player floor and the sim floor agree', () => {
  * look. It stands at one eye height on the roof and skips every column whose floor sits above
  * the deck, so a platform and a hole one storey down are both outside it.
  */
+
+/**
+ * The same comparison from every deck a body can stand on, with nothing skipped. Failures are
+ * grouped by the pair of answers rather than listed per column, because one cause covers
+ * hundreds of columns and a list of coordinates hides that.
+ */
+type Disagreement = { columns: number; sample: string };
+
+function disagreementsFrom(deck: number): Map<string, Disagreement> {
+	const halfWidth = half(MALL_FOOTPRINT.width);
+	const halfDepth = half(MALL_FOOTPRINT.depth);
+	const found = new Map<string, Disagreement>();
+	for (let x = -halfWidth; x <= halfWidth; x += 1) {
+		for (let z = -halfDepth; z <= halfDepth; z += 1) {
+			const eye = deck + 0.05;
+			const ground = world.groundHeightAt(x, z, eye, WALK_STEP);
+			const sim = world.snapFloorY(x, z, eye);
+			if (Math.abs(ground - sim) <= EPS) continue;
+			const key = `the player gets ${nr(ground)} and a sim ${nr(sim)}`;
+			const seen = found.get(key);
+			if (seen) seen.columns++;
+			else found.set(key, { columns: 1, sample: `(${nr(x)}, ${nr(z)})` });
+		}
+	}
+	return found;
+}
+
+describe.each(LEVELS.map((level) => level.id))('standing on %s', (id) => {
+	const found = disagreementsFrom(levelY(id));
+
+	test('the two floor readers answer the same over the whole deck', () => {
+		const complaints = [...found].map(([answers, where]) => `${where.columns} columns where ${answers}, e.g. ${where.sample}`);
+		expect(complaints, complaints.join('\n')).toBeEmpty();
+	});
+});
 
 /**
  * `snapFloorY` reads the pool, the roof pads, the slabs and the roof-reaching flights, and
