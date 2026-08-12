@@ -21,6 +21,7 @@ export type MapBlip = { x: number; z: number; level: LevelId };
 
 export type MapState = {
 	x: number;
+	y: number;
 	z: number;
 	yaw: number;
 	level: LevelId;
@@ -122,6 +123,7 @@ const MAP_BACKDROP = '#0a1020';
 const PLAN_CUT_HEIGHT = 1.2;
 
 export type MapFeature = Readonly<{
+	id: string;
 	layer: MapLayer;
 	label: string;
 	glyph: string;
@@ -139,6 +141,7 @@ export type MapFeature = Readonly<{
 	labelBounds: Bounds2;
 	/** Of hij op het grondvlak van de mall staat. De dekplattegrond tekent alleen die. */
 	inMall: boolean;
+	elevation: MapPresentation['elevation'];
 }>;
 
 function oneLine(text: string): string {
@@ -190,14 +193,16 @@ function featureGlyph(entity: MallWorldEntity): string {
 	return entity.ports.some((port) => port.kind === 'escalator' || port.kind === 'stairs') ? '⇅' : '';
 }
 
-/** An opening is a hole in the slab of the highest deck it reaches, and nowhere else. */
+/** An opening pierces every connected slab above its lowest deck. */
 function planLevels(entity: MallWorldEntity): readonly LevelId[] {
 	if (entity.map.layer !== 'opening' || entity.levels.length < 2) return entity.levels;
-	return [entity.levels.reduce((top, id) => (levelY(id) > levelY(top) ? id : top))];
+	return entity.levels.toSorted((a, b) => levelY(a) - levelY(b)).slice(1);
 }
 
 function planShapes(entity: MallWorldEntity, levelId: LevelId): readonly PlanShape[] {
-	const cut = levelY(levelId) + PLAN_CUT_HEIGHT;
+	if (entity.map.shapes) return entity.map.shapes;
+	const floorY = entity.levels.length === 1 ? entity.transform.position.y : levelY(levelId);
+	const cut = floorY + PLAN_CUT_HEIGHT;
 	const shapes: PlanShape[] = [];
 	const seen = new Set<string>();
 	for (const volume of entity.volumes) {
@@ -258,6 +263,7 @@ function buildFeatures(): Map<LevelId, MapFeature[]> {
 			const bounds = featureBounds(shapes);
 			const anchor: Vec2 = { x: midpoint(bounds.minX, bounds.maxX), z: midpoint(bounds.minZ, bounds.maxZ) };
 			byLevel.get(levelId)?.push({
+				id: entity.id,
 				layer: entity.map.layer,
 				label: oneLine(entity.map.label ?? ''),
 				glyph: featureGlyph(entity),
@@ -268,6 +274,7 @@ function buildFeatures(): Map<LevelId, MapFeature[]> {
 				bounds,
 				labelBounds: labelShapeBounds(shapes, anchor, bounds),
 				inMall: touchesPlan(MALL_PLAN, bounds),
+				elevation: entity.map.elevation,
 			});
 		}
 	}
@@ -309,7 +316,7 @@ const PLAN_FRAME_WIDTH = span(PLAN_FRAME.minX, PLAN_FRAME.maxX) + PLAN_MARGIN;
 const PLAN_FRAME_DEPTH = span(PLAN_FRAME.minZ, PLAN_FRAME.maxZ) + PLAN_MARGIN;
 const PLAN_FRAME_CENTER: Vec2 = { x: midpoint(PLAN_FRAME.minX, PLAN_FRAME.maxX), z: midpoint(PLAN_FRAME.minZ, PLAN_FRAME.maxZ) };
 
-/** Named features, most important first, so a crowded corner keeps the label that matters. */
+/** Named features, most important first, so a crowded deck keeps the label that matters. */
 const LABELS_BY_LEVEL = new Map<LevelId, MapFeature[]>(
 	[...FEATURES_BY_LEVEL].map(([levelId, features]): [LevelId, MapFeature[]] => [
 		levelId,
@@ -328,8 +335,13 @@ export function featuresOn(levelId: LevelId, scope: MapScope): readonly MapFeatu
 	return inScope(FEATURES_BY_LEVEL.get(levelId) ?? [], scope);
 }
 
-function labelsOn(levelId: LevelId, scope: MapScope): readonly MapFeature[] {
-	return inScope(LABELS_BY_LEVEL.get(levelId) ?? [], scope);
+function atElevation(features: readonly MapFeature[], y: number | undefined): readonly MapFeature[] {
+	if (y === undefined) return features;
+	return features.filter((feature) => !feature.elevation || (y >= feature.elevation.minY && y <= feature.elevation.maxY));
+}
+
+function labelsOn(levelId: LevelId, scope: MapScope, y: number | undefined): readonly MapFeature[] {
+	return atElevation(inScope(LABELS_BY_LEVEL.get(levelId) ?? [], scope), y);
 }
 
 const RECT_CORNERS = [
@@ -529,7 +541,7 @@ export type LabelPlan = Readonly<{ plan: readonly PlannedLabel[]; unfittable: re
 const MINIMAP = { size: 200, rim: 3, zoom: 2 } as const;
 
 /** Waar de speler staat en hoe hij kijkt: alles wat de schotel van hem nodig heeft. */
-export type MinimapView = Readonly<{ x: number; z: number; yaw: number; level: LevelId; zoom?: number }>;
+export type MinimapView = Readonly<{ x: number; y?: number; z: number; yaw: number; level: LevelId; zoom?: number }>;
 
 /** Wereld → schotel: gedraaid zodat de kijkrichting boven ligt, met de speler in het midden. */
 function dishProject(x: number, z: number, view: MinimapView, cx: number, cy: number, scale: number): ScreenPoint {
@@ -646,20 +658,43 @@ function drawLabel(
  * ze kregen een vaste maat en de volle breedte van het tekenvlak, en zo hing
  * BEARD-MAN'S CAVE bijna zes meter buiten de westgevel in de lege achtergrond.
  */
-function planLabels(ctx: LabelMeasure, lvl: LevelId, scope: MapScope, project: Project, gap: number, room: LabelRoom): LabelPlan {
+function planLabels(
+	ctx: LabelMeasure,
+	lvl: LevelId,
+	scope: MapScope,
+	project: Project,
+	gap: number,
+	room: LabelRoom,
+	focus: Vec2 | null,
+	y: number | undefined,
+): LabelPlan {
 	const plan: PlannedLabel[] = [];
 	const unfittable: string[] = [];
 	const placed: ScreenBox[] = [];
-	for (const feature of labelsOn(lvl, scope)) {
+	const labels = [...labelsOn(lvl, scope, y)];
+	if (focus) {
+		labels.sort((a, b) => {
+			const aHere = a.shapes.some((shape) => pointInPlan(shape, focus.x, focus.z));
+			const bHere = b.shapes.some((shape) => pointInPlan(shape, focus.x, focus.z));
+			if (aHere !== bHere) return aHere ? -1 : 1;
+			const aDistance = Math.hypot(a.anchor.x - focus.x, a.anchor.z - focus.z);
+			const bDistance = Math.hypot(b.anchor.x - focus.x, b.anchor.z - focus.z);
+			if (aDistance !== bDistance) return aDistance - bDistance;
+			if (a.priority !== b.priority) return b.priority - a.priority;
+			return a.id.localeCompare(b.id);
+		});
+	}
+	for (const feature of labels) {
 		const style = LAYER_STYLES[feature.layer];
 		if (style.labelColor === null) continue;
+		const containsFocus = focus !== null && feature.shapes.some((shape) => pointInPlan(shape, focus.x, focus.z));
 		const text = feature.glyph === '' ? feature.label : `${feature.glyph} ${feature.label}`;
 		const weight = feature.hero ? 700 : 600;
 		const box = projectBounds(feature.bounds, project);
 		const shape = projectBounds(feature.labelBounds, project);
 		const shapeAcross = span(shape.minX, shape.maxX);
 		const shapeAlong = span(shape.minY, shape.maxY);
-		const anchor = project(feature.anchor.x, feature.anchor.z);
+		const anchor = containsFocus ? project(focus.x, focus.z) : project(feature.anchor.x, feature.anchor.z);
 		const oneLine = LABEL_SIZE_MAX * LABEL_LINE_HEIGHT;
 		// Wijk uit voordat je afkapt, en kap af voordat je opgeeft. De hele naam in de
 		// vorm, dan eronder of erboven, dan over het hele grondvlak, en pas als laatste
@@ -769,7 +804,7 @@ export function deckLabelPlan(ctx: LabelMeasure, lvl: LevelId, cssW: number): La
 	const scale = bigMapScale(cssW);
 	const sx = (x: number): number => half(cssW) + (x - PLAN_FRAME_CENTER.x) * scale;
 	const sy = (z: number): number => half(cssH) + (z - PLAN_FRAME_CENTER.z) * scale;
-	return planLabels(ctx, lvl, 'mall', (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED);
+	return planLabels(ctx, lvl, 'mall', (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED, null, undefined);
 }
 
 export function minimapLabelPlan(ctx: LabelMeasure, view: MinimapView): LabelPlan {
@@ -783,6 +818,8 @@ export function minimapLabelPlan(ctx: LabelMeasure, view: MinimapView): LabelPla
 		(x, z) => dishProject(x, z, view, center, center, scale),
 		MINI_LABEL_GAP,
 		(point) => dishSpace(point, center, center, radius - MINI_LABEL_INSET, MINI_LABEL_PULL * scale),
+		{ x: view.x, z: view.z },
+		view.y,
 	);
 }
 
@@ -828,6 +865,7 @@ export class KioskOverlay {
 	/** Waar de speler begint, tot de eerste frame hem bijwerkt. */
 	private map: MapState = {
 		x: HOME_POS.x,
+		y: HOME_POS.y,
 		z: HOME_POS.z,
 		yaw: 0,
 		level: levelAt(HOME_POS.y),
@@ -1274,12 +1312,13 @@ export class KioskOverlay {
 		ctx.rotate(this.map.yaw);
 		ctx.scale(scale, scale);
 		ctx.translate(-this.map.x, -this.map.z);
-		this.paintWorld(ctx, lvl, 'world', scale);
+		this.paintWorld(ctx, lvl, 'world', scale, this.map.y);
 		ctx.restore();
 
 		// Upright labels for whatever is close by, under the plan's own rules
 		for (const planned of minimapLabelPlan(ctx, {
 			x: this.map.x,
+			y: this.map.y,
 			z: this.map.z,
 			yaw: this.map.yaw,
 			level: lvl,
@@ -1323,8 +1362,8 @@ export class KioskOverlay {
 	}
 
 	/** Every map-visible entity on this deck, painted by its schema layer. */
-	private paintFeatures(ctx: CanvasRenderingContext2D, lvl: LevelId, scope: MapScope, px: number): void {
-		for (const feature of featuresOn(lvl, scope)) {
+	private paintFeatures(ctx: CanvasRenderingContext2D, lvl: LevelId, scope: MapScope, px: number, y?: number): void {
+		for (const feature of atElevation(featuresOn(lvl, scope), y)) {
 			const style = LAYER_STYLES[feature.layer];
 			ctx.fillStyle = feature.hero ? HERO_FILL : style.fill;
 			ctx.strokeStyle = feature.hero ? HERO_STROKE : style.stroke;
@@ -1381,13 +1420,13 @@ export class KioskOverlay {
 		);
 	}
 
-	private paintWorld(ctx: CanvasRenderingContext2D, lvl: LevelId, scope: MapScope, scale: number): void {
+	private paintWorld(ctx: CanvasRenderingContext2D, lvl: LevelId, scope: MapScope, scale: number, y?: number): void {
 		const px = 1 / scale;
 		ctx.lineJoin = 'round';
 		ctx.lineCap = 'round';
 
 		// Rooms, shells, shafts and holes — whatever the schema puts on this deck
-		this.paintFeatures(ctx, lvl, scope, px);
+		this.paintFeatures(ctx, lvl, scope, px, y);
 
 		if (lvl === 'roof') this.paintRoofLayer(ctx, px);
 

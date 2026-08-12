@@ -1967,7 +1967,7 @@ export class Americans {
 		}
 
 		// Floor snap — feet stay on slab (no through-floor / floating)
-		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, target.y);
+		sim.pos.y = this.world.snapFloorY(sim.pos.x, sim.pos.z, sim.pos.y);
 
 		const hit = this.world.resolveCircle(sim.pos.x, sim.pos.z, sim.pos.y, sim.radius, 3, true);
 		sim.pos.x = hit.x;

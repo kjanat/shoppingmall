@@ -4,7 +4,9 @@ import { distanceToSegment2 } from '#/util/geometry2';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
-import { CITY_KAVELS } from './cityPlan';
+import { PARK_LAWN } from './cityPlaces';
+
+export { PARK_LAWN } from './cityPlaces';
 
 /**
  * Stadspark op het NW-blok buiten de ringweg.
@@ -13,22 +15,6 @@ import { CITY_KAVELS } from './cityPlan';
  * suggereren zonder de Pi lastig te vallen, een fonteintje en twee eenden.
  * Puur decor vanaf het dak en uit de heli — de sims winkelen, ze recreëren niet.
  */
-
-/** Onbeplante berm tussen de rand van het kavel en waar het gras begint. */
-const PARK_BERM = 4;
-
-/**
- * Het gras zelf: het parkkavel min zijn berm.
- *
- * Stond hier als vier losse getallen naast `CITY_KAVELS.park`, dezelfde hartlijn maar
- * een andere rechthoek, en veertien plekken in dit bestand rekenden eraan.
- */
-export const PARK_LAWN = {
-	minX: CITY_KAVELS.park.minX + PARK_BERM,
-	maxX: CITY_KAVELS.park.maxX - PARK_BERM,
-	minZ: CITY_KAVELS.park.minZ + PARK_BERM,
-	maxZ: CITY_KAVELS.park.maxZ - PARK_BERM,
-} as const;
 
 const CX = midpoint(PARK_LAWN.minX, PARK_LAWN.maxX);
 const CZ = midpoint(PARK_LAWN.minZ, PARK_LAWN.maxZ);

@@ -43,6 +43,19 @@ import { requireStore, shopStores } from '#/data/stores';
 import type { BoxStructureSpec, CardinalBoxStructureSpec } from '#/data/structure';
 import { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls } from '#/data/structure';
 import { RUN_SPEED } from '#/player/constants';
+import {
+	CITY_KAVELS,
+	COLOSSEUM_PLAN,
+	FAVELA_PLAN,
+	GARAGE_DECKS,
+	LANE_X,
+	LANE_Z,
+	PARK_LAWN,
+	RIO_MOUNTAIN,
+	ROAD_INNER_X,
+	ROAD_INNER_Z,
+	ROAD_PLAN,
+} from '#/scene/city/cityPlaces';
 import { unreachable } from '#/util/invariant';
 import { half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
@@ -2385,6 +2398,7 @@ type RoomEntitySpec = Readonly<{
 	category: MallWorldCategory;
 	level: LevelId;
 	center: Vec2;
+	floorY?: number;
 	placementClass: PlacementClass;
 	/** Which way the room faces, as a yaw about y. A room whose back has to meet a wall needs it. */
 	yaw?: number;
@@ -2400,7 +2414,7 @@ function roomEntity(spec: RoomEntitySpec): MallWorldEntity {
 		category: spec.category,
 		levels: [spec.level],
 		transform: {
-			position: { x: spec.center.x, y: levelY(spec.level), z: spec.center.z },
+			position: { x: spec.center.x, y: spec.floorY ?? levelY(spec.level), z: spec.center.z },
 			rotation: { ...ZERO_ROTATION, yaw: spec.yaw ?? 0 },
 		},
 		volumes: spec.volumes,
@@ -4877,9 +4891,8 @@ export const PARKED_MOTORCYCLE_SPOTS: readonly MotorcycleSpot[] = [
  * tweede in `restrooms.frontage` en weigerde `validateSpatialWorld` de wereld.
  */
 const ENTRANCE_MOTORCYCLE_X = ENTRANCE_PORTAL.innerX + half(ENTRANCE_SPEC.hall.depth);
-/** Hart-op-hart van de twee, en hoe ver de noordelijke van de rand van de vloer blijft. */
-const ENTRANCE_MOTORCYCLE_PITCH = 1;
-const ENTRANCE_MOTORCYCLE_MARGIN = 0.1;
+/** De botscirkel moet geheel door het vrije deurvak passen. */
+const ENTRANCE_MOTORCYCLE_RADIUS = half(MOTORCYCLE_SPEC.body.length);
 /**
  * Een kwartslag met de neus naar de deuren (−x), zodat je op W de straat op rijdt en
  * niet het atrium in.
@@ -4889,14 +4902,15 @@ const ENTRANCE_MOTORCYCLE_MARGIN = 0.1;
  * het atrium in. De plattegrondrechthoek draait mee, want die leest dezelfde yaw.
  */
 const ENTRANCE_MOTORCYCLE_YAW = -half(Math.PI);
-/** De noordelijke van de twee; de tweede staat er een steek naast. */
-const ENTRANCE_MOTORCYCLE_FIRST_Z = ENTRANCE_PORTAL.minZ + half(MOTORCYCLE_SPEC.body.width) + ENTRANCE_MOTORCYCLE_MARGIN;
+const ENTRANCE_MOTORCYCLE_MIN_Z = ENTRANCE_PORTAL.doorMinZ + ENTRANCE_MOTORCYCLE_RADIUS;
+const ENTRANCE_MOTORCYCLE_MAX_Z = ENTRANCE_PORTAL.doorMaxZ - ENTRANCE_MOTORCYCLE_RADIUS;
+const ENTRANCE_MOTORCYCLE_PITCH = span(ENTRANCE_MOTORCYCLE_MIN_Z, ENTRANCE_MOTORCYCLE_MAX_Z);
 
 function entranceMotorcycleSpot(slot: number): MotorcycleSpot {
 	return {
 		x: ENTRANCE_MOTORCYCLE_X,
 		y: V0_Y + ENTRANCE_SPEC.hall.thickness + MOTORCYCLE_SPEC.standY,
-		z: ENTRANCE_MOTORCYCLE_FIRST_Z + slot * ENTRANCE_MOTORCYCLE_PITCH,
+		z: ENTRANCE_MOTORCYCLE_MIN_Z + slot * ENTRANCE_MOTORCYCLE_PITCH,
 		yaw: ENTRANCE_MOTORCYCLE_YAW,
 	};
 }
@@ -4985,7 +4999,7 @@ export const DRIVEABLE_HANDLING: Readonly<Record<DriveableKind, DriveableHandlin
 		maxLean: 0.12,
 	},
 	motorcycle: {
-		radius: half(MOTORCYCLE_SPEC.body.length),
+		radius: ENTRANCE_MOTORCYCLE_RADIUS,
 		maxSpeed: 26,
 		boostSpeed: 38,
 		accel: 20,
@@ -5822,7 +5836,7 @@ export const THEATRE_SHELL_ENTITY: MallWorldEntity = {
 	mechanisms: NO_MECHANISMS,
 	receiver: STATIC_RECEIVER,
 	emitters: NO_EMITTERS,
-	map: map('structure', THEATRE_LABEL, 88),
+	map: map('structure', undefined, 88),
 	tags: ['theatre', 'wall', 'structural'],
 };
 
@@ -6097,6 +6111,7 @@ export const THEATRE_SEATING_ENTITY: MallWorldEntity = roomEntity({
 	category: 'theatre',
 	level: 'v0',
 	center: { x: THEATRE_CENTER.x, z: midpoint(theatreRowBackZ(THEATRE_PLAN.seating.rows - 1), THEATRE_HOUSE_BACK_Z) },
+	floorY: THEATRE_FLOOR_Y,
 	placementClass: 'fixture',
 	volumes: theatreSeatBanks().map((bank) => {
 		const strook = theatreRowBank(bank.row);
@@ -6121,6 +6136,7 @@ export const THEATRE_FOYER_ENTITY: MallWorldEntity = roomEntity({
 	category: 'theatre',
 	level: 'v0',
 	center: { x: THEATRE_CENTER.x, z: midpoint(THEATRE_HOUSE_BACK_Z, THEATRE_INTERIOR.maxZ) },
+	floorY: THEATRE_FLOOR_Y,
 	placementClass: 'fixture',
 	volumes: [
 		...theatreAisleVolumes(),
@@ -6495,6 +6511,7 @@ export const THEATRE_BACKSTAGE_FIXTURES_ENTITY: MallWorldEntity = roomEntity({
 	category: 'theatre',
 	level: 'v0',
 	center: { x: THEATRE_FOOTPRINT_CENTER.x, z: BACKSTAGE_ROOM_CENTER_Z },
+	floorY: BACKSTAGE_FLOOR_Y,
 	placementClass: 'fixture',
 	volumes: [
 		...backstageVanity('vanity-west', BACKSTAGE_INTERIOR.minX, 1),
@@ -6572,6 +6589,148 @@ export function theatreSurfaces(): readonly Readonly<Bounds2 & { y: number; labe
 	);
 }
 
+function mapOnlyEntity(
+	id: string,
+	label: string,
+	levels: readonly LevelId[],
+	layer: MallWorldEntity['map']['layer'],
+	priority: number,
+	shapes: readonly PlanShape[],
+	position: Vec3,
+	elevation?: Readonly<{ minY: number; maxY: number }>,
+): MallWorldEntity {
+	return {
+		id,
+		label,
+		category: 'decorative-surface',
+		levels,
+		transform: { position, rotation: ZERO_ROTATION },
+		volumes: [],
+		ports: NO_PORTS,
+		placement: structurePlacement(),
+		kinematics: { kind: 'static' },
+		mechanisms: NO_MECHANISMS,
+		receiver: STATIC_RECEIVER,
+		emitters: NO_EMITTERS,
+		map: { visible: true, layer, priority, label, shapes, ...(elevation === undefined ? {} : { elevation }) },
+		tags: ['mapped-place'],
+	};
+}
+
+const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
+	mapOnlyEntity(
+		'theatre-venue-map',
+		THEATRE_LABEL,
+		['v0'],
+		'structure',
+		88,
+		[
+			rectangle(
+				midpoint(THEATRE_PLAN.podium.minX, THEATRE_PLAN.podium.maxX),
+				midpoint(
+					THEATRE_PLAN.hall.minZ,
+					THEATRE_PLAN.stair.zTop + THEATRE_PLAN.stair.treads * THEATRE_PLAN.stair.tread + STANDING_PEDESTRIAN.requiredHeadroom,
+				),
+				span(THEATRE_PLAN.podium.minX, THEATRE_PLAN.podium.maxX),
+				span(
+					THEATRE_PLAN.hall.minZ,
+					THEATRE_PLAN.stair.zTop + THEATRE_PLAN.stair.treads * THEATRE_PLAN.stair.tread + STANDING_PEDESTRIAN.requiredHeadroom,
+				),
+			),
+		],
+		{ x: THEATRE_CENTER.x, y: THEATRE_FLOOR_Y, z: THEATRE_CENTER.z },
+	),
+	mapOnlyEntity(
+		'city-ring-road-map',
+		'RINGWEG',
+		['v0'],
+		'circulation',
+		35,
+		[
+			rectangle(0, -LANE_Z, ROAD_INNER_X * 2, ROAD_PLAN.width),
+			rectangle(0, LANE_Z, ROAD_INNER_X * 2, ROAD_PLAN.width),
+			rectangle(-LANE_X, 0, ROAD_PLAN.width, ROAD_INNER_Z * 2),
+			rectangle(LANE_X, 0, ROAD_PLAN.width, ROAD_INNER_Z * 2),
+		],
+		{ x: 0, y: 0, z: 0 },
+	),
+	mapOnlyEntity(
+		'city-park-map',
+		'CITY PARK',
+		['v0'],
+		'fixture',
+		75,
+		[
+			rectangle(
+				midpoint(CITY_KAVELS.park.minX, CITY_KAVELS.park.maxX),
+				midpoint(CITY_KAVELS.park.minZ, CITY_KAVELS.park.maxZ),
+				span(CITY_KAVELS.park.minX, CITY_KAVELS.park.maxX),
+				span(CITY_KAVELS.park.minZ, CITY_KAVELS.park.maxZ),
+			),
+		],
+		{ x: midpoint(PARK_LAWN.minX, PARK_LAWN.maxX), y: 0, z: midpoint(PARK_LAWN.minZ, PARK_LAWN.maxZ) },
+	),
+	mapOnlyEntity(
+		'city-colosseum-map',
+		COLOSSEUM_PLAN.label,
+		['v0'],
+		'fixture',
+		100,
+		[rectangle(COLOSSEUM_PLAN.x, COLOSSEUM_PLAN.z, COLOSSEUM_PLAN.radiusX * 2, COLOSSEUM_PLAN.radiusZ * 2)],
+		{ x: COLOSSEUM_PLAN.x, y: 0, z: COLOSSEUM_PLAN.z },
+	),
+	mapOnlyEntity(
+		'city-rio-map',
+		RIO_MOUNTAIN.label,
+		LEVELS.map((entry) => entry.id),
+		'fixture',
+		100,
+		[rectangle(RIO_MOUNTAIN.x, RIO_MOUNTAIN.z, RIO_MOUNTAIN.baseW, RIO_MOUNTAIN.baseD)],
+		{ x: RIO_MOUNTAIN.x, y: RIO_MOUNTAIN.rockH, z: RIO_MOUNTAIN.z },
+		{ minY: 0, maxY: RIO_MOUNTAIN.rockH + RIO_MOUNTAIN.statueH },
+	),
+	mapOnlyEntity(
+		'city-favela-map',
+		FAVELA_PLAN.label,
+		LEVELS.map((entry) => entry.id),
+		'fixture',
+		100,
+		[
+			rectangle(
+				midpoint(FAVELA_PLAN.minX, FAVELA_PLAN.maxX),
+				midpoint(FAVELA_PLAN.minZ, FAVELA_PLAN.maxZ),
+				span(FAVELA_PLAN.minX, FAVELA_PLAN.maxX),
+				span(FAVELA_PLAN.minZ, FAVELA_PLAN.maxZ),
+			),
+		],
+		{
+			x: midpoint(FAVELA_PLAN.minX, FAVELA_PLAN.maxX),
+			y: midpoint(FAVELA_PLAN.yLow, FAVELA_PLAN.yHigh),
+			z: midpoint(FAVELA_PLAN.minZ, FAVELA_PLAN.maxZ),
+		},
+		{ minY: FAVELA_PLAN.yLow, maxY: FAVELA_PLAN.yHigh },
+	),
+	...GARAGE_DECKS.map((deck, index) =>
+		mapOnlyEntity(
+			`city-garage-map-${index + 1}`,
+			`CITY GARAGE · DEK ${index + 1}`,
+			LEVELS.map((entry) => entry.id),
+			'parking',
+			90,
+			[
+				rectangle(
+					midpoint(deck.minX, deck.maxX),
+					midpoint(deck.minZ, deck.maxZ),
+					span(deck.minX, deck.maxX),
+					span(deck.minZ, deck.maxZ),
+				),
+			],
+			{ x: midpoint(deck.minX, deck.maxX), y: deck.y, z: midpoint(deck.minZ, deck.maxZ) },
+			{ minY: deck.y - 0.5, maxY: deck.y + 2.5 },
+		),
+	),
+];
+
 export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 	floorV0,
 	floorV1,
@@ -6611,6 +6770,7 @@ export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 	ROOF_SLIDE_ENTITY,
 	...THEATRE_ENTITIES,
 	...CON_ENTITIES,
+	...CITY_MAP_ENTITIES,
 ];
 
 /** Relational view of the authored world. Callers do not maintain parallel per-level feature lists. */

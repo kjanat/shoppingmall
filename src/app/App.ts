@@ -15,7 +15,7 @@ import type { StoreDef } from '#/data/stores';
 import { getKruidvat, getStore, shopStores } from '#/data/stores';
 import { ELEVATOR_ENTITY, PARKED_MOTORCYCLE_SPOTS } from '#/data/world';
 import type { ZoneId } from '#/data/zones';
-import { zoneAt, zoneBit } from '#/data/zones';
+import { deckAt, zoneAt, zoneBit } from '#/data/zones';
 import { Pathfinder } from '#/path/Pathfinder';
 import { PathMesh } from '#/path/PathMesh';
 import { CabinCarrier } from '#/physics/Carrier';
@@ -568,7 +568,7 @@ export class App {
 		});
 
 		// Luchtvloot: heli op het dak (cyclus), drone bij de fontein (instappen!)
-		this.heli = new Helicopter(this.helipad.padCenter);
+		this.heli = new Helicopter(this.helipad.padCenter, this.world);
 		this.scene.add(this.heli.group);
 		this.scene.add(this.drone.group);
 
@@ -1613,11 +1613,13 @@ export class App {
 		}
 
 		if (wasHeli) {
-			// PRAIRIE 1 keert op de automaat terug naar het pad; jij valt eruit —
-			// de zwaartekracht en groundHeightAt vangen je op
-			this.heli.release();
+			const released = this.heli.release();
 			this.player.syncFromCamera();
-			this.ui.setStatus('🚁 Uitgestapt — PRAIRIE 1 vliegt zelf terug naar het pad');
+			this.ui.setStatus(
+				released === 'parked-here'
+					? '🚁 Uitgestapt — PRAIRIE 1 blijft hier geparkeerd'
+					: '🚁 Uitgestapt — PRAIRIE 1 vliegt zelf terug naar het pad',
+			);
 			return;
 		}
 
@@ -2857,6 +2859,8 @@ export class App {
 
 		const eul = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
 		const targetStore = this.currentStore;
+		const activeRide = this.vehicle === 'car' ? this.driveCars.ride : this.vehicle === 'scrubber' ? this.scrubber.ride : null;
+		const mapY = activeRide?.y ?? this.player.feetHeight;
 		this.mapBlips.length = 0;
 		for (const child of this.atmosphere.americans.group.children) {
 			this.mapBlips.push({
@@ -2867,9 +2871,10 @@ export class App {
 		}
 		this.ui.updateMap({
 			x: this.camera.position.x,
+			y: mapY,
 			z: this.camera.position.z,
 			yaw: eul.y,
-			level: levelAt(this.camera.position.y),
+			level: deckAt(this.camera.position.x, this.camera.position.y, this.camera.position.z),
 			path: this.currentPath.map((n) => ({ x: n.x, y: n.y, z: n.z })),
 			blips: this.mapBlips,
 			target: targetStore

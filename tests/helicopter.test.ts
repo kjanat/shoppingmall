@@ -57,7 +57,7 @@ describe('the helicopter', () => {
 		const landing = {
 			x: midpoint(THEATRE_PLAN.hall.minX, THEATRE_PLAN.hall.maxX),
 			y: THEATRE_PLAN.podiumY,
-			z: THEATRE_PLAN.stair.zTop + 6,
+			z: midpoint(THEATRE_PLAN.podium.minZ, THEATRE_PLAN.podium.maxZ),
 		};
 
 		flyTo(heli, landing.x, landing.y, landing.z);
@@ -81,6 +81,28 @@ describe('the helicopter', () => {
 
 		test('it reports itself as parked', () => {
 			expect(heli.state, `it says it is in state '${heli.state}', so it is still flying somewhere`).toBe('parked');
+		});
+	});
+
+	describe('left while still airborne away from the pad', () => {
+		const pad = padCenter();
+		const heli = new Helicopter(pad);
+
+		flyTo(heli, 72, 12, -41);
+		const released = heli.release();
+		for (let frame = 0; frame < A_WHILE / FRAME && heli.state !== 'parked'; frame++) heli.update(FRAME);
+		const resting = bodyPosition(heli);
+
+		test('returns to the pad instead of parking in the sky', () => {
+			expect(released).toBe('returning-to-pad');
+			expect(Math.hypot(resting.x - pad.x, resting.z - pad.z)).toBeLessThanOrEqual(1);
+			expect(resting.y).toBeCloseTo(pad.y, 1);
+			let flew = false;
+			for (let frame = 0; frame < (A_WHILE * 2) / FRAME && !flew; frame++) {
+				heli.update(FRAME);
+				if (heli.state === 'cruise' || heli.state === 'takeoff') flew = true;
+			}
+			expect(flew, 'after returning to its pad it never resumes the scenery cycle').toBeTrue();
 		});
 	});
 

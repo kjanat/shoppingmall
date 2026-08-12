@@ -14,7 +14,9 @@ import {
 	CON_HOTEL_FLOOR_H,
 	CON_HOTEL_FLOORS,
 	CON_LABEL,
+	CON_PLAZA,
 	CON_PORTAL,
+	CON_ROOM_LABELS,
 	CON_STAGE,
 	CON_STUDIO,
 	CON_WALL_T,
@@ -121,6 +123,46 @@ function entity(
 			? { visible: true, layer: 'structure', priority: mapPriority, label: mapLabel }
 			: { visible: true, layer: 'structure', priority: mapPriority },
 		tags: ['con', ...tags],
+	};
+}
+
+function mappedPlace(id: string, label: string, bounds: Bounds2, priority: number): MallWorldEntity {
+	const c = rectCenter(bounds);
+	return {
+		id,
+		label,
+		category: 'facility',
+		levels: ['v0'],
+		transform: { position: { x: c.x, y: CON_FLOOR_Y, z: c.z }, rotation: ZERO_ROTATION },
+		volumes: [],
+		ports: [],
+		placement: { class: 'structure', requiresSupport: false, mayCover: [], mayBeCoveredBy: [] },
+		kinematics: { kind: 'static' },
+		mechanisms: [],
+		receiver: {
+			mobility: 'static',
+			mass: null,
+			tags: ['anchored'],
+			channels: [],
+			responses: { translation: 'none', rotation: 'none' },
+		},
+		emitters: [],
+		map: {
+			visible: true,
+			layer: 'fixture',
+			priority,
+			label,
+			shapes: [
+				{
+					kind: 'rectangle',
+					center: c,
+					width: span(bounds.minX, bounds.maxX),
+					depth: span(bounds.minZ, bounds.maxZ),
+					yaw: 0,
+				},
+			],
+		},
+		tags: ['con', 'mapped-place'],
 	};
 }
 
@@ -402,7 +444,7 @@ export const CON_SHELL_ENTITY = entity(
 	'wall',
 	[...outerShell(), ...partitions()],
 	['wall', 'structural'],
-	CON_LABEL,
+	undefined,
 	90,
 );
 
@@ -516,6 +558,13 @@ export const CON_ENTITIES: readonly MallWorldEntity[] = [
 	CON_HALL_ENTITY,
 	CON_ENTRANCE_ENTITY,
 	CON_ADULT_PORTAL_ENTITY,
+	mappedPlace('con-venue-map', CON_LABEL, CON_FOOTPRINT, 94),
+	mappedPlace('con-plaza-map', CON_LABEL, CON_PLAZA, 94),
+	mappedPlace('con-dealers-map', CON_ROOM_LABELS.dealers, CON_DEALERS, 100),
+	mappedPlace('con-stage-map', CON_ROOM_LABELS.stage, CON_STAGE, 100),
+	mappedPlace('con-hotel-map', CON_ROOM_LABELS.hotel, CON_HOTEL, 100),
+	mappedPlace('con-darkroom-map', CON_ROOM_LABELS.darkroom, CON_DARKROOM, 100),
+	mappedPlace('con-studio-map', CON_ROOM_LABELS.studio, CON_STUDIO, 100),
 ];
 
 export function conColliders(): readonly (WorldCollider & Readonly<{ seeThrough: boolean }>)[] {

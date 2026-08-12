@@ -325,9 +325,6 @@ const BOX_FOOT_SLACK = 0.3;
 
 /** Zo ver van zijn eigen twee einden af telt een vlucht als "je staat er middenop". */
 export const RAMP_BAND_MARGIN = 0.4;
-/** Speling naast een vlucht waarbinnen je er nog op staat: breedte en lengte apart. */
-const RAMP_PLAN_MARGIN_X = 1;
-const RAMP_PLAN_MARGIN_Z = 1.5;
 
 /**
  * Waar de buitenschil ophoudt. Onder het dakdek houdt hij je binnen, erboven
@@ -1073,61 +1070,9 @@ export class CollisionWorld {
 		return Math.hypot(x - midpoint(platform.minX, platform.maxX), z - nose.centerZ) <= nose.radius;
 	}
 
-	/**
-	 * Snap agent Y to solid floor (never float mid-air / through slab).
-	 * Derived from `ramps` so it can't drift out of sync with the built geometry —
-	 * hard-coded windows are what made sims pop on the west stairs.
-	 *
-	 * Halverwege een vlucht is de vlucht zelf de vloer en blijft y staan. Welke
-	 * vluchten dat zijn volgt uit hun eigen twee einden. Twee vaste verdiepingsbanden
-	 * met de naam van de trap erin deden dat eerder, en die naam was `secret_stairs`
-	 * terwijl een helling zijn `connector.id` draagt: geen van beide banden koos ooit
-	 * een andere vlucht dan de lus zonder banden al koos.
-	 */
+	/** Sims and players ask the same authored-floor question. */
 	snapFloorY(x: number, z: number, y: number): number {
-		for (const ramp of this.pathRamps) {
-			const surface = pathRampSurface(ramp, x, z, 0.5);
-			if (surface !== null && Math.abs(surface - y) < 1) return surface;
-		}
-		for (const r of this.ramps) {
-			if (y <= Math.min(r.yBottom, r.yTop) + RAMP_BAND_MARGIN) continue;
-			if (y >= Math.max(r.yBottom, r.yTop) - RAMP_BAND_MARGIN) continue;
-			if (x < r.minX - RAMP_PLAN_MARGIN_X || x > r.maxX + RAMP_PLAN_MARGIN_X) continue;
-			if (z < Math.min(r.zBottom, r.zTop) - RAMP_PLAN_MARGIN_Z) continue;
-			if (z > Math.max(r.zBottom, r.zTop) + RAMP_PLAN_MARGIN_Z) continue;
-			return y;
-		}
-		if (y >= 10) {
-			// Het dakbad is een kuil in de dakplaat: op dakhoogte is de badbodem de vloer,
-			// net als groundHeightAt en headroomAt al lezen. Zonder dit belooft snapFloorY het
-			// dek (13.95) waar een sim op de badbodem (~12.9) hoort, en loopt hij op het water.
-			const pool = poolFloorY(x, z);
-			if (pool !== null) return pool;
-			for (const p of this.roofPads) {
-				if (p.disabled) continue;
-				if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) return p.y;
-			}
-			// Geen dakpad hier maar wél boven het gat van een dak-reikende vlucht: het dak is
-			// daar niet de vloer, dus laat de vlucht eronder het antwoord geven, net als
-			// groundHeightAt (de regel met openMinZ/openMaxZ). Zonder dit beloofde snapFloorY
-			// ROOF_H en zweefde een sim boven het trapgat.
-			for (const r of this.ramps) {
-				if (Math.max(r.yBottom, r.yTop) < 10) continue;
-				if (x < r.minX - RAMP_PLAN_MARGIN_X || x > r.maxX + RAMP_PLAN_MARGIN_X) continue;
-				if (z < r.openMinZ || z > r.openMaxZ) continue;
-				const raw = (z - r.zBottom) / (r.zTop - r.zBottom);
-				const t = raw < 0 ? 0 : raw > 1 ? 1 : raw;
-				const h = r.yBottom + (r.yTop - r.yBottom) * t;
-				if (y > h) return h;
-			}
-		}
-		// Buiten de voetafdruk ligt er op hoogte geen plaat: daar is alleen de stad.
-		// Onder straatniveau blijft de oude afhandeling gelden, want daar ligt de
-		// uitritgeul en niet de stad.
-		if (y > CITY_GROUND_Y - 0.6 && !this.insideMallPlan(x, z)) return this.cityGroundAt(x, z, y);
-		if (y >= 10) return ROOF_H;
-		if (y < -2) return BASEMENT_H;
-		return y < 3.2 ? 0 : FLOOR_H;
+		return this.groundHeightAt(x, z, y, WALK_STEP);
 	}
 
 	/**
@@ -1526,17 +1471,8 @@ export class CollisionWorld {
 			const m = 1.2;
 			const limitX = half(MALL_FOOTPRINT.width) - m;
 			const limitZ = half(MALL_FOOTPRINT.depth) - m;
-			const voorX = px;
-			const voorZ = pz;
 			px = clamp(px, -limitX, limitX);
 			pz = clamp(pz, -limitZ, limitZ);
-			// INSTRUMENTATIE dismount-teleport (#11), wordt na diagnose verwijderd.
-			if (Math.hypot(px - voorX, pz - voorZ) > 2) {
-				console.warn(
-					`voetafdrukklem: (${voorX.toFixed(1)}, ${voorZ.toFixed(1)}) → (${px.toFixed(1)}, ${pz.toFixed(1)}) bij y=${y.toFixed(2)}, boundsMode=${this.boundsMode}, outside=${outside}`,
-					new Error('herkomst').stack,
-				);
-			}
 		}
 
 		// Floor-1 void eject — only when standing/walking (not cars at basement).

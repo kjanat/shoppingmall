@@ -18,6 +18,37 @@ import { zoneAt, zoneBit } from '#/data/zones';
 import { PLAYER_RADIUS } from '#/player/constants';
 import { half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 import { at, jitterWith, mulberry32 } from '#/util/rand';
+import type { GarageDeck, Rect } from './cityPlaces';
+import {
+	CITY_KAVELS,
+	FAVELA_PLAN,
+	GARAGE_DECKS,
+	GARAGE_PLAN,
+	garageDeckTop,
+	LANE_X,
+	LANE_Z,
+	RIO_MOUNTAIN,
+	ROAD_INNER_X,
+	ROAD_INNER_Z,
+	ROAD_PLAN,
+} from './cityPlaces';
+
+export type { GarageDeck, Rect } from './cityPlaces';
+export {
+	CITY_KAVELS,
+	COLOSSEUM_PLAN,
+	FAVELA_PLAN,
+	GARAGE_DECKS,
+	GARAGE_PLAN,
+	garageDeckTop,
+	LANE_X,
+	LANE_Z,
+	PARK_LAWN,
+	RIO_MOUNTAIN,
+	ROAD_INNER_X,
+	ROAD_INNER_Z,
+	ROAD_PLAN,
+} from './cityPlaces';
 
 /**
  * De maten van de stad buiten de mall, op één plek.
@@ -27,8 +58,6 @@ import { at, jitterWith, mulberry32 } from '#/util/rand';
  * rondloopt, moeten collision en scene exact hetzelfde blok bedoelen: elke
  * tweede kopie van een getal is een muur die net naast zijn gevel staat.
  */
-
-export type Rect = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
 
 /**
  * De wereldrand. Collision klemt hierop, de drone ook. De noordrand ligt verder dan
@@ -65,9 +94,6 @@ export function outsideMallFootprint(feetY: number): boolean {
 }
 
 /** Binnenrand van de ringweg. Het plein tussen mall en weg loopt tot hier. */
-export const ROAD_INNER_X = 48;
-export const ROAD_INNER_Z = 34;
-
 /**
  * De ringweg zelf: één rijbaan van `width` meter, met twee rijstroken naast elkaar.
  *
@@ -76,14 +102,9 @@ export const ROAD_INNER_Z = 34;
  * de middenstreep hij ligt is één afspraak; twee kopieën ervan laten de helft van het
  * verkeer tegen de richting in rijden en niemand die het opmerkt.
  */
-export const ROAD_PLAN = { width: 7 } as const;
-
 const ROAD_HALF_WIDTH = half(ROAD_PLAN.width);
 
 /** Middellijnen van de rijbaan. De middenstreep ligt hier, het verkeer ernaast. */
-export const LANE_X = ROAD_INNER_X + ROAD_HALF_WIDTH;
-export const LANE_Z = ROAD_INNER_Z + ROAD_HALF_WIDTH;
-
 /**
  * Hart van een rijstrook: een kwart rijbaan naast de middellijn, want twee stroken met
  * de middenstreep ertussen delen de rijbaan doormidden.
@@ -615,87 +636,6 @@ export type TowerSpec = Readonly<{ x: number; z: number; w: number; d: number; h
  * theaterkavel reikt nu tot achter de backstage en zijn achterbordes, zodat er geen
  * toren tegen de artiesteningang komt te staan.
  */
-export const CITY_KAVELS = {
-	theatre: { minX: 52, maxX: 90, minZ: -87, maxZ: -40 },
-	garage: { minX: 52, maxX: 90, minZ: 40, maxZ: 72 },
-	/** NW park — more west/north now that the city plate reaches further. */
-	park: { minX: -140, maxX: -52, minZ: -100, maxZ: -36 },
-	/** Fur con lot (plaza + halls); numbers come from conPlan. */
-	con: { minX: CON_LOT.minX, maxX: CON_LOT.maxX, minZ: CON_LOT.minZ, maxZ: CON_LOT.maxZ },
-	/** SW Corcovado knock-off — towers stay off the rock. */
-	rio: { minX: -140, maxX: -58, minZ: 36, maxZ: 92 },
-	/** Village covers the mountain east face up to the Redeemer yard. */
-	favela: { minX: -108, maxX: -46, minZ: 38, maxZ: 92 },
-	/** The Roman Mega Colosseum south of the ring road; the lot follows its grown ellipse so no tower lands on it. */
-	colosseum: { minX: -45, maxX: 45, minZ: 50, maxZ: 160 },
-} as const satisfies Record<string, Rect>;
-
-export const COLOSSEUM_PLAN = {
-	x: 0,
-	z: 104,
-	// The cavea is deeper than the arena is half-wide, the way a real amphitheatre
-	// is (Rome: ~51 m of stand against ~43 m arena half-width): the seating carries
-	// the view from inside, not the empty sand. The arena radii stay put — fighters,
-	// gates and the hypogeum all read them — so only the outer ring and its height
-	// grow. The ellipse clears the ring road (north edge z 52 against the road at
-	// ~41), the favela (west edge x −44 against its x −46) and CITY_BOUNDS.
-	radiusX: 44,
-	radiusZ: 52,
-	arenaRadiusX: 20,
-	arenaRadiusZ: 25,
-	wallHeight: 32,
-	levels: 4,
-	archesPerLevel: 36,
-	hypogeumDepth: 3.5,
-	label: 'MEGA COLOSSEUM ARENA',
-} as const;
-
-/**
- * Montanha de Janeiro: green rock + white Redeemer overlooking the mall from the SW.
- * Numbers are the one source for mesh, colliders and the kavel above.
- */
-export const RIO_MOUNTAIN = {
-	x: midpoint(CITY_KAVELS.rio.minX, CITY_KAVELS.rio.maxX),
-	z: midpoint(CITY_KAVELS.rio.minZ, CITY_KAVELS.rio.maxZ),
-	/** Base footprint (metres). */
-	baseW: 48,
-	baseD: 40,
-	/** Rock peak under the pedestal. */
-	rockH: 48,
-	/** White figure height (toes to head). */
-	statueH: 20,
-	/** Arm span tip to tip. */
-	armSpan: 18,
-	label: 'MONTANHA DE JANEIRO',
-} as const;
-
-/**
- * Mini mountain village (Vila do Monte) draped on Montanha de Janeiro.
- * Houses terrace the slope; free space is contour streets + switchback alleys.
- */
-export const FAVELA_PLAN = {
-	minX: CITY_KAVELS.favela.minX,
-	maxX: CITY_KAVELS.favela.maxX,
-	minZ: CITY_KAVELS.favela.minZ,
-	maxZ: CITY_KAVELS.favela.maxZ,
-	/** Street at the ring. */
-	yLow: 0.05,
-	/** Peak plaza under the Redeemer. */
-	yHigh: RIO_MOUNTAIN.rockH + 0.05,
-	cols: 18,
-	rows: 20,
-	seed: 0xfa9e1a,
-	label: 'VILA DO MONTE',
-	/** Half-width of climbing alleys (metres). */
-	alleyHalf: 1.5,
-	/** Half-width of contour streets (N–S along the hill). */
-	streetHalf: 1.2,
-	/** Contour count between ring and peak (switchbacks hang off these). */
-	contours: 8,
-	/** Peak plaza keep-out radius for shacks. */
-	plazaR: 10,
-} as const;
-
 /** Ground height of the village: climbs from the ring to the Redeemer, plateau west of him. */
 export function favelaGroundY(x: number, _z: number): number {
 	const { maxX, minX, yLow, yHigh } = FAVELA_PLAN;
@@ -808,48 +748,6 @@ export const TOWER_SPECS: readonly TowerSpec[] = planTowers(mulberry32(TOWER_SEE
  * beneden. Ze staan hier omdat de mesh, de collision en de wereldcontrole
  * dezelfde helling moeten bedoelen.
  */
-export const GARAGE_PLAN = {
-	footprint: { minX: 58, maxX: 83, minZ: 46, maxZ: 64 },
-	floorHeight: 3.2,
-	slabThickness: 0.35,
-	decks: 4,
-	groundDeckY: 0.2,
-	/**
-	 * De oostelijke kolomlijn stond op 82,4 en daarmee pal achter de opening waar de
-	 * spiraal een dek bereikt: de kolom vulde de doorgang die de borstwering vrijlaat.
-	 * Op 81,2 staat hij nog binnen de plaat en laat hij de aanloop open.
-	 */
-	columnX: [59, 62.8, 71.2, 79.6, 81.2],
-	columnZ: [46.8, 55, 63.2],
-	columnSize: 0.45,
-	columnTopY: 12.8,
-	/**
-	 * Borstwering rondom elk dek: laag genoeg om overheen te kijken, hoog genoeg om je
-	 * te houden. `doorway` is de vrije breedte die de opening naar een bordes minstens
-	 * krijgt: de naad tussen het hoekbordes en dek 1 is maar een meter lang, en met de
-	 * borstweringhoeken erbij bleef daar geen schouderbreedte van over.
-	 */
-	parapet: { height: 1, thickness: 0.18, doorway: 2 },
-	ramp: {
-		thickness: 0.25,
-		guard: { height: 0.6, thickness: 0.12 },
-		/** Zuidplaat: klimt oostwaarts van het parkeerterrein naar dek 1, zuid van de gevel. */
-		south: { z: 65.8, width: 3.2, fromX: 60 },
-		/** Oostplaat: klimt noordwaarts van dek 1 naar dek 2, in de strook oost van de gevel. */
-		east: { width: 2.8, fromZ: 63, toZ: 48.4 },
-		/** Diepte van het bovenste bordes, noordwaarts voorbij het einde van de oostplaat. */
-		landingDepth: 3.4,
-		/** Steunpoten onder de oostelijke strook, op hun z. */
-		legZ: [65.4, 60, 51],
-		legSize: 0.3,
-	},
-} as const;
-
-/** Bovenkant van dek `i` — de begane grond is een dunnere plaat op het parkeerterrein. */
-export function garageDeckTop(i: number): number {
-	return i === 0 ? GARAGE_PLAN.groundDeckY : i * GARAGE_PLAN.floorHeight + half(GARAGE_PLAN.slabThickness);
-}
-
 const RAMP = GARAGE_PLAN.ramp;
 
 /** De strook oost van de gevel waarin de oostplaat en beide bordessen liggen. */
@@ -866,8 +764,6 @@ export type GarageRampRun = Readonly<{
 }>;
 
 /** Een vlak loopvlak van de garage: een bordes van de spiraal of een heel dek. */
-export type GarageDeck = Readonly<Rect & { id: string; y: number }>;
-
 /** Een borstweringdoos: hij houdt je tegen zolang je op het dek eronder staat. */
 export type GarageParapet = Readonly<Rect & { id: string; minY: number; maxY: number }>;
 
@@ -907,12 +803,6 @@ export const GARAGE_RAMP_LANDINGS: readonly GarageDeck[] = [
 ];
 
 /** De parkeerdekken boven het maaiveld, inclusief het dak: loopvlak zodra je er staat. */
-export const GARAGE_DECKS: readonly GarageDeck[] = Array.from({ length: GARAGE_PLAN.decks }, (_, index) => ({
-	id: `garage_deck_${index + 1}`,
-	...GARAGE_PLAN.footprint,
-	y: garageDeckTop(index + 1),
-}));
-
 /** Speling voor maten die exact gelijk horen te zijn. */
 const PLAN_EPS = 1e-6;
 

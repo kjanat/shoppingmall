@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { HELIPAD_PAD_SPEC } from '#/data/world';
+import { CollisionWorld } from '#/physics/Collision';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -15,6 +17,10 @@ const LAPS = 2;
 const PARKED_ROTOR = 0.8;
 const PARKED_ROTOR_RATE = 0.5;
 const SPINDOWN_RATE = 0.7;
+/** Landing gear tolerance around authored city surfaces. */
+const LANDED_CLEARANCE = 0.2;
+
+export type HelicopterRelease = 'parked-here' | 'returning-to-pad';
 
 /**
  * De helikopter die bij de helipad hoort. Volautomatische cyclus:
@@ -29,15 +35,19 @@ export class Helicopter {
 	private tailRotor!: THREE.Mesh;
 	private materials: THREE.Material[] = [];
 	private pad: THREE.Vector3;
+	private world: CollisionWorld;
 	private rotorSpeed = 0;
 	private stateT = 0;
 	private cruiseA = 0;
+	/** Alleen op zijn eigen pad hoort de helikopter bij de automatische dakscène. */
+	private resumesRounds = true;
 	/** wereld-positie tijdens de vlucht */
 	private pos = new THREE.Vector3();
 
-	constructor(padCenter: THREE.Vector3) {
+	constructor(padCenter: THREE.Vector3, world = new CollisionWorld()) {
 		this.group.name = 'helicopter';
 		this.pad = padCenter.clone();
+		this.world = world;
 		this.pos.copy(this.pad);
 		this.build();
 		this.group.add(this.body);
@@ -69,11 +79,17 @@ export class Helicopter {
 		return this.body.position.clone().add(new THREE.Vector3(0, 0.9, 0));
 	}
 
-	/** Uitstappen: waar je ook bent, hij vliegt zelf terug naar het pad. */
-	release(): void {
+	/** Uitstappen laat een elders geparkeerde spelerheli staan; op het pad hervat de dakscène. */
+	release(): HelicopterRelease {
 		this.occupied = false;
 		this.pos.copy(this.body.position);
-		this.next('approach');
+		const onPad = Math.hypot(this.pos.x - this.pad.x, this.pos.z - this.pad.z) <= HELIPAD_PAD_SPEC.topRadius;
+		const ground = this.world.groundHeightAt(this.pos.x, this.pos.z, this.pos.y);
+		const landed = Math.abs(this.pos.y - ground) <= LANDED_CLEARANCE;
+		const returnsToPad = onPad || !landed;
+		this.resumesRounds = returnsToPad;
+		this.next(returnsToPad ? 'approach' : 'spindown');
+		return returnsToPad ? 'returning-to-pad' : 'parked-here';
 	}
 
 	private prevCam = new THREE.Vector3();
@@ -119,7 +135,7 @@ export class Helicopter {
 		if (this.occupied) return 'JIJ vliegt — E = uitstappen';
 		switch (this.state) {
 			case 'parked':
-				return 'geparkeerd op het dak';
+				return this.resumesRounds ? 'geparkeerd op het dak' : 'geparkeerd in de stad';
 			case 'spinup':
 			case 'takeoff':
 				return 'rotors op toeren — takeoff!';
@@ -139,7 +155,7 @@ export class Helicopter {
 		switch (this.state) {
 			case 'parked':
 				this.rotorSpeed = lerp(this.rotorSpeed, PARKED_ROTOR, dt * PARKED_ROTOR_RATE);
-				if (this.stateT > 18) this.next('spinup');
+				if (this.resumesRounds && this.stateT > 18) this.next('spinup');
 				break;
 
 			case 'spinup':

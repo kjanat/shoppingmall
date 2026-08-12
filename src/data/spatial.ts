@@ -388,6 +388,10 @@ export type MapPresentation = Readonly<{
 	layer: 'structure' | 'opening' | 'shop' | 'circulation' | 'parking' | 'fixture' | 'clutter';
 	label?: string;
 	priority: number;
+	/** Authored plan geometry for landmarks that have no physical volume. */
+	shapes?: readonly PlanShape[];
+	/** Vertical range where a map-only place is local to the viewer. */
+	elevation?: Readonly<{ minY: number; maxY: number }>;
 }>;
 
 export type WorldEntity<Category extends string = string, Level extends string = string> = Readonly<{

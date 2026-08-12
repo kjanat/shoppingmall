@@ -41,7 +41,7 @@ const metric = stubTextMeasure();
 const CUT_HEIGHT = 1.2;
 
 function labelsAt(x: number, z: number, y: number, yaw = 0): string[] {
-	return minimapLabelPlan(metric, { x, z, yaw, level: levelAt(y) }).plan.map((planned) => planned.text);
+	return minimapLabelPlan(metric, { x, y, z, yaw, level: levelAt(y) }).plan.map((planned) => planned.text);
 }
 
 function named(features: readonly MapFeature[]): string[] {
@@ -53,8 +53,8 @@ function labelOf(entity: (typeof WORLD_ENTITIES)[number]): string {
 	return (entity.map.label ?? '').split('\n').join(' ');
 }
 
-function labelsOnDeck(x: number, z: number, level: (typeof LEVELS)[number]['id'], yaw = 0): string[] {
-	return minimapLabelPlan(metric, { x, z, yaw, level }).plan.map((planned) => planned.text);
+function labelsOnDeck(x: number, z: number, level: (typeof LEVELS)[number]['id'], yaw = 0, y?: number): string[] {
+	return minimapLabelPlan(metric, { x, y, z, yaw, level }).plan.map((planned) => planned.text);
 }
 
 function center(rect: Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>): { x: number; z: number } {
@@ -62,7 +62,7 @@ function center(rect: Readonly<{ minX: number; maxX: number; minZ: number; maxZ:
 }
 
 function localLabels(x: number, z: number, y: number, yaw = 0): string[] {
-	return labelsOnDeck(x, z, deckAt(x, y, z), yaw);
+	return labelsOnDeck(x, z, deckAt(x, y, z), yaw, y);
 }
 
 describe('the minimap', () => {
@@ -276,7 +276,9 @@ describe('the minimap shows the place the player is actually in', () => {
 			expect(deck, `garage deck ${index + 1} is missing`).toBeDefined();
 			if (!deck) return;
 			const point = center(deck);
-			expect(localLabels(point.x, point.z, deck.y), 'the garage deck minimap names nothing').not.toBeEmpty();
+			expect(localLabels(point.x, point.z, deck.y), 'the garage deck minimap names the wrong floor').toContain(
+				`CITY GARAGE · DEK ${index + 1}`,
+			);
 		},
 	);
 
