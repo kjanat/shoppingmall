@@ -3,10 +3,15 @@ import { WALK_STEP } from '#/physics/Collision';
 import { PLAYER_RADIUS } from '#/player/constants';
 import { EPS, nr, world } from './helpers/world.ts';
 
-/** Half a body across, so nothing body-sized fits between two samples. */
 const STEP = 0.25;
 /** On the boundary itself a deck neither covers nor does not cover; start inside it. */
 const INSET = 0.05;
+
+test('the sweep step is finer than the body walking the deck', () => {
+	// A lattice of step s has a point inside every axis-aligned region of side s or more, so a
+	// patch of deck wide enough to stand on always gets sampled.
+	expect(STEP, 'a body-sized patch of deck could fall between two samples').toBeLessThan(2 * PLAYER_RADIUS);
+});
 
 type Sweep = { wrongFloor: { x: number; z: number; ground: number }[]; pushedOff: { x: number; z: number }[] };
 

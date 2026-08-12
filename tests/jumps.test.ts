@@ -22,20 +22,27 @@ import { EPS, nr, world } from './helpers/world.ts';
  * fall instead and a body lands on the floor it was about to leave.
  */
 
-const FRAME = 1 / 60;
-const FRAMES = 600;
+/**
+ * The frame loop hands Controls whatever the display gives it, clamped at 50 ms
+ * ([App](src/app/App.ts) `animate`), so a jump proven at 60 fps is a jump proven at one point
+ * of that range. A body that only clears a step at one frame rate clears it for some players
+ * and not others, so every jump below is integrated at both ends of the range and in between.
+ */
+const FRAME_TIMES = [1 / 120, 1 / 60, 1 / 30, 0.05];
+/** Six seconds of flight at the shortest step; every jump here lands inside a second. */
+const SECONDS = 6;
 
 /** Walking and without the take-off shove: the slowest a player can cross, so faster gaits follow. */
-function jumpTowardsTheVoid(startX: number, z: number, startY: number): { x: number; y: number } {
+function jumpTowardsTheVoid(startX: number, z: number, startY: number, frameTime: number): { x: number; y: number } {
 	let x = startX;
 	let feetY = startY;
 	let vy = JUMP_V;
-	for (let frame = 0; frame < FRAMES; frame++) {
-		const solved = world.resolveCircle(x - WALK_SPEED * FRAME, z, feetY, PLAYER_RADIUS, 3, true, true, false);
+	for (let frame = 0; frame < SECONDS / frameTime; frame++) {
+		const solved = world.resolveCircle(x - WALK_SPEED * frameTime, z, feetY, PLAYER_RADIUS, 3, true, true, false);
 		x = solved.x;
 		const ground = world.groundHeightAt(x, z, feetY, AIR_STEP);
-		vy -= GRAVITY * FRAME;
-		feetY += vy * FRAME;
+		vy -= GRAVITY * frameTime;
+		feetY += vy * frameTime;
 		if (feetY <= ground) return { x, y: ground };
 	}
 	return { x, y: feetY };
@@ -75,19 +82,21 @@ describe('climbing the atrium planter and jumping the balustrade', () => {
 	});
 
 	// The whole climb, tier by tier: each jump starts where the previous one puts you down.
-	test.each([
-		['onto the bench', bench.maxX + PLAYER_RADIUS, V1, bench.topY],
-		['onto the basin', bench.standMinX, bench.topY, planter.topY],
-	] as const)('a walking jump %s lands on that tier', (_step, fromX, fromY, toY) => {
-		const landing = jumpTowardsTheVoid(fromX, ATRIUM_PLANTER_SPEC.centerZ, fromY);
-		expect(landing.y, `from x ${nr(fromX)} at ${nr(fromY)} you end up at ${nr(landing.y)}`).toBeCloseTo(toY, 3);
-	});
+	describe.each(FRAME_TIMES)('at %s s a frame', (frameTime) => {
+		test.each([
+			['onto the bench', bench.maxX + PLAYER_RADIUS, V1, bench.topY],
+			['onto the basin', bench.standMinX, bench.topY, planter.topY],
+		] as const)('a walking jump %s lands on that tier', (_step, fromX, fromY, toY) => {
+			const landing = jumpTowardsTheVoid(fromX, ATRIUM_PLANTER_SPEC.centerZ, fromY, frameTime);
+			expect(landing.y, `from x ${nr(fromX)} at ${nr(fromY)} you end up at ${nr(landing.y)}`).toBeCloseTo(toY, 3);
+		});
 
-	// Over the hole the floor is V0 and beside it the V1 slab, so one landing height says
-	// whether the jump went through the void or landed next to it.
-	test('the jump off the basin drops through the void to the ground floor', () => {
-		const landing = jumpTowardsTheVoid(planter.standMinX, ATRIUM_PLANTER_SPEC.centerZ, planter.topY);
-		expect(landing.y, `the jump strands at x ${nr(landing.x)} on height ${nr(landing.y)}`).toBeCloseTo(V0, 3);
+		// Over the hole the floor is V0 and beside it the V1 slab, so one landing height says
+		// whether the jump went through the void or landed next to it.
+		test('the jump off the basin drops through the void to the ground floor', () => {
+			const landing = jumpTowardsTheVoid(planter.standMinX, ATRIUM_PLANTER_SPEC.centerZ, planter.topY, frameTime);
+			expect(landing.y, `the jump strands at x ${nr(landing.x)} on height ${nr(landing.y)}`).toBeCloseTo(V0, 3);
+		});
 	});
 });
 
@@ -101,22 +110,33 @@ const LEDGE_KERB_LIP = 0.04;
  */
 const LEDGE_HEIGHT = 0.75;
 
-/** `crouchInAir` tucks the legs after take-off, so the body's underside counts CROUCH_LEG_TUCK higher. */
-function jumpOntoLedge(ledgeWorld: CollisionWorld, startX: number, z: number, floorY: number, crouchInAir: boolean): number {
+/**
+ * `crouchInAir` tucks the legs after take-off, so the body's underside counts CROUCH_LEG_TUCK
+ * higher. The tuck arrives through `ease` at CROUCH_RATE, which is where the frame time bites:
+ * at a long frame the knees come up in fewer, coarser steps than at a short one.
+ */
+function jumpOntoLedge(
+	ledgeWorld: CollisionWorld,
+	startX: number,
+	z: number,
+	floorY: number,
+	crouchInAir: boolean,
+	frameTime: number,
+): number {
 	let x = startX;
 	let feetY = floorY;
 	let vy = JUMP_V;
 	let stance = 0;
-	for (let frame = 0; frame < FRAMES; frame++) {
+	for (let frame = 0; frame < SECONDS / frameTime; frame++) {
 		const target = crouchInAir ? 1 : 0;
-		const eased = ease(stance, target, CROUCH_RATE, FRAME);
+		const eased = ease(stance, target, CROUCH_RATE, frameTime);
 		stance = Math.abs(target - eased) < STANCE_SETTLE ? target : eased;
 		const lift = stance * CROUCH_LEG_TUCK;
-		const solved = ledgeWorld.resolveCircle(x + WALK_SPEED * FRAME, z, feetY + lift, PLAYER_RADIUS, 3, true, true, false);
+		const solved = ledgeWorld.resolveCircle(x + WALK_SPEED * frameTime, z, feetY + lift, PLAYER_RADIUS, 3, true, true, false);
 		x = solved.x;
 		const ground = ledgeWorld.groundHeightAt(x, z, feetY + lift, AIR_STEP);
-		vy -= GRAVITY * FRAME;
-		feetY += vy * FRAME;
+		vy -= GRAVITY * frameTime;
+		feetY += vy * frameTime;
 		if (feetY <= ground) return ground;
 	}
 	return feetY;
@@ -167,19 +187,21 @@ describe('the crouch jump clears what a standing jump cannot', () => {
 	});
 	const startX = ledge.minX - PLAYER_RADIUS - 0.02;
 
-	test('a standing jump does not reach the ledge', () => {
-		const landing = jumpOntoLedge(ledgeWorld, startX, cell.z, V0, false);
-		expect(landing, `a standing jump already clears ${nr(LEDGE_HEIGHT)} m, so crouching proves nothing`).not.toBeCloseTo(
-			ledgeY,
-			2,
-		);
-	});
+	describe.each(FRAME_TIMES)('at %s s a frame', (frameTime) => {
+		test('a standing jump does not reach the ledge', () => {
+			const landing = jumpOntoLedge(ledgeWorld, startX, cell.z, V0, false, frameTime);
+			expect(landing, `a standing jump already clears ${nr(LEDGE_HEIGHT)} m, so crouching proves nothing`).not.toBeCloseTo(
+				ledgeY,
+				2,
+			);
+		});
 
-	test('a crouched jump lands on top of it', () => {
-		const landing = jumpOntoLedge(ledgeWorld, startX, cell.z, V0, true);
-		expect(landing, `a crouched jump lands at ${nr(landing)} instead of on the ${nr(LEDGE_HEIGHT)} m ledge`).toBeCloseTo(
-			ledgeY,
-			2,
-		);
+		test('a crouched jump lands on top of it', () => {
+			const landing = jumpOntoLedge(ledgeWorld, startX, cell.z, V0, true, frameTime);
+			expect(landing, `a crouched jump lands at ${nr(landing)} instead of on the ${nr(LEDGE_HEIGHT)} m ledge`).toBeCloseTo(
+				ledgeY,
+				2,
+			);
+		});
 	});
 });

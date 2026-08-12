@@ -23,6 +23,13 @@ import { nr, world } from './helpers/world.ts';
 const GRID = 0.5;
 const NEEDED = postureHeadroom('standing');
 
+test('the grid is finer than the body it is looking for room for', () => {
+	// A lattice of step s has a point inside every axis-aligned region of side s or more, and a
+	// body cannot stand anywhere narrower than its own width, so this is what makes the sweep
+	// exhaustive rather than a spot check.
+	expect(GRID, 'a standable spot could fall between two samples').toBeLessThan(2 * PLAYER_RADIUS);
+});
+
 type Tight = { count: number; free: number; x: number; z: number; standable: number };
 
 function sweep(deck: number, outdoors: boolean): Tight {

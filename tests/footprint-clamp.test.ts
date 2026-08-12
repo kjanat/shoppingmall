@@ -22,6 +22,14 @@ import { nr, world } from './helpers/world.ts';
  * and nothing else did.
  */
 
+/**
+ * A metre, where the other sweeps in this suite step half. The clamp is not a property of a
+ * spot but of two rectangles, the mall footprint and the trench that is exempt from it, and
+ * both are metres across in every direction, so there is no sub-metre island for a coarser
+ * lattice to miss. The control below keeps that honest by requiring the sweep to have reached
+ * ground the exemption does not cover; a finer step over the whole city costs four times as
+ * much and finds the same two rectangles.
+ */
 const GRID = 1;
 
 const halfWidth = half(MALL_FOOTPRINT.width);
