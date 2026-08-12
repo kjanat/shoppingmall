@@ -42,20 +42,38 @@ describe('every section of the tube carries you', () => {
 		).toBe(SURFACES.length);
 	});
 
-	test.each(FLOWS.map((flow) => flow.id))('%s', (id) => {
-		const flow = FLOWS.find((candidate) => candidate.id === id);
-		if (!flow) return;
+	test('the flows have unique ids', () => {
+		expect(new Set(FLOWS.map((flow) => flow.id)).size, 'duplicate ids make one flow hide another in diagnostics').toBe(
+			FLOWS.length,
+		);
+	});
+
+	test('the flows cover every travel surface exactly once', () => {
 		expect(
-			ROOF_SLIDE_ENTITY.volumes.some((volume) => volume.id === flow.sourceVolumeId),
-			`it flows over volume '${flow.sourceVolumeId}', which does not exist`,
-		).toBeTrue();
+			FLOWS.map((flow) => flow.sourceVolumeId).toSorted(),
+			'a duplicated source leaves another tube section without flow',
+		).toEqual(SURFACES.map((surface) => surface.id).toSorted());
+	});
+
+	test.each(FLOWS.map((flow, index) => [flow.id, index] as const))('%s', (_id, index) => {
+		const flow = FLOWS[index];
+		if (!flow) return;
+		const surface = SURFACES.find((volume) => volume.id === flow.sourceVolumeId);
+		expect(surface, `it flows over volume '${flow.sourceVolumeId}', which is not a tube travel surface`).toBeDefined();
 		expect(flow.field.kind, 'it is not a surface flow, so it carries nothing along the tube').toBe('surface');
-		if (flow.field.kind !== 'surface') return;
+		if (flow.field.kind !== 'surface' || !surface || surface.geometry.kind !== 'ramp') return;
 		const speed = Math.hypot(flow.field.vector.x, flow.field.vector.y, flow.field.vector.z);
 		expect(speed, `it carries at ${nr(speed)} m/s while the tube declares ${nr(SLIDE_TOWER_SPEC.tube.speed)} m/s`).toBeCloseTo(
 			SLIDE_TOWER_SPEC.tube.speed,
 			9,
 		);
+		const dx = surface.geometry.end.x - surface.geometry.start.x;
+		const dy = surface.geometry.end.y - surface.geometry.start.y;
+		const dz = surface.geometry.end.z - surface.geometry.start.z;
+		const run = Math.hypot(dx, dy, dz);
+		expect(flow.field.vector.x / speed, 'the flow points across or backwards along its tube section').toBeCloseTo(dx / run, 9);
+		expect(flow.field.vector.y / speed, 'the flow points across or backwards along its tube section').toBeCloseTo(dy / run, 9);
+		expect(flow.field.vector.z / speed, 'the flow points across or backwards along its tube section').toBeCloseTo(dz / run, 9);
 	});
 });
 

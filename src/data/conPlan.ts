@@ -168,6 +168,15 @@ export const CON_ADULT_GATE_TRIGGER: Bounds3 = {
 
 export const CON_LABEL = 'PRAIRIE FUR CON';
 
+/** Names printed over the independently navigable rooms. */
+export const CON_ROOM_LABELS = {
+	dealers: 'DEALERS DEN',
+	stage: 'MAIN STAGE',
+	hotel: 'CON HOTEL',
+	darkroom: 'DARKROOM 18+',
+	studio: 'PORN STUDIO',
+} as const;
+
 /**
  * Dealer table footprint in metres (human table, not a freehand number).
  * Grid fills the dealers interior; counts are derived.

@@ -27,7 +27,8 @@ const SCREEN_PROJECTION = /\b(sx|sy)\(/g;
 const HAND_WRITTEN_MARKER = /\{[^{}]*\bx:\s*(-?\d+(?:\.\d+)?)\s*,\s*z:\s*(-?\d+(?:\.\d+)?)\s*,\s*level:/g;
 const LOOSE_NUMBER = /^-?\d+(?:\.\d+)?$/;
 
-const SOURCE = withoutText(await read('src/ui/KioskOverlay.ts'));
+const RAW_SOURCE = await read('src/ui/KioskOverlay.ts');
+const SOURCE = withoutText(RAW_SOURCE);
 
 describe('the kiosk places nothing on loose metres', () => {
 	test.each(['paintWorld', 'paintRoofLayer'])('%s', (name) => {
@@ -72,14 +73,15 @@ describe('every deck gets a tab on the big map', () => {
 	});
 
 	test('no tab writes its deck id by hand', () => {
-		const written = [...SOURCE.matchAll(/data-level="([^"]+)"/g)].map(
+		// These checks look for literals; blanking text first would erase their evidence.
+		const written = [...RAW_SOURCE.matchAll(/data-level="([^"]+)"/g)].map(
 			(match) => `tab data-level="${match[1]}" is written by hand; derive it from LEVELS`,
 		);
 		expect(written, written.join('\n')).toBeEmpty();
 	});
 
 	test('the overlay keeps no deck list of its own', () => {
-		const lists = [...SOURCE.matchAll(/\[\s*'[a-z0-9_]+'(?:\s*,\s*'[a-z0-9_]+')*\s*\]/g)]
+		const lists = [...RAW_SOURCE.matchAll(/\[\s*'[a-z0-9_]+'(?:\s*,\s*'[a-z0-9_]+')*\s*\]/g)]
 			.map((match) => [...match[0].matchAll(/'([a-z0-9_]+)'/g)].map((member) => member[1]))
 			.filter((members) => members.every((member) => member !== undefined && DECK_IDS.has(member)))
 			.map((members) => `KioskOverlay keeps its own deck list (${members.join(', ')})`);

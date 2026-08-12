@@ -235,8 +235,14 @@ function deckBeside(landing: GarageDeck): GarageDeck | null {
 	);
 }
 
-describe.each(GARAGE_RAMP_LANDINGS.map((landing) => landing.id))('the landing %s', (id) => {
-	const landing = GARAGE_RAMP_LANDINGS.find((candidate) => candidate.id === id);
+test('garage ramp landing ids are unique', () => {
+	expect(new Set(GARAGE_RAMP_LANDINGS.map((landing) => landing.id)).size, 'duplicate ids hide a landing from diagnostics').toBe(
+		GARAGE_RAMP_LANDINGS.length,
+	);
+});
+
+describe.each(GARAGE_RAMP_LANDINGS.map((landing, index) => [landing.id, index] as const))('the landing %s', (id, index) => {
+	const landing = GARAGE_RAMP_LANDINGS[index];
 	const deck = landing ? deckBeside(landing) : null;
 
 	test('has a doorway in the parapet of the deck beside it', () => {

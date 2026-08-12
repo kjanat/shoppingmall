@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { levelAt } from '#/data/levels';
 import type { DriveableHandling } from '#/data/world';
-import { DRIVEABLE_HANDLING, ENTRANCE_RIDEABLE_MOTORCYCLES, RIDEABLE_MOTORCYCLE_SPOTS } from '#/data/world';
+import { DRIVEABLE_HANDLING, ENTRANCE_PORTAL, ENTRANCE_RIDEABLE_MOTORCYCLES, RIDEABLE_MOTORCYCLE_SPOTS } from '#/data/world';
 import { CollisionWorld } from '#/physics/Collision';
 import { GRAVITY } from '#/player/constants';
 import { clamp, half } from '#/util/math';
@@ -273,8 +273,15 @@ describe('the motorcycles on the red carpet', () => {
 		).toBeGreaterThanOrEqual(2);
 	});
 
-	describe.each(ENTRANCE_RIDEABLE_MOTORCYCLES.map((bike) => bike.name))('%s', (name) => {
-		const bike = ENTRANCE_RIDEABLE_MOTORCYCLES.find((candidate) => candidate.name === name);
+	test('their names are unique restoration ids', () => {
+		expect(
+			new Set(ENTRANCE_RIDEABLE_MOTORCYCLES.map((bike) => bike.name)).size,
+			'duplicate names restore the first motorcycle in the list',
+		).toBe(ENTRANCE_RIDEABLE_MOTORCYCLES.length);
+	});
+
+	describe.each(ENTRANCE_RIDEABLE_MOTORCYCLES.map((bike, index) => [bike.name, index] as const))('%s', (name, index) => {
+		const bike = ENTRANCE_RIDEABLE_MOTORCYCLES[index];
 		if (!bike) throw new Error(`no motorcycle ${name}`);
 		const city = new CollisionWorld();
 		const cars = new DriveableCars(city, new Barriers(city));
@@ -293,8 +300,18 @@ describe('the motorcycles on the red carpet', () => {
 			expect(boarded && cars.activeKind === 'motorcycle', `E gives ${cars.activeKind ?? 'nothing'}`).toBeTrue();
 		});
 
-		test('faces the doors, so W drives it out onto the street', () => {
+		test('faces the doors', () => {
 			expect(-Math.sin(cars.heading), 'with W it drives into the atrium instead of out of the doors').toBeLessThan(0);
+		});
+
+		test('W drives it through the doors onto the street', () => {
+			for (let frame = 0; frame < 5 / FRAME; frame++) cars.update(FRAME, { throttle: 1, steer: 0, boost: false });
+			const end = cars.ride;
+			expect(end, 'the motorcycle vanishes before reaching the street').toBeDefined();
+			expect(
+				end?.x ?? Number.POSITIVE_INFINITY,
+				`it stops at x ${nr(end?.x ?? 0)} inside the facade; the street begins past x ${nr(ENTRANCE_PORTAL.outerX)}`,
+			).toBeLessThan(ENTRANCE_PORTAL.outerX);
 		});
 	});
 });

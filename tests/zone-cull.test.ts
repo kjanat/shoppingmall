@@ -122,10 +122,18 @@ describe.each([...ZONES])('the zone box of %s', (zone) => {
 			entity.volumes
 				.map((volume) => ({ volume, bounds: geometryBounds(volume.geometry) }))
 				.filter(({ bounds }) => zoneMaskOfBounds(bounds) === zoneBit(zone))
-				.filter(({ bounds }) => bounds.minY < box.minY || bounds.maxY > box.maxY)
+				.filter(
+					({ bounds }) =>
+						bounds.minX < box.minX ||
+						bounds.maxX > box.maxX ||
+						bounds.minY < box.minY ||
+						bounds.maxY > box.maxY ||
+						bounds.minZ < box.minZ ||
+						bounds.maxZ > box.maxZ,
+				)
 				.map(
 					({ volume, bounds }) =>
-						`${entity.id}.${volume.id} runs from ${nr(bounds.minY)} to ${nr(bounds.maxY)}, outside the zone box (${nr(box.minY)} to ${nr(box.maxY)})`,
+						`${entity.id}.${volume.id} lies outside zone box x ${nr(box.minX)}..${nr(box.maxX)}, y ${nr(box.minY)}..${nr(box.maxY)}, z ${nr(box.minZ)}..${nr(box.maxZ)} with x ${nr(bounds.minX)}..${nr(bounds.maxX)}, y ${nr(bounds.minY)}..${nr(bounds.maxY)}, z ${nr(bounds.minZ)}..${nr(bounds.maxZ)}`,
 				),
 		);
 		expect(sticking, sticking.join('\n')).toBeEmpty();

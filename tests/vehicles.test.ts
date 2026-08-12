@@ -5,6 +5,7 @@ import {
 	connectorClimbModes,
 	DRIVEABLE_HANDLING,
 	ELEVATOR_CLIMB_MODES,
+	ELEVATOR_SPEC,
 	PARKING_EXIT_RAMP,
 	parkingExitRampY,
 	RIDEABLE_MOTORCYCLE_SPOTS,
@@ -331,6 +332,24 @@ describe('what the cart may climb', () => {
 		const climb = driveCart(new CollisionWorld(), { x: -30.5, y: bottom, z: PARKING_EXIT_RAMP.start.z, yaw: Math.PI / 2 }, 260);
 		expect(climb.maxY, `it sticks at y ${nr(climb.maxY)} and the top lies at ${nr(levelY('v0'))}`).toBeGreaterThanOrEqual(
 			levelY('v0') - CLIMB_SLACK,
+		);
+	});
+
+	test('it drives through the assembled lift entrance', () => {
+		const liftDeck = new CollisionWorld();
+		const lift = new GlassElevator(new LightPool(new THREE.Scene()));
+		for (const collider of lift.getColliders()) {
+			liftDeck.addBox(collider.minX, collider.maxX, collider.minZ, collider.maxZ, {
+				minY: collider.minY ?? -7.5,
+				maxY: collider.maxY ?? 16.5,
+				label: collider.label,
+				climbable: collider.climbable,
+			});
+		}
+		const mouthZ = ELEVATOR_SPEC.center.z + midpoint(0, ELEVATOR_SPEC.cabin.depth);
+		const entered = driveCart(liftDeck, { x: ELEVATOR_SPEC.center.x, y: levelY('v0'), z: mouthZ + 2, yaw: 0 }, 120);
+		expect(entered.end.z, `it stops at z ${nr(entered.end.z)} while the lift mouth is at ${nr(mouthZ)}`).toBeLessThanOrEqual(
+			mouthZ,
 		);
 	});
 });

@@ -163,9 +163,13 @@ describe.each(BARRIER_SPECS.map((spec) => spec.id))('%s', (id) => {
 	});
 
 	describe.each([...TRAFFIC_CLASSES])('against %s', (kind) => {
-		const admitted = barrierAdmits(spec, kind);
+		const admitted = spec.admits.includes(kind);
 		const reached = driveAtBoom(spec, kind);
 		const through = (reached - spec.post.x) * -spec.approachSide > 0;
+
+		test('the policy helper reads the permit written on the boom', () => {
+			expect(barrierAdmits(spec, kind), `barrierAdmits disagrees with ${spec.id}.admits for ${kind}`).toBe(admitted);
+		});
 
 		/**
 		 * A permit nobody can present is no permit. The same rule as a `penetration` that cuts

@@ -233,9 +233,12 @@ describe('the spot', () => {
  * belongs in LightPool alone.
  */
 const OWNER = 'src/render/LightPool.ts';
+const SPOT_OWNER = 'src/scene/Catwalk.ts';
 // Ook `new PointLight` na een named import telt: precies die vorm glipte eerder langs een letterlijke `new THREE.PointLight`-greep heen.
 const BUILDS = /\bnew\s+(?:\w+\s*\.\s*)?PointLight\b/g;
 const IMPORTS = /import\s*(?:type\s*)?\{[^}]*\bPointLight\b[^}]*\}\s*from\s*['"]three['"]/;
+const SPOT_BUILDS = /\bnew\s+(?:\w+\s*\.\s*)?SpotLight\b/g;
+const SPOT_IMPORTS = /import\s*(?:type\s*)?\{[^}]*\bSpotLight\b[^}]*\}\s*from\s*['"]three['"]/;
 
 async function sources(): Promise<{ path: string; text: string }[]> {
 	const src = resolve(import.meta.dir, '..', 'src');
@@ -265,5 +268,25 @@ describe('the source builds a point light nowhere else', () => {
 		const owner = SOURCES.find(({ path }) => path === OWNER);
 		expect(owner, `${OWNER} no longer exists`).toBeDefined();
 		expect(owner?.text.match(BUILDS)?.length ?? 0, 'was the pool renamed or rewritten?').toBeGreaterThan(0);
+	});
+});
+
+describe('the source builds the one spot nowhere else', () => {
+	test('only Catwalk builds one', () => {
+		const builders = SOURCES.filter(({ path, text }) => path !== SPOT_OWNER && (text.match(SPOT_BUILDS)?.length ?? 0) > 0).map(
+			({ path }) => path,
+		);
+		expect(builders, `${builders.join(' · ')} changes NUM_SPOT_LIGHTS`).toBeEmpty();
+	});
+
+	test('only Catwalk imports SpotLight from three', () => {
+		const importers = SOURCES.filter(({ path, text }) => path !== SPOT_OWNER && SPOT_IMPORTS.test(text)).map(({ path }) => path);
+		expect(importers, importers.join(' · ')).toBeEmpty();
+	});
+
+	test('Catwalk still builds exactly one', () => {
+		const owner = SOURCES.find(({ path }) => path === SPOT_OWNER);
+		expect(owner, `${SPOT_OWNER} no longer exists`).toBeDefined();
+		expect(owner?.text.match(SPOT_BUILDS)?.length ?? 0, 'the spot owner no longer builds exactly one').toBe(1);
 	});
 });

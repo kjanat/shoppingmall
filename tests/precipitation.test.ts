@@ -21,6 +21,17 @@ function nr(value: number): string {
 const COLUMNS = new CitySky().precipitationColumns();
 
 describe('nothing falls under a roof', () => {
+	test('there are precipitation columns to keep outdoors', () => {
+		expect(COLUMNS, 'CitySky produces no rain or snow, so the roof exclusion proves nothing').not.toBeEmpty();
+	});
+
+	test('some precipitation falls in uncovered city space', () => {
+		expect(
+			COLUMNS.some((column) => !coversColumn(column.x, column.z)),
+			'all precipitation vanished or every column is under a roof',
+		).toBeTrue();
+	});
+
 	test('no precipitation column sits under a building', () => {
 		const indoors = COLUMNS.filter((column) => coversColumn(column.x, column.z)).map(
 			(column) => `(${nr(column.x)}, ${nr(column.z)})`,

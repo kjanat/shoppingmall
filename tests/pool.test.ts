@@ -23,7 +23,8 @@ import { nr, world } from './helpers/world.ts';
 const ROOF = levelY('roof');
 
 stubDocument();
-const { PoolPeople, PARASOL_CANOPY_RADIUS, PARASOL_POSITION, RIM_CLEAR, CREW_CLEAR } = await import('#/scene/PoolPeople');
+const { PoolPeople, PARASOL_CANOPY_RADIUS, PARASOL_POSITION, RIM_CLEAR, RIM_SINK, SWIM_CLEAR, SWIM_CLEAR_RING, CREW_CLEAR } =
+	await import('#/scene/PoolPeople');
 const CAST = new PoolPeople().group.children;
 
 describe('the basin', () => {
@@ -35,7 +36,7 @@ describe('the basin', () => {
 		// waterSeat's target has to satisfy the largest clearance any seat asks for, or the
 		// helper has no valid point left to pull towards.
 		expect(rimDistance(POOL_CENTER.x, POOL_CENTER.z), 'the middle of the pool is tighter than a swimmer needs').toBeGreaterThan(
-			RIM_CLEAR,
+			SWIM_CLEAR_RING,
 		);
 	});
 
@@ -118,19 +119,33 @@ test('PoolPeople derives the waterline instead of holding its own', async () => 
 const BATHERS = CAST.filter((member) => member.position.y < POOL_WATER_Y - 0.75);
 
 describe('the bathers', () => {
+	const kinds = BATHERS.map((bather) => {
+		if (Math.abs(bather.position.y - (POOL_WATER_Y - 1.15)) < 1e-6) return { bather, kind: 'swimmer', clear: SWIM_CLEAR };
+		if (Math.abs(bather.position.y - (POOL_WATER_Y - 0.9)) < 1e-6)
+			return { bather, kind: 'ring swimmer', clear: SWIM_CLEAR_RING };
+		if (Math.abs(bather.position.y - (ROOF - RIM_SINK)) < 1e-6) return { bather, kind: 'rim sitter', clear: RIM_CLEAR };
+		return { bather, kind: 'unclassified bather', clear: Number.POSITIVE_INFINITY };
+	});
+
 	test('the cast still has its four swimmers and two rim sitters', () => {
 		expect(BATHERS.length, 'fewer bathers found than the cast has; are they in a subgroup now?').toBeGreaterThanOrEqual(6);
 	});
 
-	test.each(BATHERS.map((_, index) => index))('bather %d lies inside the waterline', (index) => {
-		const bather = BATHERS[index];
-		if (!bather) return;
+	test('every bather is classified by the pose that determines its clearance', () => {
+		const unknown = kinds.filter(({ kind }) => kind === 'unclassified bather');
+		expect(unknown, `${unknown.length} bathers no longer match a swimmer or rim-sitter pose`).toBeEmpty();
+	});
+
+	test.each(kinds.map((_, index) => index))('bather %d lies inside the waterline by its own body radius', (index) => {
+		const found = kinds[index];
+		if (!found) return;
+		const { bather, kind, clear } = found;
 		const { x, z } = bather.position;
-		expect(inPool(x, z), `the bather at (${nr(x)}, ${nr(z)}) lies outside the waterline, on the tiles`).toBeTrue();
+		expect(inPool(x, z), `the ${kind} at (${nr(x)}, ${nr(z)}) lies outside the waterline, on the tiles`).toBeTrue();
 		expect(
 			rimDistance(x, z),
-			`the bather at (${nr(x)}, ${nr(z)}) hangs half over the tiles with ${nr(rimDistance(x, z))} m to the rim`,
-		).toBeGreaterThanOrEqual(RIM_CLEAR);
+			`the ${kind} at (${nr(x)}, ${nr(z)}) has ${nr(rimDistance(x, z))} m to the rim and needs ${nr(clear)} m`,
+		).toBeGreaterThanOrEqual(clear);
 	});
 });
 

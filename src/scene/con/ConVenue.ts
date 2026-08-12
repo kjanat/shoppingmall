@@ -17,6 +17,7 @@ import {
 	CON_PLAZA,
 	CON_PORTAL,
 	CON_ROOF_T,
+	CON_ROOM_LABELS,
 	CON_STAGE,
 	CON_STUDIO,
 	CON_WALL_T,
@@ -304,15 +305,15 @@ export class ConVenue {
 			s.position.set(c.x, y, rect.minZ + 1.2);
 			this.group.add(s);
 		};
-		put(CON_DEALERS, 'DEALERS DEN', 4.5);
-		put(CON_STAGE, 'MAIN STAGE', 5.5);
-		put(CON_HOTEL, 'CON HOTEL', 4.2);
+		put(CON_DEALERS, CON_ROOM_LABELS.dealers, 4.5);
+		put(CON_STAGE, CON_ROOM_LABELS.stage, 5.5);
+		put(CON_HOTEL, CON_ROOM_LABELS.hotel, 4.2);
 		const dark = rectCenter(CON_DARKROOM);
-		const dSign = this.sign('DARKROOM 18+', 8, 0.9, 0xff3355);
+		const dSign = this.sign(CON_ROOM_LABELS.darkroom, 8, 0.9, 0xff3355);
 		dSign.position.set(dark.x, 2.6, CON_DARKROOM.minZ + 1.4);
 		this.group.add(dSign);
 		const stud = rectCenter(CON_STUDIO);
-		const sSign = this.sign('PORN STUDIO', 8, 0.9, 0xffcc44);
+		const sSign = this.sign(CON_ROOM_LABELS.studio, 8, 0.9, 0xffcc44);
 		sSign.position.set(stud.x, 2.6, CON_STUDIO.minZ + 1.4);
 		this.group.add(sSign);
 	}

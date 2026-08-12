@@ -1,11 +1,28 @@
 import { describe, expect, test } from 'bun:test';
+import {
+	CON_CENTER,
+	CON_DARKROOM,
+	CON_DEALERS,
+	CON_FLOOR_Y,
+	CON_HOTEL,
+	CON_LABEL,
+	CON_PLAZA,
+	CON_ROOM_LABELS,
+	CON_STAGE,
+	CON_STUDIO,
+} from '#/data/conPlan';
 import { LEVELS, levelAt, levelY } from '#/data/levels';
-import { geometryBounds } from '#/data/spatial';
+import { POOL_CENTER, poolFloorY } from '#/data/pool';
+import { geometryBounds, pointInPlan } from '#/data/spatial';
 import { HELIPAD_PAD_SPEC, THEATRE_FLOOR_Y, THEATRE_PLAN, THEATRE_PORTAL, WORLD_ENTITIES } from '#/data/world';
+import { deckAt } from '#/data/zones';
+import { PARK_LAWN } from '#/scene/city/CityPark';
+import { CITY_GROUND_Y, COLOSSEUM_PLAN, FAVELA_PLAN, GARAGE_DECKS, LANE_X, RIO_MOUNTAIN } from '#/scene/city/cityPlan';
 import type { MapFeature } from '#/ui/KioskOverlay';
 import { featuresOn, minimapLabelPlan } from '#/ui/KioskOverlay';
 import { midpoint } from '#/util/math';
 import { profilePoint } from '$/scripts/perf/routes.ts';
+import { read } from './helpers/source-scan.ts';
 import { stubTextMeasure } from './helpers/stub-dom.ts';
 import { nr } from './helpers/world.ts';
 
@@ -20,8 +37,6 @@ import { nr } from './helpers/world.ts';
  */
 
 const metric = stubTextMeasure();
-/** Half the minimap, in metres, at its default zoom: beyond this a feature is off the edge. */
-const MINIMAP_REACH = 50;
 /** How far over a deck the plan takes its section, out of `PLAN_CUT_HEIGHT`. */
 const CUT_HEIGHT = 1.2;
 
@@ -36,6 +51,18 @@ function named(features: readonly MapFeature[]): string[] {
 /** A feature carries its label on one line; the entity writes it with the break the map draws. */
 function labelOf(entity: (typeof WORLD_ENTITIES)[number]): string {
 	return (entity.map.label ?? '').split('\n').join(' ');
+}
+
+function labelsOnDeck(x: number, z: number, level: (typeof LEVELS)[number]['id'], yaw = 0): string[] {
+	return minimapLabelPlan(metric, { x, z, yaw, level }).plan.map((planned) => planned.text);
+}
+
+function center(rect: Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>): { x: number; z: number } {
+	return { x: midpoint(rect.minX, rect.maxX), z: midpoint(rect.minZ, rect.maxZ) };
+}
+
+function localLabels(x: number, z: number, y: number, yaw = 0): string[] {
+	return labelsOnDeck(x, z, deckAt(x, y, z), yaw);
 }
 
 describe('the minimap', () => {
@@ -100,6 +127,29 @@ describe('the minimap', () => {
 			const here = labelsAt(HELIPAD_PAD_SPEC.center.x, HELIPAD_PAD_SPEC.center.z, levelY('roof'));
 			expect(here, 'it names nothing while you stand on the pad').not.toBeEmpty();
 		});
+
+		test('the app asks the basin-aware deck reader which minimap to show', async () => {
+			const source = await read('src/app/App.ts');
+			expect(
+				/updateMap\s*\(\s*\{[\s\S]*?level:\s*deckAt\s*\(/.test(source),
+				'App sends levelAt(camera.y), so a low swimmer receives the V1 minimap',
+			).toBeTrue();
+		});
+
+		test('a swimmer in the deep basin gets the roof deck', () => {
+			const samples: { x: number; z: number; floor: number }[] = [];
+			for (let x = POOL_CENTER.x - 8; x <= POOL_CENTER.x + 8; x += 0.5) {
+				for (let z = POOL_CENTER.z - 5; z <= POOL_CENTER.z + 5; z += 0.5) {
+					const floor = poolFloorY(x, z);
+					if (floor !== null) samples.push({ x, z, floor });
+				}
+			}
+			const deepest = samples.toSorted((a, b) => a.floor - b.floor)[0];
+			expect(deepest, 'the basin sweep found no pool bottom').toBeDefined();
+			if (!deepest) return;
+			expect(deckAt(deepest.x, deepest.floor, deepest.z), 'the pool bottom belongs to another deck').toBe('roof');
+			expect(levelAt(deepest.floor), 'the sample does not exercise the height-only map bug').not.toBe('roof');
+		});
 	});
 
 	/**
@@ -149,21 +199,104 @@ describe('the minimap', () => {
 	 */
 	describe.each(['v0-entrance-street', 'park-buiten-mall'])('while standing outdoors at %s', (name) => {
 		const { pose } = profilePoint(name);
-		const level = levelAt(pose.y);
-
-		test('has a mapped place inside its own radius', () => {
-			const nearest =
-				featuresOn(level, 'world')
-					.map((feature) => Math.hypot(feature.anchor.x - pose.x, feature.anchor.z - pose.z))
-					.toSorted((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
-			expect(nearest, `the nearest mapped thing is ${nr(nearest)} m away, so there is nothing to draw`).toBeLessThanOrEqual(
-				MINIMAP_REACH,
-			);
-		});
 
 		test('prints at least one place name', () => {
 			expect(labelsAt(pose.x, pose.z, pose.y), 'it names nothing here').not.toBeEmpty();
 		});
+	});
+});
+
+describe('the minimap shows the place the player is actually in', () => {
+	const places = [
+		{
+			name: 'Mega Colosseum arena',
+			point: { x: COLOSSEUM_PLAN.x, z: COLOSSEUM_PLAN.z },
+			y: CITY_GROUND_Y,
+			label: COLOSSEUM_PLAN.label,
+		},
+		{
+			name: 'Montanha de Janeiro',
+			point: { x: RIO_MOUNTAIN.x, z: RIO_MOUNTAIN.z },
+			y: RIO_MOUNTAIN.rockH,
+			label: RIO_MOUNTAIN.label,
+		},
+		{
+			name: 'Vila do Monte',
+			point: center(FAVELA_PLAN),
+			y: midpoint(FAVELA_PLAN.yLow, FAVELA_PLAN.yHigh),
+			label: FAVELA_PLAN.label,
+		},
+	] as const;
+
+	test.each([...places])('$name is named at its own centre', ({ point, y, label }) => {
+		const printed = localLabels(point.x, point.z, y);
+		expect(printed, `the local minimap names ${printed.length === 0 ? 'nothing' : printed.join(', ')}`).toContain(label);
+	});
+
+	const conRooms = [
+		{ name: 'dealers den', bounds: CON_DEALERS, label: CON_ROOM_LABELS.dealers },
+		{ name: 'main stage', bounds: CON_STAGE, label: CON_ROOM_LABELS.stage },
+		{ name: 'con hotel', bounds: CON_HOTEL, label: CON_ROOM_LABELS.hotel },
+		{ name: 'darkroom', bounds: CON_DARKROOM, label: CON_ROOM_LABELS.darkroom },
+		{ name: 'studio', bounds: CON_STUDIO, label: CON_ROOM_LABELS.studio },
+	] as const;
+
+	test('the Fur Con itself is named at its centre', () => {
+		expect(localLabels(CON_CENTER.x, CON_CENTER.z, CON_FLOOR_Y)).toContain(CON_LABEL);
+	});
+
+	test('the Fur Con is named from its outdoor entrance plaza', () => {
+		const point = center(CON_PLAZA);
+		expect(localLabels(point.x, point.z, CON_FLOOR_Y), 'the approach to the venue has no local map').toContain(CON_LABEL);
+	});
+
+	test.each([...conRooms])('the $name is named inside Fur Con', ({ bounds, label }) => {
+		const point = center(bounds);
+		const printed = localLabels(point.x, point.z, CON_FLOOR_Y);
+		expect(printed, `the local minimap names ${printed.length === 0 ? 'nothing' : printed.join(', ')}`).toContain(label);
+	});
+
+	test('the city park has map geometry under the player', () => {
+		const point = center(PARK_LAWN);
+		const covering = featuresOn('v0', 'world').filter((feature) =>
+			feature.shapes.some((shape) => pointInPlan(shape, point.x, point.z)),
+		);
+		expect(covering, 'the park is scenery outside the minimap model').not.toBeEmpty();
+	});
+
+	test('the ring road has map geometry under the player', () => {
+		const covering = featuresOn('v0', 'world').filter((feature) => feature.shapes.some((shape) => pointInPlan(shape, LANE_X, 0)));
+		expect(covering, 'the outdoor minimap omits the road the player is standing on').not.toBeEmpty();
+	});
+
+	test.each(GARAGE_DECKS.map((_deck, index) => [`deck ${index + 1}`, index] as const))(
+		'the city garage has a local map on %s',
+		(_name, index) => {
+			const deck = GARAGE_DECKS[index];
+			expect(deck, `garage deck ${index + 1} is missing`).toBeDefined();
+			if (!deck) return;
+			const point = center(deck);
+			expect(localLabels(point.x, point.z, deck.y), 'the garage deck minimap names nothing').not.toBeEmpty();
+		},
+	);
+
+	test('the roof pool names the venue regardless of player heading', () => {
+		const pool = WORLD_ENTITIES.find((entity) => entity.id === 'roof-terrace');
+		const label = pool ? labelOf(pool) : '';
+		expect(label, 'the roof pool has no authored map label').not.toBe('');
+		const missing = [0, Math.PI / 2, Math.PI, -Math.PI / 2].filter(
+			(yaw) => !labelsOnDeck(POOL_CENTER.x, POOL_CENTER.z, 'roof', yaw).includes(label),
+		);
+		expect(missing, `the pool name disappears at headings ${missing.map(nr).join(', ')}`).toBeEmpty();
+	});
+});
+
+describe('the minimap preserves holes in the deck it draws', () => {
+	test('V1 shows the atrium as an opening rather than solid floor', () => {
+		const openings = featuresOn('v1', 'world').filter(
+			(feature) => feature.layer === 'opening' && feature.shapes.some((shape) => pointInPlan(shape, 0, 0)),
+		);
+		expect(openings, 'the V1 map paints solid structure across the atrium void').not.toBeEmpty();
 	});
 });
 
