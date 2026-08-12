@@ -7,17 +7,16 @@ import { LIGHT_POOL_SLOTS, type LightPool } from '#/render/LightPool';
 import { stubAudio, stubDocument } from './helpers/stub-dom.ts';
 
 /**
- * Het aantal echte puntlichten in de mall ligt vast.
+ * The number of real point lights in the mall is fixed.
  *
- * three.js plakt `NUM_POINT_LIGHTS` in elke shader en dat getal zit in de
- * programmacachesleutel. Zolang features hun eigen `THREE.PointLight` bouwden en
- * groepen aan- en uitzetten (disco, alienprobe) relinkte de mall middenin een frame
- * al zijn materialen, en linkte een koude start 105 programma's. Sinds `LightPool`
- * ligt het aantal vast voor de hele sessie en huren de ~85 virtuele lampen daar om
- * de beurt een slot.
+ * three.js pastes `NUM_POINT_LIGHTS` into every shader and that number is part of the
+ * program cache key. While features built their own `THREE.PointLight` and switched
+ * groups on and off (disco, alien probe) the mall relinked all its materials mid frame,
+ * and a cold start linked 105 programs. Since `LightPool` the count is fixed for the
+ * whole session and the ~85 virtual lights take turns renting a slot.
  *
- * Geen browser nodig: alle lichtbezittende bouwers draaien kaal met de canvas- en
- * audiostub uit stub-dom.
+ * No browser needed: every light-owning builder runs bare with the canvas and audio
+ * stubs from stub-dom.
  */
 
 stubDocument();
@@ -74,8 +73,8 @@ const [
 	import('#/render/LightPool'),
 ]);
 
-/** Elk echt puntlicht dat op dit moment in de scenegraaf hangt. */
-function puntlichten(scene: Scene): PointLight[] {
+/** Every real point light currently hanging in the scene graph. */
+function pointLights(scene: Scene): PointLight[] {
 	const gevonden: PointLight[] = [];
 	scene.traverse((o) => {
 		if (o instanceof PointLightClass) gevonden.push(o);
@@ -134,135 +133,137 @@ beforeAll(() => {
 	}
 });
 
-describe('het aantal echte puntlichten ligt vast', () => {
-	test(`de scene houdt er precies ${LIGHT_POOL_SLOTS}`, () => {
-		expect(puntlichten(scene), 'bouwt een feature er weer zelf een?').toHaveLength(LIGHT_POOL_SLOTS);
+describe('the number of real point lights is fixed', () => {
+	test(`the scene holds exactly ${LIGHT_POOL_SLOTS}`, () => {
+		expect(pointLights(scene), 'is a feature building one of its own again?').toHaveLength(LIGHT_POOL_SLOTS);
 	});
 
-	// De pool hangt zijn lampen recht onder de scene; alles wat een feature zou bouwen zit in de groep van die feature.
-	test('ze hangen allemaal in de pool en niet in een feature', () => {
-		const elders = puntlichten(scene)
+	// The pool hangs its lights straight under the scene; anything a feature builds sits
+	// inside that feature's group.
+	test('they all hang in the pool and not in a feature', () => {
+		const elsewhere = pointLights(scene)
 			.filter((lamp) => lamp.parent !== scene)
-			.map((lamp) => `${lamp.name || '(naamloos)'} onder ${lamp.parent?.name || 'iets'}`);
-		expect(elders, elders.join(' · ')).toBeEmpty();
+			.map((lamp) => `${lamp.name || '(unnamed)'} under ${lamp.parent?.name || 'something'}`);
+		expect(elsewhere, elsewhere.join(' · ')).toBeEmpty();
 	});
 
-	// Een onzichtbaar licht telt de renderer niet mee: dan verandert NUM_POINT_LIGHTS alsnog en relinkt de hele mall.
-	test('geen enkele poollamp staat op visible=false', () => {
-		const onzichtbaar = puntlichten(scene)
+	// The renderer does not count an invisible light, so hiding one changes
+	// NUM_POINT_LIGHTS after all and relinks the whole mall.
+	test('no pool light sits at visible=false', () => {
+		const invisible = pointLights(scene)
 			.filter((lamp) => !lamp.visible)
 			.map((lamp) => lamp.name);
-		expect(onzichtbaar, onzichtbaar.join(' · ')).toBeEmpty();
+		expect(invisible, invisible.join(' · ')).toBeEmpty();
 	});
 
-	test('geen enkele poollamp werpt schaduw', () => {
-		const werpen = puntlichten(scene)
+	test('no pool light casts a shadow', () => {
+		const casting = pointLights(scene)
 			.filter((lamp) => lamp.castShadow)
 			.map((lamp) => lamp.name);
-		expect(werpen, `${werpen.join(' · ')} — dat is een cubemap-pass per frame`).toBeEmpty();
+		expect(casting, `${casting.join(' · ')} — that is a cubemap pass per frame`).toBeEmpty();
 	});
 });
 
 /**
- * De twee features die het aantal vroeger wél veranderden. De disco zette dertien
- * lampen aan en dimde de rest via scene.traverse; de probe liet er één verschijnen op
- * een timer van 40-90 s. Allebei mogen ze nu alleen nog handles animeren.
+ * The two features that used to change the count. The disco switched thirteen lights on
+ * and dimmed the rest through scene.traverse; the probe made one appear on a 40-90 s
+ * timer. Both may only animate handles now.
  */
-describe('schakelen verandert het aantal niet', () => {
-	const standen: { naam: string; zet: () => void }[] = [
-		{ naam: 'in rust', zet: () => {} },
-		{ naam: 'disco aan', zet: () => disco.setActive(true) },
+describe('switching does not change the count', () => {
+	const states: { name: string; set: () => void }[] = [
+		{ name: 'at rest', set: () => {} },
+		{ name: 'disco on', set: () => disco.setActive(true) },
 		{
-			naam: 'disco aan + probe zichtbaar',
-			zet: () => {
+			name: 'disco on + probe visible',
+			set: () => {
 				disco.setActive(true);
 				probe.group.visible = true;
 			},
 		},
 		{
-			naam: 'disco uit',
-			zet: () => {
+			name: 'disco off',
+			set: () => {
 				disco.setActive(false);
 				probe.group.visible = true;
 			},
 		},
 		{
-			naam: 'probe weg',
-			zet: () => {
+			name: 'probe gone',
+			set: () => {
 				disco.setActive(false);
 				probe.group.visible = false;
 			},
 		},
 	];
 
-	test.each(standen)('$naam', (stand) => {
-		stand.zet();
+	test.each(states)('$name', (state) => {
+		state.set();
 		pool.update(new PerspectiveCamera());
-		expect(puntlichten(scene)).toHaveLength(LIGHT_POOL_SLOTS);
+		expect(pointLights(scene)).toHaveLength(LIGHT_POOL_SLOTS);
 	});
 });
 
 /**
- * `NUM_SPOT_LIGHTS` zit net als het puntlichtaantal in de programmacachesleutel. De
- * hoogte-eis komt van de modeshow: de spot hing op 7.4, boven het V1-vloervlak, en
- * omdat hij geen schaduw werpt tekende zijn kegel een lichtvlek óp de vloer van de
- * verdieping erboven. Een binnenlamp met 26 m worp haalt ergens altijd dat dek.
+ * `NUM_SPOT_LIGHTS` sits in the program cache key just like the point light count. The
+ * height requirement comes from the fashion show: the spot hung at 7.4, above the V1
+ * floor plane, and because it casts no shadow its cone painted a bright pool on the deck
+ * upstairs. An indoor lamp with 26 m of throw reaches that deck somewhere.
  */
-describe('de spot', () => {
-	test('er is er precies één', () => {
-		expect(spots(scene), 'meer dan één verandert NUM_SPOT_LIGHTS en relinkt de mall').toHaveLength(1);
+describe('the spot', () => {
+	test('there is exactly one', () => {
+		expect(spots(scene), 'more than one changes NUM_SPOT_LIGHTS and relinks the mall').toHaveLength(1);
 	});
 
-	test('hij hangt onder de onderkant van het V1-dek', () => {
+	test('it hangs below the underside of the V1 slab', () => {
 		const spot = spots(scene)[0];
 		expect(spot).toBeDefined();
 		if (!spot) return;
 		scene.updateMatrixWorld(true);
-		const onderkantV1 = MALL_SLAB_SPECS.v1.topY - MALL_SLAB_SPECS.v1.thickness;
+		const undersideV1 = MALL_SLAB_SPECS.v1.topY - MALL_SLAB_SPECS.v1.thickness;
 		expect(
 			spot.getWorldPosition(new Vector3()).y,
-			`zonder schaduwen licht hij anders de vloer van de verdieping erboven aan (dek op ${onderkantV1})`,
-		).toBeLessThan(onderkantV1);
+			`without shadows it lights the floor of the deck above (slab at ${undersideV1})`,
+		).toBeLessThan(undersideV1);
 	});
 });
 
 /**
- * De tellingen hierboven zien alleen wat deze tests toevallig bouwen. Een nieuwe
- * feature met een eigen lamp zou er niet in zitten, dus wordt hier de bron gelezen:
- * `new THREE.PointLight` hoort alleen in LightPool te staan.
+ * The counts above only see what these tests happen to build. A new feature with a light
+ * of its own would not be in there, so the source itself is read: `new THREE.PointLight`
+ * belongs in LightPool alone.
  */
-const EIGENAAR = 'src/render/LightPool.ts';
+const OWNER = 'src/render/LightPool.ts';
 // Ook `new PointLight` na een named import telt: precies die vorm glipte eerder langs een letterlijke `new THREE.PointLight`-greep heen.
-const BOUWT = /\bnew\s+(?:\w+\s*\.\s*)?PointLight\b/g;
-const IMPORTEERT = /import\s*(?:type\s*)?\{[^}]*\bPointLight\b[^}]*\}\s*from\s*['"]three['"]/;
+const BUILDS = /\bnew\s+(?:\w+\s*\.\s*)?PointLight\b/g;
+const IMPORTS = /import\s*(?:type\s*)?\{[^}]*\bPointLight\b[^}]*\}\s*from\s*['"]three['"]/;
 
-async function bronnen(): Promise<{ pad: string; tekst: string }[]> {
+async function sources(): Promise<{ path: string; text: string }[]> {
 	const src = resolve(import.meta.dir, '..', 'src');
-	const uit: { pad: string; tekst: string }[] = [];
-	for await (const naam of new Bun.Glob('**/*.ts').scan({ cwd: src })) {
-		uit.push({ pad: `src/${naam}`, tekst: await Bun.file(join(src, naam)).text() });
+	const out: { path: string; text: string }[] = [];
+	for await (const name of new Bun.Glob('**/*.ts').scan({ cwd: src })) {
+		out.push({ path: `src/${name}`, text: await Bun.file(join(src, name)).text() });
 	}
-	return uit;
+	return out;
 }
 
-const BRONNEN = await bronnen();
+const SOURCES = await sources();
 
-describe('de bron bouwt nergens anders een puntlicht', () => {
-	test('alleen de pool bouwt er een', () => {
-		const bouwers = BRONNEN.filter(({ pad, tekst }) => pad !== EIGENAAR && (tekst.match(BOUWT)?.length ?? 0) > 0).map(
-			({ pad }) => pad,
+describe('the source builds a point light nowhere else', () => {
+	test('only the pool builds one', () => {
+		const builders = SOURCES.filter(({ path, text }) => path !== OWNER && (text.match(BUILDS)?.length ?? 0) > 0).map(
+			({ path }) => path,
 		);
-		expect(bouwers, `${bouwers.join(' · ')} — registreer hem bij de LightPool`).toBeEmpty();
+		expect(builders, `${builders.join(' · ')} — register it with the LightPool`).toBeEmpty();
 	});
 
-	test('alleen de pool importeert PointLight uit three', () => {
-		const importeurs = BRONNEN.filter(({ pad, tekst }) => pad !== EIGENAAR && IMPORTEERT.test(tekst)).map(({ pad }) => pad);
-		expect(importeurs, importeurs.join(' · ')).toBeEmpty();
+	test('only the pool imports PointLight from three', () => {
+		const importers = SOURCES.filter(({ path, text }) => path !== OWNER && IMPORTS.test(text)).map(({ path }) => path);
+		expect(importers, importers.join(' · ')).toBeEmpty();
 	});
 
-	test('de pool bouwt er zelf nog wel een', () => {
-		const eigenaar = BRONNEN.find(({ pad }) => pad === EIGENAAR);
-		expect(eigenaar, `${EIGENAAR} bestaat niet meer`).toBeDefined();
-		expect(eigenaar?.tekst.match(BOUWT)?.length ?? 0, 'is de pool hernoemd of herschreven?').toBeGreaterThan(0);
+	test('the pool still builds one itself', () => {
+		const owner = SOURCES.find(({ path }) => path === OWNER);
+		expect(owner, `${OWNER} no longer exists`).toBeDefined();
+		expect(owner?.text.match(BUILDS)?.length ?? 0, 'was the pool renamed or rewritten?').toBeGreaterThan(0);
 	});
 });

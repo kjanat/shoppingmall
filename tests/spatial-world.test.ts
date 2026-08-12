@@ -428,7 +428,7 @@ describe('authoritative spatial world', () => {
 				},
 			]);
 
-		// Vloerrand west op x −10, noord op z −10: rug én zijkant raken de gevels.
+		// Floor edge west at x −10, north at z −10: back and side both touch the shell.
 		assert.deepEqual(validateSpatialWorld([floor, north, west, cornerRoom(-7, -8)]), []);
 
 		// Een halve meter naar het oosten: de rug blijft staan, de zijkant laat los.

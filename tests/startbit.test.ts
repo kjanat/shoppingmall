@@ -2,32 +2,48 @@ import { describe, expect, test } from 'bun:test';
 import { join, resolve } from 'node:path';
 
 /**
- * A shebang promises the file can be started on its own; without the x bit that is a lie.
+ * A shebang and the execute bit are one promise, and it has two halves.
  *
- * `./scripts/thing.ts` then answers "permission denied" and the shebang is decoration.
- * Git stores the bit, so it travels to a fresh clone as well.
+ * Without the bit, `./scripts/thing.ts` answers "permission denied" and the shebang is
+ * decoration. Without the shebang, the bit hands the file to whatever the shell feels
+ * like. Git stores the bit, so both halves travel to a fresh clone.
  */
 
 const ROOT = resolve(import.meta.dir, '..');
 const DIRS = ['scripts', 'src', 'server', 'tests'];
 
-/** The files that claim you can start them; that claim is what this tests. */
-async function withShebang(): Promise<string[]> {
-	const out: string[] = [];
+type SourceFile = { path: string; shebang: boolean; executable: boolean };
+
+async function sourceFiles(): Promise<SourceFile[]> {
+	const out: SourceFile[] = [];
 	for (const dir of DIRS) {
 		for await (const name of new Bun.Glob('**/*.ts').scan({ cwd: join(ROOT, dir) })) {
 			const path = join(dir, name);
-			if ((await Bun.file(join(ROOT, path)).text()).startsWith('#!')) out.push(path);
+			const file = Bun.file(join(ROOT, path));
+			out.push({
+				path,
+				shebang: (await file.text()).startsWith('#!'),
+				executable: ((await file.stat()).mode & 0o111) !== 0,
+			});
 		}
 	}
-	return out.sort();
+	return out.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-const SHEBANGS = await withShebang();
+const FILES = await sourceFiles();
+const WITH_SHEBANG = FILES.filter((file) => file.shebang).map((file) => file.path);
+const EXECUTABLE = FILES.filter((file) => file.executable).map((file) => file.path);
 
 describe('a shebang promises you can start the file', () => {
-	test.each(SHEBANGS)('%s', async (path) => {
-		const mode = (await Bun.file(join(ROOT, path)).stat()).mode;
-		expect(mode & 0o111, `${path} has no execute bit: chmod +x ${path}`).toBeGreaterThan(0);
+	test.each(WITH_SHEBANG)('%s', (path) => {
+		const file = FILES.find((candidate) => candidate.path === path);
+		expect(file?.executable, `${path} has no execute bit: chmod +x ${path}`).toBeTrue();
+	});
+});
+
+describe('an executable file says how to start it', () => {
+	test.each(EXECUTABLE)('%s', (path) => {
+		const file = FILES.find((candidate) => candidate.path === path);
+		expect(file?.shebang, `${path} is executable but carries no shebang, so the shell picks the interpreter`).toBeTrue();
 	});
 });
