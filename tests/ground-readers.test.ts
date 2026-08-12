@@ -55,187 +55,189 @@ function sampleDeck(): { pool: Sample[]; hole: Sample[]; disagreeing: Sample[] }
 
 const SAMPLES = sampleDeck();
 
-describe('the player floor and the sim floor agree', () => {
-	test('the sweep hits the pool basin', () => {
-		expect(SAMPLES.pool, 'no pool point sampled at roof height, so basin consistency is never touched').not.toBeEmpty();
+describe('the two floor readers', () => {
+	describe('at one eye height on the roof', () => {
+		test('the sweep hits the pool basin', () => {
+			expect(SAMPLES.pool, 'no pool point sampled at roof height, so basin consistency is never touched').not.toBeEmpty();
+		});
+
+		test('the sweep hits a roof-reaching opening', () => {
+			expect(SAMPLES.hole, 'no roof-reaching hole sampled, so opening consistency is never touched').not.toBeEmpty();
+		});
+
+		test('groundHeightAt and snapFloorY answer the same everywhere', () => {
+			const first = SAMPLES.disagreeing[0];
+			const message = first
+				? `(${nr(first.x)}, ${nr(first.z)}): groundHeightAt=${nr(first.ground)} but snapFloorY=${nr(first.sim)}`
+				: '';
+			expect(SAMPLES.disagreeing, message).toBeEmpty();
+		});
 	});
 
-	test('the sweep hits a roof-reaching opening', () => {
-		expect(SAMPLES.hole, 'no roof-reaching hole sampled, so opening consistency is never touched').not.toBeEmpty();
-	});
+	/**
+	 * Everything below is the same question the describe above asks, put where that sweep cannot
+	 * look. It stands at one eye height on the roof and skips every column whose floor sits above
+	 * the deck, so a platform and a hole one storey down are both outside it.
+	 */
 
-	test('groundHeightAt and snapFloorY answer the same everywhere', () => {
-		const first = SAMPLES.disagreeing[0];
-		const message = first
-			? `(${nr(first.x)}, ${nr(first.z)}): groundHeightAt=${nr(first.ground)} but snapFloorY=${nr(first.sim)}`
-			: '';
-		expect(SAMPLES.disagreeing, message).toBeEmpty();
-	});
-});
+	/**
+	 * The same comparison from every deck a body can stand on, with nothing skipped. Failures are
+	 * grouped by the pair of answers rather than listed per column, because one cause covers
+	 * hundreds of columns and a list of coordinates hides that.
+	 */
+	type Disagreement = { columns: number; sample: string };
 
-/**
- * Everything below is the same question the describe above asks, put where that sweep cannot
- * look. It stands at one eye height on the roof and skips every column whose floor sits above
- * the deck, so a platform and a hole one storey down are both outside it.
- */
-
-/**
- * The same comparison from every deck a body can stand on, with nothing skipped. Failures are
- * grouped by the pair of answers rather than listed per column, because one cause covers
- * hundreds of columns and a list of coordinates hides that.
- */
-type Disagreement = { columns: number; sample: string };
-
-/**
- * What the player is standing on there, so a failing row says which surface to go and look at.
- * A surface only counts when it sits at the height the player was given: in plan a roof pad
- * covers most of the building, and it would be named at every storey.
- */
-function surfaceUnder(x: number, z: number, eye: number, floor: number): string {
-	const platform = world.platforms.find(
-		(candidate) => world.platformCovers(candidate, x, z) && Math.abs(candidate.y - floor) <= EPS,
-	);
-	if (platform) return `the ${platform.label} platform`;
-	const ramp = world.ramps.find(
-		(candidate) =>
-			x >= candidate.minX &&
-			x <= candidate.maxX &&
-			z >= Math.min(candidate.zBottom, candidate.zTop) &&
-			z <= Math.max(candidate.zBottom, candidate.zTop) &&
-			floor >= Math.min(candidate.yBottom, candidate.yTop) - EPS &&
-			floor <= Math.max(candidate.yBottom, candidate.yTop) + EPS,
-	);
-	if (ramp) return `the ${ramp.label} flight`;
-	const pad = world.roofPads.find(
-		(candidate) =>
-			!candidate.disabled &&
-			x >= candidate.minX &&
-			x <= candidate.maxX &&
-			z >= candidate.minZ &&
-			z <= candidate.maxZ &&
-			Math.abs(candidate.y - floor) <= EPS,
-	);
-	if (pad) return `the ${pad.label ?? 'roof'} pad`;
-	// The path ramps (the parking exit, the garage spiral) are the one surface `snapFloorY`
-	// reads before anything else, and it accepts one within a whole metre of the query.
-	const run = world.pathRamps.find((candidate) => {
-		const halfWidth = half(candidate.width);
-		return (
-			x >= Math.min(candidate.start.x, candidate.end.x) - halfWidth &&
-			x <= Math.max(candidate.start.x, candidate.end.x) + halfWidth &&
-			z >= Math.min(candidate.start.z, candidate.end.z) - halfWidth &&
-			z <= Math.max(candidate.start.z, candidate.end.z) + halfWidth
+	/**
+	 * What the player is standing on there, so a failing row says which surface to go and look at.
+	 * A surface only counts when it sits at the height the player was given: in plan a roof pad
+	 * covers most of the building, and it would be named at every storey.
+	 */
+	function surfaceUnder(x: number, z: number, eye: number, floor: number): string {
+		const platform = world.platforms.find(
+			(candidate) => world.platformCovers(candidate, x, z) && Math.abs(candidate.y - floor) <= EPS,
 		);
-	});
-	if (run) return `the ground under the ${run.label} ramp run`;
-	return world.onRamp(x, z, eye) ? 'a ramp band with no ramp under it' : 'the slab';
-}
-
-function disagreementsFrom(deck: number): Map<string, Disagreement> {
-	const halfWidth = half(MALL_FOOTPRINT.width);
-	const halfDepth = half(MALL_FOOTPRINT.depth);
-	const found = new Map<string, Disagreement>();
-	for (let x = -halfWidth; x <= halfWidth; x += 1) {
-		for (let z = -halfDepth; z <= halfDepth; z += 1) {
-			const eye = deck + 0.05;
-			const ground = world.groundHeightAt(x, z, eye, WALK_STEP);
-			const sim = world.snapFloorY(x, z, eye);
-			if (Math.abs(ground - sim) <= EPS) continue;
-			const key = `the player gets ${nr(ground)} on ${surfaceUnder(x, z, eye, ground)} and a sim ${nr(sim)}`;
-			const seen = found.get(key);
-			if (seen) seen.columns++;
-			else found.set(key, { columns: 1, sample: `(${nr(x)}, ${nr(z)})` });
-		}
-	}
-	return found;
-}
-
-describe.each(LEVELS.map((level) => level.id))('standing on %s', (id) => {
-	const found = disagreementsFrom(levelY(id));
-
-	test('the two floor readers answer the same over the whole deck', () => {
-		const complaints = [...found].map(([answers, where]) => `${where.columns} columns where ${answers}, e.g. ${where.sample}`);
-		expect(complaints, complaints.join('\n')).toBeEmpty();
-	});
-});
-
-/**
- * The same question outdoors, where the deck sweep above never goes. It walks the mall
- * footprint, and the city has its own surfaces under both readers: the garage decks and their
- * spiral, the theatre podium and its stair, the plaza. Sims drive and walk out there.
- */
-describe('outside the building', () => {
-	const found = new Map<string, Disagreement>();
-	for (let x = CITY_BOUNDS.minX; x <= CITY_BOUNDS.maxX; x += 2) {
-		for (let z = CITY_BOUNDS.minZ; z <= CITY_BOUNDS.maxZ; z += 2) {
-			if (world.insideMallPlan(x, z)) continue;
-			const eye = CITY_GROUND_Y + 0.05;
-			const ground = world.groundHeightAt(x, z, eye, WALK_STEP);
-			const sim = world.snapFloorY(x, z, eye);
-			if (Math.abs(ground - sim) <= EPS) continue;
-			const key = `the player gets ${nr(ground)} on ${surfaceUnder(x, z, eye, ground)} and a sim ${nr(sim)}`;
-			const seen = found.get(key);
-			if (seen) seen.columns++;
-			else found.set(key, { columns: 1, sample: `(${nr(x)}, ${nr(z)})` });
-		}
+		if (platform) return `the ${platform.label} platform`;
+		const ramp = world.ramps.find(
+			(candidate) =>
+				x >= candidate.minX &&
+				x <= candidate.maxX &&
+				z >= Math.min(candidate.zBottom, candidate.zTop) &&
+				z <= Math.max(candidate.zBottom, candidate.zTop) &&
+				floor >= Math.min(candidate.yBottom, candidate.yTop) - EPS &&
+				floor <= Math.max(candidate.yBottom, candidate.yTop) + EPS,
+		);
+		if (ramp) return `the ${ramp.label} flight`;
+		const pad = world.roofPads.find(
+			(candidate) =>
+				!candidate.disabled &&
+				x >= candidate.minX &&
+				x <= candidate.maxX &&
+				z >= candidate.minZ &&
+				z <= candidate.maxZ &&
+				Math.abs(candidate.y - floor) <= EPS,
+		);
+		if (pad) return `the ${pad.label ?? 'roof'} pad`;
+		// The path ramps (the parking exit, the garage spiral) are the one surface `snapFloorY`
+		// reads before anything else, and it accepts one within a whole metre of the query.
+		const run = world.pathRamps.find((candidate) => {
+			const halfWidth = half(candidate.width);
+			return (
+				x >= Math.min(candidate.start.x, candidate.end.x) - halfWidth &&
+				x <= Math.max(candidate.start.x, candidate.end.x) + halfWidth &&
+				z >= Math.min(candidate.start.z, candidate.end.z) - halfWidth &&
+				z <= Math.max(candidate.start.z, candidate.end.z) + halfWidth
+			);
+		});
+		if (run) return `the ground under the ${run.label} ramp run`;
+		return world.onRamp(x, z, eye) ? 'a ramp band with no ramp under it' : 'the slab';
 	}
 
-	test('the two floor readers answer the same over the city', () => {
-		const complaints = [...found].map(([answers, where]) => `${where.columns} columns where ${answers}, e.g. ${where.sample}`);
-		expect(complaints, complaints.join('\n')).toBeEmpty();
+	function disagreementsFrom(deck: number): Map<string, Disagreement> {
+		const halfWidth = half(MALL_FOOTPRINT.width);
+		const halfDepth = half(MALL_FOOTPRINT.depth);
+		const found = new Map<string, Disagreement>();
+		for (let x = -halfWidth; x <= halfWidth; x += 1) {
+			for (let z = -halfDepth; z <= halfDepth; z += 1) {
+				const eye = deck + 0.05;
+				const ground = world.groundHeightAt(x, z, eye, WALK_STEP);
+				const sim = world.snapFloorY(x, z, eye);
+				if (Math.abs(ground - sim) <= EPS) continue;
+				const key = `the player gets ${nr(ground)} on ${surfaceUnder(x, z, eye, ground)} and a sim ${nr(sim)}`;
+				const seen = found.get(key);
+				if (seen) seen.columns++;
+				else found.set(key, { columns: 1, sample: `(${nr(x)}, ${nr(z)})` });
+			}
+		}
+		return found;
+	}
+
+	describe.each(LEVELS.map((level) => level.id))('on deck %s', (id) => {
+		const found = disagreementsFrom(levelY(id));
+
+		test('answer the same over the whole deck', () => {
+			const complaints = [...found].map(([answers, where]) => `${where.columns} columns where ${answers}, e.g. ${where.sample}`);
+			expect(complaints, complaints.join('\n')).toBeEmpty();
+		});
 	});
-});
 
-/**
- * `snapFloorY` reads the pool, the roof pads, the slabs and the roof-reaching flights, and
- * `world.platforms` appears in none of them: a sim asking for the floor on the catwalk, on the
- * planter tiers or on the slide platform is answered with the slab underneath.
- */
-describe.each(world.platforms.map((platform) => platform.label))('a sim on the %s deck', (label) => {
-	const platform = world.platforms.find((candidate) => candidate.label === label);
-	if (!platform) throw new Error(`no platform ${label}`);
-	const x = midpoint(platform.minX, platform.maxX);
-	const z = midpoint(platform.minZ, platform.maxZ);
-	const standing = platform.y + 0.05;
+	/**
+	 * The same question outdoors, where the deck sweep above never goes. It walks the mall
+	 * footprint, and the city has its own surfaces under both readers: the garage decks and their
+	 * spiral, the theatre podium and its stair, the plaza. Sims drive and walk out there.
+	 */
+	describe('outside the building', () => {
+		const found = new Map<string, Disagreement>();
+		for (let x = CITY_BOUNDS.minX; x <= CITY_BOUNDS.maxX; x += 2) {
+			for (let z = CITY_BOUNDS.minZ; z <= CITY_BOUNDS.maxZ; z += 2) {
+				if (world.insideMallPlan(x, z)) continue;
+				const eye = CITY_GROUND_Y + 0.05;
+				const ground = world.groundHeightAt(x, z, eye, WALK_STEP);
+				const sim = world.snapFloorY(x, z, eye);
+				if (Math.abs(ground - sim) <= EPS) continue;
+				const key = `the player gets ${nr(ground)} on ${surfaceUnder(x, z, eye, ground)} and a sim ${nr(sim)}`;
+				const seen = found.get(key);
+				if (seen) seen.columns++;
+				else found.set(key, { columns: 1, sample: `(${nr(x)}, ${nr(z)})` });
+			}
+		}
 
-	test('stands on the deck the player stands on', () => {
-		expect(
-			world.snapFloorY(x, z, standing),
-			`the player floor is ${nr(world.groundHeightAt(x, z, standing, WALK_STEP))} and a sim is dropped to ${nr(world.snapFloorY(x, z, standing))}`,
-		).toBeCloseTo(world.groundHeightAt(x, z, standing, WALK_STEP), 6);
+		test('answer the same over the city', () => {
+			const complaints = [...found].map(([answers, where]) => `${where.columns} columns where ${answers}, e.g. ${where.sample}`);
+			expect(complaints, complaints.join('\n')).toBeEmpty();
+		});
 	});
-});
 
-/**
- * A hole in a deck is a hole for both readers.
- *
- * `snapFloorY` handles the roof-reaching flights and the pool inside an `if (y >= 10)`, and
- * below that height nothing looks at the slab holes at all: the fallthrough returns the storey
- * the height falls in. Standing on V1 over the atrium the player is given the ground floor and
- * a sim the deck it is standing over, six metres of nothing between them. The roof got this
- * treatment when a sim was caught hovering over the secret stairs; V1 never did.
- *
- * The lift shaft is the control: its cabin floor closes the hole, and there the two agree.
- */
-const SLAB_HOLES = Object.entries(SLAB_SPEC_BY_LEVEL).flatMap(([level, spec]) =>
-	spec.holes.map((hole, index) => {
-		const bounds = planBounds(hole);
-		return {
-			name: `${level} hole ${index} at (${nr(midpoint(bounds.minX, bounds.maxX))}, ${nr(midpoint(bounds.minZ, bounds.maxZ))})`,
-			x: midpoint(bounds.minX, bounds.maxX),
-			z: midpoint(bounds.minZ, bounds.maxZ),
-			standing: spec.topY + 0.05,
-		};
-	}),
-);
+	/**
+	 * `snapFloorY` reads the pool, the roof pads, the slabs and the roof-reaching flights, and
+	 * `world.platforms` appears in none of them: a sim asking for the floor on the catwalk, on the
+	 * planter tiers or on the slide platform is answered with the slab underneath.
+	 */
+	describe.each(world.platforms.map((platform) => platform.label))('on the %s platform', (label) => {
+		const platform = world.platforms.find((candidate) => candidate.label === label);
+		if (!platform) throw new Error(`no platform ${label}`);
+		const x = midpoint(platform.minX, platform.maxX);
+		const z = midpoint(platform.minZ, platform.maxZ);
+		const standing = platform.y + 0.05;
 
-describe.each(SLAB_HOLES.map((hole) => hole.name))('%s', (name) => {
-	const hole = SLAB_HOLES.find((candidate) => candidate.name === name);
-	if (!hole) throw new Error(`no hole ${name}`);
+		test('put a sim on the deck the player stands on', () => {
+			expect(
+				world.snapFloorY(x, z, standing),
+				`the player floor is ${nr(world.groundHeightAt(x, z, standing, WALK_STEP))} and a sim is dropped to ${nr(world.snapFloorY(x, z, standing))}`,
+			).toBeCloseTo(world.groundHeightAt(x, z, standing, WALK_STEP), 6);
+		});
+	});
 
-	test('is as open to a sim as it is to the player', () => {
-		const player = world.groundHeightAt(hole.x, hole.z, hole.standing, WALK_STEP);
-		const sim = world.snapFloorY(hole.x, hole.z, hole.standing);
-		expect(sim, `the player drops to ${nr(player)} and a sim stands on ${nr(sim)}`).toBeCloseTo(player, 6);
+	/**
+	 * A hole in a deck is a hole for both readers.
+	 *
+	 * `snapFloorY` handles the roof-reaching flights and the pool inside an `if (y >= 10)`, and
+	 * below that height nothing looks at the slab holes at all: the fallthrough returns the storey
+	 * the height falls in. Standing on V1 over the atrium the player is given the ground floor and
+	 * a sim the deck it is standing over, six metres of nothing between them. The roof got this
+	 * treatment when a sim was caught hovering over the secret stairs; V1 never did.
+	 *
+	 * The lift shaft is the control: its cabin floor closes the hole, and there the two agree.
+	 */
+	const SLAB_HOLES = Object.entries(SLAB_SPEC_BY_LEVEL).flatMap(([level, spec]) =>
+		spec.holes.map((hole, index) => {
+			const bounds = planBounds(hole);
+			return {
+				name: `${level} hole ${index} at (${nr(midpoint(bounds.minX, bounds.maxX))}, ${nr(midpoint(bounds.minZ, bounds.maxZ))})`,
+				x: midpoint(bounds.minX, bounds.maxX),
+				z: midpoint(bounds.minZ, bounds.maxZ),
+				standing: spec.topY + 0.05,
+			};
+		}),
+	);
+
+	describe.each(SLAB_HOLES.map((hole) => hole.name))('over the %s', (name) => {
+		const hole = SLAB_HOLES.find((candidate) => candidate.name === name);
+		if (!hole) throw new Error(`no hole ${name}`);
+
+		test('agree that it is open', () => {
+			const player = world.groundHeightAt(hole.x, hole.z, hole.standing, WALK_STEP);
+			const sim = world.snapFloorY(hole.x, hole.z, hole.standing);
+			expect(sim, `the player drops to ${nr(player)} and a sim stands on ${nr(sim)}`).toBeCloseTo(player, 6);
+		});
 	});
 });

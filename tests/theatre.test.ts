@@ -313,7 +313,7 @@ describe('the zone graph around the auditorium', () => {
  * `zoneMaskOfBounds` reads the city off "fits in no single building", and that answer holds only
  * as long as no box fits in the union of two shells without fitting in one of them.
  */
-describe('the buildings stand apart', () => {
+describe('the gap between the buildings', () => {
 	const pairs = ZONE_ENCLOSURES.flatMap((a, i) => ZONE_ENCLOSURES.slice(i + 1).map((b) => [a, b] as const));
 
 	test.each(pairs.map(([a, b]) => `${a.id} and ${b.id}`))('%s', (name) => {
@@ -387,7 +387,7 @@ describe.each([
 });
 
 /** The collision floor between backstage and stage existed, but the builder skipped the sills. */
-describe('the theatre builder draws the sills collision knows', () => {
+describe('the theatre builder', () => {
 	const drawn = new CityTheatre(new LightPool(new THREE.Scene()));
 
 	test.each(['stage-door-sill', 'wing-door-sill-west', 'wing-door-sill-east', 'artist-door-sill'])('%s', (id) => {
@@ -404,7 +404,7 @@ describe('the theatre builder draws the sills collision knows', () => {
  * theatre is the first building standing beside it, which is exactly the case in which too wide
  * a cone culls nothing.
  */
-describe('the auditorium is only there through its own doors', () => {
+describe('the auditorium seen from outside', () => {
 	const camera = new THREE.PerspectiveCamera(70, 16 / 9, 0.1, 500);
 	const culler = new ZoneCuller();
 	const eye = THEATRE_FLOOR_Y + 1.6;

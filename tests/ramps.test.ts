@@ -161,7 +161,7 @@ describe.each(VERTICAL_CONNECTORS.map((connector) => connector.id))('%s', (id) =
  * `ATRIUM_VOID` is what the rest of the mall measures the void with. Sampling the second
  * against the world built from the first is what ties them together.
  */
-describe('the atrium void is open in the deck that declares it', () => {
+describe('the atrium void', () => {
 	const insideEdge = 0.1;
 	const outsideEdge = 0.5;
 	const inside: [number, number][] = [

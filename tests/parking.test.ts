@@ -330,7 +330,7 @@ const PARKED_VEHICLES: [string, Rect][] = [
 	...RIDEABLE_MOTORCYCLE_SPOTS.map((spot): [string, Rect] => [spot.name, footprintOf(spot, MOTORCYCLE_SPEC.body)]),
 ];
 
-describe('parked vehicles stand beside the columns, not in them', () => {
+describe('the parked vehicles', () => {
 	const pillars = parkingPillarCenters().map((center, index) => ({
 		index,
 		center,
@@ -443,7 +443,7 @@ test('the forecourt paving keeps the mouth of the trench open', () => {
  * The paint and the fences are data with no collider, so a builder that stops reading them
  * leaves every test above green with nothing on the deck.
  */
-describe('the garage builder still draws what these tests measure', () => {
+describe('the garage builder', () => {
 	test.each(['PARKING_EXIT_TRENCH_GUARDS', 'PARKING_EXIT_CHEVRONS', 'parkingPaintPatches(', "'← PARKING'"])(
 		'it reads %s',
 		async (fragment) => {

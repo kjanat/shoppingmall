@@ -96,7 +96,7 @@ describe.each(ROAD_RINGS.map((lane) => lane.turn))('lane %s', (turn) => {
 });
 
 /** The corners are a tile of their own because the centre line turns a quarter with them. */
-describe('the asphalt is drawn from the plan', () => {
+describe('the asphalt', () => {
 	test.each([
 		'this.makeCornerTexture()',
 		'const EW_LEN = 2 * ROAD_INNER_X',

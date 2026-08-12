@@ -52,7 +52,7 @@ test('the skyline is planned from the shared city plan', async () => {
 	expect(source.includes('planTowers(rand)'), 'the skyline no longer comes from the shared city plan').toBeTrue();
 });
 
-describe('the roof edge is the jump into the city', () => {
+describe('the roof edge', () => {
 	test.each([
 		[EDGE_X - 0.5, 0],
 		[-(EDGE_X - 0.5), 0],

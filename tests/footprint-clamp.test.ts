@@ -87,7 +87,9 @@ describe('a body outdoors stays outdoors', () => {
  * The clamp logs itself when it moves a body more than two metres. That instrumentation was
  * added to diagnose #11 and says in its own comment that it goes once the diagnosis is done.
  */
-test('the dismount instrumentation is gone once its bug is', async () => {
-	const source = await read('src/physics/Collision.ts');
-	expect(source.includes('INSTRUMENTATIE'), 'the #11 diagnosis warning still ships in resolveCircle').toBeFalse();
+describe('the footprint clamp', () => {
+	test('no longer logs the #11 diagnosis it was given for', async () => {
+		const source = await read('src/physics/Collision.ts');
+		expect(source.includes('INSTRUMENTATIE'), 'the #11 diagnosis warning still ships in resolveCircle').toBeFalse();
+	});
 });

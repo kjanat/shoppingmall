@@ -81,7 +81,7 @@ function buildingOf(entity: (typeof WORLD_ENTITIES)[number]): { id: string; touc
 
 const WALLS = WORLD_ENTITIES.filter((entity) => entity.category === 'wall');
 
-describe('every building has a skin of its own', () => {
+describe('the skin of each building', () => {
 	test('there are wall entities at all', () => {
 		expect(WALLS, 'no wall entity in WORLD_ENTITIES — where is the perimeter?').not.toBeEmpty();
 	});
@@ -154,7 +154,7 @@ describe.each(ZONE_ENCLOSURES.map((building) => building.id))('the declared enve
  * off. Clearance and trigger volumes stay out of it, because reaching past their own geometry
  * is exactly what they are for.
  */
-describe('nothing comes out through a facade unannounced', () => {
+describe('what sticks out through a facade', () => {
 	const used = new Set<string>();
 	const escaping: string[] = [];
 
