@@ -1,5 +1,5 @@
-import { join, resolve } from 'node:path';
 import { beforeAll, describe, expect, test } from 'bun:test';
+import { join, resolve } from 'node:path';
 import type { Object3D, PointLight, Scene, SpotLight } from 'three';
 import { MALL_SLAB_SPECS } from '#/data/world';
 import { CollisionWorld } from '#/physics/Collision';

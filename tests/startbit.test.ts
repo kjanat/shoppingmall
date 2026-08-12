@@ -1,5 +1,5 @@
-import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'bun:test';
+import { join, resolve } from 'node:path';
 
 /**
  * Een shebang belooft dat het bestand zelf te starten is; zonder x-bit is dat gelogen.
