@@ -121,7 +121,7 @@ const MAP_BACKDROP = '#0a1020';
  */
 const PLAN_CUT_HEIGHT = 1.2;
 
-type MapFeature = Readonly<{
+export type MapFeature = Readonly<{
 	layer: MapLayer;
 	label: string;
 	glyph: string;
@@ -318,13 +318,13 @@ const LABELS_BY_LEVEL = new Map<LevelId, MapFeature[]>(
 );
 
 /** Wat een kaart tekent: het gebouw waar de plattegrond over gaat, of de hele wereld. */
-type MapScope = 'mall' | 'world';
+export type MapScope = 'mall' | 'world';
 
 function inScope(features: readonly MapFeature[], scope: MapScope): readonly MapFeature[] {
 	return scope === 'world' ? features : features.filter((feature) => feature.inMall);
 }
 
-function featuresOn(levelId: LevelId, scope: MapScope): readonly MapFeature[] {
+export function featuresOn(levelId: LevelId, scope: MapScope): readonly MapFeature[] {
 	return inScope(FEATURES_BY_LEVEL.get(levelId) ?? [], scope);
 }
 
