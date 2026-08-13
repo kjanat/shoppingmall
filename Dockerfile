@@ -30,7 +30,7 @@ RUN printf "--js-runtimes bun\n" > /etc/yt-dlp.conf \
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --chown=mall:mall public ./public
-RUN mkdir -p public/dj-music data/dj && chown -R mall:mall public data
+RUN mkdir -p data/dj/music && chown -R mall:mall public data
 COPY --from=build --chown=mall:mall /app/dist/mall ./mall
 COPY --from=build --chown=mall:mall /app/dist/static ./dist/static
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint

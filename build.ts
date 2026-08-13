@@ -96,6 +96,8 @@ for (const artifact of [out1.outputs, out2.outputs].flat()) {
 if (pages) {
 	await cp('public', 'dist/static', {
 		recursive: true,
+		// Old local installations may still have this ignored directory before
+		// moving it to data/dj/music. It must never enter a static build.
 		filter: (src) => !src.includes('public/dj-music'),
 	});
 }

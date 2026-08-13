@@ -16,6 +16,5 @@ services:
       - traefik.http.routers.kruidvat.service=kruidvat
       - traefik.http.services.kruidvat.loadbalancer.server.port=5174
     volumes:
-      - ./public/dj-music:/app/public/dj-music
       - ./data/dj:/app/data/dj
 networks: { traefik: { external: true } }

@@ -4,7 +4,7 @@
  * block the event loop while a track streams.
  * - POST /api/tts          → ElevenLabs
  * - POST /api/sim/chat     → OpenRouter SDK (sims talk; Broadcast user/session/trace)
- * - GET  /api/dj/playlist  → list public/dj-music/*
+ * - GET  /api/dj/playlist  → list private DJ audio storage
  * - POST /api/dj/request   → YouTube API search + yt-dlp download
  * - GET  /api/dj/status    → DJ state + key presence
  * - GET  /api/healthz      → minimale liveness voor Docker
@@ -35,9 +35,8 @@ function uptimeSeconds(): number {
 	return Math.round((Date.now() - BOOT) / 1000);
 }
 
-/** Music library. public/ is read from the working directory, like public/ in main.ts. */
-const MUSIC_DIR = resolve('public/dj-music');
 const DJ_DATA_DIR = resolve('data/dj');
+const MUSIC_DIR = join(DJ_DATA_DIR, 'music');
 const AUDIO_EXT = new Set<string>(AUDIO_EXTENSIONS);
 
 export async function ensureMusicDir(): Promise<void> {
@@ -83,8 +82,7 @@ async function listPlaylist(): Promise<TrackMeta[]> {
 				return {
 					file: f,
 					title: meta?.title ?? basename(f, extname(f)).replace(/[_-]+/g, ' '),
-					// Stream via the API, not `./dj-music/…`: static serving reads the dist/ copy in preview,
-					// which doesn't contain tracks downloaded after the build — the API always reads live from public/.
+					// Audio storage is private. This API route is its only browser boundary.
 					url: `/api/dj/file/${encodeURIComponent(f)}`,
 					bytes: stat.size,
 					...(meta?.artist ? { artist: meta.artist } : {}),
@@ -792,7 +790,7 @@ export async function handleApi(req: Request, peer: string): Promise<Response> {
 			}
 		}
 
-		// Primary track route — live from public/dj-music, works in dev + preview.
+		// Primary track route from private storage, shared by dev and production.
 		// Speaks HTTP Range: <audio> switches to range-requests on long tracks
 		// (and on every seek); answering those with a plain 200 stalls playback
 		// partway through — which made the 24-minute tracks "not quite work".

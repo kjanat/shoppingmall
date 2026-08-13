@@ -112,10 +112,10 @@ function playElement(el: HTMLAudioElement, volume: number): Promise<number> {
 	});
 }
 
-/** Local mp3 under /dj-music/ */
+/** Local DJ audio served through the API instead of static file hosting. */
 export async function playBoothFile(file: string, volume = 0.95): Promise<SpeakResult> {
 	stopCurrent();
-	audioEl = new Audio(`/dj-music/${encodeURIComponent(file)}`);
+	audioEl = new Audio(`/api/dj/file/${encodeURIComponent(file)}`);
 	const ms = await playElement(audioEl, volume);
 	return { source: ms > 0 ? 'file' : 'silent', durationMs: ms };
 }

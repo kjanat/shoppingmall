@@ -4,7 +4,7 @@ node_modules
 dist
 .env
 .env.*
-# live crate library is a bind mount, not baked into the image (115 MB+)
+# Legacy location; private DJ data is a bind mount and never baked in.
 public/dj-music
 data
 .debug-*.png

@@ -160,9 +160,9 @@ export class DJPlayer {
 		this.index = ((i % this.playlist.length) + this.playlist.length) % this.playlist.length;
 		const t = this.playlist[this.index];
 		if (!t) return;
-		// The URL the API handed us — it streams live from public/dj-music and
-		// speaks Range, so tracks added after startup play and seek fine.
-		this.audio.src = t.url || `/dj-music/${encodeURIComponent(t.file)}`;
+		// The API streams private audio with Range support, so tracks added after
+		// startup play and seek without exposing the storage directory.
+		this.audio.src = t.url || `/api/dj/file/${encodeURIComponent(t.file)}`;
 		// Download metadata when the library has it: "Uploader — Title · 4:23"
 		this.nowPlaying = [t.artist ? `${t.artist} — ${t.title}` : t.title, t.seconds ? ` · ${clock(t.seconds)}` : ''].join('');
 		this.playing = autoplay;

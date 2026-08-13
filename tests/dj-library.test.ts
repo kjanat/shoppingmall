@@ -26,7 +26,7 @@ describe('DJ library metadata boundary', () => {
 			uploader: 'BonnieTylerVEVO',
 			duration: 266.4,
 			webpage_url: 'https://www.youtube.com/watch?v=lcOxhH8N3Bo',
-			filepath: '/app/public/dj-music/Total Eclipse of the Heart.mp3',
+			filepath: '/app/data/dj/music/Total Eclipse of the Heart.mp3',
 			formats: [{ format_id: '251' }],
 		});
 		const capture = parseYtDlpOutput(`[download] done\n${YT_DLP_META_PREFIX}${payload}\n`);

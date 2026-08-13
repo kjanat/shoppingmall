@@ -73,6 +73,9 @@ async function serveStatic(req: Request): Promise<Response> {
 async function publicRoutes(): Promise<Record<string, (req: Request) => Promise<Response>>> {
 	const out: Record<string, (req: Request) => Promise<Response>> = {};
 	for (const entry of await readdir(PUBLIC, { withFileTypes: true })) {
+		// Legacy DJ storage must never become a public route, even before a local
+		// installation has moved its files into data/dj/music.
+		if (entry.name === 'dj-music') continue;
 		out[entry.isDirectory() ? `/${entry.name}/*` : `/${entry.name}`] = serveStatic;
 	}
 	return out;
