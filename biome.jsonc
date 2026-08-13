@@ -21,7 +21,8 @@
 				"useImportExtensions": "off",
 				"useQwikValidLexicalScope": "off",
 				"noUnresolvedImports": "off",
-				"noNodejsModules": "off"
+				"noNodejsModules": "off",
+				"noUndeclaredVariables": "off"
 			},
 			"complexity": {
 				"useLiteralKeys": "off"

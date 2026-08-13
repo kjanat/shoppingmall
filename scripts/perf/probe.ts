@@ -270,7 +270,7 @@ function installProbe(
 	/** Narrow the untyped getExtension result without an assertion. */
 	const readTimerExt = (value: unknown): TimerExt | null => {
 		if (typeof value !== 'object' || value === null) return null;
-		if (!('TIME_ELAPSED_EXT' in value) || !('GPU_DISJOINT_EXT' in value)) return null;
+		if (!('TIME_ELAPSED_EXT' in value && 'GPU_DISJOINT_EXT' in value)) return null;
 		const { TIME_ELAPSED_EXT, GPU_DISJOINT_EXT } = value;
 		if (typeof TIME_ELAPSED_EXT !== 'number' || typeof GPU_DISJOINT_EXT !== 'number') return null;
 		return { TIME_ELAPSED_EXT, GPU_DISJOINT_EXT };

@@ -16,8 +16,8 @@
  * Standpunten zonder `--pose` komen uit de profielroutes, dus dezelfde namen die
  * `run profile` gebruikt. `run shots --list` toont ze.
  */
-import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { arg, CLIError, cli, command, flag } from 'dreamcli';
 import { serveGame } from './perf/harness.ts';
 import { SHOTS_DIR } from './perf/paths.ts';
 import { launchPerfBrowser } from './perf/playwright.ts';
@@ -35,7 +35,17 @@ const SETTLE_MS = 1200;
 const SHOT_TIMEOUT_MS = 300_000;
 
 /** Beeldhoogtes waarlangs `--raycast` prikt: van onder in beeld tot bovenin. */
-const RAY_ROWS = [-0.6, -0.2, 0.2, 0.6, 0.9] as const;
+const RAY_ROW_BOTTOM = -0.6;
+const RAY_ROW_LOWER_MIDDLE = -0.2;
+const RAY_ROW_UPPER_MIDDLE = 0.2;
+const RAY_ROW_UPPER = 0.6;
+const RAY_ROW_TOP = 0.9;
+const RAY_ROWS = [RAY_ROW_BOTTOM, RAY_ROW_LOWER_MIDDLE, RAY_ROW_UPPER_MIDDLE, RAY_ROW_UPPER, RAY_ROW_TOP] as const;
+
+const DEFAULT_SHOT_NAME = 'shot';
+const DEFAULT_VIEWPORT_WIDTH = 1280;
+const DEFAULT_VIEWPORT_HEIGHT = 720;
+const POSE_VALUE_COUNT = 6;
 
 function beschrijfTreffers(hits: unknown): string {
 	if (!Array.isArray(hits) || hits.length === 0) return 'lucht (geen treffer)';
@@ -51,67 +61,24 @@ function beschrijfTreffers(hits: unknown): string {
 		.join('  |  ');
 }
 
-interface Options {
-	names: string[];
-	pose: RoutePose | null;
-	shotName: string;
-	out: string;
-	width: number;
-	height: number;
-	hud: boolean;
-	frozen: boolean;
-	list: boolean;
-	raycast: boolean;
-}
-
-function getal(waarde: string | undefined, veld: string): number {
-	const n = Number(waarde);
-	if (!Number.isFinite(n)) throw new Error(`${veld} is geen getal: ${waarde ?? '(leeg)'}`);
-	return n;
-}
-
-function parsePose(raw: string): RoutePose {
-	const delen = raw.split(',').map((deel) => deel.trim());
-	if (delen.length !== 6) throw new Error(`--pose wil x,y,z,lookX,lookY,lookZ, kreeg ${delen.length} waarden`);
-	return {
-		x: getal(delen[0], 'pose.x'),
-		y: getal(delen[1], 'pose.y'),
-		z: getal(delen[2], 'pose.z'),
-		lookX: getal(delen[3], 'pose.lookX'),
-		lookY: getal(delen[4], 'pose.lookY'),
-		lookZ: getal(delen[5], 'pose.lookZ'),
-	};
-}
-
-function parseArgs(argv: readonly string[]): Options {
-	const options: Options = {
-		names: [],
-		pose: null,
-		shotName: 'shot',
-		out: SHOTS_DIR,
-		width: 1280,
-		height: 720,
-		hud: false,
-		frozen: true,
-		list: false,
-		raycast: false,
-	};
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i];
-		if (arg === undefined) continue;
-		if (arg === '--list') options.list = true;
-		else if (arg === '--raycast') options.raycast = true;
-		else if (arg === '--hud') options.hud = true;
-		else if (arg === '--live') options.frozen = false;
-		else if (arg === '--pose') options.pose = parsePose(argv[++i] ?? '');
-		else if (arg === '--name') options.shotName = argv[++i] ?? options.shotName;
-		else if (arg === '--out') options.out = resolve(argv[++i] ?? options.out);
-		else if (arg === '--width') options.width = getal(argv[++i], '--width');
-		else if (arg === '--height') options.height = getal(argv[++i], '--height');
-		else if (arg.startsWith('--')) throw new Error(`onbekende vlag ${arg}`);
-		else options.names.push(arg);
+function routePose(values: readonly number[]): RoutePose | undefined {
+	if (values.length === 0) return undefined;
+	const [x, y, z, lookX, lookY, lookZ] = values;
+	if (
+		values.length !== POSE_VALUE_COUNT ||
+		x === undefined ||
+		y === undefined ||
+		z === undefined ||
+		lookX === undefined ||
+		lookY === undefined ||
+		lookZ === undefined
+	) {
+		throw new CLIError(`--pose wil x,y,z,lookX,lookY,lookZ, kreeg ${values.length} waarden`, {
+			code: 'INVALID_POSE',
+			exitCode: 2,
+		});
 	}
-	return options;
+	return { x, y, z, lookX, lookY, lookZ };
 }
 
 function alleStandpunten(): string[] {
@@ -122,59 +89,79 @@ function alleStandpunten(): string[] {
 	return [...namen].sort();
 }
 
-const options = parseArgs(process.argv.slice(2));
+const shots = command('shots')
+	.description('Maak screenshots van de gebouwde mall vanaf profielstandpunten of een losse pose')
+	.arg('names', arg.string().variadic().default([]).describe('Namen van profielstandpunten'))
+	.flag('pose', flag.array(flag.number()).separator(',').describe('Losse pose als x,y,z,lookX,lookY,lookZ'))
+	.flag('name', flag.string().default(DEFAULT_SHOT_NAME).describe('Bestandsnaam voor een losse pose'))
+	.flag('out', flag.path({ type: 'directory', create: true }).default(SHOTS_DIR).describe('Uitvoermap'))
+	.flag('width', flag.number({ int: true, min: 1 }).default(DEFAULT_VIEWPORT_WIDTH).describe('Breedte van het browservenster'))
+	.flag('height', flag.number({ int: true, min: 1 }).default(DEFAULT_VIEWPORT_HEIGHT).describe('Hoogte van het browservenster'))
+	.flag('hud', flag.boolean().describe('Toon de HUD'))
+	.flag('live', flag.boolean().describe('Laat de simulatie doorlopen'))
+	.flag('list', flag.boolean().describe('Toon alle beschikbare profielstandpunten'))
+	.flag('raycast', flag.boolean().describe('Beschrijf raycasttreffers na iedere opname'))
+	.derive(({ args, flags }) => {
+		const uitvoermap = resolve(flags.out);
+		if (flags.list) return { opnames: [], uitvoermap };
+		const pose = routePose(flags.pose);
 
-if (options.list) {
-	for (const naam of alleStandpunten()) console.log(naam);
-	process.exit(0);
-}
-
-if (options.pose === null && options.shotName !== 'shot') {
-	console.error('--name hoort bij --pose; een benoemd standpunt levert zijn eigen bestandsnaam.');
-	process.exit(1);
-}
-
-const opnames: { naam: string; pose: RoutePose }[] = options.pose
-	? [{ naam: options.shotName, pose: options.pose }]
-	: options.names.map((naam) => ({ naam, pose: profilePoint(naam).pose }));
-
-if (opnames.length === 0) {
-	console.error('geef een standpunt op, of --pose x,y,z,lookX,lookY,lookZ. `--list` toont de namen.');
-	process.exit(1);
-}
-
-await mkdir(options.out, { recursive: true });
-
-const server = await serveGame();
-const browser = await launchPerfBrowser(options.width, options.height);
-try {
-	const page = browser.page;
-	await page.addInitScript({ content: probeSource() });
-	await page.goto(server.url, { waitUntil: 'commit' });
-	await page.evaluate('__mallProbe.ready(120000)');
-	await page.evaluate('__mallProbe.settle(3000, 120000)');
-	// `ready` kijkt naar het laadscherm en lost op zodra de eerste frames lopen; het
-	// element zelf verdwijnt pas als App.ready klaar is, en tot dat moment vult het
-	// elke opname.
-	await page.waitForSelector('#app-loading', { state: 'detached', timeout: 120_000 });
-	if (!options.hud) await page.addStyleTag({ content: '#ui-root { display: none !important; }' });
-	if (options.frozen) await page.evaluate('__mallProbe.setFrozen(true)');
-
-	for (const { naam, pose } of opnames) {
-		await page.evaluate(`__mallProbe.setPose(${JSON.stringify(pose)})`);
-		await page.evaluate(`__mallProbe.waitFrames(${SETTLE_FRAMES})`);
-		await page.waitForTimeout(SETTLE_MS);
-		const pad = resolve(options.out, `${naam}.png`);
-		await page.screenshot({ path: pad, timeout: SHOT_TIMEOUT_MS });
-		console.log(pad);
-		if (options.raycast) {
-			for (const ndcY of RAY_ROWS) {
-				const hits = await page.evaluate(`__mallProbe.raycast(0, ${ndcY}, 3)`);
-				console.log(`  ndcY ${ndcY.toFixed(2)}: ${beschrijfTreffers(hits)}`);
-			}
+		if (pose === undefined && flags.name !== DEFAULT_SHOT_NAME) {
+			throw new CLIError('--name hoort bij --pose; een benoemd standpunt levert zijn eigen bestandsnaam.', {
+				code: 'INVALID_FLAG_COMBINATION',
+			});
 		}
-	}
-} finally {
-	await browser.close();
-	await server.stop();
-}
+
+		const opnames: { naam: string; pose: RoutePose }[] = pose
+			? [{ naam: flags.name, pose }]
+			: args.names.map((naam) => ({ naam, pose: profilePoint(naam).pose }));
+		if (opnames.length === 0) {
+			throw new CLIError('geef een standpunt op, of --pose x,y,z,lookX,lookY,lookZ.', {
+				code: 'MISSING_SHOT',
+				suggest: 'Gebruik --list om de beschikbare namen te tonen.',
+			});
+		}
+		return { opnames, uitvoermap };
+	})
+	.action(async ({ ctx, flags, out }) => {
+		if (flags.list) {
+			for (const naam of alleStandpunten()) out.log(naam);
+			return;
+		}
+
+		const server = await serveGame();
+		const browser = await launchPerfBrowser(flags.width, flags.height);
+		try {
+			const page = browser.page;
+			await page.addInitScript({ content: probeSource() });
+			await page.goto(server.url, { waitUntil: 'commit' });
+			await page.evaluate('__mallProbe.ready(120000)');
+			await page.evaluate('__mallProbe.settle(3000, 120000)');
+			// `ready` kijkt naar het laadscherm en lost op zodra de eerste frames lopen; het
+			// element zelf verdwijnt pas als App.ready klaar is, en tot dat moment vult het
+			// elke opname.
+			await page.waitForSelector('#app-loading', { state: 'detached', timeout: 120_000 });
+			if (!flags.hud) await page.addStyleTag({ content: '#ui-root { display: none !important; }' });
+			if (!flags.live) await page.evaluate('__mallProbe.setFrozen(true)');
+
+			for (const { naam, pose } of ctx.opnames) {
+				await page.evaluate(`__mallProbe.setPose(${JSON.stringify(pose)})`);
+				await page.evaluate(`__mallProbe.waitFrames(${SETTLE_FRAMES})`);
+				await page.waitForTimeout(SETTLE_MS);
+				const pad = resolve(ctx.uitvoermap, `${naam}.png`);
+				await page.screenshot({ path: pad, timeout: SHOT_TIMEOUT_MS });
+				out.log(pad);
+				if (flags.raycast) {
+					for (const ndcY of RAY_ROWS) {
+						const hits = await page.evaluate(`__mallProbe.raycast(0, ${ndcY}, 3)`);
+						out.log(`  ndcY ${ndcY.toFixed(2)}: ${beschrijfTreffers(hits)}`);
+					}
+				}
+			}
+		} finally {
+			await browser.close();
+			await server.stop();
+		}
+	});
+
+await cli('shots').default(shots).run();

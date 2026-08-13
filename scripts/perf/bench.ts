@@ -20,7 +20,7 @@
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { argv } from 'node:process';
+import process, { argv } from 'node:process';
 import { median, midpoint } from '#/util/math';
 import { bar, openGame, sampleWarnings } from './harness.ts';
 import { trimToColumns } from './out.ts';
@@ -191,10 +191,7 @@ for (const warning of warnings) console.log(`  ⚠ ${warning}`);
 if (compareTo) {
 	const baseline = await readBaseline(compareTo);
 	console.log(`\n${trimToColumns('── comparison ──────────────────────────────────────────────')}`);
-	if (!baseline) {
-		console.log(`  ✗ no stored baseline called '${compareTo}' — run \`bun run bench --save ${compareTo}\` first`);
-		process.exitCode = 1;
-	} else {
+	if (baseline) {
 		const change = (run.wallMsMedian - baseline.wallMsMedian) / Math.max(baseline.wallMsMedian, 0.001);
 		console.log(bar('baseline', `${baseline.wallMsMedian.toFixed(1)} ms on ${baseline.gpu}`));
 		console.log(bar('now', `${run.wallMsMedian.toFixed(1)} ms`));
@@ -214,6 +211,9 @@ if (compareTo) {
 				`  ⚠ the change (${(Math.abs(change) * 100).toFixed(1)}%) is smaller than the measurement drift (${(wobble * 100).toFixed(1)}%) — inconclusive`,
 			);
 		}
+	} else {
+		console.log(`  ✗ no stored baseline called '${compareTo}' — run \`bun run bench --save ${compareTo}\` first`);
+		process.exitCode = 1;
 	}
 }
 

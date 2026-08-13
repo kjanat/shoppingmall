@@ -66,7 +66,7 @@ export async function serveGame(): Promise<StaticServer> {
 			// dev tool, but a dev tool that will happily read ../../.env is a bad one.
 			const inStatic = containedIn(STATIC_DIR, path === '/' ? 'index.html' : path);
 			const inPublic = containedIn(PUBLIC_DIR, path);
-			if (!inStatic && !inPublic) {
+			if (!(inStatic || inPublic)) {
 				response.writeHead(403).end('no');
 				return;
 			}

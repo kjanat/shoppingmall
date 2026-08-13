@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, open, readFile, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { env } from 'node:process';
+import process, { env } from 'node:process';
 import { blue } from 'ansispeck';
 import { dim, red } from 'ansispeck/safe';
 import type { BrowserContext, Page } from 'playwright';

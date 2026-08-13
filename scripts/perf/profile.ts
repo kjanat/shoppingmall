@@ -246,10 +246,7 @@ if (laps > 1) {
 if (compareName) {
 	console.log(`\n${trimToColumns('── saved-run comparison ────────────────────────────────────')}`);
 	const baseline = await readBaseline(compareName);
-	if (!baseline) {
-		console.log(`  missing baseline '${compareName}'; create it with --save ${compareName}`);
-		process.exitCode = 1;
-	} else {
+	if (baseline) {
 		console.log(bar('baseline build', baseline.build));
 		const comparable =
 			baseline.gpu === artifact.gpu && baseline.canvas === artifact.canvas && baseline.batchMode === artifact.batchMode;
@@ -266,6 +263,9 @@ if (compareName) {
 				bar(id, `${change >= 0 ? '+' : ''}${(change * 100).toFixed(1)}% (${before.toFixed(1)} -> ${wall.toFixed(1)} ms)`),
 			);
 		}
+	} else {
+		console.log(`  missing baseline '${compareName}'; create it with --save ${compareName}`);
+		process.exitCode = 1;
 	}
 }
 
