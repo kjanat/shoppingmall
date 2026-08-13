@@ -51,7 +51,7 @@ function beschrijfTreffers(hits: unknown): string {
 		.join('  |  ');
 }
 
-type Options = {
+interface Options {
 	names: string[];
 	pose: RoutePose | null;
 	shotName: string;
@@ -62,7 +62,7 @@ type Options = {
 	frozen: boolean;
 	list: boolean;
 	raycast: boolean;
-};
+}
 
 function getal(waarde: string | undefined, veld: string): number {
 	const n = Number(waarde);
