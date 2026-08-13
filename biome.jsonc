@@ -13,12 +13,26 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"preset": "recommended",
+			"preset": "all",
 			"a11y": {
 				"noSvgWithoutTitle": "off"
 			},
+			"correctness": {
+				"useImportExtensions": "off",
+				"useQwikValidLexicalScope": "off",
+				"noUnresolvedImports": "off",
+				"noNodejsModules": "off"
+			},
 			"complexity": {
 				"useLiteralKeys": "off"
+			},
+			"style": {
+				"noContinue": "off",
+				"noIncrementDecrement": "off",
+				"noTernary": "off",
+				"useBlockStatements": "off",
+				"useDestructuring": "off",
+				"useNumericSeparators": "off"
 			}
 		},
 		"domains": {
@@ -27,9 +41,7 @@
 			"types": "recommended"
 		}
 	},
-	"javascript": {
-		"formatter": { "quoteStyle": "single" }
-	},
+	"javascript": { "formatter": { "quoteStyle": "single" } },
 	"assist": {
 		"enabled": true,
 		"actions": {
@@ -37,5 +49,11 @@
 				"organizeImports": "on"
 			}
 		}
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["*.config.ts"],
+			"linter": { "rules": { "style": { "noDefaultExport": "off" } } }
+		}
+	]
 }
