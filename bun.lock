@@ -28,8 +28,8 @@
     },
   },
   "trustedDependencies": [
-    "esbuild",
     "@openrouter/sdk",
+    "esbuild",
     "dprint",
   ],
   "overrides": {

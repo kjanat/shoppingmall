@@ -2,3 +2,8 @@
 declare const __GIT_DESCRIBE__: string | undefined;
 /** De featurelijst die build.ts aan beide bundles heeft meegegeven. */
 declare const __MALL_FEATURES__: readonly string[] | undefined;
+
+declare module '*.sql' {
+	const sql: string;
+	export default sql;
+}

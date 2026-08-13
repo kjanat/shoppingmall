@@ -1,6 +1,9 @@
-import { Database } from 'bun:sqlite';
+import type { Database } from 'bun:sqlite';
 import { basename, extname, join } from 'node:path';
+import { desc, eq } from 'drizzle-orm';
 import { finiteNumber, isRecord, readString } from '#/util/values.ts';
+import { type CrateDb, openCrateDb } from './db/client.ts';
+import { type DjTrackRow, type DjYtDumpRow, djTracks, djYtDumps } from './db/schema.ts';
 
 export const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.ogg', '.webm', '.wav', '.opus'] as const;
 export const YT_DLP_META_PREFIX = 'MALLMETA:';
@@ -24,34 +27,7 @@ export type YtDlpCapture = {
 	dump: string;
 };
 
-type TrackRow = {
-	id: number;
-	file: string;
-	title: string;
-	artist: string | null;
-	durationSeconds: number | null;
-	youtubeId: string | null;
-	sourceUrl: string | null;
-	requestedQuery: string | null;
-	downloadedAt: number;
-};
-
-export type YtDumpRow = {
-	id: number;
-	trackId: number;
-	capturedAt: number;
-	payload: string;
-};
-
-const TRACK_COLUMNS = `
-	id, file, title, artist,
-	duration_seconds AS durationSeconds,
-	youtube_id AS youtubeId,
-	source_url AS sourceUrl,
-	requested_query AS requestedQuery,
-	downloaded_at AS downloadedAt
-`;
-const SCHEMA_VERSION = 1;
+export type YtDumpRow = DjYtDumpRow;
 
 function nonempty(value: string): string | undefined {
 	const trimmed = value.trim();
@@ -110,7 +86,7 @@ export function parseYtDlpOutput(output: string, fallbackFile?: string): YtDlpCa
 	return undefined;
 }
 
-function trackFromRow(row: TrackRow): CrateTrack {
+function trackFromRow(row: DjTrackRow): CrateTrack {
 	return {
 		id: row.id,
 		file: row.file,
@@ -124,80 +100,14 @@ function trackFromRow(row: TrackRow): CrateTrack {
 	};
 }
 
-function applySchema(sqlite: Database): void {
-	// The compiled server has no migration directory beside it, so the tiny
-	// crate schema travels with the code that opens it.
-	const versionRow = sqlite
-		.query<{ userVersion: number }, []>('SELECT user_version AS userVersion FROM pragma_user_version')
-		.get();
-	if (!versionRow) throw new Error('DJ crate has no schema version');
-	if (versionRow.userVersion > SCHEMA_VERSION) {
-		throw new Error(`DJ crate schema ${versionRow.userVersion} is newer than supported schema ${SCHEMA_VERSION}`);
-	}
-	if (versionRow.userVersion === SCHEMA_VERSION) return;
-	if (versionRow.userVersion !== 0) throw new Error(`Unsupported DJ crate schema ${versionRow.userVersion}`);
-	const existingCrateTable = sqlite
-		.query<{ name: string }, []>(`
-			SELECT name FROM sqlite_master
-			WHERE type = 'table' AND name IN ('dj_tracks', 'dj_yt_dumps')
-			LIMIT 1
-		`)
-		.get();
-	if (existingCrateTable) throw new Error(`DJ crate has unversioned table ${existingCrateTable.name}`);
-
-	const migrate = sqlite.transaction(() => {
-		sqlite.run(`
-			CREATE TABLE IF NOT EXISTS dj_tracks (
-				id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-				file TEXT NOT NULL UNIQUE,
-				title TEXT NOT NULL,
-				artist TEXT,
-				duration_seconds INTEGER,
-				youtube_id TEXT UNIQUE,
-				source_url TEXT,
-				requested_query TEXT,
-				downloaded_at INTEGER NOT NULL,
-				CONSTRAINT dj_tracks_file_basename CHECK (
-					file != '' AND instr(file, '/') = 0 AND instr(file, char(92)) = 0
-				),
-				CONSTRAINT dj_tracks_duration_nonnegative CHECK (
-					duration_seconds IS NULL OR duration_seconds >= 0
-				),
-				CONSTRAINT dj_tracks_youtube_id CHECK (
-					youtube_id IS NULL OR length(youtube_id) BETWEEN 8 AND 16
-				)
-			) STRICT
-		`);
-		sqlite.run(`
-			CREATE TABLE IF NOT EXISTS dj_yt_dumps (
-				id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-				track_id INTEGER NOT NULL REFERENCES dj_tracks(id) ON DELETE CASCADE,
-				captured_at INTEGER NOT NULL,
-				payload TEXT NOT NULL CHECK (payload != '')
-			) STRICT
-		`);
-		sqlite.run(`
-			CREATE INDEX IF NOT EXISTS dj_yt_dumps_track_captured_idx
-			ON dj_yt_dumps (track_id, captured_at DESC)
-		`);
-		sqlite.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-	});
-	migrate();
-}
-
 export class DjCrate {
 	readonly sqlite: Database;
+	readonly db: CrateDb;
 
 	constructor(path: string) {
-		this.sqlite = new Database(path, { create: true, readwrite: true, strict: true });
-		try {
-			this.sqlite.run('PRAGMA journal_mode = WAL');
-			this.sqlite.run('PRAGMA foreign_keys = ON');
-			applySchema(this.sqlite);
-		} catch (error) {
-			this.sqlite.close();
-			throw error;
-		}
+		const opened = openCrateDb(path);
+		this.sqlite = opened.sqlite;
+		this.db = opened.db;
 	}
 
 	close(): void {
@@ -205,18 +115,16 @@ export class DjCrate {
 	}
 
 	allTracks(): CrateTrack[] {
-		return this.sqlite.query<TrackRow, []>(`SELECT ${TRACK_COLUMNS} FROM dj_tracks`).all().map(trackFromRow);
+		return this.db.select().from(djTracks).all().map(trackFromRow);
 	}
 
 	trackByFile(file: string): CrateTrack | undefined {
-		const row = this.sqlite.query<TrackRow, [string]>(`SELECT ${TRACK_COLUMNS} FROM dj_tracks WHERE file = ?`).get(file);
+		const row = this.db.select().from(djTracks).where(eq(djTracks.file, file)).get();
 		return row ? trackFromRow(row) : undefined;
 	}
 
 	trackByYoutubeId(youtubeId: string): CrateTrack | undefined {
-		const row = this.sqlite
-			.query<TrackRow, [string]>(`SELECT ${TRACK_COLUMNS} FROM dj_tracks WHERE youtube_id = ?`)
-			.get(youtubeId);
+		const row = this.db.select().from(djTracks).where(eq(djTracks.youtubeId, youtubeId)).get();
 		return row ? trackFromRow(row) : undefined;
 	}
 
@@ -228,75 +136,47 @@ export class DjCrate {
 		}
 		const existing = byYoutube ?? byFile;
 		const requestedQuery = track.requestedQuery ?? existing?.requestedQuery ?? null;
+		const values = {
+			file: track.file,
+			title: track.title,
+			artist: track.artist ?? null,
+			durationSeconds: track.durationSeconds ?? null,
+			youtubeId: track.youtubeId ?? null,
+			sourceUrl: track.sourceUrl ?? null,
+			requestedQuery,
+			downloadedAt: track.downloadedAt,
+		};
 		if (existing?.id !== undefined) {
-			this.sqlite
-				.query<
-					never,
-					[string, string, string | null, number | null, string | null, string | null, string | null, number, number]
-				>(`
-					UPDATE dj_tracks SET
-						file = ?, title = ?, artist = ?, duration_seconds = ?, youtube_id = ?,
-						source_url = ?, requested_query = ?, downloaded_at = ?
-					WHERE id = ?
-				`)
-				.run(
-					track.file,
-					track.title,
-					track.artist ?? null,
-					track.durationSeconds ?? null,
-					track.youtubeId ?? null,
-					track.sourceUrl ?? null,
-					requestedQuery,
-					track.downloadedAt,
-					existing.id,
-				);
+			this.db.update(djTracks).set(values).where(eq(djTracks.id, existing.id)).run();
 			return existing.id;
 		}
 
-		const inserted = this.sqlite
-			.query<never, [string, string, string | null, number | null, string | null, string | null, string | null, number]>(`
-				INSERT INTO dj_tracks (
-					file, title, artist, duration_seconds, youtube_id, source_url, requested_query, downloaded_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			`)
-			.run(
-				track.file,
-				track.title,
-				track.artist ?? null,
-				track.durationSeconds ?? null,
-				track.youtubeId ?? null,
-				track.sourceUrl ?? null,
-				requestedQuery,
-				track.downloadedAt,
-			);
-		const id = Number(inserted.lastInsertRowid);
-		if (!Number.isSafeInteger(id) || id < 1) throw new Error('DJ crate insert returned no id');
-		return id;
+		const inserted = this.db.insert(djTracks).values(values).returning({ id: djTracks.id }).get();
+		if (!inserted) throw new Error('DJ crate insert returned no id');
+		return inserted.id;
 	}
 
 	insertDump(trackId: number, payload: string, capturedAt = Date.now()): void {
 		const dump = payload.trim();
 		if (!dump) return;
-		this.sqlite
-			.query<never, [number, number, string]>('INSERT INTO dj_yt_dumps (track_id, captured_at, payload) VALUES (?, ?, ?)')
-			.run(trackId, capturedAt, dump);
+		this.db.insert(djYtDumps).values({ trackId, capturedAt, payload: dump }).run();
 	}
 
 	saveTrack(track: CrateTrack, dump?: string): number {
-		return this.sqlite.transaction(() => {
+		return this.db.transaction(() => {
 			const id = this.upsertTrack(track);
 			if (dump) this.insertDump(id, dump, track.downloadedAt);
 			return id;
-		})();
+		});
 	}
 
 	dumpsForTrack(trackId: number): YtDumpRow[] {
-		return this.sqlite
-			.query<YtDumpRow, [number]>(`
-				SELECT id, track_id AS trackId, captured_at AS capturedAt, payload
-				FROM dj_yt_dumps WHERE track_id = ? ORDER BY captured_at DESC, id DESC
-			`)
-			.all(trackId);
+		return this.db
+			.select()
+			.from(djYtDumps)
+			.where(eq(djYtDumps.trackId, trackId))
+			.orderBy(desc(djYtDumps.capturedAt), desc(djYtDumps.id))
+			.all();
 	}
 }
 
