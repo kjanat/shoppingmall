@@ -1771,7 +1771,7 @@ export class App {
 		this.player.enabled = false;
 		this.djUi.show();
 		const tracks = await this.djPlayer.refreshPlaylist();
-		// Music crates only — skip short voice intros in the list UI if named
+		// Music library only: skip short voice intros in the list UI if named
 		this.djUi.setTracks(tracks.filter((t) => !/intro_voice|voice/i.test(t.file)));
 		const st = await fetchDjStatus();
 		this.djUi.setStatus(

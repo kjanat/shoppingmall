@@ -128,7 +128,7 @@ function craftBartekReply(input: string): string {
 		return 'Yo! Bartek hier, Bartek Bartek! Hoe gaat het met je jongen? Request iets of vertel me wat je voelt.';
 	}
 	if (/muziek|nummer|song|plaat|draai|play|request/.test(t)) {
-		return 'Zeg de titel en ik gooi yt-dlp erop. Live crates, geen bubbels. Wat wil je horen?';
+		return 'Zeg de titel en ik gooi yt-dlp erop. Live muziekbibliotheek, geen bubbels. Wat wil je horen?';
 	}
 	if (/kruidvat|youssef|vitamine/.test(t)) {
 		return 'Youssef bij Kruidvat is family. Marhaba-energie. Ik stuur hem later een shoutout over de set!';

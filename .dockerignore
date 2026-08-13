@@ -6,6 +6,7 @@ dist
 .env.*
 # live crate library is a bind mount, not baked into the image (115 MB+)
 public/dj-music
+data
 .debug-*.png
 Dockerfile
 compose.yaml

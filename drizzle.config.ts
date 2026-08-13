@@ -5,6 +5,6 @@ export default defineConfig({
 	schema: './server/db/schema.ts',
 	dialect: 'sqlite',
 	dbCredentials: {
-		url: 'public/dj-music/.mall/crate.sqlite',
+		url: 'data/dj/library.sqlite',
 	},
 });

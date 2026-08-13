@@ -13,7 +13,7 @@ export type Track = {
 	title: string;
 	url: string;
 	bytes: number;
-	/** From the crate database; absent for hand-dropped files. */
+	/** From the DJ library database; absent for hand-dropped files. */
 	artist?: string;
 	seconds?: number;
 	videoId?: string;
@@ -80,7 +80,7 @@ export class DJPlayer {
 			this.failStreak = 0;
 			this.next();
 		});
-		// Skip a dud track, but never spin the whole crate: a broken source
+		// Skip a dud track, but never spin the whole library: a broken source
 		// fires error → next → error… faster than the ear can follow.
 		this.audio.addEventListener('error', () => {
 			if (this.playlist.length > 1 && ++this.failStreak < 3) this.next();
@@ -163,7 +163,7 @@ export class DJPlayer {
 		// The URL the API handed us — it streams live from public/dj-music and
 		// speaks Range, so tracks added after startup play and seek fine.
 		this.audio.src = t.url || `/dj-music/${encodeURIComponent(t.file)}`;
-		// Sidecar metadata when the crate has it: "Uploader — Title · 4:23"
+		// Download metadata when the library has it: "Uploader — Title · 4:23"
 		this.nowPlaying = [t.artist ? `${t.artist} — ${t.title}` : t.title, t.seconds ? ` · ${clock(t.seconds)}` : ''].join('');
 		this.playing = autoplay;
 		const onMeta = () => {

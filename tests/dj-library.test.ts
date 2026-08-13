@@ -4,13 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import {
-	DjCrate,
+	DjLibrary,
 	importLegacySidecars,
 	isAudioFileName,
 	parseYtDlpInfo,
 	parseYtDlpOutput,
 	YT_DLP_META_PREFIX,
-} from '$/server/djCrate.ts';
+} from '$/server/djLibrary.ts';
 
 const temporaryDirectories: string[] = [];
 
@@ -18,7 +18,7 @@ after(async () => {
 	await Promise.all(temporaryDirectories.map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
-describe('DJ crate metadata boundary', () => {
+describe('DJ library metadata boundary', () => {
 	test('parses one tagged yt-dlp record and keeps its raw dump', () => {
 		const payload = JSON.stringify({
 			id: 'lcOxhH8N3Bo',
@@ -54,18 +54,18 @@ describe('DJ crate metadata boundary', () => {
 
 	test('only audio basenames can cross the streaming boundary', () => {
 		assert.equal(isAudioFileName('song.MP3'), true);
-		assert.equal(isAudioFileName('crate.sqlite'), false);
-		assert.equal(isAudioFileName('crate.sqlite-wal'), false);
+		assert.equal(isAudioFileName('library.sqlite'), false);
+		assert.equal(isAudioFileName('library.sqlite-wal'), false);
 		assert.equal(isAudioFileName('../song.mp3'), false);
 		assert.equal(isAudioFileName('nested/song.mp3'), false);
 	});
 });
 
-describe('DJ crate persistence', () => {
+describe('DJ library persistence', () => {
 	test('upserts by YouTube id and stores capture history atomically', () => {
-		const crate = new DjCrate(':memory:');
+		const library = new DjLibrary(':memory:');
 		try {
-			const firstId = crate.saveTrack(
+			const firstId = library.saveTrack(
 				{
 					file: 'first.mp3',
 					title: 'First',
@@ -74,7 +74,7 @@ describe('DJ crate persistence', () => {
 				},
 				'{"format":"18"}',
 			);
-			const secondId = crate.saveTrack(
+			const secondId = library.saveTrack(
 				{
 					file: 'second.mp3',
 					title: 'Never Gonna Give You Up',
@@ -87,29 +87,29 @@ describe('DJ crate persistence', () => {
 			);
 
 			assert.equal(secondId, firstId);
-			assert.equal(crate.trackByFile('first.mp3'), undefined);
-			const track = crate.trackByYoutubeId('dQw4w9WgXcQ');
+			assert.equal(library.trackByFile('first.mp3'), undefined);
+			const track = library.trackByYoutubeId('dQw4w9WgXcQ');
 			assert.ok(track);
 			assert.equal(track.file, 'second.mp3');
 			assert.equal(track.artist, 'Rick Astley');
 			assert.equal(track.requestedQuery, 'rickroll');
 			assert.deepEqual(
-				crate.dumpsForTrack(firstId).map((dump) => dump.payload),
+				library.dumpsForTrack(firstId).map((dump) => dump.payload),
 				['{"format":"251"}', '{"format":"18"}'],
 			);
 		} finally {
-			crate.close();
+			library.close();
 		}
 	});
 
 	test('rejects split file and YouTube identities', () => {
-		const crate = new DjCrate(':memory:');
+		const library = new DjLibrary(':memory:');
 		try {
-			crate.saveTrack({ file: 'first.mp3', title: 'First', youtubeId: 'aaaaaaaaaaa', downloadedAt: 1 });
-			crate.saveTrack({ file: 'second.mp3', title: 'Second', youtubeId: 'bbbbbbbbbbb', downloadedAt: 2 });
+			library.saveTrack({ file: 'first.mp3', title: 'First', youtubeId: 'aaaaaaaaaaa', downloadedAt: 1 });
+			library.saveTrack({ file: 'second.mp3', title: 'Second', youtubeId: 'bbbbbbbbbbb', downloadedAt: 2 });
 			assert.throws(
 				() =>
-					crate.saveTrack({
+					library.saveTrack({
 						file: 'second.mp3',
 						title: 'Conflict',
 						youtubeId: 'aaaaaaaaaaa',
@@ -118,36 +118,36 @@ describe('DJ crate persistence', () => {
 				/identity conflict/,
 			);
 		} finally {
-			crate.close();
+			library.close();
 		}
 	});
 
-	test('refuses a crate written by a newer server', async () => {
-		const crate = new DjCrate(':memory:');
-		crate.sqlite.run('PRAGMA user_version = 2');
-		const serialized = crate.sqlite.serialize();
-		crate.close();
-		const directory = await mkdtemp(join(tmpdir(), 'mall-newer-crate-'));
+	test('refuses a library database written by a newer server', async () => {
+		const library = new DjLibrary(':memory:');
+		library.sqlite.run('PRAGMA user_version = 2');
+		const serialized = library.sqlite.serialize();
+		library.close();
+		const directory = await mkdtemp(join(tmpdir(), 'mall-newer-library-'));
 		temporaryDirectories.push(directory);
-		const path = join(directory, 'crate.sqlite');
+		const path = join(directory, 'library.sqlite');
 		await writeFile(path, serialized);
-		assert.throws(() => new DjCrate(path), /newer than supported/);
+		assert.throws(() => new DjLibrary(path), /newer than supported/);
 	});
 
-	test('refuses unversioned crate tables', async () => {
-		const crate = new DjCrate(':memory:');
-		crate.sqlite.run('PRAGMA user_version = 0');
-		const serialized = crate.sqlite.serialize();
-		crate.close();
-		const directory = await mkdtemp(join(tmpdir(), 'mall-unversioned-crate-'));
+	test('refuses unversioned library tables', async () => {
+		const library = new DjLibrary(':memory:');
+		library.sqlite.run('PRAGMA user_version = 0');
+		const serialized = library.sqlite.serialize();
+		library.close();
+		const directory = await mkdtemp(join(tmpdir(), 'mall-unversioned-library-'));
 		temporaryDirectories.push(directory);
-		const path = join(directory, 'crate.sqlite');
+		const path = join(directory, 'library.sqlite');
 		await writeFile(path, serialized);
-		assert.throws(() => new DjCrate(path), /unversioned table/);
+		assert.throws(() => new DjLibrary(path), /unversioned table/);
 	});
 
 	test('imports each playable legacy sidecar once', async () => {
-		const directory = await mkdtemp(join(tmpdir(), 'mall-dj-crate-'));
+		const directory = await mkdtemp(join(tmpdir(), 'mall-dj-library-'));
 		temporaryDirectories.push(directory);
 		await writeFile(join(directory, 'Nyan Cat.mp3'), 'audio');
 		await writeFile(
@@ -160,16 +160,16 @@ describe('DJ crate persistence', () => {
 			}),
 		);
 
-		const crate = new DjCrate(':memory:');
+		const library = new DjLibrary(':memory:');
 		try {
-			assert.equal(await importLegacySidecars(directory, crate), 1);
-			assert.equal(await importLegacySidecars(directory, crate), 0);
-			const track = crate.trackByFile('Nyan Cat.mp3');
+			assert.equal(await importLegacySidecars(directory, library), 1);
+			assert.equal(await importLegacySidecars(directory, library), 0);
+			const track = library.trackByFile('Nyan Cat.mp3');
 			assert.ok(track);
 			assert.equal(track.youtubeId, 'QH2-TGUlwu4');
 			assert.equal(track.durationSeconds, 217);
 		} finally {
-			crate.close();
+			library.close();
 		}
 	});
 });

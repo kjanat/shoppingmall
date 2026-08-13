@@ -18,15 +18,15 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { OpenRouter } from '@openrouter/sdk';
 import { env } from 'bun';
 import { isRecord, readNumber, readString } from '#/util/values.ts';
-import type { CrateTrack } from './djCrate.ts';
+import type { LibraryTrack } from './djLibrary.ts';
 import {
 	AUDIO_EXTENSIONS,
-	DjCrate,
+	DjLibrary,
 	importLegacySidecars,
 	isAudioFileName,
 	parseYtDlpOutput,
 	YT_DLP_META_PRINT,
-} from './djCrate.ts';
+} from './djLibrary.ts';
 import { clientIp, isOurs } from './net.ts';
 
 const BOOT = Date.now();
@@ -37,23 +37,23 @@ function uptimeSeconds(): number {
 
 /** Music library. public/ is read from the working directory, like public/ in main.ts. */
 const MUSIC_DIR = resolve('public/dj-music');
-const CRATE_DIR = join(MUSIC_DIR, '.mall');
+const DJ_DATA_DIR = resolve('data/dj');
 const AUDIO_EXT = new Set<string>(AUDIO_EXTENSIONS);
 
 export async function ensureMusicDir(): Promise<void> {
 	await mkdir(MUSIC_DIR, { recursive: true });
 }
 
-let crate: DjCrate | undefined;
+let library: DjLibrary | undefined;
 let legacyImport: Promise<number> | undefined;
 
-async function ensureCrate(): Promise<DjCrate> {
+async function ensureLibrary(): Promise<DjLibrary> {
 	await ensureMusicDir();
-	await mkdir(CRATE_DIR, { recursive: true });
-	crate ??= new DjCrate(join(CRATE_DIR, 'crate.sqlite'));
-	legacyImport ??= importLegacySidecars(MUSIC_DIR, crate);
+	await mkdir(DJ_DATA_DIR, { recursive: true });
+	library ??= new DjLibrary(join(DJ_DATA_DIR, 'library.sqlite'));
+	legacyImport ??= importLegacySidecars(MUSIC_DIR, library);
 	await legacyImport;
-	return crate;
+	return library;
 }
 
 export type TrackMeta = {
@@ -61,7 +61,7 @@ export type TrackMeta = {
 	title: string;
 	url: string;
 	bytes: number;
-	/** From the crate database, when the track came in through a request. */
+	/** From the DJ library database, when the track came in through a request. */
 	artist?: string;
 	seconds?: number;
 	videoId?: string;
@@ -69,8 +69,8 @@ export type TrackMeta = {
 };
 
 async function listPlaylist(): Promise<TrackMeta[]> {
-	const crate = await ensureCrate();
-	const metadata = new Map(crate.allTracks().map((track) => [track.file, track]));
+	const library = await ensureLibrary();
+	const metadata = new Map(library.allTracks().map((track) => [track.file, track]));
 	const names: string[] = [];
 	for await (const name of new Bun.Glob('*').scan({ cwd: MUSIC_DIR, onlyFiles: true })) {
 		if (AUDIO_EXT.has(extname(name).toLowerCase())) names.push(name);
@@ -517,7 +517,7 @@ async function newestMusicFile(beforeMs: number): Promise<string | undefined> {
 
 async function runYtDlpUrl(
 	watchUrl: string,
-): Promise<{ ok: boolean; log: string; file?: string; metadata?: CrateTrack; dump?: string }> {
+): Promise<{ ok: boolean; log: string; file?: string; metadata?: LibraryTrack; dump?: string }> {
 	await ensureMusicDir();
 	const before = Date.now();
 	const outTpl = join(MUSIC_DIR, '%(title).80s [%(id)s].%(ext)s');
@@ -538,7 +538,7 @@ async function runYtDlpUrl(
 			'--no-progress',
 			'--no-mtime',
 			// NB: no `--no-part` — with .part suffixes an interrupted download never
-			// carries an audio extension, so half files can't show up in the crates.
+			// carries an audio extension, so half files cannot enter the library.
 			// Refuse absurd inputs instead of filling the disk: ≤ 150 MB and ≤ 1 h
 			// (DJ sets are long; bartek_deep_house alone is 66 MB).
 			'--max-filesize',
@@ -604,7 +604,7 @@ async function requestTrack(
 		.slice(0, 100);
 	if (!clean) return { ok: false, log: 'empty query' };
 
-	const crate = await ensureCrate();
+	const library = await ensureLibrary();
 	let watchUrl = '';
 	let title: string | undefined;
 	let videoId: string | undefined;
@@ -625,9 +625,9 @@ async function requestTrack(
 	}
 
 	if (videoId) {
-		const existing = crate.trackByYoutubeId(videoId);
+		const existing = library.trackByYoutubeId(videoId);
 		if (existing && (await Bun.file(join(MUSIC_DIR, existing.file)).exists())) {
-			log += `[crate] already have ${existing.file}\n`;
+			log += `[library] already have ${existing.file}\n`;
 			return { ok: true, log: log.slice(-3000), file: existing.file, title: existing.title, videoId };
 		}
 	}
@@ -647,7 +647,7 @@ async function requestTrack(
 			downloadedAt: Date.now(),
 			...(videoId ? { youtubeId: videoId } : {}),
 		};
-		crate.saveTrack({ ...metadata, file: dl.file, requestedQuery: clean, downloadedAt: Date.now() }, dl.dump);
+		library.saveTrack({ ...metadata, file: dl.file, requestedQuery: clean, downloadedAt: Date.now() }, dl.dump);
 	}
 	return {
 		ok: dl.ok,

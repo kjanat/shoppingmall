@@ -61,7 +61,7 @@ export class DJOverlay {
           <button type="button" class="dj-btn" id="dj-rat">🐀 Roep rat</button>
         </div>
 
-        <div class="dj-list-label">In de crates</div>
+        <div class="dj-list-label">Muziekbibliotheek</div>
         <ul class="dj-list" id="dj-list"></ul>
       </div>
     `;
@@ -141,7 +141,7 @@ export class DJOverlay {
 
 	setTracks(tracks: Track[]): void {
 		if (!tracks.length) {
-			this.list.innerHTML = '<li class="dj-empty">Crates leeg — request iets, yt-dlp haalt het op.</li>';
+			this.list.innerHTML = '<li class="dj-empty">Muziekbibliotheek leeg — request iets, yt-dlp haalt het op.</li>';
 			return;
 		}
 		this.list.innerHTML = tracks

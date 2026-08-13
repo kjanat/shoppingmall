@@ -2,14 +2,14 @@ import type { Database } from 'bun:sqlite';
 import { basename, extname, join } from 'node:path';
 import { desc, eq } from 'drizzle-orm';
 import { finiteNumber, isRecord, readString } from '#/util/values.ts';
-import { type CrateDb, openCrateDb } from './db/client.ts';
+import { type DjLibraryDb, openDjLibraryDb } from './db/client.ts';
 import { type DjTrackRow, type DjYtDumpRow, djTracks, djYtDumps } from './db/schema.ts';
 
 export const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.ogg', '.webm', '.wav', '.opus'] as const;
 export const YT_DLP_META_PREFIX = 'MALLMETA:';
 export const YT_DLP_META_PRINT = `after_move:${YT_DLP_META_PREFIX}%()j`;
 
-export type CrateTrack = {
+export type LibraryTrack = {
 	id?: number;
 	file: string;
 	title: string;
@@ -22,7 +22,7 @@ export type CrateTrack = {
 };
 
 export type YtDlpCapture = {
-	track: CrateTrack;
+	track: LibraryTrack;
 	/** Exact JSON text after the prefix, without lossy parse/stringify. */
 	dump: string;
 };
@@ -34,7 +34,7 @@ function nonempty(value: string): string | undefined {
 	return trimmed || undefined;
 }
 
-export function crateBasename(path: string): string | undefined {
+export function libraryBasename(path: string): string | undefined {
 	const file = basename(path.trim());
 	if (!file || file === '.' || file === '..' || file.includes('/') || file.includes('\\')) return undefined;
 	return file;
@@ -49,10 +49,10 @@ export function isAudioFileName(name: string): boolean {
 	return basename(name) === name && AUDIO_EXTENSIONS.some((extension) => extname(name).toLowerCase() === extension);
 }
 
-/** Parse yt-dlp's untyped info dict before it reaches the crate. */
-export function parseYtDlpInfo(raw: unknown, fallbackFile?: string): CrateTrack | undefined {
+/** Parse yt-dlp's untyped info dict before it reaches the DJ library. */
+export function parseYtDlpInfo(raw: unknown, fallbackFile?: string): LibraryTrack | undefined {
 	if (!isRecord(raw)) return undefined;
-	const file = crateBasename(readString(raw, 'filepath') || readString(raw, 'filename') || fallbackFile || '');
+	const file = libraryBasename(readString(raw, 'filepath') || readString(raw, 'filename') || fallbackFile || '');
 	if (!file) return undefined;
 	const title = nonempty(readString(raw, 'track')) || nonempty(readString(raw, 'title')) || basename(file, extname(file));
 	const artist = nonempty(readString(raw, 'artist')) || nonempty(readString(raw, 'uploader'));
@@ -86,7 +86,7 @@ export function parseYtDlpOutput(output: string, fallbackFile?: string): YtDlpCa
 	return undefined;
 }
 
-function trackFromRow(row: DjTrackRow): CrateTrack {
+function trackFromRow(row: DjTrackRow): LibraryTrack {
 	return {
 		id: row.id,
 		file: row.file,
@@ -100,12 +100,12 @@ function trackFromRow(row: DjTrackRow): CrateTrack {
 	};
 }
 
-export class DjCrate {
+export class DjLibrary {
 	readonly sqlite: Database;
-	readonly db: CrateDb;
+	readonly db: DjLibraryDb;
 
 	constructor(path: string) {
-		const opened = openCrateDb(path);
+		const opened = openDjLibraryDb(path);
 		this.sqlite = opened.sqlite;
 		this.db = opened.db;
 	}
@@ -114,25 +114,25 @@ export class DjCrate {
 		this.sqlite.close();
 	}
 
-	allTracks(): CrateTrack[] {
+	allTracks(): LibraryTrack[] {
 		return this.db.select().from(djTracks).all().map(trackFromRow);
 	}
 
-	trackByFile(file: string): CrateTrack | undefined {
+	trackByFile(file: string): LibraryTrack | undefined {
 		const row = this.db.select().from(djTracks).where(eq(djTracks.file, file)).get();
 		return row ? trackFromRow(row) : undefined;
 	}
 
-	trackByYoutubeId(youtubeId: string): CrateTrack | undefined {
+	trackByYoutubeId(youtubeId: string): LibraryTrack | undefined {
 		const row = this.db.select().from(djTracks).where(eq(djTracks.youtubeId, youtubeId)).get();
 		return row ? trackFromRow(row) : undefined;
 	}
 
-	upsertTrack(track: CrateTrack): number {
+	upsertTrack(track: LibraryTrack): number {
 		const byYoutube = track.youtubeId ? this.trackByYoutubeId(track.youtubeId) : undefined;
 		const byFile = this.trackByFile(track.file);
 		if (byYoutube?.id !== undefined && byFile?.id !== undefined && byYoutube.id !== byFile.id) {
-			throw new Error(`DJ crate identity conflict for ${track.file}`);
+			throw new Error(`DJ library identity conflict for ${track.file}`);
 		}
 		const existing = byYoutube ?? byFile;
 		const requestedQuery = track.requestedQuery ?? existing?.requestedQuery ?? null;
@@ -152,7 +152,7 @@ export class DjCrate {
 		}
 
 		const inserted = this.db.insert(djTracks).values(values).returning({ id: djTracks.id }).get();
-		if (!inserted) throw new Error('DJ crate insert returned no id');
+		if (!inserted) throw new Error('DJ library insert returned no id');
 		return inserted.id;
 	}
 
@@ -162,7 +162,7 @@ export class DjCrate {
 		this.db.insert(djYtDumps).values({ trackId, capturedAt, payload: dump }).run();
 	}
 
-	saveTrack(track: CrateTrack, dump?: string): number {
+	saveTrack(track: LibraryTrack, dump?: string): number {
 		return this.db.transaction(() => {
 			const id = this.upsertTrack(track);
 			if (dump) this.insertDump(id, dump, track.downloadedAt);
@@ -189,7 +189,7 @@ async function matchingAudio(dir: string, stem: string): Promise<string | undefi
 }
 
 /** Import old yt-dlp sidecars without making them part of the live contract. */
-export async function importLegacySidecars(dir: string, crate: DjCrate): Promise<number> {
+export async function importLegacySidecars(dir: string, library: DjLibrary): Promise<number> {
 	let imported = 0;
 	for await (const name of new Bun.Glob('*.info.json').scan({ cwd: dir, onlyFiles: true })) {
 		const sidecar = Bun.file(join(dir, name));
@@ -206,11 +206,11 @@ export async function importLegacySidecars(dir: string, crate: DjCrate): Promise
 			continue;
 		}
 		const file = await matchingAudio(dir, name.slice(0, -'.info.json'.length));
-		if (!file || crate.trackByFile(file)) continue;
+		if (!file || library.trackByFile(file)) continue;
 		const track = parseYtDlpInfo(raw, file);
 		if (!track) continue;
 		const capturedAt = sidecar.lastModified || Date.now();
-		crate.saveTrack({ ...track, file, downloadedAt: capturedAt }, text);
+		library.saveTrack({ ...track, file, downloadedAt: capturedAt }, text);
 		imported += 1;
 	}
 	return imported;

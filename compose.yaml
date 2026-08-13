@@ -15,6 +15,7 @@ services:
       - traefik.http.routers.kruidvat.middlewares=security-headers@file
       - traefik.http.routers.kruidvat.service=kruidvat
       - traefik.http.services.kruidvat.loadbalancer.server.port=5174
-    # Audio plus .mall/crate.sqlite persist together; the entrypoint repairs only this writable boundary.
-    volumes: [./public/dj-music:/app/public/dj-music]
+    volumes:
+      - ./public/dj-music:/app/public/dj-music
+      - ./data/dj:/app/data/dj
 networks: { traefik: { external: true } }

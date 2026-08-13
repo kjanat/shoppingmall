@@ -26,7 +26,7 @@ export class DJWidget {
 		const prev = player.onChange;
 		player.onChange = (info) => {
 			prev?.(info);
-			this.titleEl.textContent = info.title || 'Crates leeg — request iets';
+			this.titleEl.textContent = info.title || 'Muziekbibliotheek leeg — request iets';
 			this.playBtn.textContent = info.playing ? '⏸' : '▶';
 		};
 	}
