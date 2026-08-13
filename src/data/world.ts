@@ -1,5 +1,5 @@
 import type { PedestrianPosture } from '#/data/character';
-import { postureHeadroom, STANDING_PEDESTRIAN } from '#/data/character';
+import { postureHeadroom, SEATED_EYE_ABOVE_SEAT, STANDING_PEDESTRIAN } from '#/data/character';
 import type { EscalatorSpec, OpeningDef, StairSpec, VerticalConnector } from '#/data/connectors';
 import { CON_ENTITIES } from '#/data/conWorld';
 import { ATRIUM_BARRIER, ATRIUM_VOID, MALL_FOOTPRINT, PARKING_FOOTPRINT } from '#/data/layout';
@@ -5007,7 +5007,8 @@ export const DRIVEABLE_HANDLING: Readonly<Record<DriveableKind, DriveableHandlin
 		friction: 4,
 		turnRate: 2.4,
 		wheelbase: MOTORCYCLE_SPEC.wheel.offsetZ * 2,
-		seatHeight: MOTORCYCLE_SPEC.seat.centerY + half(MOTORCYCLE_SPEC.seat.height),
+		// De zadeltop plus de zithouding: op de kale zadeltop keek de camera op kniehoogte.
+		seatHeight: MOTORCYCLE_SPEC.seat.centerY + half(MOTORCYCLE_SPEC.seat.height) + SEATED_EYE_ABOVE_SEAT,
 		seatBack: -MOTORCYCLE_SPEC.seat.offsetZ,
 		maxLean: 0.55,
 	},

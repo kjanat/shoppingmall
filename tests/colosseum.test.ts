@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { CollisionWorld, WALK_STEP } from '#/physics/Collision';
 import { PLAYER_RADIUS } from '#/player/constants';
-import { CITY_GROUND_Y, COLOSSEUM_PLAN } from '#/scene/city/cityPlan';
+import { CITY_GROUND_Y, COLOSSEUM_PLAN, ENTRANCE_CARPET, PLAZA_ENTRANCE_GAP } from '#/scene/city/cityPlan';
 import { half, lerp } from '#/util/math';
 import { stubDocument } from './helpers/stub-dom.ts';
 import { WALK_PROBE_STEP } from './helpers/walk.ts';
@@ -26,6 +26,7 @@ const HEART = 1;
 stubDocument();
 const THREE = await import('three');
 const { CityColosseum } = await import('#/scene/city/CityColosseum');
+const { COLOSSEUM_TRANSPORT_STOPS, ColosseumTransport } = await import('#/scene/city/ColosseumTransport');
 
 const colosseumWorld = new CollisionWorld();
 const structure = new CityColosseum(colosseumWorld);
@@ -123,5 +124,41 @@ describe('the column to the sky is open', () => {
 				? `a lid lies at y ${nr(lid.point.y)} (${lid.object.name || lid.object.type}), under the crown at ${nr(wallHeight)}`
 				: '',
 		).toBeUndefined();
+	});
+});
+
+describe('the Colosseum Express taxis a passenger between its stops', () => {
+	test('waits beside the red carpet on the paved forecourt', () => {
+		const stop = COLOSSEUM_TRANSPORT_STOPS.mall;
+		expect(stop.z, 'the chariot still stands on the red carpet').toBeGreaterThan(ENTRANCE_CARPET.maxZ);
+		expect(stop.x).toBeGreaterThanOrEqual(PLAZA_ENTRANCE_GAP.minX);
+		expect(stop.x).toBeLessThanOrEqual(PLAZA_ENTRANCE_GAP.maxX);
+		expect(stop.z).toBeLessThanOrEqual(PLAZA_ENTRANCE_GAP.maxZ);
+	});
+
+	test('boards, carries, refuses a moving exit, and releases at the destination', () => {
+		const transport = new ColosseumTransport();
+		const passenger = new THREE.Vector3(COLOSSEUM_TRANSPORT_STOPS.mall.x, CITY_GROUND_Y, COLOSSEUM_TRANSPORT_STOPS.mall.z);
+		const seat = new THREE.Vector3();
+		const exit = new THREE.Vector3();
+
+		expect(transport.currentStop).toBe('mall');
+		expect(transport.isBoardable(passenger)).toBeTrue();
+		expect(transport.board(passenger)).toBeTrue();
+		for (let frame = 0; frame < 10; frame++) transport.update(0.1);
+		expect(transport.currentStop).toBeNull();
+		expect(transport.release(exit)).toBeNull();
+
+		transport.seatPosition(seat);
+		expect(seat.distanceTo(passenger)).toBeGreaterThan(1);
+		for (let frame = 0; frame < 100 && transport.currentStop !== 'colosseum'; frame++) transport.update(0.1);
+		expect(transport.currentStop).toBe('colosseum');
+		expect(transport.release(exit)).not.toBeNull();
+		expect(Math.hypot(exit.x - COLOSSEUM_PLAN.x, exit.z - (COLOSSEUM_PLAN.z - COLOSSEUM_PLAN.radiusZ - 10))).toBeLessThan(3);
+		expect(transport.ridden).toBeFalse();
+		expect(transport.isBoardable(exit)).toBeTrue();
+		expect(transport.board(exit)).toBeTrue();
+		for (let frame = 0; frame < 100 && transport.currentStop !== 'mall'; frame++) transport.update(0.1);
+		expect(transport.currentStop).toBe('mall');
 	});
 });

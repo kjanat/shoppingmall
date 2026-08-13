@@ -200,6 +200,8 @@ export class App {
 	private cityColosseum: CityColosseum;
 	private colosseumFighters = new ColosseumFighters();
 	private colosseumTransport: ColosseumTransport;
+	private readonly chariotSeat = new THREE.Vector3();
+	private readonly chariotExit = new THREE.Vector3();
 	private cityPlaza = new CityPlaza();
 	/** Het theater heeft zaallicht, dus het krijgt de pool en wordt in de ctor gebouwd. */
 	private cityTheatre: CityTheatre;
@@ -260,6 +262,7 @@ export class App {
 	private nearDroneHint = false;
 	private nearScrubberHint = false;
 	private nearCarHint = false;
+	private nearChariotHint = false;
 	/** Glijbaan-rit: meters langs de bocht, -1 = niet aan het glijden */
 	private slideDistance = -1;
 	private readonly slideSeat = new THREE.Vector3();
@@ -301,7 +304,7 @@ export class App {
 	private vsyncMs = 50;
 	private lastRafTs: number | null = null;
 	/** Welk voertuig je bestuurt */
-	private vehicle: 'drone' | 'heli' | 'scrubber' | 'car' | null = null;
+	private vehicle: 'drone' | 'heli' | 'scrubber' | 'car' | 'chariot' | null = null;
 	/** Laatste parkeerstand; blijft na uitstappen bewaard voor een HMR-herbouw. */
 	private lastParkedVehicle: PersistedRide | null = null;
 	/** reused each frame for the monkey's target list */
@@ -405,7 +408,7 @@ export class App {
 		this.cityTheatre = new CityTheatre(this.pool);
 		this.furryCon = new FurryCon(this.pool, this.world);
 		this.cityColosseum = new CityColosseum(this.world);
-		this.colosseumTransport = new ColosseumTransport(this.world);
+		this.colosseumTransport = new ColosseumTransport();
 		this.colosseumFighters.bindColosseum(this.cityColosseum);
 
 		this.atmosphere = new Atmosphere(this.world);
@@ -1042,6 +1045,8 @@ export class App {
 				// Voertuigen daarna: uitstappen als je vliegt/rijdt
 				if (!paneelWint && (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car')) {
 					this.exitVehicle();
+				} else if (!paneelWint && this.vehicle === 'chariot') {
+					this.exitChariot();
 				} else if (this.tryOpenElevatorMenu(lift)) {
 					// Hans floor picker — frees mouse without Esc
 				} else if (!this.possessId && this.freeMove && this.driveCars.nearestCar(this.camera.position, 4.5)) {
@@ -1057,6 +1062,8 @@ export class App {
 					this.boardDrone();
 				} else if (!this.possessId && this.freeMove && this.heli.boardable && this.heli.distanceTo(this.camera.position) < 4.5) {
 					this.boardHeli();
+				} else if (!this.possessId && this.freeMove && this.colosseumTransport.isBoardable(this.camera.position)) {
+					this.boardChariot();
 				} else if (this.djBartek.inRange(this.camera.position)) {
 					void this.openDjBooth();
 				} else {
@@ -1542,6 +1549,34 @@ export class App {
 		this.player.setHeading(this.driveCars.heading);
 		const icoon = this.driveCars.activeKind === 'motorcycle' ? '🏍️' : '🚗';
 		this.ui.setStatus(`${icoon} ${this.driveCars.activeName} · WASD rijden · Shift = turbo · E = uit · west-exit → STAD`);
+	}
+
+	private boardChariot(): void {
+		if (!this.colosseumTransport.board(this.camera.position)) return;
+		this.player.releaseLook();
+		this.vehicle = 'chariot';
+		this.player.driving = true;
+		this.player.flying = false;
+		this.colosseumTransport.seatPosition(this.chariotSeat);
+		this.camera.position.copy(this.chariotSeat);
+		this.player.syncFromCamera();
+		this.player.driving = true;
+		const destination = this.colosseumTransport.destination === 'mall' ? 'de mall' : 'het Colosseum';
+		this.ui.setStatus(`🏛️ COLOSSEUM EXPRESS · taxi naar ${destination} · uitstappen bij aankomst met E`);
+	}
+
+	private exitChariot(): void {
+		const exit = this.colosseumTransport.release(this.chariotExit);
+		if (!exit) {
+			this.ui.setStatus('🏛️ COLOSSEUM EXPRESS · uitstappen kan bij de volgende halte');
+			return;
+		}
+		this.vehicle = null;
+		this.player.driving = false;
+		this.camera.position.set(exit.x, exit.y + EYE, exit.z);
+		this.player.syncFromCamera();
+		const stop = this.colosseumTransport.currentStop === 'mall' ? 'Mall Entrance' : 'Mega Colosseum';
+		this.ui.setStatus(`🏛️ ${stop} · uitgestapt · E bij de chariot voor de terugrit`);
 	}
 
 	/** Wie in de mond van de buis stapt gaat mee: WHEEE — de bocht in, het bad uit. */
@@ -2277,12 +2312,13 @@ export class App {
 		if (this.cityFavela.inGangRange(p)) return true;
 		const lift = this.elevatorAction();
 		if (lift !== null) return true;
-		if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car') return true;
+		if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car' || this.vehicle === 'chariot') return true;
 		const free = !this.possessId && this.freeMove;
 		if (free && this.driveCars.nearestCar(p, 4.5)) return true;
 		if (free && this.scrubber.distanceTo(p) < 3.5 && levelAt(p.y) === 'v0') return true;
 		if (free && this.drone.distanceTo(p) < 3.2) return true;
 		if (free && this.heli.boardable && this.heli.distanceTo(p) < 4.5) return true;
+		if (free && this.colosseumTransport.isBoardable(p)) return true;
 		if (this.djBartek.inRange(p)) return true;
 		return this.keeperInTalkRange();
 	}
@@ -2467,7 +2503,7 @@ export class App {
 			this.cleaner.update(
 				cleanerDt,
 				// Don't let Wei hunt you while you're racing a vehicle
-				this.vehicle === 'scrubber' || this.vehicle === 'car' ? undefined : this.camera.position,
+				this.player.driving ? undefined : this.camera.position,
 			);
 		}
 		// Binaural listener: camera position + look/up for HRTF
@@ -2628,9 +2664,15 @@ export class App {
 			this.cityFavela.update(cityDt, elapsed, this.camera.position);
 			this.cityColosseum.update(cityDt, elapsed);
 			this.colosseumFighters.update(cityDt, elapsed);
-			this.colosseumTransport.update(cityDt, elapsed);
 			this.citySky.update(cityDt, elapsed);
 			this.cityBirds.update(cityDt, elapsed);
+		}
+		const chariotDt = this.colosseumTransport.ridden ? dt : cityDt;
+		if (chariotDt !== null) this.colosseumTransport.update(chariotDt);
+		if (this.vehicle === 'chariot' && this.colosseumTransport.ridden) {
+			this.colosseumTransport.seatPosition(this.chariotSeat);
+			this.camera.position.copy(this.chariotSeat);
+			this.player.driving = true;
 		}
 		// Het theater staat in twee zones tegelijk: de marquee buiten en de zaal binnen.
 		// Op de stadsklok bevroor de zaal zodra je diep genoeg naar binnen liep om de
@@ -2716,6 +2758,16 @@ export class App {
 			this.ui.setStatus('🚗 HUURAUTO · E = instappen · Shift = turbo · west-exit ramp → STAD');
 		} else if (!nearCar && this.nearCarHint) {
 			this.nearCarHint = false;
+		}
+
+		const nearChariot =
+			!this.player.flying && !this.player.driving && this.freeMove && this.colosseumTransport.isBoardable(this.camera.position);
+		if (nearChariot && !this.nearChariotHint) {
+			this.nearChariotHint = true;
+			const destination = this.colosseumTransport.destination === 'mall' ? 'Mall Entrance' : 'Mega Colosseum';
+			this.ui.setStatus(`🏛️ COLOSSEUM EXPRESS · E = taxi naar ${destination}`);
+		} else if (!nearChariot && this.nearChariotHint) {
+			this.nearChariotHint = false;
 		}
 
 		// Bewoners-dashboard: refresh 2×/s, only while open

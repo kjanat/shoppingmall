@@ -158,7 +158,9 @@ export class DriveableCars {
 		this.ground.grounded = true;
 		this.wheels = c.wheels;
 		this.world.boundsMode = 'city';
-		this.paintLabel(c, `JIJ · ${c.name}`, '#b71c1c');
+		// Het naambord is voor omstanders bij een geparkeerd voertuig; op de motor
+		// hangt het anders op ooghoogte recht voor de rijder.
+		c.label.visible = false;
 		return true;
 	}
 
@@ -210,6 +212,7 @@ export class DriveableCars {
 			// Weer rechtop: de rol- en tuimelstand van de laatste frame bleven staan, en
 			// een motor die met een halve radiaal slagzij geparkeerd wordt ligt op straat.
 			c.mesh.rotation.set(0, this.yaw + Math.PI, 0);
+			c.label.visible = true;
 			this.paintLabel(c, `${c.name} · E`, '#0d47a1');
 		}
 		const leftX = -Math.cos(this.yaw);
@@ -307,7 +310,10 @@ export class DriveableCars {
 			const yawRate = dt > 0 ? (this.yaw - yawBefore) / dt : 0;
 			const doel = clamp(Math.atan2(this.speed * yawRate, GRAVITY), -handling.maxLean, handling.maxLean);
 			this.lean = ease(this.lean, doel, LEAN_EASE, dt);
-			lean = this.lean;
+			// Lokaal +x is de linkerflank van de rijder, dus een positieve rol om de neusas
+			// tilt die flank omhoog; de balanshoek van een linkerbocht is positief en moet
+			// hem juist laten zakken. Zonder dit minteken hing de motor de bocht uit.
+			lean = -this.lean;
 		} else {
 			lean = clamp(steer * Math.abs(this.speed) * (handling.leanPerSteerSpeed ?? 0), -handling.maxLean, handling.maxLean);
 		}

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { MotorcycleSpot } from '#/data/world';
 import { MOTORCYCLE_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
+import { motorcycleModelClone } from '#/scene/motorcycleModel';
 import { at } from '#/util/rand';
 
 /**
@@ -16,6 +17,10 @@ import { at } from '#/util/rand';
 const PAINT = [0x37474f, 0xb71c1c, 0x1b5e20, 0x37474f, 0x0d47a1, 0x4e342e] as const;
 
 export function motorcycleMesh(color: number, track: <T extends THREE.Material>(material: T) => T): THREE.Group {
+	// Het Blender-model wint als het vóór de bouw geladen is; headless bestaat
+	// alleen de procedurele motor hieronder, uit dezelfde spec.
+	const model = motorcycleModelClone(color, track);
+	if (model) return model;
 	const { body, seat, wheel, bars, headlight } = MOTORCYCLE_SPEC;
 	const group = new THREE.Group();
 

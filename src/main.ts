@@ -11,6 +11,14 @@ if (!canvasRoot || !uiRoot) {
 const boot = async () => {
 	try {
 		const { App } = await import('./app/App');
+		// Vóór de constructor: de SceneBatcher bakt daarin, dus een model dat later
+		// aankomt zou naast zijn eigen batch-kopie komen te staan.
+		const { preloadMotorcycleModel } = await import('./scene/motorcycleModel');
+		try {
+			await preloadMotorcycleModel();
+		} catch (error) {
+			console.warn('[Mall] motor-model laadt niet, procedurele motor rijdt', error);
+		}
 		const app = new App(canvasRoot, uiRoot);
 		// Hold the loading screen until the shaders are linked. The alternative is
 		// handing the player a mall that stutters its way through the first minute.

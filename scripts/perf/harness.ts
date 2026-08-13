@@ -15,7 +15,7 @@ import { join, normalize, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { blue, space } from 'ansispeck/safe';
 import { isRecord, readArray, readBoolean, readNumber, readString } from '#/util/values';
-import { PROFILE_DIR, STATIC_DIR } from './paths.ts';
+import { PROFILE_DIR, PUBLIC_DIR, STATIC_DIR } from './paths.ts';
 import type { PerfBrowser } from './playwright.ts';
 import { isSoftwareHeadless, launchPerfBrowser } from './playwright.ts';
 import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample, ZoneCullTally, ZoneOwnerTiming } from './probe.ts';
@@ -36,7 +36,14 @@ function contentType(path: string): string {
 	if (path.endsWith('.ogg')) return 'audio/ogg';
 	if (path.endsWith('.wav')) return 'audio/wav';
 	if (path.endsWith('.woff2')) return 'font/woff2';
+	if (path.endsWith('.glb')) return 'model/gltf-binary';
 	return 'application/octet-stream';
+}
+
+/** Het pad binnen `dir`, of null wanneer het eruit ontsnapt. */
+function containedIn(dir: string, path: string): string | null {
+	const wanted = normalize(join(dir, path));
+	return wanted === dir || wanted.startsWith(dir + sep) ? wanted : null;
 }
 
 async function readStaticFile(path: string): Promise<Buffer | null> {
@@ -55,16 +62,22 @@ export async function serveGame(): Promise<StaticServer> {
 	const server = createServer(async (request, response) => {
 		try {
 			const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
-			// Keep the resolved path inside the build directory: this server is a
+			// Keep the resolved paths inside their directories: this server is a
 			// dev tool, but a dev tool that will happily read ../../.env is a bad one.
-			const wanted = normalize(join(STATIC_DIR, path === '/' ? 'index.html' : path));
-			if (wanted !== STATIC_DIR && !wanted.startsWith(STATIC_DIR + sep)) {
+			const inStatic = containedIn(STATIC_DIR, path === '/' ? 'index.html' : path);
+			const inPublic = containedIn(PUBLIC_DIR, path);
+			if (!inStatic && !inPublic) {
 				response.writeHead(403).end('no');
 				return;
 			}
-			const file = await readStaticFile(wanted);
+			let served = inStatic;
+			let file = inStatic ? await readStaticFile(inStatic) : null;
+			if (!file && inPublic) {
+				served = inPublic;
+				file = await readStaticFile(inPublic);
+			}
 			const body = file ?? (await readFile(join(STATIC_DIR, 'index.html')));
-			response.writeHead(200, { 'content-type': contentType(file ? wanted : 'index.html') }).end(body);
+			response.writeHead(200, { 'content-type': contentType(file && served ? served : 'index.html') }).end(body);
 		} catch (error) {
 			response.writeHead(500).end(error instanceof Error ? error.message : 'static server error');
 		}

@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'bun:test';
+import { SEATED_EYE_ABOVE_SEAT } from '#/data/character';
 import { levelAt } from '#/data/levels';
 import type { DriveableHandling } from '#/data/world';
-import { DRIVEABLE_HANDLING, ENTRANCE_PORTAL, ENTRANCE_RIDEABLE_MOTORCYCLES, RIDEABLE_MOTORCYCLE_SPOTS } from '#/data/world';
+import {
+	DRIVEABLE_HANDLING,
+	ENTRANCE_PORTAL,
+	ENTRANCE_RIDEABLE_MOTORCYCLES,
+	MOTORCYCLE_SPEC,
+	RIDEABLE_MOTORCYCLE_SPOTS,
+} from '#/data/world';
 import { CollisionWorld } from '#/physics/Collision';
 import { GRAVITY } from '#/player/constants';
 import { clamp, half } from '#/util/math';
@@ -71,6 +78,15 @@ test('there is a motorcycle the player rides away', () => {
 	expect(SPOT, 'no rideable motorcycle in the world').toBeDefined();
 });
 
+test('the rider looks out over the bars, not from the saddle', () => {
+	const saddleTop = MOTORCYCLE_SPEC.seat.centerY + half(MOTORCYCLE_SPEC.seat.height);
+	const eye = saddleTop + SEATED_EYE_ABOVE_SEAT;
+	expect(
+		DRIVEABLE_HANDLING.motorcycle.seatHeight,
+		`the camera sits at ${nr(DRIVEABLE_HANDLING.motorcycle.seatHeight)} m while a seated rider's eye is at ${nr(eye)} m`,
+	).toBeCloseTo(eye, 9);
+});
+
 /** One ride from the same spot, so each measurement starts on an untouched world. */
 function ride(): {
 	cars: InstanceType<typeof DriveableCars>;
@@ -138,6 +154,11 @@ describe('riding it forward', () => {
 /**
  * Leaning comes from lateral acceleration and not from the steering input. A steer-times-speed
  * model reached 0.06 rad here where the balance angle asked 0.32.
+ *
+ * `steer: 1` is a LEFT corner (A raises yaw, forward is −(sin, cos)), and the mesh's local +x is
+ * the rider's left flank, so leaning INTO that corner is a negative roll: the left flank dips.
+ * The first version asserted the mesh sign without asking which way it tips a rider, and the
+ * machine hung outward like a speedboat.
  */
 function corner(throttle: number): { speed: number; omega: number; lean: number } {
 	const { cars, slot } = ride();
@@ -158,8 +179,8 @@ describe('leaning into a steady corner', () => {
 		DRIVEABLE_HANDLING.motorcycle.maxLean,
 	);
 
-	test('it hangs into the corner at all', () => {
-		expect(turn.lean, `it hangs ${nr(turn.lean)} rad, so the other way or not at all`).toBeGreaterThan(0);
+	test('it hangs into the corner, left flank down in a left corner', () => {
+		expect(turn.lean, `steering left it rolls ${nr(turn.lean)} rad, so outward or not at all`).toBeLessThan(0);
 	});
 
 	test('the test stays clear of the clamp, so it measures the formula', () => {
@@ -172,8 +193,8 @@ describe('leaning into a steady corner', () => {
 	test('it hangs at the balance angle atan(v·ω/g)', () => {
 		expect(
 			turn.lean,
-			`it hangs ${nr(turn.lean)} rad where the balance angle asks ${nr(balance)} rad at ${nr(turn.speed)} m/s and ${nr(turn.omega)} rad/s`,
-		).toBeCloseTo(balance, Math.round(-Math.log10(LEAN_SLACK)));
+			`it hangs ${nr(turn.lean)} rad where the balance angle asks ${nr(-balance)} rad at ${nr(turn.speed)} m/s and ${nr(turn.omega)} rad/s`,
+		).toBeCloseTo(-balance, Math.round(-Math.log10(LEAN_SLACK)));
 	});
 });
 
@@ -190,8 +211,8 @@ describe('at full speed with full steering', () => {
 	for (let step = 0; step < FULL_LEAN_FRAMES; step++) cars.update(FRAME, { throttle: 1, steer: 1, boost: false });
 	const lean = slot?.mesh.rotation.z ?? 0;
 
-	test('it leans into the corner', () => {
-		expect(lean, `it hangs ${nr(lean)} rad, so the other way or not at all`).toBeGreaterThan(0);
+	test('it leans into the corner, left flank down', () => {
+		expect(lean, `steering left it rolls ${nr(lean)} rad, so outward or not at all`).toBeLessThan(0);
 	});
 
 	test('it never passes its own maximum lean', () => {

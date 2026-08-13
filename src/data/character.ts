@@ -8,6 +8,9 @@ export const STANDING_PEDESTRIAN = {
 	radius: 0.4,
 } as const;
 
+/** Eye of a seated rider above the saddle (m): seated eye height is ~0.79, leaned forward on a motorcycle. */
+export const SEATED_EYE_ABOVE_SEAT = 0.72;
+
 /** Crown height of a deep crouch-walk (m); a 1.90 m body on bent knees keeps this much of itself. */
 const CROUCH_BODY_HEIGHT = 1.2;
 
