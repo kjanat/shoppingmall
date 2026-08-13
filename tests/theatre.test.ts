@@ -8,6 +8,8 @@ import {
 	BACKSTAGE_FLOOR_Y,
 	BACKSTAGE_INTERIOR,
 	BACKSTAGE_LANDING,
+	ENTRANCE_SPEC,
+	slidingLeafTravel,
 	THEATRE_AISLES,
 	THEATRE_ARTIST_PORTAL,
 	THEATRE_BACKSTAGE_DOORS_ENTITY,
@@ -383,6 +385,66 @@ describe.each([
 		expect(walk.complaint ?? '').toBe('');
 		expect(zoneAt(walk.x, walk.y, walk.z), `it ends at (${nr(walk.x)}, ${nr(walk.z)})`).toBe('theatre');
 		expect(Math.abs(walk.y - THEATRE_STAGE_TOP_Y), `it ends at y ${nr(walk.y)}, not on the stage`).toBeLessThanOrEqual(WALK_STEP);
+	});
+});
+
+/**
+ * The corridor's own route: through the central stage door onto the middle of the stage. The
+ * wing routes were tested and green while this one ended nose-first against the stage set,
+ * which stood as one backdrop from margin to margin, 30 cm behind the door.
+ */
+describe('the central stage door', () => {
+	const corridorZ = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
+	const doorX = midpoint(BACKSTAGE_CORRIDOR.minX, BACKSTAGE_CORRIDOR.maxX);
+
+	test('leads from the corridor onto the stage', () => {
+		const walk = followPolyline(
+			[
+				[doorX, corridorZ],
+				[doorX, midpoint(THEATRE_INTERIOR.minZ, THEATRE_STAGE_FRONT_Z)],
+			],
+			BACKSTAGE_FLOOR_Y,
+		);
+		expect(walk.complaint ?? '').toBe('');
+		expect(Math.abs(walk.y - THEATRE_STAGE_TOP_Y), `it ends at y ${nr(walk.y)}, not on the stage`).toBeLessThanOrEqual(WALK_STEP);
+	});
+
+	test('every sliding leaf vacates its own threshold when open', () => {
+		const clearances = THEATRE_BACKSTAGE_DOORS_ENTITY.volumes.filter(
+			(volume) => volume.role === 'opening-clearance' || volume.role === 'connector-clearance',
+		);
+		for (const mechanism of THEATRE_BACKSTAGE_DOORS_ENTITY.mechanisms) {
+			for (const volumeId of mechanism.movingVolumeIds) {
+				const leaf = THEATRE_BACKSTAGE_DOORS_ENTITY.volumes.find((volume) => volume.id === volumeId);
+				expect(leaf, `${mechanism.id} moves ${volumeId}, which does not exist`).toBeDefined();
+				if (!leaf) continue;
+				const closed = geometryBounds(leaf.geometry);
+				const threshold = clearances
+					.map((volume) => geometryBounds(volume.geometry))
+					.find(
+						(bounds) =>
+							closed.minX < bounds.maxX && closed.maxX > bounds.minX && closed.minZ < bounds.maxZ && closed.maxZ > bounds.minZ,
+					);
+				expect(threshold, `${volumeId} stands in no threshold at all`).toBeDefined();
+				if (!threshold) continue;
+				const travel = slidingLeafTravel(THEATRE_BACKSTAGE_DOORS_ENTITY, mechanism, volumeId);
+				const open = { minX: closed.minX + travel.x, maxX: closed.maxX + travel.x };
+				const clear = open.maxX <= threshold.minX + EPS || open.minX >= threshold.maxX - EPS;
+				expect(
+					clear,
+					`${volumeId} open on x[${nr(open.minX)},${nr(open.maxX)}] still stands in its threshold x[${nr(threshold.minX)},${nr(threshold.maxX)}]`,
+				).toBeTrue();
+			}
+		}
+	});
+
+	test('responds at the tempo of the mall doors', () => {
+		for (const mechanism of THEATRE_BACKSTAGE_DOORS_ENTITY.mechanisms) {
+			expect(
+				mechanism.openingSeconds,
+				`${mechanism.id} takes ${nr(mechanism.openingSeconds)} s while the mall entrance takes ${nr(ENTRANCE_SPEC.doorSeconds)} s`,
+			).toBeLessThanOrEqual(ENTRANCE_SPEC.doorSeconds);
+		}
 	});
 });
 

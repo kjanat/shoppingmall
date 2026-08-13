@@ -7,6 +7,10 @@
 	},
 	"languages": {
 		"TypeScript": {
+			"formatter": [
+				{ "language_server": { "name": "biome" } },
+				{ "external": { "command": "run", "arguments": ["-q", "dprint", "fmt", "--stdin", "{buffer_path}"] } }
+			],
 			"code_actions_on_format": {
 				"source.fixAll.biome": true,
 				"source.organizeImports.biome": true

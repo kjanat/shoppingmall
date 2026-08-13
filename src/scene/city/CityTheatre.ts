@@ -1,4 +1,17 @@
-import * as THREE from 'three';
+import type { Material, Texture, BufferGeometry, CanvasTexture } from 'three';
+import {
+	BoxGeometry,
+	Color,
+	CylinderGeometry,
+	Group,
+	InstancedMesh,
+	Mesh,
+	MeshBasicMaterial,
+	Object3D,
+	PlaneGeometry,
+	SphereGeometry,
+	Vector3,
+} from 'three';
 import type { Bounds3 } from '#/data/spatial';
 import { geometryBounds } from '#/data/spatial';
 import {
@@ -10,6 +23,7 @@ import {
 	backstageLandingTreadY,
 	backstageLandingTreadZ,
 	mechanismTriggerBounds,
+	slidingLeafTravel,
 	THEATRE_AISLES,
 	THEATRE_ARTIST_PORTAL,
 	THEATRE_BACKSTAGE_DOORS_ENTITY,
@@ -112,7 +126,7 @@ const SITTER = {
 	lean: 0.035,
 } as const;
 
-type Sitter = Readonly<{ body: THREE.Object3D; phase: number; rate: number }>;
+type Sitter = Readonly<{ body: Object3D; phase: number; rate: number }>;
 
 const TAU = Math.PI * 2;
 
@@ -122,7 +136,7 @@ const DOOR_RATE = 1 / THEATRE_PLAN.doors.seconds;
 /** Precies de doos die het mechanisme als trigger aanwijst; geen tweede zone ernaast. */
 const DOOR_TRIGGER = mechanismTriggerBounds(THEATRE_ENTRANCE_ENTITY, 'theatre-doors');
 
-function inBounds(box: Bounds3, point: THREE.Vector3): boolean {
+function inBounds(box: Bounds3, point: Vector3): boolean {
 	return (
 		point.x >= box.minX &&
 		point.x <= box.maxX &&
@@ -134,7 +148,7 @@ function inBounds(box: Bounds3, point: THREE.Vector3): boolean {
 }
 
 export class CityTheatre {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
 	/**
 	 * De bezoekers, apart bijgehouden.
@@ -144,7 +158,7 @@ export class CityTheatre {
 	 * in dezelfde groep. Alleen het publiek is een cast, dus alleen het publiek hoort
 	 * die vraag te krijgen.
 	 */
-	readonly audience = new THREE.Group();
+	readonly audience = new Group();
 
 	/**
 	 * De backstage-cast: de aankleedsters aan de kaptafels. Apart bijgehouden om
@@ -152,64 +166,63 @@ export class CityTheatre {
 	 * die ze niet bezitten, en de wanden en meubels van de backstage horen die vraag
 	 * niet te krijgen.
 	 */
-	readonly backstage = new THREE.Group();
+	readonly backstage = new Group();
 
 	/**
 	 * De twee plekken waar dit systeem staat: de marquee aan de straat en de zaal
 	 * erachter. Ze liggen in verschillende zones, en de LOD-klok leidt daar zijn
 	 * tempo uit af in plaats van er één zone bij op te schrijven.
 	 */
-	readonly marquee = new THREE.Vector3(THEATRE_PORTAL.centerX, THEATRE_FLOOR_Y, THEATRE_PORTAL.outerZ);
-	readonly house = new THREE.Vector3(
+	readonly marquee = new Vector3(THEATRE_PORTAL.centerX, THEATRE_FLOOR_Y, THEATRE_PORTAL.outerZ);
+	readonly house = new Vector3(
 		midpoint(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX),
 		THEATRE_FLOOR_Y,
 		midpoint(THEATRE_INTERIOR.minZ, THEATRE_INTERIOR.maxZ),
 	);
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly instanced: THREE.InstancedMesh[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly instanced: InstancedMesh[] = [];
 
 	/** Eenheidsvormen — alles wat doosvormig of plat is, is hier een schaal van. */
-	private readonly unitBox: THREE.BoxGeometry;
-	private readonly unitPlane: THREE.PlaneGeometry;
-	private readonly dummy = new THREE.Object3D();
+	private readonly unitBox: BoxGeometry;
+	private readonly unitPlane: PlaneGeometry;
+	private readonly dummy = new Object3D();
 
 	// Chase-administratie: twee lit-kleuren (wisselen om de tik), één dim-kleur.
-	private readonly bulbs: THREE.InstancedMesh;
-	private readonly litA = new THREE.Color(0xffc94d);
-	private readonly litB = new THREE.Color(0xff4632);
-	private readonly dim = new THREE.Color(0x201206);
+	private readonly bulbs: InstancedMesh;
+	private readonly litA = new Color(0xffc94d);
+	private readonly litB = new Color(0xff4632);
+	private readonly dim = new Color(0x201206);
 	private lastStep = -1;
 
 	// Het naambord ademt zachtjes mee met de tik. Subtiel. Broadway-subtiel.
-	private readonly titleMat: THREE.MeshBasicMaterial;
+	private readonly titleMat: MeshBasicMaterial;
 	private titleLevel = 1;
 
 	/** De twee schuifbladen van de travee, en hoever ze openstaan. */
-	private readonly leaves: { mesh: THREE.Mesh; closedX: number; travel: number }[] = [];
+	private readonly leaves: { mesh: Mesh; closedX: number; travel: number }[] = [];
 	private doorOpen = 0;
 
 	/** De backstage-schuifdeuren, elk aan het eigen mechanisme uit het wereldmodel. */
 	private readonly backstageDoors: {
 		trigger: Bounds3;
 		rate: number;
-		travel: THREE.Vector3;
 		open: number;
-		leaves: { mesh: THREE.Mesh; closed: THREE.Vector3 }[];
+		leaves: { mesh: Mesh; closed: Vector3; travel: Vector3 }[];
 	}[] = [];
 
 	private readonly stageWash: LightHandle;
 	private readonly sitters: Sitter[] = [];
-	private readonly head: THREE.SphereGeometry;
+	private readonly head: SphereGeometry;
 
 	constructor(pool: LightPool) {
 		this.group.name = 'city_theatre';
 
-		this.unitBox = new THREE.BoxGeometry(1, 1, 1);
-		this.unitPlane = new THREE.PlaneGeometry(1, 1);
-		this.head = new THREE.SphereGeometry(SITTER.head.radius, 8, 6);
+		this.unitBox = new BoxGeometry(1, 1, 1);
+		this.unitPlane = new PlaneGeometry(1, 1);
+		this.head = new SphereGeometry(SITTER.head.radius, 8, 6);
 		this.geometries.push(this.unitBox, this.unitPlane, this.head);
 
 		this.buildBlok();
@@ -226,7 +239,7 @@ export class CityTheatre {
 		this.applyChase(0);
 	}
 
-	update(dt: number, t: number, viewer: THREE.Vector3): void {
+	update(dt: number, t: number, viewer: Vector3): void {
 		const step = Math.floor(t / CHASE_TICK);
 		if (step !== this.lastStep) {
 			this.lastStep = step;
@@ -248,7 +261,7 @@ export class CityTheatre {
 		for (const door of this.backstageDoors) {
 			const open = inBounds(door.trigger, viewer) ? 1 : 0;
 			door.open = ease(door.open, open, door.rate, dt);
-			for (const leaf of door.leaves) leaf.mesh.position.copy(leaf.closed).addScaledVector(door.travel, door.open);
+			for (const leaf of door.leaves) leaf.mesh.position.copy(leaf.closed).addScaledVector(leaf.travel, door.open);
 		}
 
 		// De was ademt; de zaal is dan nooit helemaal stil, ook als er niets speelt.
@@ -276,8 +289,8 @@ export class CityTheatre {
 		if (this.bulbs.instanceColor) this.bulbs.instanceColor.needsUpdate = true;
 	}
 
-	private box(mat: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number): THREE.Mesh {
-		const m = new THREE.Mesh(this.unitBox, mat);
+	private box(mat: Material, w: number, h: number, d: number, x: number, y: number, z: number): Mesh {
+		const m = new Mesh(this.unitBox, mat);
 		m.scale.set(w, h, d);
 		m.position.set(x, y, z);
 		this.group.add(m);
@@ -285,7 +298,7 @@ export class CityTheatre {
 	}
 
 	/** Dezelfde doos, maar opgegeven zoals het wereldmodel hem opschrijft. */
-	private boxOf(mat: THREE.Material, b: Bounds3): THREE.Mesh {
+	private boxOf(mat: Material, b: Bounds3): Mesh {
 		return this.box(
 			mat,
 			span(b.minX, b.maxX),
@@ -297,7 +310,7 @@ export class CityTheatre {
 		);
 	}
 
-	private makeTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
+	private makeTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		draw(ctx);
 		const tex = labelTexture(c);
@@ -379,12 +392,12 @@ export class CityTheatre {
 	 * dezelfde reden: het glas is wat stad en zaal op elkaar laat uitkijken terwijl
 	 * de bladen dicht staan.
 	 */
-	private buildTravee(kozijn: THREE.Material): void {
+	private buildTravee(kozijn: Material): void {
 		const glas = lit({ color: 0x1b2a2e, roughness: 0.15, metalness: 0.6, transparent: true, opacity: 0.42 });
 		this.materials.push(glas);
 		const { doors } = THEATRE_PLAN;
 		const glasZ = THEATRE_PORTAL.glassZ;
-		const paneel = (minX: number, maxX: number, top: number): THREE.Mesh =>
+		const paneel = (minX: number, maxX: number, top: number): Mesh =>
 			this.boxOf(glas, {
 				minX,
 				maxX,
@@ -424,11 +437,11 @@ export class CityTheatre {
 		this.materials.push(steen);
 
 		const rij = THEATRE_PLAN.columns;
-		const zuilGeo = new THREE.CylinderGeometry(0.55, rij.radius, span(rij.bottomY, rij.topY), 10);
+		const zuilGeo = new CylinderGeometry(0.55, rij.radius, span(rij.bottomY, rij.topY), 10);
 		this.geometries.push(zuilGeo);
-		const zuilen = new THREE.InstancedMesh(zuilGeo, steen, rij.count);
+		const zuilen = new InstancedMesh(zuilGeo, steen, rij.count);
 		zuilen.name = 'theatre_zuilen';
-		const blokjes = new THREE.InstancedMesh(this.unitBox, steen, rij.count * 2);
+		const blokjes = new InstancedMesh(this.unitBox, steen, rij.count * 2);
 		blokjes.name = 'theatre_kapitelen';
 
 		for (let i = 0; i < rij.count; i++) {
@@ -458,9 +471,9 @@ export class CityTheatre {
 	}
 
 	/** Marquee-luifel boven de trap: slab, gloed-onderkant, ophangstangen en 40 bollen. */
-	private buildMarquee(): THREE.InstancedMesh {
+	private buildMarquee(): InstancedMesh {
 		const bordeaux = lit({ color: 0x531523, roughness: 0.6, metalness: 0.2 });
-		const gloed = new THREE.MeshBasicMaterial({ color: 0xffdf9e, toneMapped: false });
+		const gloed = new MeshBasicMaterial({ color: 0xffdf9e, toneMapped: false });
 		const staal = lit({ color: 0x6b7078, roughness: 0.4, metalness: 0.7 });
 		this.materials.push(bordeaux, gloed, staal);
 
@@ -468,28 +481,28 @@ export class CityTheatre {
 		this.box(bordeaux, 18, 1.6, 4.6, 72, 7.0, -46.8);
 
 		// Onderkant "verlicht" met één basic-vlak: alle bollen samen, nul lampen.
-		const onder = new THREE.Mesh(this.unitPlane, gloed);
+		const onder = new Mesh(this.unitPlane, gloed);
 		onder.scale.set(17.2, 4.2, 1);
 		onder.rotation.x = Math.PI / 2;
 		onder.position.set(72, 6.18, -46.8);
 		this.group.add(onder);
 
 		// Twee ophangstangen naar de gevel — de suggestie van constructie.
-		const stangGeo = new THREE.CylinderGeometry(0.07, 0.07, 3.9, 6);
+		const stangGeo = new CylinderGeometry(0.07, 0.07, 3.9, 6);
 		this.geometries.push(stangGeo);
 		for (const sx of [64.5, 79.5]) {
-			const stang = new THREE.Mesh(stangGeo, staal);
+			const stang = new Mesh(stangGeo, staal);
 			stang.position.set(sx, 9.1, -50.55);
 			stang.rotation.x = Math.atan2(-2.9, 2.6);
 			this.group.add(stang);
 		}
 
 		// 40 bollen langs de vrije rand (links + front + rechts), bovenop de slab.
-		const bolGeo = new THREE.SphereGeometry(0.15, 8, 6);
+		const bolGeo = new SphereGeometry(0.15, 8, 6);
 		this.geometries.push(bolGeo);
-		const bolMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+		const bolMat = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
 		this.materials.push(bolMat);
-		const bulbs = new THREE.InstancedMesh(bolGeo, bolMat, BULB_COUNT);
+		const bulbs = new InstancedMesh(bolGeo, bolMat, BULB_COUNT);
 		bulbs.name = 'theatre_chase';
 		const spacing = (4.6 + 18 + 4.6) / BULB_COUNT;
 		this.dummy.rotation.set(0, 0, 0);
@@ -513,7 +526,7 @@ export class CityTheatre {
 	}
 
 	/** Canvas-borden: naambord op de marquee, letterbak vooraan, twee posters. */
-	private buildBorden(): THREE.MeshBasicMaterial {
+	private buildBorden(): MeshBasicMaterial {
 		const bordeaux = lit({ color: 0x531523, roughness: 0.6, metalness: 0.2 });
 		const goudLijst = lit({ color: 0x8a6d2f, roughness: 0.45, metalness: 0.7 });
 		this.materials.push(bordeaux, goudLijst);
@@ -536,9 +549,9 @@ export class CityTheatre {
 			ctx.fillText('✶', 62, 116);
 			ctx.fillText('✶', 962, 116);
 		});
-		const titleMat = new THREE.MeshBasicMaterial({ map: titelTex, toneMapped: false });
+		const titleMat = new MeshBasicMaterial({ map: titelTex, toneMapped: false });
 		this.materials.push(titleMat);
-		const titel = new THREE.Mesh(this.unitPlane, titleMat);
+		const titel = new Mesh(this.unitPlane, titleMat);
 		titel.scale.set(14.4, 2.6, 1);
 		titel.position.set(72, 9.3, -46.0);
 		this.group.add(titel);
@@ -557,9 +570,9 @@ export class CityTheatre {
 			ctx.font = 'bold 42px system-ui,sans-serif';
 			ctx.fillText('— UITVERKOCHT —', 704, 110);
 		});
-		const bakMat = new THREE.MeshBasicMaterial({ map: bakTex, toneMapped: false });
+		const bakMat = new MeshBasicMaterial({ map: bakTex, toneMapped: false });
 		this.materials.push(bakMat);
-		const bak = new THREE.Mesh(this.unitPlane, bakMat);
+		const bak = new Mesh(this.unitPlane, bakMat);
 		bak.scale.set(15.4, 1.4, 1);
 		bak.position.set(72, 7.0, -44.44);
 		this.group.add(bak);
@@ -607,15 +620,15 @@ export class CityTheatre {
 			ctx.font = '18px system-ui,sans-serif';
 			ctx.fillText('★★☆☆☆ — Prairie Bode', 128, 354);
 		});
-		const posters: [THREE.CanvasTexture, number][] = [
+		const posters: [CanvasTexture, number][] = [
 			[posterA, 63],
 			[posterB, 81],
 		];
 		for (const [tex, x] of posters) {
 			this.box(goudLijst, 2.0, 2.8, 0.12, x, 4.0, -51.94);
-			const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+			const mat = new MeshBasicMaterial({ map: tex, toneMapped: false });
 			this.materials.push(mat);
-			const vlak = new THREE.Mesh(this.unitPlane, mat);
+			const vlak = new Mesh(this.unitPlane, mat);
 			vlak.scale.set(1.7, 2.55, 1);
 			vlak.position.set(x, 4.0, -51.86);
 			this.group.add(vlak);
@@ -632,7 +645,7 @@ export class CityTheatre {
 		this.materials.push(rood, goud, koord);
 
 		const loper = (w: number, d: number, x: number, y: number, z: number, plat: boolean) => {
-			const m = new THREE.Mesh(this.unitPlane, rood);
+			const m = new Mesh(this.unitPlane, rood);
 			m.scale.set(w, d, 1);
 			if (plat) m.rotation.x = -Math.PI / 2;
 			m.position.set(x, y, z);
@@ -650,19 +663,19 @@ export class CityTheatre {
 		loper(3.2, 0.5, 72, 0.02, -44.35, true);
 
 		// Vier gouden paaltjes met koord — de rij is denkbeeldig, het koord niet.
-		const paalGeo = new THREE.CylinderGeometry(0.06, 0.07, 0.85, 8);
-		const knopGeo = new THREE.SphereGeometry(0.1, 8, 6);
-		const koordGeo = new THREE.CylinderGeometry(0.035, 0.035, 1.9, 6);
+		const paalGeo = new CylinderGeometry(0.06, 0.07, 0.85, 8);
+		const knopGeo = new SphereGeometry(0.1, 8, 6);
+		const koordGeo = new CylinderGeometry(0.035, 0.035, 1.9, 6);
 		this.geometries.push(paalGeo, knopGeo, koordGeo);
 		for (const px of [69.9, 74.1]) {
 			for (const pz of [-48.3, -50.2]) {
-				const paal = new THREE.Mesh(paalGeo, goud);
+				const paal = new Mesh(paalGeo, goud);
 				paal.position.set(px, 1.925, pz);
-				const knop = new THREE.Mesh(knopGeo, goud);
+				const knop = new Mesh(knopGeo, goud);
 				knop.position.set(px, 2.4, pz);
 				this.group.add(paal, knop);
 			}
-			const lijn = new THREE.Mesh(koordGeo, koord);
+			const lijn = new Mesh(koordGeo, koord);
 			lijn.rotation.x = Math.PI / 2;
 			lijn.position.set(px, 2.28, -49.25);
 			this.group.add(lijn);
@@ -683,7 +696,7 @@ export class CityTheatre {
 			this.boxOf(pleister, geometryBounds(volume.geometry)).receiveShadow = true;
 		}
 
-		const vloer = new THREE.Mesh(this.unitPlane, tapijt);
+		const vloer = new Mesh(this.unitPlane, tapijt);
 		vloer.scale.set(span(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX), THEATRE_PLAN.foyer.depth, 1);
 		vloer.rotation.x = -Math.PI / 2;
 		vloer.position.set(
@@ -719,7 +732,7 @@ export class CityTheatre {
 			ctx.font = '30px system-ui,sans-serif';
 			ctx.fillText('UITVERKOCHT — TOCH LEEG', 256, 104);
 		});
-		const bord = new THREE.Mesh(this.unitPlane, this.basic(kassaTex));
+		const bord = new Mesh(this.unitPlane, this.basic(kassaTex));
 		bord.scale.set(kassa.width, COUNTER_SIGN_HEIGHT, 1);
 		bord.position.set(midpoint(balie.minX, balie.maxX), THEATRE_FLOOR_Y + COUNTER_SIGN_Y, balie.maxZ + SURFACE_LIFT);
 		this.group.add(bord);
@@ -739,7 +752,7 @@ export class CityTheatre {
 				ctx.font = 'italic 19px system-ui,sans-serif';
 				ctx.fillText(index === 0 ? '"Hij neemt alles mee."' : '"Elke woensdag, niemand."', 128, 330);
 			});
-			const vlak = new THREE.Mesh(this.unitPlane, this.basic(tex));
+			const vlak = new Mesh(this.unitPlane, this.basic(tex));
 			vlak.scale.set(POSTER.width, POSTER.height, 1);
 			vlak.rotation.y = Math.PI;
 			vlak.position.set(x, THEATRE_FLOOR_Y + POSTER.centerY, THEATRE_INTERIOR.maxZ - SURFACE_LIFT);
@@ -764,7 +777,7 @@ export class CityTheatre {
 		for (const aisle of THEATRE_AISLES) {
 			for (let row = 0; row < THEATRE_PLAN.seating.rows; row++) {
 				const deck = theatreRowDeck(row);
-				const strip = new THREE.Mesh(this.unitPlane, loper);
+				const strip = new Mesh(this.unitPlane, loper);
 				strip.scale.set(span(aisle.minX, aisle.maxX), span(deck.minZ, deck.maxZ), 1);
 				strip.rotation.x = -Math.PI / 2;
 				strip.position.set(midpoint(aisle.minX, aisle.maxX), theatreRowY(row) + CARPET_LIFT, midpoint(deck.minZ, deck.maxZ));
@@ -778,7 +791,7 @@ export class CityTheatre {
 		}
 
 		// Plafond, zodat je vanuit de zaal niet tegen de onderkant van de dakplaat kijkt.
-		const onder = new THREE.Mesh(this.unitPlane, plafond);
+		const onder = new Mesh(this.unitPlane, plafond);
 		onder.scale.set(span(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX), span(THEATRE_INTERIOR.minZ, THEATRE_INTERIOR.maxZ), 1);
 		onder.rotation.x = Math.PI / 2;
 		onder.position.set(
@@ -811,7 +824,7 @@ export class CityTheatre {
 			ctx.font = 'bold 30px system-ui,sans-serif';
 			ctx.fillText('DE BAARD-DIEF', 512, 122);
 		});
-		const doek = new THREE.Mesh(this.unitPlane, this.basic(tex));
+		const doek = new Mesh(this.unitPlane, this.basic(tex));
 		doek.scale.set(span(box.minX, box.maxX), span(box.minY, box.maxY), 1);
 		doek.position.set(midpoint(box.minX, box.maxX), midpoint(box.minY, box.maxY), box.maxZ + SURFACE_LIFT);
 		this.group.add(doek);
@@ -829,9 +842,9 @@ export class CityTheatre {
 		this.materials.push(bekleding);
 		const banks = theatreSeatBanks();
 		const seats = banks.flatMap((bank) => theatreSeatXs(bank).map((x) => ({ x, row: bank.row })));
-		const zit = new THREE.InstancedMesh(this.unitBox, bekleding, seats.length);
+		const zit = new InstancedMesh(this.unitBox, bekleding, seats.length);
 		zit.name = 'theatre_zittingen';
-		const rug = new THREE.InstancedMesh(this.unitBox, bekleding, seats.length);
+		const rug = new InstancedMesh(this.unitBox, bekleding, seats.length);
 		rug.name = 'theatre_ruggen';
 		const { seat, seating } = THEATRE_PLAN;
 		seats.forEach((place, index) => {
@@ -862,16 +875,16 @@ export class CityTheatre {
 	 * linken; `check:lights` greept er dan ook op.
 	 */
 	private buildZaallicht(pool: LightPool): LightHandle {
-		const gloed = new THREE.MeshBasicMaterial({ color: 0xffcf8a, toneMapped: false });
+		const gloed = new MeshBasicMaterial({ color: 0xffcf8a, toneMapped: false });
 		this.materials.push(gloed);
-		const bolGeo = new THREE.SphereGeometry(AISLE_LAMP.radius, 8, 6);
+		const bolGeo = new SphereGeometry(AISLE_LAMP.radius, 8, 6);
 		this.geometries.push(bolGeo);
 		for (const aisle of THEATRE_AISLES) {
 			for (let row = 0; row < THEATRE_PLAN.seating.rows; row++) {
 				const deck = theatreRowDeck(row);
 				const y = theatreRowY(row) + AISLE_LAMP.height;
 				for (const x of [aisle.minX, aisle.maxX]) {
-					const bol = new THREE.Mesh(bolGeo, gloed);
+					const bol = new Mesh(bolGeo, gloed);
 					bol.position.set(x, y, midpoint(deck.minZ, deck.maxZ));
 					this.group.add(bol);
 					pool.register({
@@ -885,7 +898,7 @@ export class CityTheatre {
 			}
 		}
 		return pool.register({
-			position: new THREE.Vector3(
+			position: new Vector3(
 				midpoint(THEATRE_INTERIOR.minX, THEATRE_INTERIOR.maxX),
 				THEATRE_STAGE_TOP_Y + STAGE_WASH.height,
 				midpoint(THEATRE_INTERIOR.minZ, THEATRE_INTERIOR.minZ + THEATRE_PLAN.stage.depth),
@@ -935,36 +948,20 @@ export class CityTheatre {
 	 * een bol erbovenop. De maten hangen aan de zitting, dus wie de stoel verzet
 	 * verplaatst het lijf mee in plaats van het erdoorheen te laten zakken.
 	 */
-	private buildBezoeker(
-		x: number,
-		floor: number,
-		z: number,
-		jas: THREE.Material,
-		huid: THREE.Material,
-		rand: () => number,
-	): THREE.Group {
-		const root = new THREE.Group();
+	private buildBezoeker(x: number, floor: number, z: number, jas: Material, huid: Material, rand: () => number): Group {
+		const root = new Group();
 		root.position.set(x, floor, z);
 		root.rotation.y = jitterWith(SITTER_YAW_SPREAD, rand);
 		// Het heupscharnier: hieronder zit het onderstel dat stil blijft, erboven de
 		// romp die ademt.
-		const hips = new THREE.Group();
+		const hips = new Group();
 		hips.position.y = SITTER.hipY;
 		root.add(hips);
-		const body = new THREE.Group();
+		const body = new Group();
 		hips.add(body);
 
-		const doos = (
-			mat: THREE.Material,
-			w: number,
-			h: number,
-			d: number,
-			px: number,
-			py: number,
-			pz: number,
-			parent: THREE.Object3D,
-		) => {
-			const m = new THREE.Mesh(this.unitBox, mat);
+		const doos = (mat: Material, w: number, h: number, d: number, px: number, py: number, pz: number, parent: Object3D) => {
+			const m = new Mesh(this.unitBox, mat);
 			m.scale.set(w, h, d);
 			m.position.set(px, py, pz);
 			m.castShadow = true;
@@ -974,7 +971,7 @@ export class CityTheatre {
 
 		const { torso, head, thigh, shin, arm } = SITTER;
 		doos(jas, torso.width, torso.height, torso.depth, 0, half(torso.height), 0, body);
-		const bol = new THREE.Mesh(this.head, huid);
+		const bol = new Mesh(this.head, huid);
 		bol.position.set(0, torso.height + head.radius, 0);
 		body.add(bol);
 		for (const side of [-1, 1] as const) {
@@ -1023,7 +1020,7 @@ export class CityTheatre {
 		const breedte = span(BACKSTAGE_INTERIOR.minX, BACKSTAGE_INTERIOR.maxX);
 		const diepte = span(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
 
-		const vloer = new THREE.Mesh(this.unitPlane, vloerMat);
+		const vloer = new Mesh(this.unitPlane, vloerMat);
 		vloer.scale.set(breedte, diepte, 1);
 		vloer.rotation.x = -Math.PI / 2;
 		vloer.position.set(midX, BACKSTAGE_FLOOR_Y + CARPET_LIFT, midZ);
@@ -1042,7 +1039,7 @@ export class CityTheatre {
 			sill.receiveShadow = true;
 		}
 
-		const plafond = new THREE.Mesh(this.unitPlane, plafondMat);
+		const plafond = new Mesh(this.unitPlane, plafondMat);
 		plafond.scale.set(breedte, diepte, 1);
 		plafond.rotation.x = Math.PI / 2;
 		plafond.position.set(midX, BACKSTAGE_CEILING_Y, midZ);
@@ -1055,19 +1052,17 @@ export class CityTheatre {
 		// Elk blad schuift in update() de openState van zijn eigen mechanisme na, op
 		// dezelfde triggerdoos die het wereldmodel aanwijst; de travee doet het net zo.
 		for (const mechanism of THEATRE_BACKSTAGE_DOORS_ENTITY.mechanisms) {
-			const translation = mechanism.openState.translation;
-			if (!translation) throw new Error(`backstage-mechanisme ${mechanism.id} schuift maar heeft geen translation`);
-			const leaves: { mesh: THREE.Mesh; closed: THREE.Vector3 }[] = [];
+			const leaves: { mesh: Mesh; closed: Vector3; travel: Vector3 }[] = [];
 			for (const id of mechanism.movingVolumeIds) {
 				const volume = THEATRE_BACKSTAGE_DOORS_ENTITY.volumes.find((kandidaat) => kandidaat.id === id);
 				if (!volume) throw new Error(`backstage-mechanisme ${mechanism.id} beweegt ${id}, maar dat volume bestaat niet`);
 				const mesh = this.boxOf(id.startsWith('artist-leaf') ? glasMat : deurMat, geometryBounds(volume.geometry));
-				leaves.push({ mesh, closed: mesh.position.clone() });
+				const travel = slidingLeafTravel(THEATRE_BACKSTAGE_DOORS_ENTITY, mechanism, id);
+				leaves.push({ mesh, closed: mesh.position.clone(), travel: new Vector3(travel.x, travel.y, travel.z) });
 			}
 			this.backstageDoors.push({
 				trigger: mechanismTriggerBounds(THEATRE_BACKSTAGE_DOORS_ENTITY, mechanism.id),
 				rate: 1 / mechanism.openingSeconds,
-				travel: new THREE.Vector3(translation.x, translation.y, translation.z),
 				open: 0,
 				leaves,
 			});
@@ -1121,7 +1116,7 @@ export class CityTheatre {
 			ctx.fillStyle = grad;
 			ctx.fillRect(0, 0, 128, 256);
 		});
-		const glas = new THREE.Mesh(this.unitPlane, this.basic(tex));
+		const glas = new Mesh(this.unitPlane, this.basic(tex));
 		glas.scale.set(mirror.width, mirror.height, 1);
 		glas.rotation.y = inward > 0 ? Math.PI / 2 : -Math.PI / 2;
 		glas.position.set(wallX + inward * 0.06, y, z);
@@ -1129,7 +1124,7 @@ export class CityTheatre {
 	}
 
 	/** Het achterbordes met zijn trap, uit dezelfde maten als de collision. */
-	private buildBackstageBordes(mat: THREE.Material): void {
+	private buildBackstageBordes(mat: Material): void {
 		const bordes = BACKSTAGE_LANDING;
 		this.box(
 			mat,
@@ -1157,9 +1152,9 @@ export class CityTheatre {
 
 	/** Gangplafondlampen: één in de gang en één boven elke kaptafel, uit de pool. */
 	private buildBackstageLicht(pool: LightPool): void {
-		const gloed = new THREE.MeshBasicMaterial({ color: 0xfff2d8, toneMapped: false });
+		const gloed = new MeshBasicMaterial({ color: 0xfff2d8, toneMapped: false });
 		this.materials.push(gloed);
-		const bolGeo = new THREE.SphereGeometry(0.12, 8, 6);
+		const bolGeo = new SphereGeometry(0.12, 8, 6);
 		this.geometries.push(bolGeo);
 		const y = BACKSTAGE_CEILING_Y - 0.2;
 		const roomZ = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
@@ -1169,7 +1164,7 @@ export class CityTheatre {
 			[midpoint(BACKSTAGE_CORRIDOR.maxX, BACKSTAGE_INTERIOR.maxX), roomZ],
 		];
 		for (const [x, z] of plekken) {
-			const bol = new THREE.Mesh(bolGeo, gloed);
+			const bol = new Mesh(bolGeo, gloed);
 			bol.position.set(x, y, z);
 			this.group.add(bol);
 			pool.register({ position: bol.position.clone(), color: 0xffe6b0, intensity: 5, distance: 7, decay: 2 });
@@ -1195,8 +1190,8 @@ export class CityTheatre {
 	}
 
 	/** Een onbelicht vlak met een canvas erop: affiches, borden en het doek. */
-	private basic(map: THREE.Texture): THREE.MeshBasicMaterial {
-		const mat = new THREE.MeshBasicMaterial({ map, toneMapped: false });
+	private basic(map: Texture): MeshBasicMaterial {
+		const mat = new MeshBasicMaterial({ map, toneMapped: false });
 		this.materials.push(mat);
 		return mat;
 	}

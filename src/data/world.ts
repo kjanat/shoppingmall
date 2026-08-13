@@ -5362,7 +5362,8 @@ export const THEATRE_PLAN = {
 		vanity: { width: 2.4, depth: 0.6, height: 0.78, mirror: { width: 2, height: 1.3, centerY: 1.45 } },
 		chair: { width: 0.5, depth: 0.5, seatY: 0.46, backHeight: 0.85 },
 		/** De artiesteningang en de deur vanaf het toneel: allebei een schuifpaar. */
-		door: { width: 3, headY: 2.6, leafHeight: 2.5, thickness: 0.12, seconds: 1.4 },
+		/** `seconds` op het tempo van de maldeuren: 1,4 voelde als wachten voor een winkeldeur. */
+		door: { width: 3, headY: 2.6, leafHeight: 2.5, thickness: 0.12, seconds: 1.1 },
 		/** Aanwezigheidszone van elk schuifpaar, gemeten vanaf de deurvlakken. */
 		trigger: { outreach: 2, inreach: 1.6, height: 2.4 },
 		/** Het achterbordes met zijn trap: buiten-circulatie zoals de voorportiek. */
@@ -5900,14 +5901,7 @@ export const THEATRE_HALL_ENTITY: MallWorldEntity = {
 			'walkable',
 			false,
 		),
-		theatreBox('stage-set', {
-			minX: THEATRE_INTERIOR.minX + THEATRE_PLAN.stage.set.margin,
-			maxX: THEATRE_INTERIOR.maxX - THEATRE_PLAN.stage.set.margin,
-			minZ: THEATRE_INTERIOR.minZ,
-			maxZ: THEATRE_INTERIOR.minZ + THEATRE_PLAN.stage.set.thickness,
-			minY: THEATRE_STAGE_TOP_Y,
-			maxY: THEATRE_STAGE_TOP_Y + THEATRE_PLAN.stage.set.height,
-		}),
+		...stageSetVolumes(),
 		// De backstage-loopvlakken horen bij de zaal, niet bij de backstage-wanden: één
 		// vloerentiteit, anders melden twee aangrenzende vlakken `coplanar-surface`.
 		...backstageFloorVolumes(),
@@ -6237,6 +6231,56 @@ export const THEATRE_BACKSTAGE_ENTITY: MallWorldEntity = {
 	map: map('structure', 'BACKSTAGE', 60),
 	tags: ['theatre', 'backstage', 'structural'],
 };
+
+/**
+ * Het decordoek, met een deuropening in het hart. Als één doek van marge tot
+ * marge stond het 30 cm achter de toneeldeur: de gang kwam met zijn neus in het
+ * decor uit, en alleen de coulisseroutes langs de zijgevels waren te lopen.
+ */
+function stageSetVolumes(): readonly SpatialVolume[] {
+	const doek = {
+		minZ: THEATRE_INTERIOR.minZ,
+		maxZ: THEATRE_INTERIOR.minZ + THEATRE_PLAN.stage.set.thickness,
+		minY: THEATRE_STAGE_TOP_Y,
+		maxY: THEATRE_STAGE_TOP_Y + THEATRE_PLAN.stage.set.height,
+	};
+	return [
+		theatreBox('stage-set-west', {
+			...doek,
+			minX: THEATRE_INTERIOR.minX + THEATRE_PLAN.stage.set.margin,
+			maxX: BACKSTAGE_CORRIDOR.minX,
+		}),
+		theatreBox('stage-set-east', {
+			...doek,
+			minX: BACKSTAGE_CORRIDOR.maxX,
+			maxX: THEATRE_INTERIOR.maxX - THEATRE_PLAN.stage.set.margin,
+		}),
+		theatreBox('stage-set-head', {
+			...doek,
+			minX: BACKSTAGE_CORRIDOR.minX,
+			maxX: BACKSTAGE_CORRIDOR.maxX,
+			minY: BACKSTAGE_DOOR_TOP,
+		}),
+	];
+}
+
+/**
+ * De schuifrichting van één blad van een schuifpaar: het mechanisme geeft de
+ * slag, het blad de kant. Elk blad wijkt van het hart van zijn mechanisme af.
+ */
+export function slidingLeafTravel(entity: MallWorldEntity, mechanism: ClearanceMechanism, volumeId: string): Vec3 {
+	const translation = mechanism.openState.translation;
+	if (!translation) throw new Error(`${mechanism.id} schuift niet`);
+	const volume = entity.volumes.find((candidate) => candidate.id === volumeId);
+	if (!volume) throw new Error(`${mechanism.id} beweegt ${volumeId}, maar dat volume bestaat niet`);
+	const bounds = geometryBounds(volume.geometry);
+	const offsetX = midpoint(bounds.minX, bounds.maxX) - entity.transform.position.x;
+	const offsetZ = midpoint(bounds.minZ, bounds.maxZ) - entity.transform.position.z;
+	// Eén translatie op beide bladen schoof het westblad de opening ín terwijl het
+	// oostblad eruit school: een halve deur. Elk blad wijkt dus van het hart af.
+	const richting = Math.sign(offsetX * translation.x + offsetZ * translation.z) || 1;
+	return { x: translation.x * richting, y: translation.y, z: translation.z * richting };
+}
 
 const BACKSTAGE_ARTIST_DOORS: ClearanceMechanism = {
 	id: 'backstage-artist-doors',
