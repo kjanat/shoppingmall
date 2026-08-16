@@ -21,11 +21,11 @@ import { BROWSER_LOCK_PATH as LOCK_PATH, PERF_DIR, PROFILE_DIR as PERF_PROFILE_F
 
 const MCP_PROFILE_FRAGMENT = String.raw`\.cache\chrome-devtools-mcp\chrome-profile`;
 
-export type PerfBrowser = {
+export interface PerfBrowser {
 	context: BrowserContext;
 	page: Page;
 	close: () => Promise<void>;
-};
+}
 
 export function isSoftwareHeadless(): boolean {
 	return env['MALL_PERF_SOFTWARE'] === '1';

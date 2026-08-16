@@ -1,6 +1,25 @@
 import { feature } from 'bun:bundle';
 import type { EffectComposer } from 'postprocessing';
-import * as THREE from 'three';
+import {
+	BufferAttribute,
+	BufferGeometry,
+	Color,
+	Euler,
+	Mesh,
+	NoToneMapping,
+	Object3D,
+	PCFShadowMap,
+	PerspectiveCamera,
+	Points,
+	PointsMaterial,
+	Raycaster,
+	Scene,
+	SRGBColorSpace,
+	Timer,
+	Vector2,
+	Vector3,
+	WebGLRenderer,
+} from 'three';
 import { BartekChat } from '#/audio/BartekChat';
 import { BOOTH_FALLOFF_K, DJPlayer } from '#/audio/DJPlayer';
 import { fetchDjStatus, playBoothFile, speakLine } from '#/audio/ElevenVoice';
@@ -66,7 +85,6 @@ import { FoodCourt } from '#/scene/FoodCourt';
 import { GlassElevator } from '#/scene/GlassElevator';
 import { Helicopter } from '#/scene/Helicopter';
 import { Helipad } from '#/scene/Helipad';
-import type { DaylightDimmer } from '#/scene/Lighting';
 import { setupLighting } from '#/scene/Lighting';
 import { MallBuilder } from '#/scene/MallBuilder';
 import { MallFacade } from '#/scene/MallFacade';
@@ -114,7 +132,11 @@ const TALK_RADIUS = 7;
  * wissel laat composer.setSize twee HalfFloat-fullscreentargets heralloceren.
  * Onder 0.5 wordt het beeld te papperig om nog wat te winnen.
  */
-const DYN_RES_STEPS = [1, 0.85, 0.75, 0.65];
+const DYN_RES_FULL = 1;
+const DYN_RES_HIGH = 0.85;
+const DYN_RES_MEDIUM = 0.75;
+const DYN_RES_LOW = 0.65;
+const DYN_RES_STEPS = [DYN_RES_FULL, DYN_RES_HIGH, DYN_RES_MEDIUM, DYN_RES_LOW];
 /** Boven dit gemiddelde (ms/frame) zakt de schaal een trede (≈ onder 42 fps). */
 const DYN_RES_SLOW_MS = 24;
 /**
@@ -142,13 +164,130 @@ const DYN_RES_HOLD_UP_S = 2;
 const DYN_RES_COOLDOWN_S = 1;
 /** Valversnelling van de confetti (m/s²); lichter dan de speler zodat het dwarrelt. */
 const CONFETTI_GRAVITY = 9;
+const MUSIC_FILE_PATTERN = /intro_voice|voice/i;
+const CAMERA_CONFIG = { fovDegrees: 70, nearPlane: 0.15 };
+const QUALITY_PIXEL_RATIO = { medium: 1.25, high: 1.75 };
+const COLLIDER_DEFAULTS = { roomMinY: -0.5, roomMaxY: 3.2, shaftMinY: -7.5, shaftMaxY: 16.5 };
+const ELEVATOR_RANGE = { carrierMargin: 0.05, cabinMargin: 0.2, boardHeight: 1.8, roofCall: 14, landingCall: 4.5 };
+const ELEVATOR_SCRUBBER = { margin: 0.05, floorTolerance: 0.6 };
+const INTERACTION_RANGE = { car: 4.5, scrubber: 3.5, drone: 3.2, helicopter: 4.5, parkedScrubber: 3.8, parkedCar: 4.2 };
+const PLAYER_TIMING = { unlockGraceMs: 400, frameDtMaxSeconds: 0.05, millisecondsPerSecond: 1000 };
+const PLAYER_SEPARATION = { floorTolerance: 2.5, collisionIterations: 3, simDistance: 0.9 };
+const DRONE_POSITION = { seatHeight: 1.1, groundProbeOffset: 0.55, groundProbeRange: 3, exitOffset: 1.2 };
+const SECURITY_POLICY = {
+	maxPanicPenalty: 12,
+	penaltyPerTarget: 2,
+	hitCooldownSeconds: 0.6,
+	introRadius: 18,
+};
+const MONKEY_HIT = { scorePenalty: 8, confettiHeight: 0.4, moodPenalty: 4 };
+const THIEF_EVENT = { transactionInterval: 5, lootHeight: 1.5, scorePenalty: 15, homeHeight: 1.2, caveHeight: 0.8 };
+const CHECKOUT_SCORE = 2;
+const PENGUIN_COUNT = 12;
+const CATWALK_LIGHT_DIM = 0.15;
+const MONEY_GIFT = { amount: 25, score: 5 };
+const DJ_AUDIO = {
+	probeCheerRadius: 20,
+	chatBubbleSeconds: 5,
+	introBubbleSeconds: 6,
+	minimumBakedIntroMs: 500,
+	boothCheerRadius: 14,
+	maxBubbleSeconds: 8,
+	baseBubbleSeconds: 2.5,
+	secondsPerCharacter: 0.04,
+	maxSpeechWaitMs: 14_000,
+	fallbackMsPerCharacter: 55,
+	minimumSpeechWaitMs: 800,
+	speechWaitFactor: 0.85,
+	cheerCooldownBase: 9,
+	cheerCooldownJitter: 12,
+	ambientCheerRadius: 16,
+	dramaRange: 18,
+	dramaCooldownBase: 18,
+	dramaCooldownJitter: 22,
+	requestScore: 3,
+	requestCheerRadius: 18,
+	danceFlashMs: 12_000,
+};
+const BARTEK_VOICE_ID = ['IKne3meq5a', 'Sn9XLyUdCD'].join('');
+const ROUTE_REWARD = { featured: 100, standard: 50 };
+const ROUTE_VISUAL = { storeEyeHeight: 1.5, featuredConfettiHeight: 1.5, standardConfettiHeight: 0.5, maxSteps: 6 };
+const CONFETTI = {
+	count: 100,
+	itemSize: 3,
+	spread: 4,
+	verticalSpread: 3,
+	pointSize: 0.12,
+	opacity: 0.9,
+	lifetimeMs: 3500,
+};
+const CONFETTI_GREEN = 0x00a651;
+const CONFETTI_RED = 0xe30613;
+const CONFETTI_YELLOW = 0xf5c518;
+const CONFETTI_WHITE = 0xffffff;
+const CONFETTI_PALETTE = [
+	new Color(CONFETTI_GREEN),
+	new Color(CONFETTI_RED),
+	new Color(CONFETTI_YELLOW),
+	new Color(CONFETTI_WHITE),
+];
+const BATCH_DYNAMIC_SOURCES_KEY = ['batchDynamic', 'Sources'].join('');
+const CAMERA_FOLLOW = { possessedPitch: -0.05, possessedPitchLerp: 0.15 };
+const THREAT_PROFILE = {
+	shopperHeight: 1.4,
+	shopperWeight: 0.9,
+	thiefHeight: 1.2,
+	thiefWeight: 2.2,
+	monkeyHeight: 0.8,
+	monkeyWeight: 1.6,
+	protestHeight: 1.4,
+	protestWeight: 1.3,
+	cleanerHeight: 1.2,
+	cleanerWeight: 0.7,
+};
+const HUD_TIMING = { peopleRefreshSeconds: 0.5, proximityRefreshSeconds: 0.35 };
+const PROXIMITY_RANGE = {
+	youssefGreeting: 6.5,
+	youssefLeave: 10,
+	sims: 5.5,
+	conEnter: 40,
+	conLeave: 55,
+	protestEnter: 7,
+	protestLeave: 9,
+	travelEnter: 6,
+	travelLeave: 8,
+	prayerEnter: 12,
+	prayerLeave: 16,
+};
+const ELEVATOR_HINT_RANGE = { roofEnter: 16, floorEnter: 5, roofLeave: 20, floorLeave: 7 };
+
+/** Widen literal-typed mutable flags at component boundaries. */
+function mutableFlag(value: boolean): boolean {
+	return value;
+}
+
+function observeAsync(task: Promise<unknown>, operation: string): void {
+	task.catch((error: unknown) => console.warn(`[Mall] ${operation} failed`, error));
+}
 
 /** Wat E bij de lift doet: het paneel in de cabine, of de oproepknop op een overloop. */
 type ElevatorAction = { kind: 'menu' } | { kind: 'call'; level: LevelId };
 
-type PerfPose = { x: number; y: number; z: number; lookX: number; lookY: number; lookZ: number };
-type PerfCpuFrame = { logicMs: number; batchMs: number; submitMs: number; triangles: number };
-type PerfRayHit = {
+interface PerfPose {
+	x: number;
+	y: number;
+	z: number;
+	lookX: number;
+	lookY: number;
+	lookZ: number;
+}
+interface PerfCpuFrame {
+	logicMs: number;
+	batchMs: number;
+	submitMs: number;
+	triangles: number;
+}
+interface PerfRayHit {
 	owner: string;
 	name: string;
 	geometry: string;
@@ -157,8 +296,8 @@ type PerfRayHit = {
 	x: number;
 	y: number;
 	z: number;
-};
-type PerfZoneCull = {
+}
+interface PerfZoneCull {
 	zone: ZoneId;
 	enabled: boolean;
 	cones: number;
@@ -169,121 +308,138 @@ type PerfZoneCull = {
 	keptInOwnZone: number;
 	keptThroughCone: number;
 	owners: readonly ZoneOwnerTally[];
-};
+}
+interface FrameTiming {
+	dt: number;
+	elapsed: number;
+	frameMs: number;
+	cpuStart: number;
+}
+interface RenderTiming {
+	afterLogic: number;
+	afterBatch: number;
+	afterRender: number;
+}
+
+function createDjWidget(uiRoot: HTMLElement, player: DJPlayer, onOpen: () => void): DJWidget {
+	return new DJWidget(uiRoot, player, onOpen);
+}
 
 export class App {
-	private renderer: THREE.WebGLRenderer;
-	private scene = new THREE.Scene();
-	private camera: THREE.PerspectiveCamera;
-	private composer: EffectComposer;
-	private director: Director;
-	private pathfinder = new Pathfinder();
-	private pathMesh = new PathMesh();
-	private world = new CollisionWorld();
-	private atmosphere: Atmosphere;
-	private mall = new MallBuilder();
-	private mallFacade = new MallFacade();
-	private palms = new PalmForest();
-	private walkways = new MovingWalkways();
+	private readonly renderer: WebGLRenderer;
+	private readonly scene = new Scene();
+	private readonly camera: PerspectiveCamera;
+	private readonly composer: EffectComposer;
+	private readonly director: Director;
+	private readonly pathfinder = new Pathfinder();
+	private readonly pathMesh = new PathMesh();
+	private readonly world = new CollisionWorld();
+	private readonly mall = new MallBuilder();
+	private readonly mallFacade = new MallFacade();
+	private readonly palms = new PalmForest();
+	private readonly walkways = new MovingWalkways();
 	/** DE STAD — 8 modules buiten de muren + tropisch dakeiland met badgasten */
-	private cityBuildings = new CityBuildings();
-	private cityRoads = new CityRoads();
+	private readonly cityBuildings = new CityBuildings();
+	private readonly cityRoads = new CityRoads();
 	/**
 	 * De slagbomen van de stad. Ze staan vóór alles wat erlangs wil, want ieder
 	 * voertuig meldt zich bij deze ene lijst en de bomen beslissen zelf wie erdoor mag.
 	 */
-	private barriers = new Barriers(this.world);
-	private cityTraffic = new CityTraffic(() => this.cityRoads.lightPhase, this.barriers);
-	private cityPark = new CityPark();
-	private cityRio = new CityRioMountain();
-	private cityFavela = new CityFavela();
-	private cityColosseum: CityColosseum;
-	private colosseumFighters = new ColosseumFighters();
-	private colosseumTransport: ColosseumTransport;
-	private readonly chariotSeat = new THREE.Vector3();
-	private readonly chariotExit = new THREE.Vector3();
-	private cityPlaza = new CityPlaza();
-	/** Het theater heeft zaallicht, dus het krijgt de pool en wordt in de ctor gebouwd. */
-	private cityTheatre: CityTheatre;
-	/** RAI-scale fur con east of the ring; adult wing + techno + crowd. */
-	private furryCon: FurryCon;
-	private cityGarage = new CityGarage();
-	private citySky = new CitySky();
-	private cityBirds = new CityBirds();
-	private roofIsland = new RoofIsland();
-	private poolPeople = new PoolPeople();
-	private amenities = new Amenities();
+	private readonly barriers = new Barriers(this.world);
+	private readonly cityTraffic = new CityTraffic(() => this.cityRoads.lightPhase, this.barriers);
+	private readonly cityPark = new CityPark();
+	private readonly cityRio = new CityRioMountain();
+	private readonly cityFavela = new CityFavela();
+	private readonly cityColosseum = new CityColosseum(this.world);
+	private readonly colosseumFighters = new ColosseumFighters();
+	private readonly colosseumTransport = new ColosseumTransport();
+	private readonly chariotSeat = new Vector3();
+	private readonly chariotExit = new Vector3();
+	private readonly cityPlaza = new CityPlaza();
+	private readonly cityGarage = new CityGarage();
+	private readonly citySky = new CitySky();
+	private readonly cityBirds = new CityBirds();
+	private readonly roofIsland = new RoofIsland();
+	private readonly poolPeople = new PoolPeople();
+	private readonly amenities = new Amenities();
 	/**
 	 * Elke feature hieronder huurt zijn puntlichten bij de pool en wordt daarom
 	 * in de constructor gebouwd, ná de pool. Een veldinitialisator draait vóór
 	 * de constructorbody en zou de pool nog niet hebben.
 	 */
-	private pool: LightPool;
-	private disco: DiscoParty;
-	private stock: StockDisplay;
-	private spaceship: Spaceship;
-	private thief: BakerThief;
-	private beardCave: BeardCave;
-	private protest!: ProtestGroupies;
-	private travel: TravelAgency;
-	private rat!: MallRat;
-	private cleaner!: CleaningCart;
-	private prayer: PrayerRoom;
-	private penguins!: Penguins;
-	private restrooms: Restrooms;
-	private helipad: Helipad;
-	private foodCourt: FoodCourt;
-	private elevator: GlassElevator;
-	private entrance: Entrance;
-	private carrier: CabinCarrier;
-	private parking: ParkingGarage;
-	private security!: SecurityGuards;
-	private nearElevHint = false;
-	private nearSecurityHint = false;
+	private readonly pool = new LightPool(this.scene, lampCount());
+	private readonly daylight = setupLighting(this.scene, this.pool);
+	private readonly disco = new DiscoParty(this.pool, this.daylight);
+	private readonly stock = new StockDisplay(this.pool);
+	private readonly spaceship = new Spaceship(this.pool);
+	private readonly beardCave = new BeardCave(this.pool);
+	private readonly atmosphere = new Atmosphere(this.world);
+	private readonly thief = new BakerThief(this.world, this.beardCave);
+	private readonly protest = new ProtestGroupies(this.world);
+	private readonly travel = new TravelAgency(this.pool);
+	private readonly rat = new MallRat(this.world);
+	private readonly cleaner = new CleaningCart(this.world);
+	private readonly prayer = new PrayerRoom(this.pool);
+	private readonly penguins = new Penguins(this.world, PENGUIN_COUNT);
+	private readonly restrooms = new Restrooms(this.pool);
+	private readonly helipad = new Helipad(this.pool, this.world);
+	private readonly foodCourt = new FoodCourt(this.pool);
+	private readonly elevator = new GlassElevator(this.pool);
+	private readonly entrance = new Entrance(this.pool);
+	private readonly carrier = new CabinCarrier(
+		ELEVATOR_ENTITY,
+		() => this.elevator.cabinFloorY,
+		(x, z) => this.elevator.contains(x, z, ELEVATOR_RANGE.carrierMargin),
+	);
+	private readonly parking = new ParkingGarage(this.pool);
+	private readonly security = new SecurityGuards(this.world, this.pool);
+	/** Het theater heeft zaallicht. */
+	private readonly cityTheatre = new CityTheatre(this.pool);
+	private readonly furryCon = new FurryCon(this.pool, this.world);
+	private nearElevHint = mutableFlag(false);
+	private nearSecurityHint = mutableFlag(false);
 	private securityHitCd = 0;
 	/** Reused for binaural listener orientation */
-	private _fwd = new THREE.Vector3();
-	private _up = new THREE.Vector3();
+	private readonly _fwd = new Vector3();
+	private readonly _up = new Vector3();
 	/** Werkplek voor de zonevraag van een LOD-klok; hij loopt elk frame over tientallen lichamen. */
-	private readonly _zoneSpot = new THREE.Vector3();
+	private readonly _zoneSpot = new Vector3();
 	/** Latched until you walk out of the cabin XZ */
-	private elevRiding = false;
-	private elevUi!: ElevatorPanel;
-	private bartekChat = new BartekChat();
-	private djBartek: DJBartek;
-	private alienProbe: AlienProbe;
-	private monkey!: Monkey;
-	private catwalk = new Catwalk();
-	private heli!: Helicopter;
-	private drone = new Drone();
-	private scrubber!: ScrubberBuggy;
-	private driveCars!: DriveableCars;
-	private readonly motorcycles: Motorcycles;
-	private nearDroneHint = false;
-	private nearScrubberHint = false;
-	private nearCarHint = false;
-	private nearChariotHint = false;
+	private elevRiding = mutableFlag(false);
+	private readonly elevUi: ElevatorPanel;
+	private readonly bartekChat = new BartekChat();
+	private readonly djBartek = new DJBartek(this.pool);
+	private readonly alienProbe = new AlienProbe(this.pool);
+	private readonly monkey: Monkey;
+	private readonly catwalk = new Catwalk();
+	private readonly heli = new Helicopter(this.helipad.padCenter, this.world);
+	private readonly drone = new Drone();
+	private readonly scrubber = new ScrubberBuggy(this.world, this.pool, this.barriers);
+	private readonly driveCars = new DriveableCars(this.world, this.barriers);
+	private readonly motorcycles = new Motorcycles(PARKED_MOTORCYCLE_SPOTS, 'motorcycles_p1');
+	private nearDroneHint = mutableFlag(false);
+	private nearScrubberHint = mutableFlag(false);
+	private nearCarHint = mutableFlag(false);
+	private nearChariotHint = mutableFlag(false);
 	/** Glijbaan-rit: meters langs de bocht, -1 = niet aan het glijden */
 	private slideDistance = -1;
-	private readonly slideSeat = new THREE.Vector3();
-	private readonly slideLook = new THREE.Vector3();
+	private readonly slideSeat = new Vector3();
+	private readonly slideLook = new Vector3();
 	/** FPS-chip + het uitklapbare prestatiepaneel */
 	private perfHud: PerfOverlay | null = null;
 	/** Alleen aanwezig als het paneel meekomt: het is puur meetgereedschap. */
-	private gpuTimer: GpuTimer | null = null;
+	private readonly gpuTimer: GpuTimer | null = null;
 	/** Populated only through the pre-document profiling probe. */
 	private perfPose: PerfPose | null = null;
 	/** Freeze simulation time while the external probe compares render configurations. */
-	private perfFrozen = false;
+	private perfFrozen = mutableFlag(false);
 	private perfFrozenElapsed = 0;
 	private readonly perfCpuFrame: PerfCpuFrame = { logicMs: 0, batchMs: 0, submitMs: 0, triangles: 0 };
-	private readonly raycaster = new THREE.Raycaster();
+	private readonly raycaster = new Raycaster();
 	/** Hergebruikt voor de HUD-pose, zodat het paneel geen vector per tick alloceert. */
-	private readonly hudDirection = new THREE.Vector3();
-	/** Zaallicht-schaal en de discodim lopen allebei hierlangs. */
-	private daylight!: DaylightDimmer;
+	private readonly hudDirection = new Vector3();
 	/** Hergebruikt: getDrawingBufferSize schrijft in een doelvector, elk frame. */
-	private readonly bufferSize = new THREE.Vector2();
+	private readonly bufferSize = new Vector2();
 	/**
 	 * Pixelratio heeft één eigenaar: kwaliteitstier × dynamische schaal, samen
 	 * toegepast in applyPixelRatio(). Eerder schreef de kwaliteits-handler de
@@ -292,7 +448,7 @@ export class App {
 	/** De echte waarde komt uit bindQuality, dat synchroon in de constructor vuurt. */
 	private qualityRatio = 1;
 	private dynScale = 1;
-	private dynResOn = true;
+	private dynResOn = mutableFlag(true);
 	private dynResIndex = 0;
 	/** EMA van de ongeklemde frametijd; 0 = nog geen meting (net gereset). */
 	private frameMsEma = 0;
@@ -308,53 +464,53 @@ export class App {
 	/** Laatste parkeerstand; blijft na uitstappen bewaard voor een HMR-herbouw. */
 	private lastParkedVehicle: PersistedRide | null = null;
 	/** reused each frame for the monkey's target list */
-	private simPositions: THREE.Vector3[] = [];
-	private djPlayer = new DJPlayer();
-	private shopVoice = new ShopVoice();
-	private djUi!: DJOverlay;
-	private youssefHint = false;
-	private settingsUi!: SettingsPanel;
-	private peopleUi!: PeopleDashboard;
+	private readonly simPositions: Vector3[] = [];
+	private readonly djPlayer = new DJPlayer();
+	private readonly shopVoice = new ShopVoice();
+	private readonly djUi: DJOverlay;
+	private youssefHint = mutableFlag(false);
+	private readonly settingsUi: SettingsPanel;
+	private readonly peopleUi: PeopleDashboard;
 	private peopleT = 0;
-	private peopleRows: PersonRow[] = [];
-	private player!: PlayerControls;
-	private ui: KioskOverlay;
-	/** Replaces deprecated THREE.Clock — call update() once per frame */
-	private timer = new THREE.Timer();
+	private readonly peopleRows: PersonRow[] = [];
+	private readonly player: PlayerControls;
+	private readonly ui: KioskOverlay;
+	/** Replaces deprecated Clock — call update() once per frame */
+	private readonly timer = new Timer();
 	private currentPath: GraphNode[] = [];
 	private currentStore: StoreDef | null = null;
-	private confetti: THREE.Points | null = null;
+	private confetti: Points | null = null;
 	private confettiVel: Float32Array | null = null;
 	private score = 0;
 	private metSims = new Set<number>();
 	private nearHudT = 0;
 	/** reused every frame so the minimap doesn't allocate 20 objects per tick */
-	private mapBlips: MapBlip[] = [];
+	private readonly mapBlips: MapBlip[] = [];
 	private unlockedAt = -1e4;
 	/** free walk after intro; disabled during cinematic tour */
-	private freeMove = false;
+	private freeMove = mutableFlag(false);
 	/** RCT-style: ride along as a guest */
 	private possessId: number | null = null;
 	private thiefFiredAt = 0;
-	private nearDjHint = false;
-	private nearProtestHint = false;
-	private nearTravelHint = false;
-	private nearConHint = false;
-	private nearFavelaGangHint = false;
+	private nearDjHint = mutableFlag(false);
+	private nearProtestHint = mutableFlag(false);
+	private nearTravelHint = mutableFlag(false);
+	private nearConHint = mutableFlag(false);
+	private nearFavelaGangHint = mutableFlag(false);
 	private lastConHint: string | null = null;
-	private nearPrayerHint = false;
-	private bartekSpeaking = false;
+	private nearPrayerHint = mutableFlag(false);
+	private bartekSpeaking = mutableFlag(false);
 	private crowdCheerCd = 0;
 	private persistT = 0;
-	private restoredFromSave = false;
-	private sceneBatcher!: SceneBatcher;
+	private restoredFromSave = mutableFlag(false);
+	private readonly sceneBatcher: SceneBatcher;
 	/**
 	 * Zone- en portaalculling. Zonder deze stond je op de stoep en werd het hele
 	 * interieur getekend, beschaduwd én gesimuleerd terwijl er een gevel voor stond.
 	 */
 	private readonly zoneCuller = new ZoneCuller();
 	/** Dezelfde cull voor alles wat de batcher niet overnam. */
-	private zoneVisibility!: ZoneVisibility;
+	private readonly zoneVisibility: ZoneVisibility;
 	/** Uit te zetten, zodat er een A-B-A op één build tegenaan gelegd kan worden. */
 	private zoneCullOn = zoneCullOn();
 	/** De zone waar de camera in staat, één keer per frame bepaald. */
@@ -382,228 +538,205 @@ export class App {
 	readonly ready: Promise<void>;
 
 	constructor(canvasParent: HTMLElement, uiRoot: HTMLElement) {
-		// Eerst de lichtpool, dan pas iets dat licht maakt: NUM_POINT_LIGHTS ligt
-		// hiermee voor de hele sessie vast en geen enkele feature bouwt nog een
-		// eigen PointLight. Zie src/render/LightPool.ts.
-		this.pool = new LightPool(this.scene, lampCount());
-		const daylight = setupLighting(this.scene, this.pool);
-		this.daylight = daylight;
-		// The catwalk spot is the one real light outside Lighting.ts; the old
-		// scene-traverse dimmer caught it implicitly, this list is explicit.
-		daylight.register(this.catwalk.spot, 0.15);
-		this.disco = new DiscoParty(this.pool, daylight);
-		this.stock = new StockDisplay(this.pool);
-		this.spaceship = new Spaceship(this.pool);
-		this.beardCave = new BeardCave(this.pool);
-		this.travel = new TravelAgency(this.pool);
-		this.prayer = new PrayerRoom(this.pool);
-		this.restrooms = new Restrooms(this.pool);
-		this.helipad = new Helipad(this.pool, this.world);
-		this.foodCourt = new FoodCourt(this.pool);
-		this.elevator = new GlassElevator(this.pool);
-		this.entrance = new Entrance(this.pool);
-		this.parking = new ParkingGarage(this.pool);
-		this.djBartek = new DJBartek(this.pool);
-		this.alienProbe = new AlienProbe(this.pool);
-		this.cityTheatre = new CityTheatre(this.pool);
-		this.furryCon = new FurryCon(this.pool, this.world);
-		this.cityColosseum = new CityColosseum(this.world);
-		this.colosseumTransport = new ColosseumTransport();
+		this.daylight.register(this.catwalk.spot, CATWALK_LIGHT_DIM);
 		this.colosseumFighters.bindColosseum(this.cityColosseum);
+		this.registerCarrier();
+		this.renderer = this.createRenderer(canvasParent);
+		this.camera = this.createCamera();
+		this.monkey = new Monkey(this.world, this.camera);
+		this.addSceneObjects();
+		this.addWorldColliders();
+		this.bindWorldActors();
+		const dynamicRoots = [...this.dynamicMallRoots(), ...this.dynamicCityRoots()];
+		this.sceneBatcher = new SceneBatcher(this.scene, dynamicRoots);
+		this.zoneVisibility = new ZoneVisibility(this.scene, dynamicRoots);
+		this.configureBatching();
+		this.bindSecurityCallbacks();
+		this.director = new Director(this.camera);
+		this.composer = createComposer(this.renderer, this.scene, this.camera);
+		this.player = new PlayerControls(this.camera, this.renderer.domElement, this.world);
+		this.player.enabled = false;
+		this.bindPlayerCallbacks();
+		this.bindCommerceCallbacks();
+		this.ui = this.createKioskUi(uiRoot);
+		this.djUi = new DJOverlay(uiRoot);
+		this.wireDjBooth();
+		this.peopleUi = new PeopleDashboard(uiRoot, (id) => this.enterPossess(id));
+		createDjWidget(uiRoot, this.djPlayer, () => this.djUi.show());
+		this.gpuTimer = this.setupPerfTools(uiRoot);
+		this.bindUiCallbacks();
+		this.elevUi = this.createElevatorPanel(uiRoot);
+		this.settingsUi = this.createSettingsPanel(uiRoot);
+		this.bindSettings();
+		this.bindGlobalEvents();
+		this.bindAudioUnlock();
+		this.bindPersistence();
+		this.restoreSessionOrStartIntro();
+		if (import.meta.hot) Reflect.set(globalThis, 'mallsim', this);
+		this.timer.connect(document);
+		this.ready = this.start();
+	}
 
-		this.atmosphere = new Atmosphere(this.world);
-		this.thief = new BakerThief(this.world, this.beardCave);
-		this.rat = new MallRat(this.world);
-		this.cleaner = new CleaningCart(this.world);
-		this.scrubber = new ScrubberBuggy(this.world, this.pool, this.barriers);
-		this.carrier = new CabinCarrier(
-			ELEVATOR_ENTITY,
-			() => this.elevator.cabinFloorY,
-			(x, z) => this.elevator.contains(x, z, 0.05),
-		);
+	private registerCarrier(): void {
 		this.carrier.register({
 			id: 'scrubber-buggy',
 			receiver: this.scrubber.receiver,
 			position: () => this.scrubber.pos,
 			setFloor: (y) => this.scrubber.setFloorOverride(y),
 		});
-		this.driveCars = new DriveableCars(this.world, this.barriers);
-		this.motorcycles = new Motorcycles(PARKED_MOTORCYCLE_SPOTS, 'motorcycles_p1');
-		this.protest = new ProtestGroupies(this.world);
-		this.security = new SecurityGuards(this.world, this.pool);
-		this.penguins = new Penguins(this.world, 12);
+	}
 
-		this.renderer = new THREE.WebGLRenderer({
-			// De composer doet al AA — canvas-MSAA erbovenop is puur dubbel werk
-			antialias: false,
-			powerPreference: 'high-performance',
-		});
-		// Geen setPixelRatio hier: bindQuality vuurt verderop in deze constructor
-		// synchroon met de opgeslagen tier en is via applyPixelRatio() de enige
-		// eigenaar; een tweede schrijver was precies wat daar wegmoest.
-		this.renderer.setSize(window.innerWidth, window.innerHeight);
-		this.renderer.shadowMap.enabled = true;
-		this.renderer.shadowMap.type = THREE.PCFShadowMap;
-		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-		this.renderer.toneMapping = THREE.NoToneMapping;
-		// three.js validates every program the first time it is *rendered* by reading
-		// getProgramInfoLog()/getShaderInfoLog()/LINK_STATUS back from the driver. Each
-		// of those is a hard CPU-GPU sync that blocks the frame until the link is done,
-		// and two Chrome traces put roughly two thirds of all CPU time inside them. The
-		// error text is worth the stall while developing; it is not worth shipping.
-		this.renderer.debug.checkShaderErrors = !!import.meta.hot;
-		// Zonder dit reset three de telling bij elke renderer.render(), en de
-		// composer doet er meerdere per frame, dus je leest alleen de laatste
-		// pass. Eén reset per frame in de loop geeft het frame als geheel.
-		this.renderer.info.autoReset = false;
-		// Before anything builds a label: name plates and signs are read at a
-		// slant almost always, and this is what keeps them legible there.
-		setLabelAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
-		canvasParent.appendChild(this.renderer.domElement);
+	private createRenderer(canvasParent: HTMLElement): WebGLRenderer {
+		const renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+		renderer.setSize(globalThis.innerWidth, globalThis.innerHeight);
+		renderer.shadowMap.enabled = true;
+		renderer.shadowMap.type = PCFShadowMap;
+		renderer.outputColorSpace = SRGBColorSpace;
+		renderer.toneMapping = NoToneMapping;
+		// Driver log reads are blocking CPU-GPU syncs, useful during development only.
+		renderer.debug.checkShaderErrors = !!import.meta.hot;
+		renderer.info.autoReset = false;
+		setLabelAnisotropy(renderer.capabilities.getMaxAnisotropy());
+		canvasParent.appendChild(renderer.domElement);
+		return renderer;
+	}
 
-		// Wider FOV feels more first-person / walking through a mall
-		this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.15, WORLD_VIEW_DISTANCE);
+	private createCamera(): PerspectiveCamera {
+		return new PerspectiveCamera(
+			CAMERA_CONFIG.fovDegrees,
+			globalThis.innerWidth / globalThis.innerHeight,
+			CAMERA_CONFIG.nearPlane,
+			WORLD_VIEW_DISTANCE,
+		);
+	}
 
+	private addSceneObjects(): void {
 		this.disco.bindScene(this.scene);
 		this.scene.add(this.mall.build());
-		// Wire Youssef + all keepers for speech bubbles + ElevenLabs
 		this.shopVoice.bindFromMall(this.mall.group);
-		// En de wereld erbij, zodat een verkoper niet door zijn eigen achterwand groet.
 		this.shopVoice.bindWorld(this.world);
-		this.scene.add(this.palms.group);
-		this.scene.add(this.walkways.group);
-		this.scene.add(this.amenities.group);
-		this.scene.add(this.disco.group);
-		this.scene.add(this.stock.group);
-		this.scene.add(this.spaceship.group);
-		this.scene.add(this.atmosphere.group);
-		this.scene.add(this.thief.group);
-		this.scene.add(this.beardCave.group);
-		this.scene.add(this.protest.group);
-		this.scene.add(this.travel.group);
-		this.scene.add(this.rat.group);
-		this.scene.add(this.cleaner.group);
-		this.scene.add(this.scrubber.group);
-		this.scene.add(this.driveCars.group);
-		this.scene.add(this.motorcycles.group);
-		this.scene.add(this.security.group);
-		this.scene.add(this.prayer.group);
-		this.scene.add(this.penguins.group);
-		this.scene.add(this.restrooms.group);
-		this.scene.add(this.helipad.group);
-		this.scene.add(this.foodCourt.group);
-		this.scene.add(this.elevator.group);
-		this.scene.add(this.entrance.group);
-		this.scene.add(this.mallFacade.group);
+		this.addMallSceneObjects();
+		this.addCitySceneObjects();
+	}
 
-		// ── DE STAD + het dakeiland ─────────────────────────
-		this.scene.add(this.cityBuildings.group);
-		this.scene.add(this.cityRoads.group);
-		this.scene.add(this.cityPlaza.group);
-		this.scene.add(this.cityTraffic.group);
-		this.scene.add(this.barriers.group);
-		this.scene.add(this.cityPark.group);
-		this.scene.add(this.cityRio.group);
-		this.scene.add(this.cityFavela.group);
-		this.scene.add(this.cityColosseum.group);
-		this.scene.add(this.colosseumFighters.group);
-		this.scene.add(this.colosseumTransport.group);
-		this.scene.add(this.cityTheatre.group);
-		this.scene.add(this.furryCon.group);
-		this.scene.add(this.cityGarage.group);
-		this.scene.add(this.citySky.group);
-		this.scene.add(this.cityBirds.group);
-		this.scene.add(this.roofIsland.group);
-		this.scene.add(this.poolPeople.group);
-		// Loopbaar dek: eiland-roofpad registreren zodat jij (en de drone) erop kunnen
+	private addMallSceneObjects(): void {
+		this.scene.add(
+			this.palms.group,
+			this.walkways.group,
+			this.amenities.group,
+			this.disco.group,
+			this.stock.group,
+			this.spaceship.group,
+			this.atmosphere.group,
+			this.thief.group,
+			this.beardCave.group,
+			this.protest.group,
+			this.travel.group,
+			this.rat.group,
+			this.cleaner.group,
+			this.scrubber.group,
+			this.driveCars.group,
+			this.motorcycles.group,
+			this.security.group,
+			this.prayer.group,
+			this.penguins.group,
+			this.restrooms.group,
+			this.helipad.group,
+			this.foodCourt.group,
+			this.elevator.group,
+			this.entrance.group,
+			this.mallFacade.group,
+		);
+	}
+
+	private addCitySceneObjects(): void {
+		this.scene.add(
+			this.cityBuildings.group,
+			this.cityRoads.group,
+			this.cityPlaza.group,
+			this.cityTraffic.group,
+			this.barriers.group,
+			this.cityPark.group,
+			this.cityRio.group,
+			this.cityFavela.group,
+			this.cityColosseum.group,
+			this.colosseumFighters.group,
+			this.colosseumTransport.group,
+			this.cityTheatre.group,
+			this.furryCon.group,
+			this.cityGarage.group,
+			this.citySky.group,
+			this.cityBirds.group,
+			this.roofIsland.group,
+			this.poolPeople.group,
+			this.parking.group,
+			this.citySky.group,
+			this.cityRoads.group,
+			this.cityTraffic.group,
+			this.cityBuildings.group,
+			this.cityPark.group,
+			this.cityGarage.group,
+			this.cityTheatre.group,
+			this.cityBirds.group,
+		);
 		this.world.roofPads.push(this.roofIsland.roofPad);
-		this.scene.add(this.parking.group);
-		// City outside the mall
-		this.scene.add(this.citySky.group);
-		this.scene.add(this.cityRoads.group);
-		this.scene.add(this.cityTraffic.group);
-		this.scene.add(this.cityBuildings.group);
-		this.scene.add(this.cityPark.group);
-		this.scene.add(this.cityGarage.group);
-		this.scene.add(this.cityTheatre.group);
-		this.scene.add(this.cityBirds.group);
-		// WC + gebedsruimte + cave + travel desk walls
+	}
+
+	private addWorldColliders(): void {
 		const roomColliders: RoomCollider[] = [
 			...this.restrooms.getColliders(),
 			...this.prayer.getColliders(),
 			...this.beardCave.getColliders(),
 			...this.travel.getColliders(),
 		];
-		for (const c of roomColliders) {
-			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
-				minY: c.minY ?? -0.5,
-				maxY: c.maxY ?? 3.2,
-				label: c.label,
-				// Dichte kamerwanden: je kijkt er niet doorheen en je schiet er niet
-				// doorheen. De glazen lift hieronder krijgt de tag met opzet niet, en
-				// een meubel tot kniehoogte evenmin.
-				tags: c.blocksSight === false ? [] : [SIGHT_BLOCKING_TAG],
+		for (const collider of roomColliders) {
+			this.world.addBox(collider.minX, collider.maxX, collider.minZ, collider.maxZ, {
+				minY: collider.minY ?? COLLIDER_DEFAULTS.roomMinY,
+				maxY: collider.maxY ?? COLLIDER_DEFAULTS.roomMaxY,
+				label: collider.label,
+				tags: collider.blocksSight === false ? [] : [SIGHT_BLOCKING_TAG],
 			});
 		}
-		// Elevator shaft: full height P1→dak; climbable draagt de lift-poortmodi, dus de
-		// speler loopt de cabine in en de schoonmaakkar rijdt hem in; sims botsen.
-		for (const c of this.elevator.getColliders()) {
-			this.world.addBox(c.minX, c.maxX, c.minZ, c.maxZ, {
-				minY: c.minY ?? -7.5,
-				maxY: c.maxY ?? 16.5,
-				label: c.label,
-				climbable: c.climbable,
+		for (const collider of this.elevator.getColliders()) {
+			this.world.addBox(collider.minX, collider.maxX, collider.minZ, collider.maxZ, {
+				minY: collider.minY ?? COLLIDER_DEFAULTS.shaftMinY,
+				maxY: collider.maxY ?? COLLIDER_DEFAULTS.shaftMaxY,
+				label: collider.label,
+				climbable: collider.climbable,
 			});
 		}
-		this.scene.add(this.pathMesh.group);
-		this.scene.add(this.djBartek.group);
-		this.scene.add(this.alienProbe.group);
-		this.alienProbe.bind(this.atmosphere.americans);
-		// Sims ride the loopband too
-		this.atmosphere.americans.setBeltProvider((x, y, z) => this.walkways.beltVelocityAt(x, y, z));
+	}
 
-		// Ringweg: de auto's remmen voor je zodra je op de strook staat, en lanceren
-		// je als hun remweg daar niet meer voor toereikend was.
+	private bindWorldActors(): void {
+		this.scene.add(this.pathMesh.group, this.djBartek.group, this.alienProbe.group, this.heli.group, this.drone.group);
+		this.scene.add(this.catwalk.group, this.camera, this.monkey.group);
+		this.alienProbe.bind(this.atmosphere.americans);
+		this.atmosphere.americans.setBeltProvider((x, y, z) => this.walkways.beltVelocityAt(x, y, z));
 		this.cityTraffic.setObstacleProvider(() => this.walkerOnRoad());
 		this.cityTraffic.setHitHandler((vx, vz, vy) => {
 			this.player.launch(vx, vz, vy);
 			this.ui.setStatus('🚗💥 AANGEREDEN — de ringweg is geen zebrapad');
 		});
-
-		// Luchtvloot: heli op het dak (cyclus), drone bij de fontein (instappen!)
-		this.heli = new Helicopter(this.helipad.padCenter, this.world);
-		this.scene.add(this.heli.group);
-		this.scene.add(this.drone.group);
-
-		// Fashion Week runway, floor 0 west (in front of Douglas)
-		this.scene.add(this.catwalk.group);
 		this.catwalk.setAnnounceCallback((name) => {
 			this.ui.setStatus(`👗 CATWALK · ${name} komt op · Fashion Week Prairie Lakes`);
 		});
+		this.monkey.setHitCallback((hit) => this.handleMonkeyHit(hit));
+	}
 
-		// Camera lives in the scene so the monkey can smear the lens
-		this.scene.add(this.camera);
-		this.monkey = new Monkey(this.world, this.camera);
-		this.scene.add(this.monkey.group);
-		this.monkey.setHitCallback((hit) => {
-			if (hit.what === 'player') {
-				this.score = Math.max(0, this.score - 8);
-				this.ui.setScore(this.score, this.metSims.size);
-				const yell = hit.yell ?? 'AU!!';
-				this.ui.setStatus(`🐒💩 ${yell} — volle treffer in je gezicht (−8)`);
-				this.spawnConfetti(new THREE.Vector3(hit.x, hit.y + 0.4, hit.z));
-			} else if (hit.what === 'sim') {
-				this.atmosphere.americans.nudgeAllMood(4);
-				this.ui.setStatus('🐒💩 De aap raakte een shopper — publiek is niet blij');
-			} else if (hit.what === 'prayer') {
-				this.ui.setStatus('🐒💩 Aap gooit kak op de GEBEDSRUIMTE — je stond te ver weg');
-			}
-		});
+	private handleMonkeyHit(hit: { what: string; yell?: string; x: number; y: number; z: number }): void {
+		if (hit.what === 'player') {
+			this.score = Math.max(0, this.score - MONKEY_HIT.scorePenalty);
+			this.ui.setScore(this.score, this.metSims.size);
+			this.ui.setStatus(`🐒💩 ${hit.yell ?? 'AU!!'} — volle treffer in je gezicht (−8)`);
+			this.spawnConfetti(new Vector3(hit.x, hit.y + MONKEY_HIT.confettiHeight, hit.z));
+		} else if (hit.what === 'sim') {
+			this.atmosphere.americans.nudgeAllMood(MONKEY_HIT.moodPenalty);
+			this.ui.setStatus('🐒💩 De aap raakte een shopper — publiek is niet blij');
+		} else if (hit.what === 'prayer') this.ui.setStatus('🐒💩 Aap gooit kak op de GEBEDSRUIMTE — je stond te ver weg');
+	}
 
-		// Preserve every gameplay object, but submit compatible opaque meshes
-		// through a small number of GPU batches. Eén lijst, want de zonecull moet
-		// precies dezelfde wortels als bewegend kennen als de batcher.
-		const dynamicRoots = [
+	private dynamicMallRoots(): Object3D[] {
+		return [
 			...this.mall.dynamicRoots,
 			this.palms.group,
 			this.walkways.group,
@@ -624,15 +757,16 @@ export class App {
 			this.prayer.group,
 			this.penguins.group,
 			this.elevator.group,
-			// De schuifbladen bewegen, dus de entree is een dynamische wortel.
 			this.entrance.group,
-			// Het luikblad draait; statisch gebatcht bleef de bevroren kopie dicht
-			// liggen terwijl het echte mesh onzichtbaar openzwaaide.
 			this.helipad.group,
+		];
+	}
+
+	private dynamicCityRoots(): Object3D[] {
+		return [
 			this.cityBuildings.group,
 			this.cityRoads.group,
 			this.cityTraffic.group,
-			// De armen draaien, dus de bomen zijn een dynamische wortel.
 			this.barriers.group,
 			this.cityPark.group,
 			this.cityRio.group,
@@ -652,102 +786,94 @@ export class App {
 			this.catwalk.group,
 			this.monkey.group,
 		];
-		this.sceneBatcher = new SceneBatcher(this.scene, dynamicRoots);
-		// Ná de batcher: wat hij overnam heeft nu laagmasker nul en telt hier niet
-		// meer mee. Wat overblijft — losse meshes, InstancedMeshes, sprites, punten —
-		// is vanaf de stoep het grootste deel van de draw calls.
-		this.zoneVisibility = new ZoneVisibility(this.scene, dynamicRoots);
-		// Wat elke feature te tekenen heeft, ongeacht of de cull straks aan staat: met
-		// hem uit telt niemand mee en is een lege regel niet te onderscheiden van een
-		// feature die het standpunt volledig wegcullde.
-		for (const owner of this.sceneBatcher.stats.owners) {
-			this.zoneCuller.declareOwner(owner.name, owner.sources, owner.casters);
-		}
+	}
+
+	private configureBatching(): void {
+		for (const owner of this.sceneBatcher.stats.owners) this.zoneCuller.declareOwner(owner.name, owner.sources, owner.casters);
 		for (const owner of this.zoneVisibility.stats.owners) {
 			this.zoneCuller.declareOwner(owner.name, owner.occupants, owner.casters);
 		}
-		// De statische wereldmatrix is hierboven eenmaal vastgelegd. Vanaf nu
-		// ververst SceneBatcher alleen de expliciet bewegende wortels. De algemene
-		// rendererwandeling over circa 7000 objecten blijft daarom uit.
 		this.scene.matrixWorldAutoUpdate = false;
 		console.info('[Mall] render batching', this.sceneBatcher.stats);
 		document.documentElement.dataset['batchSourceMeshes'] = String(this.sceneBatcher.stats.sourceMeshes);
 		document.documentElement.dataset['batchDrawCalls'] = String(this.sceneBatcher.stats.drawCalls);
 		document.documentElement.dataset['batchMode'] = this.sceneBatcher.stats.mode;
-		document.documentElement.dataset['batchDynamicSources'] = String(this.sceneBatcher.stats.dynamicSources);
+		document.documentElement.dataset[BATCH_DYNAMIC_SOURCES_KEY] = String(this.sceneBatcher.stats.dynamicSources);
 		document.documentElement.dataset['batchLargestRadius'] = this.sceneBatcher.stats.largestRadius.toFixed(1);
+	}
 
-		// Hypersensitive mall cops — open fire → panic sims / graze player
-		this.security.setOpenFireCallback((msg) => this.ui.setStatus(msg));
+	private bindSecurityCallbacks(): void {
+		this.security.setOpenFireCallback((message) => this.ui.setStatus(message));
 		this.security.setSimPanicCallback((origin, radius) => {
 			const hit = this.atmosphere.americans.panicFromGunfire(origin, radius);
-			if (hit.length > 0) {
-				this.score = Math.max(0, this.score - Math.min(12, hit.length * 2));
-				this.ui.setScore(this.score, this.metSims.size);
-			}
-		});
-		this.security.setPlayerHitCallback((dmg, who) => {
-			if (this.securityHitCd > 0) return;
-			this.securityHitCd = 0.6;
-			this.score = Math.max(0, this.score - dmg);
+			if (hit.length === 0) return;
+			this.score = Math.max(
+				0,
+				this.score - Math.min(SECURITY_POLICY.maxPanicPenalty, hit.length * SECURITY_POLICY.penaltyPerTarget),
+			);
 			this.ui.setScore(this.score, this.metSims.size);
-			this.ui.setStatus(`🚔💥 ${who} schoot je — "I felt threatened" (−${dmg})`);
 		});
+		this.security.setPlayerHitCallback((damage, attacker) => {
+			if (this.securityHitCd > 0) return;
+			this.securityHitCd = SECURITY_POLICY.hitCooldownSeconds;
+			this.score = Math.max(0, this.score - damage);
+			this.ui.setScore(this.score, this.metSims.size);
+			this.ui.setStatus(`🚔💥 ${attacker} schoot je — "I felt threatened" (−${damage})`);
+		});
+	}
 
-		this.director = new Director(this.camera);
-		this.composer = createComposer(this.renderer, this.scene, this.camera);
-		this.player = new PlayerControls(this.camera, this.renderer.domElement, this.world);
-		this.player.enabled = false;
+	private bindPlayerCallbacks(): void {
 		this.player.onLockChange = (locked) => {
 			this.ui.setLocked(locked);
-			if (locked) {
-				this.ui.setStatus('Muis gevangen · WASD lopen · Shift rennen · Esc = los');
-			} else {
+			if (locked) this.ui.setStatus('Muis gevangen · WASD lopen · Shift rennen · Esc = los');
+			else {
 				this.unlockedAt = performance.now();
 				this.ui.setStatus('Muis los · klik het beeld om weer te kijken');
 			}
 		};
+	}
 
-		this.atmosphere.americans.setTransactionCallback((count, pos, storeId) => {
-			this.score += 2;
+	private bindCommerceCallbacks(): void {
+		this.atmosphere.americans.setTransactionCallback((count, position, storeId) => {
+			this.score += CHECKOUT_SCORE;
 			this.ui.setScore(this.score, this.metSims.size);
-			// Money goes to SHOPKEEPER register — not the void
 			if (storeId) {
 				this.stock.flashSale(storeId);
-				// Owner SPEAKS (Youssef especially) — not silent text on a guest
-				void this.shopVoice.onCheckout(storeId);
+				observeAsync(this.shopVoice.onCheckout(storeId), 'checkout announcement');
 			}
-			const ownerHint = storeId === 'kruidvat' ? 'Youssef Benali' : (storeId ?? '?');
-			this.ui.setStatus(`Kassa ${ownerHint} · checkout #${count} · muntjes → verkoper 💰`);
-			// Every 5 checkouts → baard-dief (slow heist → cave)
-			if (count > 0 && count % 5 === 0 && count !== this.thiefFiredAt) {
+			const owner = storeId === 'kruidvat' ? 'Youssef Benali' : (storeId ?? '?');
+			this.ui.setStatus(`Kassa ${owner} · checkout #${count} · muntjes → verkoper 💰`);
+			if (count > 0 && count % THIEF_EVENT.transactionInterval === 0 && count !== this.thiefFiredAt) {
 				this.thiefFiredAt = count;
 				this.thief.trigger();
 				this.ui.setStatus(`🧔 BAARD-DIEF pakt juwelen → Beard-man's Cave! (txn ${count})`);
-				this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 2, 0)));
+				this.spawnConfetti(position.clone().add(new Vector3(0, 2, 0)));
 			}
 		});
-		this.thief.setLootCallback((pos) => {
-			this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 1.5, 0)));
-			this.score = Math.max(0, this.score - 15);
+		this.bindThiefCallbacks();
+	}
+
+	private bindThiefCallbacks(): void {
+		this.thief.setLootCallback((position) => {
+			this.spawnConfetti(position.clone().add(new Vector3(0, THIEF_EVENT.lootHeight, 0)));
+			this.score = Math.max(0, this.score - THIEF_EVENT.scorePenalty);
 			this.ui.setScore(this.score, this.metSims.size);
 		});
-		this.thief.setHomeCallback((pos) => {
+		this.thief.setHomeCallback((position) => {
 			this.beardCave.pulseLoot();
-			this.spawnConfetti(pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
-			this.spawnConfetti(this.beardCave.lootCenter.clone().add(new THREE.Vector3(0, 0.8, 0)));
+			this.spawnConfetti(position.clone().add(new Vector3(0, THIEF_EVENT.homeHeight, 0)));
+			this.spawnConfetti(this.beardCave.lootCenter.clone().add(new Vector3(0, THIEF_EVENT.caveHeight, 0)));
 			this.ui.setStatus('💀 BAARD-DIEF dumpte de juwelen in de cave · goud glimt');
 		});
+	}
 
-		this.ui = new KioskOverlay(uiRoot, {
-			onSelectStore: (s) => this.onSelectStore(s),
-			onStartRoute: (s) => this.onStartRoute(s),
+	private createKioskUi(uiRoot: HTMLElement): KioskOverlay {
+		return new KioskOverlay(uiRoot, {
+			onSelectStore: (store) => this.onSelectStore(store),
+			onStartRoute: (store) => this.onStartRoute(store),
 			onCancel: () => this.onCancel(),
 			onHome: () => this.onHome(),
-			onReplay: () => {
-				const store = this.currentStore ?? getKruidvat();
-				this.onStartRoute(store);
-			},
+			onReplay: () => this.onStartRoute(this.currentStore ?? getKruidvat()),
 			onPossess: () => this.togglePossess(),
 			onDisco: () => this.toggleDisco(),
 			onGiveMoney: () => this.giveMoney(),
@@ -757,173 +883,133 @@ export class App {
 			},
 			onMood: (delta) => this.nudgeGuestMood(delta),
 		});
+	}
 
-		this.djUi = new DJOverlay(uiRoot);
-		this.wireDjBooth();
+	private setupPerfTools(uiRoot: HTMLElement): GpuTimer | null {
+		const externalProbe = Reflect.get(globalThis, '__mallPerfProbeActive') === true;
+		if (externalProbe) this.bindExternalPerfControl();
+		if (feature('NO_PERF_HUD') || externalProbe) return null;
+		const context = this.renderer.getContext();
+		const webgl2 = context instanceof WebGL2RenderingContext ? context : null;
+		observeAsync(
+			import('#/ui/PerfOverlay').then(({ PerfOverlay: PerfOverlayClass }) => {
+				this.perfHud = new PerfOverlayClass(uiRoot, webgl2);
+			}),
+			'performance overlay import',
+		);
+		return webgl2 ? new GpuTimer(webgl2) : null;
+	}
 
-		// NA KioskOverlay: die mount met `root.innerHTML = …` en veegt alles weg
-		// wat eerder aan uiRoot hing. En ná wireDjBooth, zodat de widget de
-		// onChange-keten van de booth netjes doorgeeft i.p.v. overschreven wordt.
-		this.peopleUi = new PeopleDashboard(uiRoot, (id) => this.enterPossess(id));
-		new DJWidget(uiRoot, this.djPlayer, () => this.djUi.show());
-
-		// FPS-chip + prestatiepaneel (I): frametijdverdeling in plaats van alleen
-		// een gemiddelde. Diagnostisch gereedschap, dus onder NO_PERF_HUD hoort
-		// het uit de bundle te verdwijnen. Vandaar een dynamische import: met een
-		// gewone import blijft de module bestaan ook als elke verwijzing ernaar
-		// in dode code staat, en dan valt alleen het aanroepen weg (1,9 KB) in
-		// plaats van het paneel zelf. Het laadt tijdens de laadscreen.
-		const externalPerfProbe = Reflect.get(window, '__mallPerfProbeActive') === true;
-		if (externalPerfProbe) {
-			Reflect.set(window, '__mallPerfControl', {
-				setPose: (x: unknown, y: unknown, z: unknown, lookX: unknown, lookY: unknown, lookZ: unknown): boolean => {
-					const values = [x, y, z, lookX, lookY, lookZ];
-					if (!values.every((value) => typeof value === 'number' && Number.isFinite(value))) return false;
-					if (
-						typeof x !== 'number' ||
-						typeof y !== 'number' ||
-						typeof z !== 'number' ||
-						typeof lookX !== 'number' ||
-						typeof lookY !== 'number' ||
-						typeof lookZ !== 'number'
-					) {
-						return false;
-					}
-					this.perfPose = { x, y, z, lookX, lookY, lookZ };
-					return true;
-				},
-				clearPose: (): void => {
-					this.perfPose = null;
-				},
-				setFrozen: (frozen: unknown): boolean => {
-					if (typeof frozen !== 'boolean') return false;
-					if (frozen && !this.perfFrozen) this.perfFrozenElapsed = this.timer.getElapsed();
-					this.perfFrozen = frozen;
-					return true;
-				},
-				/**
-				 * Wat staat er op dit beeldpunt? Genormaliseerde beeldcoördinaten in,
-				 * de geraakte objecten uit.
-				 *
-				 * Een schermafdruk laat een vlak zien maar niet wát het is, en dat verschil
-				 * bepaalt of er een bug ligt: het bruine vlak boven de colosseumarena leek
-				 * nachtlucht en bleek een massieve schijf over het hele gebouw.
-				 */
-				readRaycast: (ndcX: unknown, ndcY: unknown, limit: unknown): PerfRayHit[] => {
-					if (typeof ndcX !== 'number' || typeof ndcY !== 'number') return [];
-					const wanted = typeof limit === 'number' && limit > 0 ? Math.floor(limit) : 1;
-					this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
-					const hits = this.raycaster.intersectObjects(this.scene.children, true);
-					// Eén per object: een puntenwolk levert een treffer per deeltje en zou
-					// anders alle plekken vullen met dezelfde wolk. En alleen wat getekend
-					// wordt: `Raycaster` slaat `visible = false` niet over, dus zonder deze
-					// test wijst hij de uitgeschakelde alienstraal aan als wat je ziet.
-					const gezien = new Set<string>();
-					const zichtbaar = (object: THREE.Object3D): boolean => {
-						for (let node: THREE.Object3D | null = object; node; node = node.parent) {
-							if (!node.visible) return false;
-						}
-						return true;
-					};
-					const uniek = hits.filter((hit) => {
-						if (gezien.has(hit.object.uuid) || !zichtbaar(hit.object)) return false;
-						gezien.add(hit.object.uuid);
-						return true;
-					});
-					return uniek.slice(0, wanted).map((hit) => ({
-						owner: ownerName(hit.object),
-						name: hit.object.name,
-						geometry: hit.object instanceof THREE.Mesh ? hit.object.geometry.type : hit.object.type,
-						material:
-							hit.object instanceof THREE.Mesh && !Array.isArray(hit.object.material) ? hit.object.material.type : '(meerdere)',
-						distance: hit.distance,
-						x: hit.point.x,
-						y: hit.point.y,
-						z: hit.point.z,
-					}));
-				},
-				readBatchOwners: () => this.sceneBatcher.stats.owners,
-				readCpuFrame: (): PerfCpuFrame => this.perfCpuFrame,
-				// Zonder deze telling is een cull die niets wegneemt niet te
-				// onderscheiden van een standpunt waar toevallig alles zichtbaar is.
-				readZoneCull: (): PerfZoneCull => ({
-					zone: this.zoneCuller.stats.zone,
-					enabled: this.zoneCullOn,
-					cones: this.zoneCuller.stats.cones,
-					batches: this.sceneBatcher.stats.batchedMeshes,
-					batchesHidden: this.zoneCuller.stats.hidden - this.zoneVisibility.stats.hidden,
-					occupants: this.zoneVisibility.stats.occupants,
-					occupantsHidden: this.zoneVisibility.stats.hidden,
-					keptInOwnZone: this.zoneCuller.stats.keptInOwnZone,
-					keptThroughCone: this.zoneCuller.stats.keptThroughCone,
-					owners: this.zoneCuller.stats.owners,
-				}),
-			});
-		}
-		if (!feature('NO_PERF_HUD') && !externalPerfProbe) {
-			const gl = this.renderer.getContext();
-			const webgl2 = gl instanceof WebGL2RenderingContext ? gl : null;
-			if (webgl2) this.gpuTimer = new GpuTimer(webgl2);
-			void import('#/ui/PerfOverlay').then(({ PerfOverlay }) => {
-				this.perfHud = new PerfOverlay(uiRoot, webgl2);
-			});
-		}
-
-		// Wei Chen yells Chinese (pre-baked ElevenLabs) when you block his cart
-		this.cleaner.setYellCallback((label) => {
-			this.ui.setStatus(`🧹 WEI CHEN · ${label}`);
+	private bindExternalPerfControl(): void {
+		Reflect.set(globalThis, '__mallPerfControl', {
+			setPose: (...values: unknown[]): boolean => this.setPerfPose(values),
+			clearPose: (): void => {
+				this.perfPose = null;
+			},
+			setFrozen: (frozen: unknown): boolean => this.setPerfFrozen(frozen),
+			readRaycast: (ndcX: unknown, ndcY: unknown, limit: unknown): PerfRayHit[] => this.readPerfRaycast(ndcX, ndcY, limit),
+			readBatchOwners: () => this.sceneBatcher.stats.owners,
+			readCpuFrame: (): PerfCpuFrame => this.perfCpuFrame,
+			readZoneCull: (): PerfZoneCull => this.readPerfZoneCull(),
 		});
-		// Liftman Hans announces floors (TTS when ElevenLabs has credits)
-		this.elevator.setLineCallback((text) => {
-			this.ui.setStatus(`🛗 HANS · ${text}`);
-		});
-		// Floor picker (only after E on Hans/knoppen — frees mouse then)
-		this.elevUi = new ElevatorPanel(uiRoot, (id) => {
-			const ok = this.elevator.requestFloor(id);
-			if (ok) {
+	}
+
+	private setPerfPose(values: readonly unknown[]): boolean {
+		const [x, y, z, lookX, lookY, lookZ] = values;
+		if (
+			typeof x !== 'number' ||
+			typeof y !== 'number' ||
+			typeof z !== 'number' ||
+			typeof lookX !== 'number' ||
+			typeof lookY !== 'number' ||
+			typeof lookZ !== 'number' ||
+			!values.every((value) => typeof value === 'number' && Number.isFinite(value))
+		)
+			return false;
+		this.perfPose = { x, y, z, lookX, lookY, lookZ };
+		return true;
+	}
+
+	private setPerfFrozen(frozen: unknown): boolean {
+		if (typeof frozen !== 'boolean') return false;
+		if (frozen && !this.perfFrozen) this.perfFrozenElapsed = this.timer.getElapsed();
+		this.perfFrozen = frozen;
+		return true;
+	}
+
+	private readPerfRaycast(ndcX: unknown, ndcY: unknown, limit: unknown): PerfRayHit[] {
+		if (typeof ndcX !== 'number' || typeof ndcY !== 'number') return [];
+		const wanted = typeof limit === 'number' && limit > 0 ? Math.floor(limit) : 1;
+		this.raycaster.setFromCamera(new Vector2(ndcX, ndcY), this.camera);
+		const seen = new Set<string>();
+		return this.raycaster
+			.intersectObjects(this.scene.children, true)
+			.filter((hit) => {
+				if (seen.has(hit.object.uuid) || !this.objectIsVisible(hit.object)) return false;
+				seen.add(hit.object.uuid);
+				return true;
+			})
+			.slice(0, wanted)
+			.map((hit) => ({
+				owner: ownerName(hit.object),
+				name: hit.object.name,
+				geometry: hit.object instanceof Mesh ? hit.object.geometry.type : hit.object.type,
+				material: hit.object instanceof Mesh && !Array.isArray(hit.object.material) ? hit.object.material.type : '(meerdere)',
+				distance: hit.distance,
+				x: hit.point.x,
+				y: hit.point.y,
+				z: hit.point.z,
+			}));
+	}
+
+	private objectIsVisible(object: Object3D): boolean {
+		for (let node: Object3D | null = object; node; node = node.parent) if (!node.visible) return false;
+		return true;
+	}
+
+	private readPerfZoneCull(): PerfZoneCull {
+		return {
+			zone: this.zoneCuller.stats.zone,
+			enabled: this.zoneCullOn,
+			cones: this.zoneCuller.stats.cones,
+			batches: this.sceneBatcher.stats.batchedMeshes,
+			batchesHidden: this.zoneCuller.stats.hidden - this.zoneVisibility.stats.hidden,
+			occupants: this.zoneVisibility.stats.occupants,
+			occupantsHidden: this.zoneVisibility.stats.hidden,
+			keptInOwnZone: this.zoneCuller.stats.keptInOwnZone,
+			keptThroughCone: this.zoneCuller.stats.keptThroughCone,
+			owners: this.zoneCuller.stats.owners,
+		};
+	}
+
+	private bindUiCallbacks(): void {
+		this.cleaner.setYellCallback((label) => this.ui.setStatus(`🧹 WEI CHEN · ${label}`));
+		this.elevator.setLineCallback((text) => this.ui.setStatus(`🛗 HANS · ${text}`));
+	}
+
+	private createElevatorPanel(uiRoot: HTMLElement): ElevatorPanel {
+		return new ElevatorPanel(uiRoot, (id) => {
+			if (this.elevator.requestFloor(id)) {
 				this.elevUi.hide();
 				this.elevator.holdForPassenger(false);
 				this.ui.setStatus(`🛗 Hans rijdt naar ${level(id).name.toLowerCase()}`);
-			} else {
-				this.ui.setStatus('🛗 Hans: je bent er al — kies een andere');
-			}
+			} else this.ui.setStatus('🛗 Hans: je bent er al — kies een andere');
 		});
+	}
 
-		// Control scheme menu (⚙ / O) — mouse, no-mouse or tank steering
-		this.settingsUi = new SettingsPanel(uiRoot, (s) => {
-			this.player.applySettings(s);
+	private createSettingsPanel(uiRoot: HTMLElement): SettingsPanel {
+		return new SettingsPanel(uiRoot, (settings) => {
+			this.player.applySettings(settings);
 			this.ui.setStatus(
-				s.mouseLook
-					? `Besturing: muis kijken${s.lookButton === 2 ? ' (rechtsklik)' : ''}${s.turnWithKeys ? ' + A/D draaien' : ''}`
+				settings.mouseLook
+					? `Besturing: muis kijken${settings.lookButton === 2 ? ' (rechtsklik)' : ''}${settings.turnWithKeys ? ' + A/D draaien' : ''}`
 					: 'Besturing: geen muis · A/D draaien · R/F kijken',
 			);
 		});
+	}
 
-		// Grafische kwaliteit (⚙): DPR + schaduwen — NA de aanmaak van settingsUi;
-		// deze bind stond eerst vóór de constructie en sloopte de hele UI-mount.
-		this.settingsUi.bindQuality((q) => {
-			const dpr = window.devicePixelRatio;
-			if (q === 'laag') {
-				this.qualityRatio = 1;
-				this.renderer.shadowMap.enabled = false;
-			} else if (q === 'middel') {
-				this.qualityRatio = Math.min(dpr, 1.25);
-				this.renderer.shadowMap.enabled = true;
-			} else {
-				this.qualityRatio = Math.min(dpr, 1.75);
-				this.renderer.shadowMap.enabled = true;
-			}
-			this.renderer.shadowMap.needsUpdate = true;
-			// Een nieuwe tier is een nieuwe basislijn: de oude schaaltrap en meting
-			// horen daar niet overheen te blijven hangen ('laag' op ×0.5 renderde
-			// anders stiekem op de helft van laag).
-			this.dynScale = 1;
-			this.dynResIndex = 0;
-			this.resetDynResMeting();
-			this.applyPixelRatio();
-		});
-		// Dynamische resolutie (⚙): rendert tijdelijk op een lagere schaal wanneer
-		// frames boven budget lopen; de canvas-CSS (100%) rekt het beeld weer op.
+	private bindSettings(): void {
+		this.settingsUi.bindQuality((quality) => this.applyQuality(quality));
 		this.settingsUi.bindDynRes((on) => {
 			this.dynResOn = on;
 			this.resetDynResMeting();
@@ -933,8 +1019,6 @@ export class App {
 				this.applyPixelRatio();
 			}
 		});
-		// Zone-culling (⚙): uitzetten zet elke batch en elk los object weer aan en
-		// laat elk systeem weer per frame lopen, zodat een A-B-A op één build kan.
 		this.settingsUi.bindZoneCull((on) => {
 			this.zoneCullOn = on;
 			if (!on) {
@@ -943,216 +1027,205 @@ export class App {
 			}
 		});
 		this.settingsUi.bindFill((scale) => this.daylight.setFill(scale));
-		// HRTF binaural on/off (koptelefoon)
 		this.settingsUi.bindBinaural((on) => {
 			spatial.setBinaural(on);
 			this.ui.setStatus(
 				on ? '🎧 Binaural HRTF AAN · draai je hoofd, geluid blijft in de wereld' : '🔊 Binaural UIT · equalpower stereo',
 			);
 		});
+	}
 
-		window.addEventListener('resize', () => this.onResize());
-		// Een tabwissel is één reusachtig rAF-interval dat geen frame is. De
-		// timestamp-keten breekt hier, zodat dat gat nooit in de FPS-teller of
-		// de dynamische-resolutieregelaar belandt. Een groottedrempel kan een
-		// tabwissel niet van een écht traag frame onderscheiden.
+	private applyQuality(quality: 'laag' | 'middel' | 'hoog'): void {
+		const dpr = globalThis.devicePixelRatio;
+		this.qualityRatio =
+			quality === 'laag' ? 1 : Math.min(dpr, quality === 'middel' ? QUALITY_PIXEL_RATIO.medium : QUALITY_PIXEL_RATIO.high);
+		this.renderer.shadowMap.enabled = quality !== 'laag';
+		this.renderer.shadowMap.needsUpdate = true;
+		this.dynScale = 1;
+		this.dynResIndex = 0;
+		this.resetDynResMeting();
+		this.applyPixelRatio();
+	}
+
+	private bindGlobalEvents(): void {
+		globalThis.addEventListener('resize', () => this.onResize());
 		document.addEventListener('visibilitychange', () => {
 			this.lastRafTs = null;
 		});
-		window.addEventListener('keydown', (e) => {
-			// DJ booth captures typing — don't steal keys
-			if (this.djUi.isOpen() && e.key !== 'Escape' && e.key !== 'e' && e.key !== 'E') {
-				return;
-			}
-			if (e.key === 'k' || e.key === 'K') {
-				this.onStartRoute(getKruidvat());
-			}
-			if (e.key === 'Escape') {
-				if (this.furryCon.tryLeaveScene()) {
-					this.ui.setStatus('Left con activity');
-					return;
-				}
-				if (this.djUi.isOpen()) {
-					this.djUi.hide();
-					return;
-				}
-				if (this.elevUi?.isOpen) {
-					this.elevUi.hide();
-					return;
-				}
-				if (this.peopleUi.isOpen) {
-					this.peopleUi.toggle(false);
-					return;
-				}
-				// Esc while the mouse is captured just frees the mouse — it must not
-				// also cancel your route and teleport you back to the kiosk.
-				const justUnlocked = performance.now() - this.unlockedAt < 400;
-				if (this.player.locked || justUnlocked) {
-					this.player.releaseLook();
-				} else if (this.possessId !== null) {
-					this.togglePossess(false);
-				} else {
-					this.onCancel();
-				}
-			}
-			if (e.key === 'f' || e.key === 'F') {
-				if (this.furryCon.toggleFilm(this.camera.position)) {
-					this.ui.setStatus('Studio film mode');
-					return;
-				}
-			}
-			if (e.key === 'h' || e.key === 'H') this.onHome();
-			if (e.key === 'v' || e.key === 'V') this.togglePossess();
-			if (e.key === 'p' || e.key === 'P') this.toggleDisco();
-			if (e.key === 'g' || e.key === 'G') this.giveMoney();
-			if (e.key === 't' || e.key === 'T') {
-				this.thief.trigger();
-				this.ui.setStatus('🧔 BAARD-DIEF (T) — juwelen heist!');
-			}
-			// J = provoke the atrium monkey
-			if (e.key === 'j' || e.key === 'J') {
-				this.ui.setStatus(
-					this.monkey.provoke() ? '🐒 De aap pakt een handvol kak… duiken!' : '🐒 De aap heeft even niks bij de hand',
-				);
-			}
-			// E = lift Hans / knoppen · voertuigen · DJ · shopkeeper · con
-			if (e.key === 'e' || e.key === 'E') {
-				const con = this.furryCon.tryInteract(this.camera.position);
-				if (con) {
-					if (con.scoreDelta !== 0) {
-						this.score = Math.max(0, this.score + con.scoreDelta);
-						this.ui.setScore(this.score, this.metSims.size);
-					}
-					this.ui.setStatus(con.status);
-					return;
-				}
-				const gang = this.cityFavela.tryInteract(this.camera.position);
-				if (gang) {
-					if (gang.scoreDelta !== 0) {
-						this.score = Math.max(0, this.score + gang.scoreDelta);
-						this.ui.setScore(this.score, this.metSims.size);
-					}
-					this.ui.setStatus(gang.status);
-					return;
-				}
-				// Het liftpaneel wint één keer van uitstappen: rijdend in de cabine was E altijd
-				// uitstappen, dus Hans' verdiepingenmenu was met een voertuig onbereikbaar.
-				// Alleen het paneel zelf, want een oproepknop naast de schacht mag niet
-				// betekenen dat je daar je karretje niet meer uit komt, en alleen zolang het
-				// menu dicht is, want anders kom je er in de cabine helemaal niet meer af.
-				const lift = this.elevatorAction();
-				const paneelWint = lift?.kind === 'menu' && !this.elevUi.isOpen;
-				// Voertuigen daarna: uitstappen als je vliegt/rijdt
-				if (!paneelWint && (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car')) {
-					this.exitVehicle();
-				} else if (!paneelWint && this.vehicle === 'chariot') {
-					this.exitChariot();
-				} else if (this.tryOpenElevatorMenu(lift)) {
-					// Hans floor picker — frees mouse without Esc
-				} else if (!this.possessId && this.freeMove && this.driveCars.nearestCar(this.camera.position, 4.5)) {
-					this.boardCar();
-				} else if (
-					!this.possessId &&
-					this.freeMove &&
-					this.scrubber.distanceTo(this.camera.position) < 3.5 &&
-					levelAt(this.camera.position.y) === 'v0'
-				) {
-					this.boardScrubber();
-				} else if (!this.possessId && this.freeMove && this.drone.distanceTo(this.camera.position) < 3.2) {
-					this.boardDrone();
-				} else if (!this.possessId && this.freeMove && this.heli.boardable && this.heli.distanceTo(this.camera.position) < 4.5) {
-					this.boardHeli();
-				} else if (!this.possessId && this.freeMove && this.colosseumTransport.isBoardable(this.camera.position)) {
-					this.boardChariot();
-				} else if (this.djBartek.inRange(this.camera.position)) {
-					void this.openDjBooth();
-				} else {
-					void this.talkToShopkeeper();
-				}
-			}
-			// B = bewoners-dashboard (shoppers + vaste cast)
-			if (e.key === 'b' || e.key === 'B') {
-				this.peopleUi.toggle();
-				if (this.peopleUi.isOpen) {
-					// Force immediate fill so you don't stare at empty for 0.5s
-					this.atmosphere.americans.getPeopleSnapshot(this.camera.position, this.peopleRows);
-					this.peopleUi.update(this.peopleRows, this.buildCastRows());
-					this.ui.setStatus('📋 Bewoners-dashboard · B sluiten · 👁 = guest view');
-				} else {
-					this.ui.setStatus('Dashboard dicht');
-				}
-			}
-		});
+		globalThis.addEventListener('keydown', (event) => this.handleKeyEvent(event));
+	}
 
-		// Unlock audio after first click/key
-		const unlock = () => {
-			this.atmosphere.americans.ensureAudio();
-			spatial.ensure();
-			// DJ booth → HRTF so the mix sits in world space
-			this.djPlayer.enableBinauralBooth({
-				x: this.djBartek.pos.x,
-				y: 1.55,
-				z: this.djBartek.pos.z,
-			});
-			this.prayer.ensureAudio();
-			this.protest.ensureAudio();
-			this.cleaner.ensureAudio();
-			this.furryCon.unlockAudio();
-			// Resume / start mall music after gesture
-			void (async () => {
-				const resumed = await this.djPlayer.restoreIfNeeded();
-				if (!resumed && !this.djPlayer.playing) {
-					const tracks = await this.djPlayer.refreshPlaylist();
-					const music = tracks.filter((t) => !/intro_voice|voice/i.test(t.file));
-					const first = (music.length ? music : tracks)[0];
-					if (first) {
-						const idx = this.djPlayer.tracks.findIndex((t) => t.file === first.file);
-						await this.djPlayer.playIndex(idx >= 0 ? idx : 0);
-					}
-				}
-				if (!this.restoredFromSave) {
-					this.ui.setStatus('♪ Muziek AAN · DJ-booth + gebedsruimte Trapbar · koptelefoon = binaural');
-				}
-			})();
-			window.removeEventListener('pointerdown', unlock);
-			window.removeEventListener('keydown', unlock);
+	private bindAudioUnlock(): void {
+		const unlock = (): void => {
+			this.unlockAudio();
+			globalThis.removeEventListener('pointerdown', unlock);
+			globalThis.removeEventListener('keydown', unlock);
 		};
-		window.addEventListener('pointerdown', unlock);
-		window.addEventListener('keydown', unlock);
+		globalThis.addEventListener('pointerdown', unlock);
+		globalThis.addEventListener('keydown', unlock);
+	}
 
-		// Save on tab hide / unload so HMR hard-reloads keep state
-		window.addEventListener('pagehide', () => this.persistNow());
-		window.addEventListener('beforeunload', () => this.persistNow());
+	private unlockAudio(): void {
+		this.atmosphere.americans.ensureAudio();
+		spatial.ensure();
+		this.djPlayer.enableBinauralBooth({ x: this.djBartek.pos.x, y: 1.55, z: this.djBartek.pos.z });
+		this.prayer.ensureAudio();
+		this.protest.ensureAudio();
+		this.cleaner.ensureAudio();
+		this.furryCon.unlockAudio();
+		observeAsync(this.restoreAudioAfterGesture(), 'audio restoration');
+	}
+
+	private async restoreAudioAfterGesture(): Promise<void> {
+		const resumed = await this.djPlayer.restoreIfNeeded();
+		if (!(resumed || this.djPlayer.playing)) {
+			const tracks = await this.djPlayer.refreshPlaylist();
+			const music = tracks.filter((track) => !MUSIC_FILE_PATTERN.test(track.file));
+			const first = (music.length > 0 ? music : tracks)[0];
+			if (first) {
+				const index = this.djPlayer.tracks.findIndex((track) => track.file === first.file);
+				await this.djPlayer.playIndex(index >= 0 ? index : 0);
+			}
+		}
+		if (!this.restoredFromSave) this.ui.setStatus('♪ Muziek AAN · DJ-booth + gebedsruimte Trapbar · koptelefoon = binaural');
+	}
+
+	private bindPersistence(): void {
+		globalThis.addEventListener('pagehide', () => this.persistNow());
+		globalThis.addEventListener('beforeunload', () => this.persistNow());
 		document.addEventListener('visibilitychange', () => {
 			if (document.visibilityState === 'hidden') this.persistNow();
 		});
+	}
 
+	private restoreSessionOrStartIntro(): void {
 		const saved = loadGame();
 		if (saved?.freeMove) {
-			// Skip intro cinematic — drop back where you were
 			this.restoreGame(saved);
-		} else {
-			this.director.playIntro(() => {
-				this.ui.hideBoot();
-				this.ui.setStatus('Klik = muis vangen · WASD lopen · Shift rennen · M = kaart');
-				this.ui.setScore(this.score, this.metSims.size);
-				this.freeMove = true;
-				this.player.enabled = true;
-				this.player.syncFromCamera();
-				this.persistNow();
-			});
+			return;
 		}
+		this.director.playIntro(() => {
+			this.ui.hideBoot();
+			this.ui.setStatus('Klik = muis vangen · WASD lopen · Shift rennen · M = kaart');
+			this.ui.setScore(this.score, this.metSims.size);
+			this.freeMove = true;
+			this.player.enabled = true;
+			this.player.syncFromCamera();
+			this.persistNow();
+		});
+	}
 
-		// Dev-only handle for poking at the sim from the console / smoke tests.
-		// import.meta.hot is only set by the dev server's HMR graph and is
-		// tree-shaken out of a build, so this never ships.
-		if (import.meta.hot) {
-			window.mallsim = this;
+	private handleKeyEvent(event: Event): void {
+		if (!(event instanceof KeyboardEvent)) return;
+		const key = event.key.toLowerCase();
+		if (this.djUi.isOpen() && key !== 'escape' && key !== 'e') return;
+		switch (key) {
+			case 'k':
+				this.onStartRoute(getKruidvat());
+				break;
+			case 'escape':
+				this.handleEscape();
+				break;
+			case 'f':
+				this.toggleConFilm();
+				break;
+			case 'h':
+				this.onHome();
+				break;
+			case 'v':
+				this.togglePossess();
+				break;
+			case 'p':
+				this.toggleDisco();
+				break;
+			case 'g':
+				this.giveMoney();
+				break;
+			case 't':
+				this.thief.trigger();
+				this.ui.setStatus('🧔 BAARD-DIEF (T) — juwelen heist!');
+				break;
+			case 'j':
+				this.ui.setStatus(
+					this.monkey.provoke() ? '🐒 De aap pakt een handvol kak… duiken!' : '🐒 De aap heeft even niks bij de hand',
+				);
+				break;
+			case 'e':
+				this.handleInteraction();
+				break;
+			case 'b':
+				this.togglePeopleDashboard();
+				break;
+			default:
+				break;
 		}
+	}
 
-		// Page Visibility: avoid huge dt spikes after tab switch
-		this.timer.connect(document);
-		this.ready = this.start();
+	private handleEscape(): void {
+		if (this.furryCon.tryLeaveScene()) this.ui.setStatus('Left con activity');
+		else if (this.djUi.isOpen()) this.djUi.hide();
+		else if (this.elevUi.isOpen) this.elevUi.hide();
+		else if (this.peopleUi.isOpen) this.peopleUi.toggle(false);
+		else if (mutableFlag(this.player.locked) || performance.now() - this.unlockedAt < PLAYER_TIMING.unlockGraceMs) {
+			this.player.releaseLook();
+		} else if (this.possessId === null) this.onCancel();
+		else this.togglePossess(false);
+	}
+
+	private toggleConFilm(): void {
+		if (this.furryCon.toggleFilm(this.camera.position)) this.ui.setStatus('Studio film mode');
+	}
+
+	private handleInteraction(): void {
+		if (this.tryWorldInteraction()) return;
+		const lift = this.elevatorAction();
+		const panelWins = lift?.kind === 'menu' && !this.elevUi.isOpen;
+		if (!panelWins && (mutableFlag(this.player.flying) || this.vehicle === 'scrubber' || this.vehicle === 'car')) {
+			this.exitVehicle();
+			return;
+		}
+		if (!panelWins && this.vehicle === 'chariot') {
+			this.exitChariot();
+			return;
+		}
+		if (this.tryOpenElevatorMenu(lift) || this.tryBoardNearbyVehicle()) return;
+		if (this.djBartek.inRange(this.camera.position)) observeAsync(this.openDjBooth(), 'opening DJ booth');
+		else observeAsync(this.talkToShopkeeper(), 'shopkeeper conversation');
+	}
+
+	private tryWorldInteraction(): boolean {
+		const interaction = this.furryCon.tryInteract(this.camera.position) ?? this.cityFavela.tryInteract(this.camera.position);
+		if (!interaction) return false;
+		if (interaction.scoreDelta !== 0) {
+			this.score = Math.max(0, this.score + interaction.scoreDelta);
+			this.ui.setScore(this.score, this.metSims.size);
+		}
+		this.ui.setStatus(interaction.status);
+		return true;
+	}
+
+	private tryBoardNearbyVehicle(): boolean {
+		if (this.possessId || !this.freeMove) return false;
+		const position = this.camera.position;
+		if (this.driveCars.nearestCar(position, INTERACTION_RANGE.car)) this.boardCar();
+		else if (this.scrubber.distanceTo(position) < INTERACTION_RANGE.scrubber && levelAt(position.y) === 'v0')
+			this.boardScrubber();
+		else if (this.drone.distanceTo(position) < INTERACTION_RANGE.drone) this.boardDrone();
+		else if (this.heli.boardable && this.heli.distanceTo(position) < INTERACTION_RANGE.helicopter) this.boardHeli();
+		else if (this.colosseumTransport.isBoardable(position)) this.boardChariot();
+		else return false;
+		return true;
+	}
+
+	private togglePeopleDashboard(): void {
+		this.peopleUi.toggle();
+		if (!this.peopleUi.isOpen) {
+			this.ui.setStatus('Dashboard dicht');
+			return;
+		}
+		this.atmosphere.americans.getPeopleSnapshot(this.camera.position, this.peopleRows);
+		this.peopleUi.update(this.peopleRows, this.buildCastRows());
+		this.ui.setStatus('📋 Bewoners-dashboard · B sluiten · 👁 = guest view');
 	}
 
 	/**
@@ -1196,7 +1269,7 @@ export class App {
 	 * promise to the player.
 	 */
 	private async warmup(deadline: number): Promise<void> {
-		const hidden: THREE.Object3D[] = [];
+		const hidden: Object3D[] = [];
 		this.scene.traverse((object) => {
 			if (!object.visible) {
 				hidden.push(object);
@@ -1231,23 +1304,23 @@ export class App {
 
 	/** Compile the scene as it stands, giving up once `deadline` passes. */
 	private async compileUntil(deadline: number): Promise<void> {
-		let timer = 0;
+		let timer: ReturnType<typeof setTimeout> | undefined;
 		try {
 			await Promise.race([
 				this.renderer.compileAsync(this.scene, this.camera),
 				new Promise<void>((resolve) => {
-					timer = window.setTimeout(resolve, Math.max(0, deadline - performance.now()));
+					timer = globalThis.setTimeout(resolve, Math.max(0, deadline - performance.now()));
 				}),
 			]);
 		} finally {
-			window.clearTimeout(timer);
+			if (timer !== undefined) globalThis.clearTimeout(timer);
 		}
 	}
 
 	/** Snapshot player + progress into sessionStorage */
 	private persistNow(): void {
-		if (!this.freeMove && !this.restoredFromSave) return;
-		const e = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
+		if (!(this.freeMove || this.restoredFromSave)) return;
+		const e = new Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
 		saveGame({
 			x: this.camera.position.x,
 			y: this.camera.position.y,
@@ -1341,12 +1414,10 @@ export class App {
 		// precies wat een zittende bestuurder niet is.
 		if (saved.ride) this.resumeRide(saved.ride);
 
-		if (saved.disco) {
-			// Toggle on if it was on (toggle flips from false → true)
-			if (!this.disco.active) {
-				this.disco.toggle();
-				this.atmosphere.americans.setDancing(true);
-			}
+		// Toggle on if it was on (toggle flips from false → true)
+		if (saved.disco && !mutableFlag(this.disco.active)) {
+			this.disco.toggle();
+			this.atmosphere.americans.setDancing(true);
 		}
 
 		// Yellow route tape stays if we had a path; no need to re-enter touring mode
@@ -1391,100 +1462,98 @@ export class App {
 
 	/** The mall's fixed cast for the bewoners-dashboard. */
 	private buildCastRows(): CastRow[] {
-		const rows: CastRow[] = [];
+		return [...this.buildCharacterRows(), ...this.buildVehicleRows(), ...this.buildSecurityRows()];
+	}
 
+	private catwalkStatus(): string {
 		const stage = this.catwalk.nowOnStage;
-		rows.push({
-			icon: '👗',
-			name: stage ? stage.name : 'Catwalk',
-			doing: stage
-				? stage.phase === 'pose'
-					? this.catwalk.partyMode
-						? 'poseert voor de fotografen'
-						: 'poseert + Aperol-spray 🍹'
-					: 'werkt de runway'
-				: 'wacht op de volgende show',
-			floor: 'V0 · west',
-		});
+		if (!stage) return 'wacht op de volgende show';
+		if (stage.phase !== 'pose') return 'werkt de runway';
+		return mutableFlag(this.catwalk.partyMode) ? 'poseert voor de fotografen' : 'poseert + Aperol-spray 🍹';
+	}
 
-		rows.push({
-			icon: '🧔',
-			name: 'Baard-dief',
-			doing: this.thief.active ? 'JUWELEN HEIST — onderweg!' : 'ligt op de loer',
-			floor: this.thief.active ? 'in de mall' : 'grot',
-		});
+	private buildCharacterRows(): CastRow[] {
+		const stage = this.catwalk.nowOnStage;
+		return [
+			{
+				icon: '👗',
+				name: stage ? stage.name : 'Catwalk',
+				doing: this.catwalkStatus(),
+				floor: 'V0 · west',
+			},
+			{
+				icon: '🧔',
+				name: 'Baard-dief',
+				doing: mutableFlag(this.thief.active) ? 'JUWELEN HEIST — onderweg!' : 'ligt op de loer',
+				floor: mutableFlag(this.thief.active) ? 'in de mall' : 'grot',
+			},
+			{
+				icon: '🐒',
+				name: 'De aap',
+				doing: 'zit in de atrium-palmen · J = uitdagen',
+				floor: level(levelAt(this.monkey.group.position.y)).code,
+			},
+			{
+				icon: '🎧',
+				name: 'DJ Bartek',
+				doing: this.djPlayer.playing ? 'draait — booth E = verzoekjes' : 'staat stil achter de decks',
+				floor: 'trap-gat',
+			},
+		];
+	}
 
-		const monkeyFloor = level(levelAt(this.monkey.group.position.y)).code;
-		rows.push({
-			icon: '🐒',
-			name: 'De aap',
-			doing: 'zit in de atrium-palmen · J = uitdagen',
-			floor: monkeyFloor,
-		});
+	private buildVehicleRows(): CastRow[] {
+		return [
+			{
+				icon: '🛸',
+				name: 'UFO',
+				doing: 'hangt boven de weide',
+				floor: 'atrium',
+			},
+			{
+				icon: '🚁',
+				name: 'PRAIRIE 1',
+				doing: this.heli.statusLine,
+				floor: 'dak',
+			},
+			{
+				icon: '🚕',
+				name: 'Passagiersdrone',
+				doing: this.drone.statusLine,
+				floor: mutableFlag(this.player.flying) ? 'lucht' : 'V0',
+			},
+			{
+				icon: '🧽',
+				name: 'Schoonmaak buggy #88',
+				doing: this.scrubber.statusLine,
+				floor: 'V0 · bij fontein/noord',
+			},
+			{
+				icon: this.driveCars.activeKind === 'motorcycle' ? '🏍️' : '🚗',
+				name: this.driveCars.activeName === '—' ? 'Huurvoertuigen (P1)' : this.driveCars.activeName,
+				doing: this.driveCars.statusLine,
+				floor: mutableFlag(this.driveCars.ridden)
+					? levelAt(this.camera.position.y) === 'p1'
+						? `${level('p1').code} garage`
+						: 'stad'
+					: 'P1 · west exit → ring',
+			},
+			{
+				icon: '🐧',
+				name: `Pinguïns (${this.penguins.count})`,
+				doing: 'waddlen door de mall · noot noot',
+				floor: 'V0 · atrium / food court',
+			},
+		];
+	}
 
-		rows.push({
-			icon: '🎧',
-			name: 'DJ Bartek',
-			doing: this.djPlayer.playing ? 'draait — booth E = verzoekjes' : 'staat stil achter de decks',
-			floor: 'trap-gat',
-		});
-
-		rows.push({
-			icon: '🛸',
-			name: 'UFO',
-			doing: 'hangt boven de weide',
-			floor: 'atrium',
-		});
-
-		rows.push({
-			icon: '🚁',
-			name: 'PRAIRIE 1',
-			doing: this.heli.statusLine,
-			floor: 'dak',
-		});
-
-		rows.push({
-			icon: '🚕',
-			name: 'Passagiersdrone',
-			doing: this.drone.statusLine,
-			floor: this.player.flying ? 'lucht' : 'V0',
-		});
-
-		rows.push({
-			icon: '🧽',
-			name: 'Schoonmaak buggy #88',
-			doing: this.scrubber.statusLine,
-			floor: 'V0 · bij fontein/noord',
-		});
-
-		rows.push({
-			icon: this.driveCars.activeKind === 'motorcycle' ? '🏍️' : '🚗',
-			name: this.driveCars.activeName !== '—' ? this.driveCars.activeName : 'Huurvoertuigen (P1)',
-			doing: this.driveCars.statusLine,
-			floor: this.driveCars.ridden
-				? levelAt(this.camera.position.y) === 'p1'
-					? `${level('p1').code} garage`
-					: 'stad'
-				: 'P1 · west exit → ring',
-		});
-
-		rows.push({
-			icon: '🐧',
-			name: `Pinguïns (${this.penguins.count})`,
-			doing: 'waddlen door de mall · noot noot',
-			floor: 'V0 · atrium / food court',
-		});
-
-		for (const g of this.security.roster) {
-			rows.push({
-				icon: '🚔',
-				name: g.name,
-				doing: `${g.state} · ${g.kills}× "felt threatened"`,
-				floor: g.floor,
-			});
-		}
-
-		return rows;
+	private buildSecurityRows(): CastRow[] {
+		return this.security.roster.map((guard) => ({
+			icon: '🚔',
+			name: guard.name,
+			doing: `${guard.state} · ${guard.kills}× "felt threatened"`,
+			floor: guard.floor,
+		}));
 	}
 
 	/** E op het dak naast PRAIRIE 1: jij aan de stick. */
@@ -1509,7 +1578,7 @@ export class App {
 		this.player.flightProfile = 'drone';
 		this.player.flying = true;
 		// camera in het stoeltje
-		this.camera.position.set(this.drone.parkPos.x, this.drone.parkPos.y + 1.1, this.drone.parkPos.z);
+		this.camera.position.set(this.drone.parkPos.x, this.drone.parkPos.y + DRONE_POSITION.seatHeight, this.drone.parkPos.z);
 		this.player.syncFromCamera();
 		this.ui.setStatus(
 			'🛸 DRONE · Space = stijgen · Shift = dalen · WASD vliegen · door het atrium-gat de stad in · E = uitstappen',
@@ -1535,8 +1604,8 @@ export class App {
 
 	/** E naast huurauto in P1 (of geparkeerd in de stad). */
 	private boardCar(): void {
-		const slot = this.driveCars.nearestCar(this.camera.position, 4.5);
-		if (!slot || !this.driveCars.board(slot)) return;
+		const slot = this.driveCars.nearestCar(this.camera.position, INTERACTION_RANGE.car);
+		if (!(slot && this.driveCars.board(slot))) return;
 		this.player.releaseLook();
 		this.vehicle = 'car';
 		this.player.driving = true;
@@ -1613,41 +1682,14 @@ export class App {
 
 	/** E tijdens de vlucht/rit: uitstappen. */
 	private exitVehicle(): void {
-		const wasHeli = this.vehicle === 'heli';
-		const wasScrub = this.vehicle === 'scrubber';
-		const wasCar = this.vehicle === 'car';
+		const vehicle = this.vehicle;
 		this.vehicle = null;
 		this.player.flying = false;
 		this.player.driving = false;
 		this.player.flightProfile = 'drone';
-		const p = this.camera.position;
-
-		if (wasCar) {
-			const parked = this.driveCars.ride;
-			const exit = this.driveCars.release();
-			if (parked) this.lastParkedVehicle = { ...parked, kind: 'car', speed: 0 };
-			this.camera.position.set(exit.x, exit.y + EYE, exit.z);
-			this.player.syncFromCamera();
-			this.ui.setStatus(
-				`🚗 Uitgestapt · ${this.driveCars.activeName === '—' ? 'voertuig geparkeerd' : 'voertuig blijft hier'} · E om weer in te stappen`,
-			);
-			return;
-		}
-
-		if (wasScrub) {
-			// De vloer waar de buggy op staat, net als bij de auto. Een vaste zoekhoogte
-			// van 0,5 m vond altijd de begane grond, dus uitstappen in de liftcabine op
-			// V1 zette je naast de cabine op V0 en liet het karretje boven achter.
-			const parked = this.scrubber.ride;
-			const exit = this.scrubber.release();
-			if (parked) this.lastParkedVehicle = { ...parked, kind: 'scrubber', speed: 0 };
-			this.camera.position.set(exit.x, exit.y + EYE, exit.z);
-			this.player.syncFromCamera();
-			this.ui.setStatus('🧽 Uitgestapt — buggy blijft staan voor de volgende racer');
-			return;
-		}
-
-		if (wasHeli) {
+		if (vehicle === 'car') this.exitCar();
+		else if (vehicle === 'scrubber') this.exitScrubber();
+		else if (vehicle === 'heli') {
 			const released = this.heli.release();
 			this.player.syncFromCamera();
 			this.ui.setStatus(
@@ -1655,16 +1697,44 @@ export class App {
 					? '🚁 Uitgestapt — PRAIRIE 1 blijft hier geparkeerd'
 					: '🚁 Uitgestapt — PRAIRIE 1 vliegt zelf terug naar het pad',
 			);
-			return;
-		}
+		} else this.exitDrone();
+	}
 
+	private exitCar(): void {
+		const parked = this.driveCars.ride;
+		const exit = this.driveCars.release();
+		if (parked) this.lastParkedVehicle = { ...parked, kind: 'car', speed: 0 };
+		this.camera.position.set(exit.x, exit.y + EYE, exit.z);
+		this.player.syncFromCamera();
+		this.ui.setStatus(
+			`🚗 Uitgestapt · ${this.driveCars.activeName === '—' ? 'voertuig geparkeerd' : 'voertuig blijft hier'} · E om weer in te stappen`,
+		);
+	}
+
+	private exitScrubber(): void {
+		// Query from the vehicle height so leaving inside the elevator cannot snap to V0.
+		const parked = this.scrubber.ride;
+		const exit = this.scrubber.release();
+		if (parked) this.lastParkedVehicle = { ...parked, kind: 'scrubber', speed: 0 };
+		this.camera.position.set(exit.x, exit.y + EYE, exit.z);
+		this.player.syncFromCamera();
+		this.ui.setStatus('🧽 Uitgestapt — buggy blijft staan voor de volgende racer');
+	}
+
+	private exitDrone(): void {
+		const p = this.camera.position;
 		const ground =
 			Math.abs(p.x) < half(MALL_SHELL.width) && Math.abs(p.z) < half(MALL_SHELL.depth)
-				? this.world.groundHeightAt(p.x, p.z, Math.max(0, p.y - 0.55), 3)
+				? this.world.groundHeightAt(
+						p.x,
+						p.z,
+						Math.max(0, p.y - DRONE_POSITION.groundProbeOffset),
+						DRONE_POSITION.groundProbeRange,
+					)
 				: 0;
-		this.drone.parkAt(new THREE.Vector3(p.x, ground, p.z));
+		this.drone.parkAt(new Vector3(p.x, ground, p.z));
 		// speler stapt er net naast uit
-		p.x += 1.2;
+		p.x += DRONE_POSITION.exitOffset;
 		p.y = ground + EYE;
 		this.player.syncFromCamera();
 		this.ui.setStatus('Uitgestapt — de drone wacht hier op je (E)');
@@ -1724,12 +1794,12 @@ export class App {
 	}
 
 	private giveMoney(): void {
-		const got = this.atmosphere.americans.giveMoneyNear(this.camera.position, 25);
+		const got = this.atmosphere.americans.giveMoneyNear(this.camera.position, MONEY_GIFT.amount);
 		if (!got) {
 			this.ui.setStatus('Niemand dichtbij — loop dichter bij een sim');
 			return;
 		}
-		this.score += 5;
+		this.score += MONEY_GIFT.score;
 		this.ui.setScore(this.score, this.metSims.size);
 		// Tip also hits nearest store register if they have a target shop
 		if (got.targetShopId) this.stock.flashSale(got.targetShopId);
@@ -1748,22 +1818,22 @@ export class App {
 		this.djPlayer.onChange = (info) => {
 			this.djUi.setNowPlaying(info.title, info.playing);
 		};
-		this.djUi.onRequest = (q) => void this.djRequest(q);
-		this.djUi.onPlay = () => void this.djPlayer.play();
+		this.djUi.onRequest = (query) => observeAsync(this.djRequest(query), 'DJ request');
+		this.djUi.onPlay = () => observeAsync(this.djPlayer.play(), 'DJ playback');
 		this.djUi.onPause = () => this.djPlayer.pause();
 		this.djUi.onNext = () => this.djPlayer.next();
 		this.djUi.onProbe = () => {
 			this.alienProbe.trigger();
-			void this.bartekSpeak(BARTEK_LINES.probe);
+			observeAsync(this.bartekSpeak(BARTEK_LINES.probe), 'alien probe announcement');
 			this.djUi.setStatus('👽 Aliens scannen de dikke Amerikanen…');
 			this.ui.setStatus('👽 PROBE WAVE — dikke gasten in de beam');
-			this.atmosphere.americans.cheerNear(this.djBartek.pos, 20);
+			this.atmosphere.americans.cheerNear(this.djBartek.pos, DJ_AUDIO.probeCheerRadius);
 		};
-		this.djUi.onGreet = () => void this.bartekSpeak(BARTEK_LINES.greet);
+		this.djUi.onGreet = () => observeAsync(this.bartekSpeak(BARTEK_LINES.greet), 'DJ greeting');
 		this.djUi.onRat = () => {
 			this.rat.trigger();
 			this.ui.setStatus('🐀 Mall-rat is los — kijk bij de loopbanden');
-			void this.bartekSpeak('Die rat is VIP hier. Trap-gat mascotte!');
+			observeAsync(this.bartekSpeak('Die rat is VIP hier. Trap-gat mascotte!'), 'rat announcement');
 		};
 		this.djUi.onMicStart = () => {
 			spatial.ensure();
@@ -1773,8 +1843,8 @@ export class App {
 		this.djUi.onMicEnd = () => this.bartekChat.stopListening();
 		this.bartekChat.onUpdate = (lines, status) => {
 			this.djUi.setChat(lines, status);
-			const last = lines[lines.length - 1];
-			if (last?.who === 'bartek') this.djBartek.say(last.text, 5);
+			const last = lines.at(-1);
+			if (last?.who === 'bartek') this.djBartek.say(last.text, DJ_AUDIO.chatBubbleSeconds);
 		};
 		this.djUi.onClose = () => {
 			this.bartekChat.stopListening();
@@ -1783,8 +1853,9 @@ export class App {
 		// Play track by index from list click
 		// CustomEvent detail isn't in the DOM listener signature; narrow on arrival
 		document.getElementById('dj-overlay')?.addEventListener('dj-play-index', (e) => {
-			const idx = (e as CustomEvent<number>).detail;
-			if (typeof idx === 'number') void this.djPlayer.playIndex(idx);
+			if (!('detail' in e)) return;
+			const index = e.detail;
+			if (typeof index === 'number') observeAsync(this.djPlayer.playIndex(index), 'DJ track selection');
 		});
 	}
 
@@ -1802,24 +1873,26 @@ export class App {
 	}
 
 	private async openDjBooth(): Promise<void> {
-		this.player.releaseLook?.();
+		this.player.releaseLook();
 		this.player.enabled = false;
 		this.djUi.show();
 		const tracks = await this.djPlayer.refreshPlaylist();
 		// Music library only: skip short voice intros in the list UI if named
-		this.djUi.setTracks(tracks.filter((t) => !/intro_voice|voice/i.test(t.file)));
+		this.djUi.setTracks(tracks.filter((track) => !MUSIC_FILE_PATTERN.test(track.file)));
 		const st = await fetchDjStatus();
 		this.djUi.setStatus(
 			st.elevenlabs
 				? `ElevenLabs ON · ${tracks.length} files · live drama mode`
 				: `Browser-stem · ${tracks.length} files · zet ELEVENLABS_API_KEY`,
 		);
-		if (!this.djBartek.greetingDone) {
+		if (mutableFlag(this.djBartek.greetingDone)) {
+			await this.bartekSpeak(pick(BARTEK_LINES.idle));
+		} else {
 			this.djBartek.greetingDone = true;
 			// Pre-baked intro first (instant), then full ElevenLabs greets
-			this.djBartek.say(BARTEK_LINES.greet, 6);
+			this.djBartek.say(BARTEK_LINES.greet, DJ_AUDIO.introBubbleSeconds);
 			const baked = await playBoothFile('bartek_intro_voice.mp3');
-			if (baked.source === 'silent' || (baked.durationMs ?? 0) < 500) {
+			if (baked.source === 'silent' || (baked.durationMs ?? 0) < DJ_AUDIO.minimumBakedIntroMs) {
 				await this.bartekSpeak(BARTEK_LINES.greet);
 			} else {
 				this.djUi.setStatus('🎤 Bartek intro (ElevenLabs) — BARTEK BARTEK');
@@ -1829,18 +1902,16 @@ export class App {
 			if (!st.elevenlabs) {
 				await this.bartekSpeak(BARTEK_LINES.noKey);
 			}
-		} else {
-			await this.bartekSpeak(pick(BARTEK_LINES.idle));
 		}
 		// Prefer real music; resume after HMR/reload if we had a track
-		const firstMusic = tracks.filter((t) => !/intro_voice|voice/i.test(t.file))[0];
+		const firstMusic = tracks.find((track) => !MUSIC_FILE_PATTERN.test(track.file));
 		const resumed = await this.djPlayer.restoreIfNeeded();
 		if (!resumed && firstMusic && !this.djPlayer.playing) {
 			const idx = tracks.findIndex((t) => t.file === firstMusic.file);
-			if (idx >= 0) void this.djPlayer.playIndex(idx);
+			if (idx >= 0) observeAsync(this.djPlayer.playIndex(idx), 'restored DJ playback');
 		}
 		// Crowd reacts to the booth opening
-		this.atmosphere.americans.cheerNear(this.djBartek.pos, 14);
+		this.atmosphere.americans.cheerNear(this.djBartek.pos, DJ_AUDIO.boothCheerRadius);
 	}
 
 	private async bartekSpeak(text: string): Promise<void> {
@@ -1848,10 +1919,13 @@ export class App {
 		this.bartekSpeaking = true;
 		this.atmosphere.americans.ensureAudio();
 		spatial.ensure();
-		this.djBartek.say(text, Math.min(8, 2.5 + text.length * 0.04));
+		this.djBartek.say(
+			text,
+			Math.min(DJ_AUDIO.maxBubbleSeconds, DJ_AUDIO.baseBubbleSeconds + text.length * DJ_AUDIO.secondsPerCharacter),
+		);
 		// Charlie voice — energetic DJ (not flat Adam)
 		const r = await speakLine(text, {
-			voiceId: 'IKne3meq5aSn9XLyUdCD',
+			voiceId: BARTEK_VOICE_ID,
 			lang: 'nl',
 			volume: 0.95,
 			allowBrowser: false,
@@ -1863,8 +1937,8 @@ export class App {
 			this.djUi.setStatus(`🎤 ElevenLabs faalde: ${r.error ?? 'silent'} — niet browser-TTS`);
 			this.ui.setStatus(`🎤 TTS error: ${r.error ?? 'silent'}`);
 		}
-		const wait = Math.min(14000, r.durationMs ?? text.length * 55);
-		await new Promise((res) => setTimeout(res, Math.max(800, wait * 0.85)));
+		const wait = Math.min(DJ_AUDIO.maxSpeechWaitMs, r.durationMs ?? text.length * DJ_AUDIO.fallbackMsPerCharacter);
+		await new Promise((res) => setTimeout(res, Math.max(DJ_AUDIO.minimumSpeechWaitMs, wait * DJ_AUDIO.speechWaitFactor)));
 		this.bartekSpeaking = false;
 	}
 
@@ -1876,8 +1950,8 @@ export class App {
 
 		// When music is on, crowd near the trap occasionally cheers
 		if (music && this.crowdCheerCd <= 0) {
-			this.crowdCheerCd = 9 + Math.random() * 12;
-			this.atmosphere.americans.cheerNear(this.djBartek.pos, 16);
+			this.crowdCheerCd = DJ_AUDIO.cheerCooldownBase + Math.random() * DJ_AUDIO.cheerCooldownJitter;
+			this.atmosphere.americans.cheerNear(this.djBartek.pos, DJ_AUDIO.ambientCheerRadius);
 		}
 
 		// Bartek ambient drama (even if booth UI closed) when player is in the wing
@@ -1885,14 +1959,14 @@ export class App {
 		const dz = this.camera.position.z - this.djBartek.pos.z;
 		const dist = Math.hypot(dx, dz);
 		if (
-			dist < 18 &&
+			dist < DJ_AUDIO.dramaRange &&
 			levelAt(this.camera.position.y) === 'v0' &&
 			this.djBartek.dramaCd <= 0 &&
 			!this.bartekSpeaking &&
 			!this.djUi.isOpen()
 		) {
-			this.djBartek.dramaCd = 18 + Math.random() * 22;
-			void this.bartekSpeak(pick(BARTEK_LINES.drama));
+			this.djBartek.dramaCd = DJ_AUDIO.dramaCooldownBase + Math.random() * DJ_AUDIO.dramaCooldownJitter;
+			observeAsync(this.bartekSpeak(pick(BARTEK_LINES.drama)), 'ambient DJ monologue');
 		}
 
 		// First approach without opening booth: short teaser shout
@@ -1905,16 +1979,16 @@ export class App {
 		await this.bartekSpeak(`Request binnen: ${query}. Bartek downloadt met yt-dlp. Even geduld jongen.`);
 		const res = await this.djPlayer.requestSong(query);
 		const tracks = await this.djPlayer.refreshPlaylist();
-		this.djUi.setTracks(tracks.filter((t) => !/intro_voice|voice/i.test(t.file)));
+		this.djUi.setTracks(tracks.filter((track) => !MUSIC_FILE_PATTERN.test(track.file)));
 		if (res.ok) {
 			await this.bartekSpeak(BARTEK_LINES.requestOk(query));
 			this.djUi.setStatus(res.message);
-			this.score += 3;
+			this.score += DJ_AUDIO.requestScore;
 			this.ui.setScore(this.score, this.metSims.size);
-			this.atmosphere.americans.cheerNear(this.djBartek.pos, 18);
+			this.atmosphere.americans.cheerNear(this.djBartek.pos, DJ_AUDIO.requestCheerRadius);
 			// Brief dance flash for the crowd
 			this.atmosphere.americans.setDancing(true);
-			window.setTimeout(() => this.atmosphere.americans.setDancing(false), 12000);
+			globalThis.setTimeout(() => this.atmosphere.americans.setDancing(false), DJ_AUDIO.danceFlashMs);
 		} else {
 			await this.bartekSpeak(BARTEK_LINES.requestFail);
 			this.djUi.setStatus(res.message);
@@ -1923,7 +1997,7 @@ export class App {
 
 	private onSelectStore(store: StoreDef): void {
 		this.currentStore = store;
-		const pos = new THREE.Vector3(store.x, this.storeY(store), store.z);
+		const pos = new Vector3(store.x, this.storeY(store), store.z);
 		this.director.focusStore(pos);
 
 		const path = this.pathfinder.findPath('kiosk', store.nodeId);
@@ -1981,12 +2055,12 @@ export class App {
 
 	/** Eye-height Y for camera focus / confetti */
 	private storeY(store: StoreDef): number {
-		return levelY(store.level) + 1.5;
+		return levelY(store.level) + ROUTE_VISUAL.storeEyeHeight;
 	}
 
 	private onArrive(store: StoreDef): void {
 		const underShip = store.nodeId === 'spaceship' || store.id === 'kruidvat';
-		this.score += underShip ? 100 : 50;
+		this.score += underShip ? ROUTE_REWARD.featured : ROUTE_REWARD.standard;
 		this.ui.setScore(this.score, this.metSims.size);
 		// Back to free walk, facing whatever you came for
 		this.freeMove = true;
@@ -1996,23 +2070,26 @@ export class App {
 		if (underShip) {
 			const stand = this.spaceship.getUnderStandPoint();
 			this.ui.showArrive(store);
-			this.spawnConfetti(stand.clone().add(new THREE.Vector3(0, 1.5, 0)));
+			this.spawnConfetti(stand.clone().add(new Vector3(0, ROUTE_VISUAL.featuredConfettiHeight, 0)));
 			this.player.lookAtPoint(this.spaceship.getShipLookPoint());
 			this.ui.setStatus(`+100 · Kruidvat · Youssef praat · score ${this.score}`);
 			// Youssef finally speaks when the route lands
 			this.atmosphere.americans.ensureAudio();
-			void this.shopVoice.speak(
-				'kruidvat',
-				'Marhaba! Je bent er. Welkom bij Kruidvat — ik ben Youssef Benali. Vitamines? Shampoo voor mama? Yallah, de kassa is open.',
-				{ force: true, minGapMs: 0 },
+			observeAsync(
+				this.shopVoice.speak(
+					'kruidvat',
+					'Marhaba! Je bent er. Welkom bij Kruidvat — ik ben Youssef Benali. Vitamines? Shampoo voor mama? Yallah, de kassa is open.',
+					{ force: true, minGapMs: 0 },
+				),
+				'Kruidvat arrival greeting',
 			);
 		} else {
 			this.ui.showArrive(store);
-			this.spawnConfetti(new THREE.Vector3(store.x, this.storeY(store) + 0.5, store.z));
-			this.player.lookAtPoint(new THREE.Vector3(store.x, this.storeY(store), store.z));
+			this.spawnConfetti(new Vector3(store.x, this.storeY(store) + ROUTE_VISUAL.standardConfettiHeight, store.z));
+			this.player.lookAtPoint(new Vector3(store.x, this.storeY(store), store.z));
 			this.ui.setStatus(`+50 · ${store.name.replace('\n', ' ')} OPEN · score ${this.score}`);
 			// Any named owner greets on arrival
-			void this.shopVoice.speak(store.id, undefined, { force: true, minGapMs: 0 });
+			observeAsync(this.shopVoice.speak(store.id, undefined, { force: true, minGapMs: 0 }), 'store arrival greeting');
 		}
 	}
 
@@ -2056,43 +2133,42 @@ export class App {
 		} else {
 			steps.push(`Aankomst: ${store.name.replace('\n', ' ')}`);
 		}
-		return steps.slice(0, 6);
+		return steps.slice(0, ROUTE_VISUAL.maxSteps);
 	}
 
-	private spawnConfetti(origin: THREE.Vector3): void {
+	private spawnConfetti(origin: Vector3): void {
 		this.clearConfetti();
-		const count = 100;
-		const positions = new Float32Array(count * 3);
-		const colors = new Float32Array(count * 3);
-		this.confettiVel = new Float32Array(count * 3);
-		const palette = [new THREE.Color(0x00a651), new THREE.Color(0xe30613), new THREE.Color(0xf5c518), new THREE.Color(0xffffff)];
+		const positions = new Float32Array(CONFETTI.count * CONFETTI.itemSize);
+		const colors = new Float32Array(CONFETTI.count * CONFETTI.itemSize);
+		this.confettiVel = new Float32Array(CONFETTI.count * CONFETTI.itemSize);
 
-		for (let i = 0; i < count; i++) {
-			positions[i * 3] = origin.x;
-			positions[i * 3 + 1] = origin.y;
-			positions[i * 3 + 2] = origin.z;
-			const c = at(palette, i);
-			colors[i * 3] = c.r;
-			colors[i * 3 + 1] = c.g;
-			colors[i * 3 + 2] = c.b;
-			this.confettiVel[i * 3] = jitter(4);
-			this.confettiVel[i * 3 + 1] = Math.random() * 3 + 1;
-			this.confettiVel[i * 3 + 2] = jitter(4);
+		for (let i = 0; i < CONFETTI.count; i++) {
+			const offset = i * CONFETTI.itemSize;
+			positions[offset] = origin.x;
+			positions[offset + 1] = origin.y;
+			positions[offset + 2] = origin.z;
+			const c = at(CONFETTI_PALETTE, i);
+			colors[offset] = c.r;
+			colors[offset + 1] = c.g;
+			colors[offset + 2] = c.b;
+			this.confettiVel[offset] = jitter(CONFETTI.spread);
+			this.confettiVel[offset + 1] = Math.random() * CONFETTI.verticalSpread + 1;
+			this.confettiVel[offset + 2] = jitter(CONFETTI.spread);
 		}
 
-		const geo = new THREE.BufferGeometry();
-		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-		geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-		const mat = new THREE.PointsMaterial({
-			size: 0.12,
+		const geo = new BufferGeometry();
+		geo.setAttribute('position', new BufferAttribute(positions, CONFETTI.itemSize));
+		geo.setAttribute('color', new BufferAttribute(colors, CONFETTI.itemSize));
+		const mat = new PointsMaterial({
+			size: CONFETTI.pointSize,
 			vertexColors: true,
 			transparent: true,
-			opacity: 0.9,
+			opacity: CONFETTI.opacity,
 			depthWrite: false,
 		});
-		this.confetti = new THREE.Points(geo, mat);
+		this.confetti = new Points(geo, mat);
 		this.scene.add(this.confetti);
-		setTimeout(() => this.clearConfetti(), 3500);
+		setTimeout(() => this.clearConfetti(), CONFETTI.lifetimeMs);
 	}
 
 	private clearConfetti(): void {
@@ -2109,11 +2185,11 @@ export class App {
 	}
 
 	private updateConfetti(dt: number): void {
-		if (!this.confetti || !this.confettiVel) return;
+		if (!(this.confetti && this.confettiVel)) return;
 		const pos = this.confetti.geometry.getAttribute('position');
-		const arr = pos.array as Float32Array;
+		const arr = pos.array;
 		const vel = this.confettiVel;
-		for (let i = 0; i + 2 < arr.length; i += 3) {
+		for (let i = 0; i + 2 < arr.length; i += CONFETTI.itemSize) {
 			arr[i] = (arr[i] ?? 0) + (vel[i] ?? 0) * dt;
 			arr[i + 1] = (arr[i + 1] ?? 0) + (vel[i + 1] ?? 0) * dt;
 			arr[i + 2] = (arr[i + 2] ?? 0) + (vel[i + 2] ?? 0) * dt;
@@ -2123,8 +2199,8 @@ export class App {
 	}
 
 	private onResize(): void {
-		const w = window.innerWidth;
-		const h = window.innerHeight;
+		const w = globalThis.innerWidth;
+		const h = globalThis.innerHeight;
 		this.camera.aspect = w / h;
 		this.camera.updateProjectionMatrix();
 		this.renderer.setSize(w, h);
@@ -2148,16 +2224,14 @@ export class App {
 		// geklemde dt: bij 200ms-frames telde elke tik 0,05 s en duurde de
 		// beloofde halve seconde reactietijd in werkelijkheid twee seconden.
 		const sampleMs = Math.min(frameMs, FRAME_MS_SPIKE);
-		const sampleSec = sampleMs / 1000;
+		const sampleSec = sampleMs / PLAYER_TIMING.millisecondsPerSecond;
 		if (frameMs >= DYN_RES_VSYNC_FLOOR_MS && frameMs < this.vsyncMs) this.vsyncMs = frameMs;
 		this.frameMsEma = this.frameMsEma === 0 ? sampleMs : this.frameMsEma * DYN_RES_EMA_OLD + sampleMs * DYN_RES_EMA_NEW;
 		if (this.dynResCooldown > 0) {
 			this.dynResCooldown -= sampleSec;
 			return;
 		}
-		const wantDown = this.frameMsEma > DYN_RES_SLOW_MS && this.dynResIndex < DYN_RES_STEPS.length - 1;
-		const wantUp = this.frameMsEma < this.vsyncMs * DYN_RES_UP_FACTOR && this.dynResIndex > 0;
-		const dir = wantDown ? 1 : wantUp ? -1 : 0;
+		const dir = this.dynResDirection();
 		if (dir !== this.dynResDir) {
 			this.dynResDir = dir;
 			this.dynResHold = 0;
@@ -2167,6 +2241,12 @@ export class App {
 		// Omlaag snel (0.5 s aanhoudend traag), omhoog traag (2 s ruim comfort)
 		if (dir === 1 && this.dynResHold >= DYN_RES_HOLD_DOWN_S) this.stepDynRes(this.dynResIndex + 1);
 		else if (dir === -1 && this.dynResHold >= DYN_RES_HOLD_UP_S) this.stepDynRes(this.dynResIndex - 1);
+	}
+
+	private dynResDirection(): -1 | 0 | 1 {
+		if (this.frameMsEma > DYN_RES_SLOW_MS && this.dynResIndex < DYN_RES_STEPS.length - 1) return 1;
+		if (this.frameMsEma < this.vsyncMs * DYN_RES_UP_FACTOR && this.dynResIndex > 0) return -1;
+		return 0;
 	}
 
 	/** Verse meting: oude samples horen niet mee te tellen na een schaal- of standwissel. */
@@ -2196,40 +2276,21 @@ export class App {
 	 * Lift stays put while you're aboard (no auto-cycle).
 	 */
 	private updateElevatorRide(): void {
-		if (!this.freeMove || !this.player.enabled || this.possessId !== null || this.player.flying) {
-			this.elevRiding = false;
-			this.player.setElevatorRide(null);
-			this.elevUi?.hide();
-			this.elevator.holdForPassenger(false);
+		if (!(this.freeMove && this.player.enabled) || this.possessId !== null || mutableFlag(this.player.flying)) {
+			this.leaveElevatorRide();
 			return;
 		}
-		const inXZ = this.elevator.contains(this.camera.position.x, this.camera.position.z, 0.05);
+		const inXz = this.elevator.contains(this.camera.position.x, this.camera.position.z, ELEVATOR_RANGE.carrierMargin);
 		const cabinY = this.elevator.cabinFloorY;
 		const dy = Math.abs(this.player.feetHeight - cabinY);
 
 		if (this.elevRiding) {
-			if (!inXZ) {
-				// Walked out the door — free the lift for auto-cycle
-				this.elevRiding = false;
-				this.player.setElevatorRide(null);
-				this.elevUi.hide();
-				this.elevator.holdForPassenger(false);
-			} else {
-				this.player.setElevatorRide(cabinY);
-				// Stay put until player requests a floor (or leaves)
-				if (!this.elevator.isMoving) {
-					this.elevator.holdForPassenger(true);
-				}
-				// Hide menu if we started moving; keep mouse alone unless menu open
-				if (this.elevator.isMoving && this.elevUi.isOpen) {
-					this.elevUi.hide();
-				}
-			}
+			this.continueElevatorRide(inXz, cabinY);
 			return;
 		}
 
 		// Board silently — no popup, no focus steal
-		if (inXZ && dy < 1.8) {
+		if (inXz && dy < ELEVATOR_RANGE.boardHeight) {
 			this.elevRiding = true;
 			this.player.setElevatorRide(cabinY);
 			this.elevator.holdForPassenger(true);
@@ -2240,18 +2301,35 @@ export class App {
 		}
 	}
 
+	private continueElevatorRide(inCabin: boolean, cabinY: number): void {
+		if (!inCabin) {
+			this.leaveElevatorRide();
+			return;
+		}
+		this.player.setElevatorRide(cabinY);
+		if (!this.elevator.isMoving) this.elevator.holdForPassenger(true);
+		if (this.elevator.isMoving && this.elevUi.isOpen) this.elevUi.hide();
+	}
+
+	private leaveElevatorRide(): void {
+		this.elevRiding = false;
+		this.player.setElevatorRide(null);
+		this.elevUi.hide();
+		this.elevator.holdForPassenger(false);
+	}
+
 	/**
 	 * Wat E bij de lift zou doen, zonder het te doen. Ook `hasEInteraction` vraagt
 	 * het hier, zodat de knop-check en de actie niet uit elkaar kunnen lopen.
 	 */
 	private elevatorAction(): ElevatorAction | null {
-		if (!this.freeMove || this.possessId !== null || this.player.flying) return null;
+		if (!this.freeMove || this.possessId !== null || mutableFlag(this.player.flying)) return null;
 		const hit = this.elevator.getLookHit(this.camera, 10);
-		const inCab = this.elevator.contains(this.camera.position.x, this.camera.position.z, 0.2);
-		const distXZ = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
+		const inCab = this.elevator.contains(this.camera.position.x, this.camera.position.z, ELEVATOR_RANGE.cabinMargin);
+		const distanceXz = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
 		const here = levelAt(this.player.feetHeight);
 		// Dak has a second call pedestal ~12 m toward the helipad — wider radius
-		const nearShaft = distXZ < (here === 'roof' ? 14 : 4.5);
+		const nearShaft = distanceXz < (here === 'roof' ? ELEVATOR_RANGE.roofCall : ELEVATOR_RANGE.landingCall);
 
 		// Op de schoonmaakkar in de cabine ligt de blik vast aan de rijkoers, dus Hans of
 		// het paneel aankijken lukt niet altijd; dan viel E door naar uitstappen en leek
@@ -2259,8 +2337,8 @@ export class App {
 		// als te voet. De kar zit op de cabinevloer (CabinCarrier), dus dat is het teken.
 		if (
 			this.vehicle === 'scrubber' &&
-			this.elevator.contains(this.scrubber.pos.x, this.scrubber.pos.z, 0.05) &&
-			Math.abs(this.scrubber.pos.y - this.elevator.cabinFloorY) < 0.6
+			this.elevator.contains(this.scrubber.pos.x, this.scrubber.pos.z, ELEVATOR_SCRUBBER.margin) &&
+			Math.abs(this.scrubber.pos.y - this.elevator.cabinFloorY) < ELEVATOR_SCRUBBER.floorTolerance
 		) {
 			return { kind: 'menu' };
 		}
@@ -2306,21 +2384,28 @@ export class App {
 	 * volgorde, dus komt daar een actie bij dan hoort hij hier ook thuis.
 	 * Controls gebruikt dit om E dan niet ook de camera te laten draaien.
 	 */
-	private hasEInteraction(): boolean {
+	private hasInteractionOnE(): boolean {
 		const p = this.camera.position;
 		if (this.furryCon.canInteract(p) || this.furryCon.onLot(p)) return true;
 		if (this.cityFavela.inGangRange(p)) return true;
-		const lift = this.elevatorAction();
-		if (lift !== null) return true;
-		if (this.player.flying || this.vehicle === 'scrubber' || this.vehicle === 'car' || this.vehicle === 'chariot') return true;
+		if (this.elevatorAction() !== null || this.canExitCurrentVehicle()) return true;
+		return this.canBoardVehicleAt(p) || this.djBartek.inRange(p) || this.keeperInTalkRange();
+	}
+
+	private canExitCurrentVehicle(): boolean {
+		return mutableFlag(this.player.flying) || this.vehicle === 'scrubber' || this.vehicle === 'car' || this.vehicle === 'chariot';
+	}
+
+	private canBoardVehicleAt(p: Vector3): boolean {
 		const free = !this.possessId && this.freeMove;
-		if (free && this.driveCars.nearestCar(p, 4.5)) return true;
-		if (free && this.scrubber.distanceTo(p) < 3.5 && levelAt(p.y) === 'v0') return true;
-		if (free && this.drone.distanceTo(p) < 3.2) return true;
-		if (free && this.heli.boardable && this.heli.distanceTo(p) < 4.5) return true;
-		if (free && this.colosseumTransport.isBoardable(p)) return true;
-		if (this.djBartek.inRange(p)) return true;
-		return this.keeperInTalkRange();
+		if (!free) return false;
+		return Boolean(
+			this.driveCars.nearestCar(p, INTERACTION_RANGE.car) ||
+				(this.scrubber.distanceTo(p) < INTERACTION_RANGE.scrubber && levelAt(p.y) === 'v0') ||
+				this.drone.distanceTo(p) < INTERACTION_RANGE.drone ||
+				(this.heli.boardable && this.heli.distanceTo(p) < INTERACTION_RANGE.helicopter) ||
+				this.colosseumTransport.isBoardable(p),
+		);
 	}
 
 	/** Staat er een verkoper binnen praatafstand op jouw dek? Zoals ShopVoice.talkNear kiest. */
@@ -2340,8 +2425,8 @@ export class App {
 	 * in de drone of in een sim is hij geen voetganger en remt er niemand voor.
 	 */
 	private walkerOnRoad(): RoadObstacle | null {
-		if (!this.freeMove || !this.player.enabled) return null;
-		if (this.possessId !== null || this.player.flying || this.player.driving) return null;
+		if (!(this.freeMove && this.player.enabled)) return null;
+		if (this.possessId !== null || mutableFlag(this.player.flying) || mutableFlag(this.player.driving)) return null;
 		return { x: this.camera.position.x, y: this.player.feetHeight, z: this.camera.position.z };
 	}
 
@@ -2350,9 +2435,9 @@ export class App {
 		const playerFloor = levelY(levelAt(cam.y));
 		const group = this.atmosphere.americans.group;
 		for (const child of group.children) {
-			if (!(child instanceof THREE.Object3D)) continue;
+			if (!(child instanceof Object3D)) continue;
 			const sy = child.position.y;
-			if (Math.abs(sy - playerFloor) > 2.5) continue;
+			if (Math.abs(sy - playerFloor) > PLAYER_SEPARATION.floorTolerance) continue;
 			const sep = this.world.separate(cam.x, cam.z, child.position.x, child.position.z, minDist);
 			cam.x = sep.ax;
 			cam.z = sep.az;
@@ -2370,7 +2455,7 @@ export class App {
 			cam.z,
 			this.player.feetHeight,
 			PLAYER_RADIUS,
-			3,
+			PLAYER_SEPARATION.collisionIterations,
 			true,
 			airborne,
 			this.player.unclamped,
@@ -2408,59 +2493,52 @@ export class App {
 	 * bleven op het dek hangen waar ze niet meer stonden, en dan tikt een systeem
 	 * dat je vlak voor je neus ziet op vier hertz.
 	 */
-	private seesWhere(...spots: readonly THREE.Vector3[]): boolean {
+	private seesWhere(...spots: readonly Vector3[]): boolean {
+		const zones = new Set<ZoneId>();
+		for (const spot of spots) zones.add(zoneAt(spot.x, spot.y, spot.z));
 		let mask = 0;
-		for (const spot of spots) mask |= zoneBit(zoneAt(spot.x, spot.y, spot.z));
+		for (const zone of zones) mask += zoneBit(zone);
 		return this.seesZones(mask);
 	}
 
 	/** Hetzelfde, voor een cast die uit losse lichamen bestaat. */
-	private seesCast(...roots: readonly THREE.Object3D[]): boolean {
-		let mask = 0;
+	private seesCast(...roots: readonly Object3D[]): boolean {
+		const zones = new Set<ZoneId>();
 		for (const root of roots) {
 			for (const member of root.children) {
 				member.getWorldPosition(this._zoneSpot);
-				mask |= zoneBit(zoneAt(this._zoneSpot.x, this._zoneSpot.y, this._zoneSpot.z));
+				zones.add(zoneAt(this._zoneSpot.x, this._zoneSpot.y, this._zoneSpot.z));
 			}
 			if (root.children.length === 0) {
 				root.getWorldPosition(this._zoneSpot);
-				mask |= zoneBit(zoneAt(this._zoneSpot.x, this._zoneSpot.y, this._zoneSpot.z));
+				zones.add(zoneAt(this._zoneSpot.x, this._zoneSpot.y, this._zoneSpot.z));
 			}
 		}
+		let mask = 0;
+		for (const zone of zones) mask += zoneBit(zone);
 		return this.seesZones(mask);
 	}
 
-	private animate = (timestamp?: number): void => {
-		requestAnimationFrame(this.animate);
-		// THREE.Timer: update once per frame, then query delta/elapsed (stable multi-read)
+	private beginFrame(timestamp?: number): FrameTiming {
 		this.timer.update(timestamp);
-		const measuredDt = Math.min(this.timer.getDelta(), 0.05);
+		const measuredDt = Math.min(this.timer.getDelta(), PLAYER_TIMING.frameDtMaxSeconds);
 		const measuredElapsed = this.timer.getElapsed();
 		const dt = this.perfFrozen ? 0 : measuredDt;
 		const elapsed = this.perfFrozen ? this.perfFrozenElapsed : measuredElapsed;
-		// Ongeklemde frametijd uit de rAF-timestamps zelf: dt hierboven is op
-		// 50 ms afgekapt, en een meting die daarop leunt verzadigt precies waar
-		// er ingegrepen moet worden: een 62ms-frame leest dan als 50.
-		const frameMs = timestamp !== undefined && this.lastRafTs !== null ? timestamp - this.lastRafTs : measuredDt * 1000;
+		const frameMs =
+			timestamp !== undefined && this.lastRafTs !== null
+				? timestamp - this.lastRafTs
+				: measuredDt * PLAYER_TIMING.millisecondsPerSecond;
 		if (timestamp !== undefined) this.lastRafTs = timestamp;
 		this.updateDynRes(frameMs);
-		// CPU-klok van dit frame. Zonder deze splitsing zegt een frametijd van
-		// 43 ms niet of de GPU of de main thread hem opsoupeert, en dat bepaalt
-		// volledig wat je eraan moet doen.
-		const cpuStart = performance.now();
+		return { dt, elapsed, frameMs, cpuStart: performance.now() };
+	}
 
-		// Eerst de kegels, want daarna vraagt elk systeem of zijn zone in beeld staat.
-		// Op de camerastand van het vorige frame: een LOD-besluit dat vier keer per
-		// seconde valt merkt een frame verschuiving niet.
+	private updateIndoorSystems(dt: number): void {
 		this.refreshZoneView();
-		// Shoppers lopen over V0 en V1; zie je geen van beide, dan lopen ze in
-		// kwartseconden door in plaats van per frame.
-		const simsSeen = this.seesCast(this.atmosphere.americans.group);
-		const simsDt = this.lod.sims.step(dt, simsSeen);
+		const simsDt = this.lod.sims.step(dt, this.seesCast(this.atmosphere.americans.group));
 		if (simsDt !== null) this.atmosphere.update(simsDt, this.camera.position);
 		this.pathMesh.update(dt);
-		// De heist loopt door als je hem niet ziet: grover, niet trager. Anders staat
-		// de dief stil in de gang zodra je je omdraait.
 		const thiefDt = this.lod.thief.step(dt, this.seesWhere(this.thief.group.position));
 		if (thiefDt !== null) this.thief.update(thiefDt);
 		this.beardCave.update(dt);
@@ -2468,18 +2546,14 @@ export class App {
 		if (protestDt !== null) this.protest.update(protestDt, this.camera.position);
 		this.travel.update(dt);
 		this.elevator.update(dt, this.camera.position);
-		// Board / stay latched on elevator BEFORE player physics so ground snap
-		// doesn't yank you out mid-shaft (that was the stutter + strand bug).
 		this.updateElevatorRide();
-
 		const ratDt = this.lod.rat.step(dt, this.seesWhere(this.rat.group.position));
 		if (ratDt !== null) this.rat.update(ratDt);
-		// De armen lopen op wat ze vorige frame gezien hebben, dus vóór alles wat zich
-		// erbij meldt. Op volle dt, want de speler rijdt er in eigen tijd op af terwijl
-		// het stadsverkeer op zijn zoneklok tikt.
 		this.barriers.update(dt);
-		// Player vehicles: drive first so camera sticks before other systems
-		if (this.vehicle === 'car' && this.driveCars.ridden) {
+	}
+
+	private updatePlayerVehicles(dt: number): void {
+		if (this.vehicle === 'car' && mutableFlag(this.driveCars.ridden)) {
 			const seat = this.driveCars.update(dt, this.player.getDriveInput());
 			if (seat) {
 				this.camera.position.copy(seat);
@@ -2495,150 +2569,155 @@ export class App {
 				this.player.setHeading(this.scrubber.heading);
 				this.player.driving = true;
 			}
-		} else {
-			this.scrubber.update(dt);
-		}
+		} else this.scrubber.update(dt);
 		const cleanerDt = this.lod.cleaner.step(dt, this.seesWhere(this.cleaner.pos));
-		if (cleanerDt !== null) {
-			this.cleaner.update(
-				cleanerDt,
-				// Don't let Wei hunt you while you're racing a vehicle
-				this.player.driving ? undefined : this.camera.position,
-			);
-		}
-		// Binaural listener: camera position + look/up for HRTF
-		{
-			const cam = this.camera;
-			cam.getWorldDirection(this._fwd);
-			this._up.set(0, 1, 0).applyQuaternion(cam.quaternion).normalize();
-			spatial.updateListener({
-				x: cam.position.x,
-				y: cam.position.y,
-				z: cam.position.z,
-				fx: this._fwd.x,
-				fy: this._fwd.y,
-				fz: this._fwd.z,
-				ux: this._up.x,
-				uy: this._up.y,
-				uz: this._up.z,
-			});
-		}
-		this.prayer.update(dt, this.camera.position);
+		if (cleanerDt !== null) this.cleaner.update(cleanerDt, mutableFlag(this.player.driving) ? undefined : this.camera.position);
+	}
+
+	private updateAudioSystems(dt: number): void {
+		const camera = this.camera;
+		camera.getWorldDirection(this._fwd);
+		this._up.set(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+		spatial.updateListener({
+			x: camera.position.x,
+			y: camera.position.y,
+			z: camera.position.z,
+			fx: this._fwd.x,
+			fy: this._fwd.y,
+			fz: this._fwd.z,
+			ux: this._up.x,
+			uy: this._up.y,
+			uz: this._up.z,
+		});
+		this.prayer.update(dt, camera.position);
 		const penguinDt = this.lod.penguins.step(dt, this.seesCast(this.penguins.group));
 		if (penguinDt !== null) this.penguins.update(penguinDt);
+	}
 
-		// Mall security — feed every "threat" in the building
+	private updateSecurity(dt: number): void {
 		this.securityHitCd = Math.max(0, this.securityHitCd - dt);
-		{
-			const threats: { x: number; y: number; z: number; kind: string; weight: number }[] = [];
-			// Sims are walking bombs of suspicion
-			this.simPositions.length = 0;
-			for (const child of this.atmosphere.americans.group.children) {
-				if (!(child instanceof THREE.Object3D)) continue;
-				this.simPositions.push(child.position);
-				threats.push({
-					x: child.position.x,
-					y: child.position.y + 1.4,
-					z: child.position.z,
-					kind: 'shopper',
-					weight: 0.9,
-				});
-			}
-			if (this.thief.active) {
-				const tp = this.thief.group.children[0]?.position ?? this.thief.group.position;
-				threats.push({
-					x: tp.x,
-					y: tp.y + 1.2,
-					z: tp.z,
-					kind: 'thief',
-					weight: 2.2,
-				});
-			}
+		const threats = this.securityThreats();
+		const securityDt = this.lod.security.step(dt, this.seesCast(this.security.group));
+		if (securityDt !== null) this.security.update(securityDt, this.camera.position, threats);
+	}
+
+	private securityThreats(): { x: number; y: number; z: number; kind: string; weight: number }[] {
+		const threats: { x: number; y: number; z: number; kind: string; weight: number }[] = [];
+		this.simPositions.length = 0;
+		for (const child of this.atmosphere.americans.group.children) {
+			if (!(child instanceof Object3D)) continue;
+			this.simPositions.push(child.position);
 			threats.push({
+				x: child.position.x,
+				y: child.position.y + THREAT_PROFILE.shopperHeight,
+				z: child.position.z,
+				kind: 'shopper',
+				weight: THREAT_PROFILE.shopperWeight,
+			});
+		}
+		if (mutableFlag(this.thief.active)) {
+			const position = this.thief.group.children[0]?.position ?? this.thief.group.position;
+			threats.push({
+				x: position.x,
+				y: position.y + THREAT_PROFILE.thiefHeight,
+				z: position.z,
+				kind: 'thief',
+				weight: THREAT_PROFILE.thiefWeight,
+			});
+		}
+		threats.push(
+			{
 				x: this.monkey.group.position.x,
-				y: this.monkey.group.position.y + 0.8,
+				y: this.monkey.group.position.y + THREAT_PROFILE.monkeyHeight,
 				z: this.monkey.group.position.z,
 				kind: 'monkey',
-				weight: 1.6,
-			});
-			threats.push({
+				weight: THREAT_PROFILE.monkeyWeight,
+			},
+			{
 				x: this.protest.pos.x,
-				y: 1.4,
+				y: THREAT_PROFILE.protestHeight,
 				z: this.protest.pos.z,
 				kind: 'protest',
-				weight: 1.3,
-			});
-			threats.push({
+				weight: THREAT_PROFILE.protestWeight,
+			},
+			{
 				x: this.cleaner.pos.x,
-				y: this.cleaner.pos.y + 1.2,
+				y: this.cleaner.pos.y + THREAT_PROFILE.cleanerHeight,
 				z: this.cleaner.pos.z,
 				kind: 'cleaner',
-				weight: 0.7,
-			});
-			// De bewakers patrouilleren op V0 en op de V1-balustrade.
-			const securityDt = this.lod.security.step(dt, this.seesCast(this.security.group));
-			if (securityDt !== null) this.security.update(securityDt, this.camera.position, threats);
-		}
+				weight: THREAT_PROFILE.cleanerWeight,
+			},
+		);
+		return threats;
+	}
 
-		// Vóór de speler-update, want E is ook actieknop: ligt er iets klaar dan mag
-		// hij de camera niet meedraaien terwijl je hem indrukt.
-		this.player.setInteractOnE(this.hasEInteraction());
-
+	private updatePlayerCamera(dt: number): void {
+		this.player.setInteractOnE(this.hasInteractionOnE());
 		if (this.possessId !== null) {
-			const eye = this.atmosphere.americans.getSimEye(this.possessId);
-			if (eye) {
-				// Stick to eye sockets — hard follow, not float behind the butt
-				this.camera.position.copy(eye.pos);
-				this.camera.rotation.order = 'YXZ';
-				// Shortest-path yaw lerp so we never spin through the floor
-				const dy = shortestAngle(this.camera.rotation.y, eye.yaw);
-				this.camera.rotation.y += dy * easeFactor(10, dt);
-				this.camera.rotation.x = lerp(this.camera.rotation.x, -0.05, 0.15);
-				this.camera.rotation.z = 0;
-			}
-		} else if (this.freeMove && this.player.enabled) {
-			if (this.furryCon.ageModalOpen && this.player.locked) {
-				this.player.releaseLook();
-			}
-			if (this.furryCon.filming) {
-				this.camera.position.copy(this.furryCon.filmCam.position);
-				this.camera.quaternion.copy(this.furryCon.filmCam.quaternion);
-			} else {
-				this.player.update(dt);
-				const joinAt = this.furryCon.joinAnchor;
-				if (joinAt) {
-					this.camera.position.x = joinAt.x;
-					this.camera.position.z = joinAt.z;
-				}
-			}
-			// Keep glued after physics (belt/sim push can nudge feet)
-			if (this.elevRiding && !this.player.driving) {
-				const passenger = this.elevator.resolvePassenger(this.camera.position.x, this.camera.position.z, PLAYER_RADIUS);
-				this.camera.position.x = passenger.x;
-				this.camera.position.z = passenger.z;
-				this.player.setElevatorRide(this.elevator.cabinFloorY);
-			}
-			// Lopend: loopband-drift + niet ín Brad staan. Vliegend/rijdend: skip.
-			if (!this.furryCon.filming && !this.furryCon.joinAnchor && !this.player.flying && !this.player.driving) {
-				if (this.player.isGrounded && !this.elevRiding) {
-					const belt = this.walkways.beltVelocityAt(this.camera.position.x, this.player.feetHeight, this.camera.position.z);
-					if (belt) this.player.nudge(belt.x * dt, belt.z * dt);
-					// Roltrap net als de loopband: horizontale drift erbij, de klim volgt
-					// vanzelf uit groundHeightAt. De trap heeft geen carrySpeed en doet niks.
-					const tread = this.world.rampCarryAt(this.camera.position.x, this.camera.position.z, this.player.feetHeight);
-					if (tread) this.player.nudge(tread.x * dt, tread.z * dt);
-					// De glijbaan is dezelfde afspraak, alleen laat die je niet meer los tot het bad.
-					if (this.roofIsland.ride.accepts(this.camera.position.x, this.player.feetHeight, this.camera.position.z)) {
-						this.startSlide();
-					}
-				}
-				if (!this.elevRiding) this.pushPlayerFromSims(0.9);
-			}
-		} else {
-			// Cinematic: the tour walks the authored path, collision must not shove it
-			this.director.update(dt);
+			this.updatePossessedCamera(dt);
+			return;
 		}
+		if (this.freeMove && this.player.enabled) {
+			this.updateFreePlayer(dt);
+			return;
+		}
+		this.director.update(dt);
+	}
 
+	private updatePossessedCamera(dt: number): void {
+		if (this.possessId === null) return;
+		const eye = this.atmosphere.americans.getSimEye(this.possessId);
+		if (!eye) return;
+		this.camera.position.copy(eye.pos);
+		this.camera.rotation.order = 'YXZ';
+		const yawDelta = shortestAngle(this.camera.rotation.y, eye.yaw);
+		this.camera.rotation.y += yawDelta * easeFactor(10, dt);
+		this.camera.rotation.x = lerp(this.camera.rotation.x, CAMERA_FOLLOW.possessedPitch, CAMERA_FOLLOW.possessedPitchLerp);
+		this.camera.rotation.z = 0;
+	}
+
+	private updateFreePlayer(dt: number): void {
+		if (this.furryCon.ageModalOpen && mutableFlag(this.player.locked)) this.player.releaseLook();
+		if (this.furryCon.filming) {
+			this.camera.position.copy(this.furryCon.filmCam.position);
+			this.camera.quaternion.copy(this.furryCon.filmCam.quaternion);
+		} else {
+			this.player.update(dt);
+			const joinAt = this.furryCon.joinAnchor;
+			if (joinAt) {
+				this.camera.position.x = joinAt.x;
+				this.camera.position.z = joinAt.z;
+			}
+		}
+		if (this.elevRiding && !mutableFlag(this.player.driving)) {
+			const passenger = this.elevator.resolvePassenger(this.camera.position.x, this.camera.position.z, PLAYER_RADIUS);
+			this.camera.position.x = passenger.x;
+			this.camera.position.z = passenger.z;
+			this.player.setElevatorRide(this.elevator.cabinFloorY);
+		}
+		this.applyGroundTransport(dt);
+	}
+
+	private applyGroundTransport(dt: number): void {
+		if (
+			this.furryCon.filming ||
+			this.furryCon.joinAnchor ||
+			mutableFlag(this.player.flying) ||
+			mutableFlag(this.player.driving)
+		) {
+			return;
+		}
+		if (this.player.isGrounded && !this.elevRiding) {
+			const belt = this.walkways.beltVelocityAt(this.camera.position.x, this.player.feetHeight, this.camera.position.z);
+			if (belt) this.player.nudge(belt.x * dt, belt.z * dt);
+			const tread = this.world.rampCarryAt(this.camera.position.x, this.camera.position.z, this.player.feetHeight);
+			if (tread) this.player.nudge(tread.x * dt, tread.z * dt);
+			if (this.roofIsland.ride.accepts(this.camera.position.x, this.player.feetHeight, this.camera.position.z)) this.startSlide();
+		}
+		if (!this.elevRiding) this.pushPlayerFromSims(PLAYER_SEPARATION.simDistance);
+	}
+
+	private updateMallSystems(dt: number, elapsed: number): void {
 		this.updateConfetti(dt);
 		this.mall.update(dt);
 		this.palms.update(elapsed);
@@ -2648,74 +2727,77 @@ export class App {
 		this.spaceship.update(elapsed);
 		this.djBartek.update(elapsed, dt, this.djPlayer.playing);
 		this.alienProbe.update(dt);
+	}
 
-		// Outdoor city systems — verkeer, stoplichten, skyline, park, theater,
-		// outdoor garage, lucht, vogels, dakeiland + badgasten
-		// Niet alleen `stad`: de aftakking rijdt de geul in en parkeert op P1. Wie daar
-		// naast een geparkeerde auto staat zonder de geul in beeld zag hem op vier hertz
-		// schokken terwijl hij het dichtstbijzijnde bewegende ding op het scherm was.
+	private updateCitySystems(dt: number, elapsed: number): void {
 		const cityDt = this.lod.city.step(dt, this.seesZones(CITY_TRAFFIC_ZONES));
-		if (cityDt !== null) {
-			this.cityRoads.update(cityDt, elapsed);
-			this.cityTraffic.update(cityDt, elapsed);
-			this.cityBuildings.update(cityDt, elapsed);
-			this.cityPark.update(cityDt, elapsed);
-			this.cityRio.update(elapsed);
-			this.cityFavela.update(cityDt, elapsed, this.camera.position);
-			this.cityColosseum.update(cityDt, elapsed);
-			this.colosseumFighters.update(cityDt, elapsed);
-			this.citySky.update(cityDt, elapsed);
-			this.cityBirds.update(cityDt, elapsed);
-		}
-		const chariotDt = this.colosseumTransport.ridden ? dt : cityDt;
-		if (chariotDt !== null) this.colosseumTransport.update(chariotDt);
-		if (this.vehicle === 'chariot' && this.colosseumTransport.ridden) {
-			this.colosseumTransport.seatPosition(this.chariotSeat);
-			this.camera.position.copy(this.chariotSeat);
-			this.player.driving = true;
-		}
-		// Het theater staat in twee zones tegelijk: de marquee buiten en de zaal binnen.
-		// Op de stadsklok bevroor de zaal zodra je diep genoeg naar binnen liep om de
-		// straat niet meer te zien, en dat is precies waar je hem wél ziet.
+		this.updateCityScene(cityDt, elapsed);
+		this.updateChariot(dt, cityDt);
 		const theatreDt = this.lod.theatre.step(dt, this.seesWhere(this.cityTheatre.marquee, this.cityTheatre.house));
 		if (theatreDt !== null) this.cityTheatre.update(theatreDt, elapsed, this.camera.position);
-		const conSeen =
+		this.updateConvention(dt, elapsed);
+		this.updateRoofSystems(dt, elapsed);
+	}
+
+	private updateCityScene(cityDt: number | null, elapsed: number): void {
+		if (cityDt === null) return;
+		this.cityRoads.update(cityDt, elapsed);
+		this.cityTraffic.update(cityDt, elapsed);
+		this.cityBuildings.update(cityDt, elapsed);
+		this.cityPark.update(cityDt, elapsed);
+		this.cityRio.update(elapsed);
+		this.cityFavela.update(cityDt, elapsed, this.camera.position);
+		this.cityColosseum.update(cityDt, elapsed);
+		this.colosseumFighters.update(cityDt, elapsed);
+		this.citySky.update(cityDt, elapsed);
+		this.cityBirds.update(cityDt, elapsed);
+	}
+
+	private updateChariot(dt: number, cityDt: number | null): void {
+		const chariotDt = this.colosseumTransport.ridden ? dt : cityDt;
+		if (chariotDt !== null) this.colosseumTransport.update(chariotDt);
+		if (this.vehicle !== 'chariot' || !this.colosseumTransport.ridden) return;
+		this.colosseumTransport.seatPosition(this.chariotSeat);
+		this.camera.position.copy(this.chariotSeat);
+		this.player.driving = true;
+	}
+
+	private updateConvention(dt: number, elapsed: number): void {
+		const seen =
 			this.furryCon.onLot(this.camera.position) ||
 			this.seesWhere(this.furryCon.plazaSpot, this.furryCon.dealersSpot, this.furryCon.stageSpot);
-		const conDt = this.lod.con.step(dt, conSeen);
-		if (conDt !== null) {
-			this.furryCon.update(conDt, elapsed, this.camera.position);
-			const tick = this.furryCon.consumeScoreEvent();
-			if (tick) {
-				if (tick.scoreDelta !== 0) {
-					this.score = Math.max(0, this.score + tick.scoreDelta);
-					this.ui.setScore(this.score, this.metSims.size);
-				}
-				this.ui.setStatus(tick.status);
-			} else {
-				const hint = this.furryCon.activityHint(this.camera.position);
-				if (hint && hint !== this.lastConHint) {
-					this.lastConHint = hint;
-					this.ui.setStatus(hint);
-				} else if (!hint) {
-					this.lastConHint = null;
-				}
+		const conDt = this.lod.con.step(dt, seen);
+		if (conDt === null) return;
+		this.furryCon.update(conDt, elapsed, this.camera.position);
+		const tick = this.furryCon.consumeScoreEvent();
+		if (tick) {
+			if (tick.scoreDelta !== 0) {
+				this.score = Math.max(0, this.score + tick.scoreDelta);
+				this.ui.setScore(this.score, this.metSims.size);
 			}
+			this.ui.setStatus(tick.status);
+			return;
 		}
+		const hint = this.furryCon.activityHint(this.camera.position);
+		if (hint && hint !== this.lastConHint) {
+			this.lastConHint = hint;
+			this.ui.setStatus(hint);
+		} else if (!hint) this.lastConHint = null;
+	}
+
+	private updateRoofSystems(dt: number, elapsed: number): void {
 		const roofDt = this.lod.roof.step(dt, this.seesWhere(this.roofIsland.group.position, this.poolPeople.group.position));
 		if (roofDt !== null) {
 			this.roofIsland.update(roofDt, elapsed);
 			this.poolPeople.update(roofDt, elapsed);
 		}
 		this.tickSlide(dt);
+	}
 
-		// Feed the monkey its victim list, then let it aim
+	private updateMonkeyAndEntrances(dt: number, elapsed: number): void {
 		this.simPositions.length = 0;
-		for (const child of this.atmosphere.americans.group.children) {
-			this.simPositions.push(child.position);
-		}
+		for (const child of this.atmosphere.americans.group.children) this.simPositions.push(child.position);
 		this.monkey.setSimPositions(this.simPositions);
-		// De aap klimt tussen atrium en balustrade, dus zijn zone is waar hij hangt.
 		const monkeyDt = this.lod.monkey.step(dt, this.seesWhere(this.monkey.group.position));
 		if (monkeyDt !== null) this.monkey.update(monkeyDt);
 		const catwalkDt = this.lod.catwalk.step(dt, this.seesWhere(this.catwalk.group.position));
@@ -2725,303 +2807,301 @@ export class App {
 		if (this.vehicle === 'heli') this.heli.followCamera(this.camera, dt);
 		else this.heli.update(dt);
 		this.drone.followCamera(this.camera, dt);
+	}
 
-		// E-hint als je naast de geparkeerde drone staat
-		const nearDrone =
-			!this.player.flying && !this.player.driving && this.freeMove && this.drone.distanceTo(this.camera.position) < 3.2;
-		if (nearDrone && !this.nearDroneHint) {
+	private updateVehicleHints(): void {
+		this.updateDroneHint();
+		this.updateScrubberHint();
+		this.updateCarHint();
+		this.updateChariotHint();
+	}
+
+	private updateDroneHint(): void {
+		const near =
+			!(mutableFlag(this.player.flying) || mutableFlag(this.player.driving)) &&
+			this.freeMove &&
+			this.drone.distanceTo(this.camera.position) < INTERACTION_RANGE.drone;
+		if (near && !this.nearDroneHint) {
 			this.nearDroneHint = true;
 			this.ui.setStatus('🛸 Passagiersdrone — druk E om in te stappen');
-		} else if (!nearDrone && this.nearDroneHint) {
-			this.nearDroneHint = false;
-		}
+		} else if (!near && this.nearDroneHint) this.nearDroneHint = false;
+	}
 
-		// Empty scrubber rental
-		const nearScrub =
-			!this.player.flying &&
-			!this.player.driving &&
+	private updateScrubberHint(): void {
+		const near =
+			!(mutableFlag(this.player.flying) || mutableFlag(this.player.driving)) &&
 			this.freeMove &&
-			this.scrubber.distanceTo(this.camera.position) < 3.8 &&
+			this.scrubber.distanceTo(this.camera.position) < INTERACTION_RANGE.parkedScrubber &&
 			levelAt(this.camera.position.y) === 'v0';
-		if (nearScrub && !this.nearScrubberHint) {
+		if (near && !this.nearScrubberHint) {
 			this.nearScrubberHint = true;
 			this.ui.setStatus('🧽 SCHOONMAAK BUGGY #88 — leeg · E = instappen & racen (Shift = turbo)');
-		} else if (!nearScrub && this.nearScrubberHint) {
-			this.nearScrubberHint = false;
-		}
+		} else if (!near && this.nearScrubberHint) this.nearScrubberHint = false;
+	}
 
-		// Driveable cars (P1 garage / parked outside)
-		const nearCar =
-			!this.player.flying && !this.player.driving && this.freeMove && !!this.driveCars.nearestCar(this.camera.position, 4.2);
-		if (nearCar && !this.nearCarHint) {
+	private updateCarHint(): void {
+		const near =
+			!(mutableFlag(this.player.flying) || mutableFlag(this.player.driving)) &&
+			this.freeMove &&
+			Boolean(this.driveCars.nearestCar(this.camera.position, INTERACTION_RANGE.parkedCar));
+		if (near && !this.nearCarHint) {
 			this.nearCarHint = true;
 			this.ui.setStatus('🚗 HUURAUTO · E = instappen · Shift = turbo · west-exit ramp → STAD');
-		} else if (!nearCar && this.nearCarHint) {
-			this.nearCarHint = false;
-		}
+		} else if (!near && this.nearCarHint) this.nearCarHint = false;
+	}
 
-		const nearChariot =
-			!this.player.flying && !this.player.driving && this.freeMove && this.colosseumTransport.isBoardable(this.camera.position);
-		if (nearChariot && !this.nearChariotHint) {
+	private updateChariotHint(): void {
+		const near =
+			!(mutableFlag(this.player.flying) || mutableFlag(this.player.driving)) &&
+			this.freeMove &&
+			this.colosseumTransport.isBoardable(this.camera.position);
+		if (near && !this.nearChariotHint) {
 			this.nearChariotHint = true;
 			const destination = this.colosseumTransport.destination === 'mall' ? 'Mall Entrance' : 'Mega Colosseum';
 			this.ui.setStatus(`🏛️ COLOSSEUM EXPRESS · E = taxi naar ${destination}`);
-		} else if (!nearChariot && this.nearChariotHint) {
-			this.nearChariotHint = false;
-		}
+		} else if (!near && this.nearChariotHint) this.nearChariotHint = false;
+	}
 
-		// Bewoners-dashboard: refresh 2×/s, only while open
+	private updatePeopleSystems(dt: number): void {
 		this.peopleT += dt;
-		if (this.peopleT > 0.5 && this.peopleUi.isOpen) {
+		if (this.peopleT > HUD_TIMING.peopleRefreshSeconds && this.peopleUi.isOpen) {
 			this.peopleT = 0;
 			this.atmosphere.americans.getPeopleSnapshot(this.camera.position, this.peopleRows);
 			this.peopleUi.update(this.peopleRows, this.buildCastRows());
 		}
 		this.shopVoice.update(dt);
 		this.tickBartekDrama(dt);
-		// Auto-greet Youssef when you walk into Kruidvat
-		void this.shopVoice.greetIfNear('kruidvat', this.camera.position, 6.5);
-		const dYoussef = this.shopVoice.distanceTo('kruidvat', this.camera.position);
-		if (dYoussef < TALK_RADIUS && levelAt(this.camera.position.y) === 'v1' && !this.youssefHint) {
+		observeAsync(
+			this.shopVoice.greetIfNear('kruidvat', this.camera.position, PROXIMITY_RANGE.youssefGreeting),
+			'automatic Kruidvat greeting',
+		);
+		const distance = this.shopVoice.distanceTo('kruidvat', this.camera.position);
+		if (distance < TALK_RADIUS && levelAt(this.camera.position.y) === 'v1' && !this.youssefHint) {
 			this.youssefHint = true;
 			this.ui.setStatus('💊 Youssef Benali (Kruidvat) · druk E om te praten');
-		} else if (dYoussef > 10) {
-			this.youssefHint = false;
-		}
-
-		// Sims yell at you if you walk up their ass
+		} else if (distance > PROXIMITY_RANGE.youssefLeave) this.youssefHint = false;
 		const roast = this.atmosphere.americans.maybeRoastPlayer(this.camera.position, dt);
 		if (roast) this.ui.setStatus(`💬 ${roast}`);
+	}
 
-		// Meet sims nearby = score (viral "I know Brad" energy)
+	private updateProximityHud(dt: number): void {
 		this.nearHudT += dt;
-		if (this.nearHudT > 0.35) {
-			this.nearHudT = 0;
-			// Bartek's mix zakt weg met de afstand tot de booth (kwadratisch),
-			// net als de gebedsruimte-loop. Dichtbij = vol, andere kant mall = zacht.
-			{
-				const bd = this.camera.position.distanceTo(this.djBartek.pos);
-				this.djPlayer.setDistanceGain(1 / (1 + BOOTH_FALLOFF_K * bd * bd));
-			}
-			const near = this.atmosphere.americans.getSimsNear(this.camera.position, 5.5);
-			let gained = false;
-			for (const sim of near) {
-				if (!this.metSims.has(sim.id)) {
-					this.metSims.add(sim.id);
-					this.score += 5;
-					gained = true;
-				}
-			}
-			if (gained) this.ui.setScore(this.score, this.metSims.size);
-			const top = near[0];
-			if (top) {
-				const heart = top.partnerName ? ` ❤️ ${top.partnerName.split(' ')[0] ?? top.partnerName}` : '';
-				const why = top.lifeLine ? ` · ${top.lifeLine}` : '';
-				this.ui.setNearbySim(
-					`${top.name}${heart} → ${top.targetShop} · €${top.moneySpent} · ☹ ${Math.round(top.unhappiness)}%${why}`,
-				);
-			} else {
-				this.ui.setNearbySim(null);
-			}
+		if (this.nearHudT <= HUD_TIMING.proximityRefreshSeconds) return;
+		this.nearHudT = 0;
+		const boothDistance = this.camera.position.distanceTo(this.djBartek.pos);
+		this.djPlayer.setDistanceGain(1 / (1 + BOOTH_FALLOFF_K * boothDistance * boothDistance));
+		this.updateNearbySimHud();
+		this.updateLocationHints();
+		this.updateSecurityHint();
+		this.updateElevatorHint();
+	}
 
-			// DJ Bartek proximity hint
-			const atDj = this.djBartek.inRange(this.camera.position);
-			if (atDj && !this.nearDjHint && !this.djUi.isOpen()) {
-				this.nearDjHint = true;
-				this.ui.setStatus('🎧 DJ BARTEK · druk E · request plaatjes · Bartek Bartek');
-			} else if (!atDj) {
-				this.nearDjHint = false;
-			}
-
-			const dCon = this.camera.position.distanceTo(this.furryCon.plazaSpot);
-			if (dCon < 40 && !this.nearConHint) {
-				this.nearConHint = true;
-				this.ui.setStatus('🐾 PRAIRIE FUR CON · pink glows = E · badge desk at doors first · dealers/stage/hotel/food');
-			} else if (dCon >= 55) {
-				this.nearConHint = false;
-			}
-
-			if (this.cityFavela.inGangRange(this.camera.position) && !this.nearFavelaGangHint) {
-				this.nearFavelaGangHint = true;
-				this.ui.setStatus('🔫 FAVELA · bendes + twinks met slop · E = praten / pedágio / share the bowl');
-			} else if (!this.cityFavela.inGangRange(this.camera.position)) {
-				this.nearFavelaGangHint = false;
-			}
-
-			// Protest picket — Wir schaffen das
-			const dProt = this.camera.position.distanceTo(this.protest.pos);
-			if (dProt < 7 && !this.nearProtestHint) {
-				this.nearProtestHint = true;
-				this.ui.setStatus('📢 PROTEST STEMPELT · 28 multi-voice chants · Wir schaffen das · Mutti lead');
-			} else if (dProt >= 9) {
-				this.nearProtestHint = false;
-			}
-
-			// Island Hop Travel — next to juwelen cave
-			const dTravel = this.camera.position.distanceTo(this.travel.pos);
-			if (dTravel < 6 && !this.nearTravelHint) {
-				this.nearTravelHint = true;
-				this.ui.setStatus('🌴 ISLAND HOP · Epstein Island charters · flights suspended · NDA desk');
-			} else if (dTravel >= 8) {
-				this.nearTravelHint = false;
-			}
-
-			// Gebedsruimte — music + Allahu Akbar wall
-			const dPrayer = Math.hypot(this.camera.position.x - this.prayer.pos.x, this.camera.position.z - this.prayer.pos.z);
-			if (dPrayer < 12 && levelAt(this.camera.position.y) === 'v0' && !this.nearPrayerHint) {
-				this.nearPrayerHint = true;
-				this.ui.setStatus('🕌 GEBEDSRUIMTE · Allahu Trapbar ♪ (vol) · poses op de beat · geit');
-			} else if (dPrayer >= 16) {
-				this.nearPrayerHint = false;
-			}
-
-			// Security — if you're close enough to read the badge, you're already a threat
-			if (!this.nearSecurityHint) {
-				for (const g of this.security.roster) {
-					// roster has no positions — soft global intro once per area via first open fire is enough
-					void g;
-				}
-				// One-shot when first free-roaming near atrium
-				const dAtrium = Math.hypot(this.camera.position.x, this.camera.position.z);
-				if (dAtrium < 18 && this.freeMove) {
-					this.nearSecurityHint = true;
-					this.ui.setStatus('🚔 MALL SECURITY · hypersensitief · adem te hard = open vuur');
-				}
-			}
-
-			// Glass elevator (+ dak: wide radius because call pedestals sit off-shaft)
-			const dElevXZ = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
-			const onRoofHint = this.player.level === 'roof';
-			const elevHintR = onRoofHint ? 16 : 5;
-			const elevHintLeave = onRoofHint ? 20 : 7;
-			const inElev = this.elevator.contains(this.camera.position.x, this.camera.position.z);
-			if ((dElevXZ < elevHintR || inElev) && !this.nearElevHint) {
-				this.nearElevHint = true;
-				this.ui.setStatus(
-					inElev
-						? '🛗 GLAZEN LIFT · kijk Hans · E = kies verdieping'
-						: onRoofHint
-							? '🟢 GROENE KNOP / gele streep · E = roep Hans naar het dak'
-							: '🛗 GLAZEN LIFT · gele/blauwe knop of E naast schacht = roep lift',
-				);
-			} else if (dElevXZ >= elevHintLeave && !inElev) {
-				this.nearElevHint = false;
-			}
+	private updateNearbySimHud(): void {
+		const near = this.atmosphere.americans.getSimsNear(this.camera.position, PROXIMITY_RANGE.sims);
+		let gained = false;
+		for (const sim of near) {
+			if (this.metSims.has(sim.id)) continue;
+			this.metSims.add(sim.id);
+			this.score += MONEY_GIFT.score;
+			gained = true;
 		}
+		if (gained) this.ui.setScore(this.score, this.metSims.size);
+		const top = near[0];
+		if (!top) {
+			this.ui.setNearbySim(null);
+			return;
+		}
+		const heart = top.partnerName ? ` ❤️ ${top.partnerName.split(' ')[0] ?? top.partnerName}` : '';
+		const why = top.lifeLine ? ` · ${top.lifeLine}` : '';
+		this.ui.setNearbySim(
+			`${top.name}${heart} → ${top.targetShop} · €${top.moneySpent} · ☹ ${Math.round(top.unhappiness)}%${why}`,
+		);
+	}
 
-		const eul = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
-		const targetStore = this.currentStore;
+	private updateLocationHints(): void {
+		const atDj = this.djBartek.inRange(this.camera.position);
+		if (atDj && !this.nearDjHint && !this.djUi.isOpen()) {
+			this.nearDjHint = true;
+			this.ui.setStatus('🎧 DJ BARTEK · druk E · request plaatjes · Bartek Bartek');
+		} else if (!atDj) this.nearDjHint = false;
+		this.updateConAndFavelaHints();
+		this.updateProtestAndTravelHints();
+		this.updatePrayerHint();
+	}
+
+	private updateConAndFavelaHints(): void {
+		const conventionDistance = this.camera.position.distanceTo(this.furryCon.plazaSpot);
+		if (conventionDistance < PROXIMITY_RANGE.conEnter && !this.nearConHint) {
+			this.nearConHint = true;
+			this.ui.setStatus('🐾 PRAIRIE FUR CON · pink glows = E · badge desk at doors first · dealers/stage/hotel/food');
+		} else if (conventionDistance >= PROXIMITY_RANGE.conLeave) this.nearConHint = false;
+		if (this.cityFavela.inGangRange(this.camera.position) && !this.nearFavelaGangHint) {
+			this.nearFavelaGangHint = true;
+			this.ui.setStatus('🔫 FAVELA · bendes + twinks met slop · E = praten / pedágio / share the bowl');
+		} else if (!this.cityFavela.inGangRange(this.camera.position)) this.nearFavelaGangHint = false;
+	}
+
+	private updateProtestAndTravelHints(): void {
+		const protestDistance = this.camera.position.distanceTo(this.protest.pos);
+		if (protestDistance < PROXIMITY_RANGE.protestEnter && !this.nearProtestHint) {
+			this.nearProtestHint = true;
+			this.ui.setStatus('📢 PROTEST STEMPELT · 28 multi-voice chants · Wir schaffen das · Mutti lead');
+		} else if (protestDistance >= PROXIMITY_RANGE.protestLeave) this.nearProtestHint = false;
+		const travelDistance = this.camera.position.distanceTo(this.travel.pos);
+		if (travelDistance < PROXIMITY_RANGE.travelEnter && !this.nearTravelHint) {
+			this.nearTravelHint = true;
+			this.ui.setStatus('🌴 ISLAND HOP · Epstein Island charters · flights suspended · NDA desk');
+		} else if (travelDistance >= PROXIMITY_RANGE.travelLeave) this.nearTravelHint = false;
+	}
+
+	private updatePrayerHint(): void {
+		const distance = Math.hypot(this.camera.position.x - this.prayer.pos.x, this.camera.position.z - this.prayer.pos.z);
+		if (distance < PROXIMITY_RANGE.prayerEnter && levelAt(this.camera.position.y) === 'v0' && !this.nearPrayerHint) {
+			this.nearPrayerHint = true;
+			this.ui.setStatus('🕌 GEBEDSRUIMTE · Allahu Trapbar ♪ (vol) · poses op de beat · geit');
+		} else if (distance >= PROXIMITY_RANGE.prayerLeave) this.nearPrayerHint = false;
+	}
+
+	private updateSecurityHint(): void {
+		if (this.nearSecurityHint || this.security.roster.length === 0) return;
+		const atriumDistance = Math.hypot(this.camera.position.x, this.camera.position.z);
+		if (atriumDistance < SECURITY_POLICY.introRadius && this.freeMove) {
+			this.nearSecurityHint = true;
+			this.ui.setStatus('🚔 MALL SECURITY · hypersensitief · adem te hard = open vuur');
+		}
+	}
+
+	private updateElevatorHint(): void {
+		const distance = Math.hypot(this.camera.position.x - this.elevator.pos.x, this.camera.position.z - this.elevator.pos.z);
+		const onRoof = this.player.level === 'roof';
+		const enterRange = onRoof ? ELEVATOR_HINT_RANGE.roofEnter : ELEVATOR_HINT_RANGE.floorEnter;
+		const leaveRange = onRoof ? ELEVATOR_HINT_RANGE.roofLeave : ELEVATOR_HINT_RANGE.floorLeave;
+		const inside = this.elevator.contains(this.camera.position.x, this.camera.position.z);
+		if ((distance < enterRange || inside) && !this.nearElevHint) {
+			this.nearElevHint = true;
+			this.ui.setStatus(
+				inside
+					? '🛗 GLAZEN LIFT · kijk Hans · E = kies verdieping'
+					: onRoof
+						? '🟢 GROENE KNOP / gele streep · E = roep Hans naar het dak'
+						: '🛗 GLAZEN LIFT · gele/blauwe knop of E naast schacht = roep lift',
+			);
+		} else if (distance >= leaveRange && !inside) this.nearElevHint = false;
+	}
+
+	private updateMap(): void {
+		const euler = new Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
 		const activeRide = this.vehicle === 'car' ? this.driveCars.ride : this.vehicle === 'scrubber' ? this.scrubber.ride : null;
 		const mapY = activeRide?.y ?? this.player.feetHeight;
 		this.mapBlips.length = 0;
 		for (const child of this.atmosphere.americans.group.children) {
-			this.mapBlips.push({
-				x: child.position.x,
-				z: child.position.z,
-				level: levelAt(child.position.y),
-			});
+			this.mapBlips.push({ x: child.position.x, z: child.position.z, level: levelAt(child.position.y) });
 		}
+		const targetStore = this.currentStore;
 		this.ui.updateMap({
 			x: this.camera.position.x,
 			y: mapY,
 			z: this.camera.position.z,
-			yaw: eul.y,
+			yaw: euler.y,
 			level: deckAt(this.camera.position.x, this.camera.position.y, this.camera.position.z),
-			path: this.currentPath.map((n) => ({ x: n.x, y: n.y, z: n.z })),
+			path: this.currentPath.map((node) => ({ x: node.x, y: node.y, z: node.z })),
 			blips: this.mapBlips,
 			target: targetStore
-				? {
-						x: targetStore.x,
-						z: targetStore.z,
-						level: targetStore.level,
-						name: targetStore.name.replace('\n', ' '),
-					}
+				? { x: targetStore.x, z: targetStore.z, level: targetStore.level, name: targetStore.name.replace('\n', ' ') }
 				: null,
 		});
+	}
 
-		// Persist position + score for HMR / reload
+	private finishLogic(dt: number): void {
 		this.persistT += dt;
 		if (this.persistT >= PERSIST_EVERY) {
 			this.persistT = 0;
 			this.persistNow();
 		}
-
-		// The route profiler owns the final camera pose. Applying it here keeps
-		// gameplay and simulation running while preventing Director or Controls
-		// from overwriting the deterministic course before the draw.
 		if (this.perfPose) {
 			this.camera.position.set(this.perfPose.x, this.perfPose.y, this.perfPose.z);
 			this.camera.lookAt(this.perfPose.lookX, this.perfPose.lookY, this.perfPose.lookZ);
 		}
-
-		// Last thing before the draw: every update() above has moved something.
-		// Keyed on the camera, not on the player body: in guest view and on the
-		// cinematic tour `player.update()` never runs, so `player.level` is frozen
-		// on whatever deck the body was left standing on. Same deck as the minimap.
 		cullByLevel(levelAt(this.camera.position.y));
+	}
 
+	private renderFrame(dt: number, cpuStart: number): RenderTiming {
 		const afterLogic = performance.now();
 		this.renderer.info.reset();
 		this.refreshZoneView();
 		this.sceneBatcher.update();
-		// Na sceneBatcher.update(): de bollen zijn meegegroeid met wat bewoog en de
-		// zoneverzameling van elke batch klopt weer, dus nu pas kan de cull erover.
 		if (this.zoneCullOn) {
 			this.sceneBatcher.applyZoneVisibility(this.zoneCuller);
 			this.zoneVisibility.apply(this.zoneCuller);
 		}
-		// Na sceneBatcher.update(): alleen de expliciet dynamische wortels zijn
-		// ververst, waaronder ieder object dat een virtuele lamp volgt.
 		this.pool.update(this.camera);
 		const afterBatch = performance.now();
 		this.gpuTimer?.begin();
 		this.composer.render(dt);
 		this.gpuTimer?.end();
-		// Let op bij het lezen: dit is de tijd om het frame te versturen, niet om
-		// het te tekenen. De driver blokkeert hier pas als hij achterloopt, en dan
-		// loopt juist dít getal op terwijl de GPU de echte schuldige is.
 		const afterRender = performance.now();
 		this.perfCpuFrame.logicMs = afterLogic - cpuStart;
 		this.perfCpuFrame.batchMs = afterBatch - afterLogic;
 		this.perfCpuFrame.submitMs = afterRender - afterBatch;
 		this.perfCpuFrame.triangles = this.renderer.info.render.triangles;
+		return { afterLogic, afterBatch, afterRender };
+	}
 
-		// Ná de render: de tellers van dit frame staan er nu in. Onder NO_PERF_HUD
-		// valt dit hele blok weg, inclusief het uitlezen van renderer.info.
-		if (!feature('NO_PERF_HUD')) {
-			const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
-			const blik = this.camera.getWorldDirection(this.hudDirection);
-			// Rijdend of vliegend staat de voetganger-feetY bevroren op zijn laatste
-			// stap; een kar die 7,5 m zweefde rapporteerde vrolijk "0.0 · V0" en
-			// verborg daarmee precies die bug. De camera liegt nooit.
-			const hudVoeten = this.player.driving || this.player.flying ? this.camera.position.y - EYE : this.player.feetHeight;
-			this.perfHud?.update({
-				eyeX: this.camera.position.x,
-				eyeY: this.camera.position.y,
-				eyeZ: this.camera.position.z,
-				feetY: hudVoeten,
-				dirX: blik.x,
-				dirY: blik.y,
-				dirZ: blik.z,
-				frameMs,
-				drawCalls: this.renderer.info.render.calls,
-				triangles: this.renderer.info.render.triangles,
-				programs: this.renderer.info.programs?.length ?? 0,
-				geometries: this.renderer.info.memory.geometries,
-				textures: this.renderer.info.memory.textures,
-				bufferWidth: buffer.width,
-				bufferHeight: buffer.height,
-				renderScale: this.dynScale,
-				cpuMs: afterRender - cpuStart,
-				gpuMs: this.gpuTimer?.ms ?? 0,
-				gpuSupported: this.gpuTimer?.supported ?? false,
-				logicMs: afterLogic - cpuStart,
-				batchMs: afterBatch - afterLogic,
-				submitMs: afterRender - afterBatch,
-				lightsUsed: this.pool.slotsInUse,
-				lightsTotal: this.pool.slots,
-				batches: this.sceneBatcher.stats.drawCalls,
-			});
-		}
+	private updatePerfHud(frame: FrameTiming, render: RenderTiming): void {
+		if (feature('NO_PERF_HUD')) return;
+		const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
+		const direction = this.camera.getWorldDirection(this.hudDirection);
+		const feetY =
+			mutableFlag(this.player.driving) || mutableFlag(this.player.flying) ? this.camera.position.y - EYE : this.player.feetHeight;
+		this.perfHud?.update({
+			eyeX: this.camera.position.x,
+			eyeY: this.camera.position.y,
+			eyeZ: this.camera.position.z,
+			feetY,
+			dirX: direction.x,
+			dirY: direction.y,
+			dirZ: direction.z,
+			frameMs: frame.frameMs,
+			drawCalls: this.renderer.info.render.calls,
+			triangles: this.renderer.info.render.triangles,
+			programs: this.renderer.info.programs?.length ?? 0,
+			geometries: this.renderer.info.memory.geometries,
+			textures: this.renderer.info.memory.textures,
+			bufferWidth: buffer.width,
+			bufferHeight: buffer.height,
+			renderScale: this.dynScale,
+			cpuMs: render.afterRender - frame.cpuStart,
+			gpuMs: this.gpuTimer?.ms ?? 0,
+			gpuSupported: this.gpuTimer?.supported ?? false,
+			logicMs: render.afterLogic - frame.cpuStart,
+			batchMs: render.afterBatch - render.afterLogic,
+			submitMs: render.afterRender - render.afterBatch,
+			lightsUsed: this.pool.slotsInUse,
+			lightsTotal: this.pool.slots,
+			batches: this.sceneBatcher.stats.drawCalls,
+		});
+	}
+
+	private readonly animate = (timestamp?: number): void => {
+		requestAnimationFrame(this.animate);
+		const frame = this.beginFrame(timestamp);
+		const { dt, elapsed } = frame;
+		this.updateIndoorSystems(dt);
+		this.updatePlayerVehicles(dt);
+		this.updateAudioSystems(dt);
+		this.updateSecurity(dt);
+
+		this.updatePlayerCamera(dt);
+		this.updateMallSystems(dt, elapsed);
+		this.updateCitySystems(dt, elapsed);
+		this.updateMonkeyAndEntrances(dt, elapsed);
+		this.updateVehicleHints();
+		this.updatePeopleSystems(dt);
+
+		this.updateProximityHud(dt);
+		this.updateMap();
+		this.finishLogic(dt);
+		const render = this.renderFrame(dt, frame.cpuStart);
+		this.updatePerfHud(frame, render);
 	};
 }

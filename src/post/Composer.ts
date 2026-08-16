@@ -7,12 +7,13 @@ import {
 	ToneMappingMode,
 	VignetteEffect,
 } from 'postprocessing';
-import * as THREE from 'three';
+import type { Camera, Scene, WebGLRenderer } from 'three';
+import { HalfFloatType } from 'three';
 
 /** Clean, stable post — NO bloom (bloom + emissive = arcade flicker). */
-export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): EffectComposer {
+export function createComposer(renderer: WebGLRenderer, scene: Scene, camera: Camera): EffectComposer {
 	const composer = new EffectComposer(renderer, {
-		frameBufferType: THREE.HalfFloatType,
+		frameBufferType: HalfFloatType,
 	});
 
 	composer.addPass(new RenderPass(scene, camera));

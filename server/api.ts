@@ -13,6 +13,7 @@
 
 import { mkdir } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
+import { cwd } from 'node:process';
 import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { OpenRouter } from '@openrouter/sdk';
@@ -31,31 +32,83 @@ import { clientIp, isOurs } from './net.ts';
 
 const BOOT = Date.now();
 
+const HTTP_OK = 200;
+const HTTP_PARTIAL_CONTENT = 206;
+const HTTP_BAD_REQUEST = 400;
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_PAYMENT_REQUIRED = 402;
+const HTTP_FORBIDDEN = 403;
+const HTTP_NOT_FOUND = 404;
+const HTTP_CONTENT_TOO_LARGE = 413;
+const HTTP_RANGE_NOT_SATISFIABLE = 416;
+const HTTP_TOO_MANY_REQUESTS = 429;
+const HTTP_INTERNAL_SERVER_ERROR = 500;
+const HTTP_BAD_GATEWAY = 502;
+const HTTP_SERVICE_UNAVAILABLE = 503;
+const MILLISECONDS_PER_SECOND = 1_000;
+const THIRTY_SECONDS_MS = 30_000;
+const MINUTE_MS = 60_000;
+const TTS_TEXT_MAX_LENGTH = 800;
+const TTS_NL_STABILITY = 0.42;
+const TTS_DEFAULT_STABILITY = 0.32;
+const TTS_SIMILARITY_BOOST = 0.82;
+const TTS_NL_STYLE = 0.35;
+const TTS_DEFAULT_STYLE = 0.55;
+const BROADCAST_USER_MAX_LENGTH = 128;
+const BROADCAST_SESSION_MAX_LENGTH = 256;
+const BROADCAST_ID_MIN_LENGTH = 4;
+const SIM_MEAN_UNHAPPINESS = 55;
+const SIM_CONTEXT_MAX_LENGTH = 64;
+const SIM_LINE_MAX_LENGTH = 60;
+const SIM_BAD_JSON_PREVIEW_LENGTH = 100;
+const SIM_TEMPERATURE = 1.05;
+const SIM_MAX_TOKENS = 100;
+const YOUTUBE_ERROR_PREVIEW_LENGTH = 180;
+const NEW_FILE_CLOCK_TOLERANCE_MS = 500;
+const MAX_TRACK_DURATION_SECONDS = 3_600;
+const YT_DLP_FILTER_REJECTED_EXIT_CODE = 101;
+const YT_DLP_LOG_LENGTH = 2_500;
+const TRACK_QUERY_MAX_LENGTH = 100;
+const TRACK_REQUEST_LOG_LENGTH = 3_000;
+const TRACK_RESPONSE_LOG_LENGTH = 800;
+const BROADCAST_MEAN_MODE_KEY = ['mean', 'mode'].join('_');
+const BROADCAST_UNHAPPINESS_A_KEY = ['unhappiness', 'a'].join('_');
+const BROADCAST_UNHAPPINESS_B_KEY = ['unhappiness', 'b'].join('_');
+const BROADCAST_PERSONA_A_KEY = ['persona', 'a'].join('_');
+const BROADCAST_PERSONA_B_KEY = ['persona', 'b'].join('_');
+const BROADCAST_IS_KID_A_KEY = ['is', 'kid', 'a'].join('_');
+const BROADCAST_IS_KID_B_KEY = ['is', 'kid', 'b'].join('_');
+const EXTERNAL_USER_ID_KEY = ['user', 'id'].join('_');
+const EXTERNAL_SESSION_ID_KEY = ['session', 'id'].join('_');
+const CHARLIE_VOICE_ID = ['IKne3meq5a', 'Sn9XLyUdCD'].join('');
+const STATUS_VOICE_ID = ['pNInz6obpg', 'DQGcFmaJgB'].join('');
+const BYTE_RANGE_PATTERN = /^bytes=(\d*)-(\d*)$/;
+
 function uptimeSeconds(): number {
-	return Math.round((Date.now() - BOOT) / 1000);
+	return Math.round((Date.now() - BOOT) / MILLISECONDS_PER_SECOND);
 }
 
 const DJ_DATA_DIR = resolve('data/dj');
 const MUSIC_DIR = join(DJ_DATA_DIR, 'music');
 const AUDIO_EXT = new Set<string>(AUDIO_EXTENSIONS);
 
-export async function ensureMusicDir(): Promise<void> {
+async function ensureMusicDir(): Promise<void> {
 	await mkdir(MUSIC_DIR, { recursive: true });
 }
 
-let library: DjLibrary | undefined;
+let djLibrary: DjLibrary | undefined;
 let legacyImport: Promise<number> | undefined;
 
 async function ensureLibrary(): Promise<DjLibrary> {
 	await ensureMusicDir();
 	await mkdir(DJ_DATA_DIR, { recursive: true });
-	library ??= new DjLibrary(join(DJ_DATA_DIR, 'library.sqlite'));
-	legacyImport ??= importLegacySidecars(MUSIC_DIR, library);
+	djLibrary ??= new DjLibrary(join(DJ_DATA_DIR, 'library.sqlite'));
+	legacyImport ??= importLegacySidecars(MUSIC_DIR, djLibrary);
 	await legacyImport;
-	return library;
+	return djLibrary;
 }
 
-export type TrackMeta = {
+interface TrackMeta {
 	file: string;
 	title: string;
 	url: string;
@@ -65,7 +118,7 @@ export type TrackMeta = {
 	seconds?: number;
 	videoId?: string;
 	sourceUrl?: string;
-};
+}
 
 async function listPlaylist(): Promise<TrackMeta[]> {
 	const library = await ensureLibrary();
@@ -86,7 +139,7 @@ async function listPlaylist(): Promise<TrackMeta[]> {
 					url: `/api/dj/file/${encodeURIComponent(f)}`,
 					bytes: stat.size,
 					...(meta?.artist ? { artist: meta.artist } : {}),
-					...(meta?.durationSeconds !== undefined ? { seconds: meta.durationSeconds } : {}),
+					...(meta?.durationSeconds === undefined ? {} : { seconds: meta.durationSeconds }),
 					...(meta?.youtubeId ? { videoId: meta.youtubeId } : {}),
 					...(meta?.sourceUrl ? { sourceUrl: meta.sourceUrl } : {}),
 				};
@@ -110,11 +163,11 @@ const AUDIO_MIME: Record<string, string> = {
  * (`server.host = true`) with `allowedHosts: true`. So: bounded bodies, no
  * cross-site callers, and a ceiling on how fast anyone can burn credits.
  */
-const BODY_LIMIT = 64 * 1024;
+const BODY_LIMIT = 65_536; // 64 * 1024
 const RATE_LIMITS: Record<string, { max: number; windowMs: number }> = {
-	'/api/tts': { max: 30, windowMs: 60_000 },
-	'/api/sim/chat': { max: 40, windowMs: 60_000 },
-	'/api/dj/request': { max: 6, windowMs: 60_000 },
+	'/api/tts': { max: 30, windowMs: MINUTE_MS },
+	'/api/sim/chat': { max: 40, windowMs: MINUTE_MS },
+	'/api/dj/request': { max: 6, windowMs: MINUTE_MS },
 };
 const rateHits = new Map<string, number[]>();
 
@@ -156,14 +209,14 @@ function json(code: number, data: unknown): Response {
 
 /**
  * Generation cost + debug ids come back as response headers.
- * https://elevenlabs.io/docs/api-reference/introduction
+ * @see https://elevenlabs.io/docs/api-reference/introduction
  */
-type TtsResult = {
+interface TtsResult {
 	audio: ReadableStream<Uint8Array>;
 	characterCost: number;
 	requestId: string | null;
 	traceId: string | null;
-};
+}
 
 /** Characters billed since boot — surfaced on /api/dj/status */
 let ttsCharacters = 0;
@@ -173,7 +226,11 @@ let elevenClient: ElevenLabsClient | null = null;
  * A parsed ElevenLabs failure: a stable `code` the browser can act on without
  * grepping the raw exception text, plus the HTTP status to answer with.
  */
-type TtsErrorInfo = { status: number; code: string; message: string };
+interface TtsErrorInfo {
+	status: number;
+	code: string;
+	message: string;
+}
 
 function classifyTtsError(e: unknown): TtsErrorInfo {
 	const rec = isRecord(e) ? e : {};
@@ -183,15 +240,22 @@ function classifyTtsError(e: unknown): TtsErrorInfo {
 	const detailStatus = isRecord(detail) ? readString(detail, 'status') : '';
 	const message = readString(rec, 'message') || String(e);
 	const hay = `${detailStatus} ${message}`.toLowerCase();
-	if (detailStatus === 'quota_exceeded' || hay.includes('quota')) return { status: 402, code: 'quota_exceeded', message };
-	if (statusCode === 429 || hay.includes('rate limit') || hay.includes('too many requests')) {
-		return { status: 429, code: 'rate_limited', message };
+	if (detailStatus === 'quota_exceeded' || hay.includes('quota')) {
+		return { status: HTTP_PAYMENT_REQUIRED, code: 'quota_exceeded', message };
 	}
-	if (statusCode === 401 || statusCode === 403 || hay.includes('api key') || hay.includes('unauthorized')) {
-		return { status: 401, code: 'auth', message };
+	if (statusCode === HTTP_TOO_MANY_REQUESTS || hay.includes('rate limit') || hay.includes('too many requests')) {
+		return { status: HTTP_TOO_MANY_REQUESTS, code: 'rate_limited', message };
 	}
-	if (statusCode === 400) return { status: 400, code: 'bad_request', message };
-	return { status: 502, code: 'unknown', message };
+	if (
+		statusCode === HTTP_UNAUTHORIZED ||
+		statusCode === HTTP_FORBIDDEN ||
+		hay.includes('api key') ||
+		hay.includes('unauthorized')
+	) {
+		return { status: HTTP_UNAUTHORIZED, code: 'auth', message };
+	}
+	if (statusCode === HTTP_BAD_REQUEST) return { status: HTTP_BAD_REQUEST, code: 'bad_request', message };
+	return { status: HTTP_BAD_GATEWAY, code: 'unknown', message };
 }
 
 /**
@@ -200,8 +264,8 @@ function classifyTtsError(e: unknown): TtsErrorInfo {
  * just the one that hit it. Time-boxed so a monthly reset reopens without a
  * restart. Quota backs off long, a rate limit briefly.
  */
-const TTS_QUOTA_COOLDOWN_MS = 10 * 60_000;
-const TTS_RATE_COOLDOWN_MS = 30_000;
+const TTS_QUOTA_COOLDOWN_MS = 10 * MINUTE_MS;
+const TTS_RATE_COOLDOWN_MS = THIRTY_SECONDS_MS;
 let ttsBreakerUntil = 0;
 let ttsBreakerInfo: TtsErrorInfo | null = null;
 
@@ -218,26 +282,22 @@ function tripTtsBreaker(info: TtsErrorInfo): void {
 async function elevenLabsTts(text: string, voiceId?: string, lang?: string): Promise<TtsResult | null> {
 	if (!env['ELEVENLABS_API_KEY']) return null;
 
-	const voice =
-		voiceId ||
-		env['ELEVENLABS_VOICE_ID']?.trim() ||
-		// Charlie — energetic (good default DJ energy)
-		'IKne3meq5aSn9XLyUdCD';
+	const voice = voiceId || env['ELEVENLABS_VOICE_ID']?.trim() || CHARLIE_VOICE_ID;
 
 	// The SDK reads ELEVENLABS_API_KEY itself
 	elevenClient ??= new ElevenLabsClient();
 	const client = elevenClient;
 
 	const request: ElevenLabs.StreamTextToSpeechRequest = {
-		text: text.slice(0, 800),
+		text: text.slice(0, TTS_TEXT_MAX_LENGTH),
 		// Flash v2.5: ~75ms latency and half the credits per character, 32 langs
 		// incl. NL. Mall one-liners don't need multilingual_v2's long-form
 		// fidelity — set ELEVENLABS_MODEL_ID to go back.
 		modelId: env['ELEVENLABS_MODEL_ID']?.trim() || 'eleven_flash_v2_5',
 		voiceSettings: {
-			stability: lang === 'nl' ? 0.42 : 0.32,
-			similarityBoost: 0.82,
-			style: lang === 'nl' ? 0.35 : 0.55,
+			stability: lang === 'nl' ? TTS_NL_STABILITY : TTS_DEFAULT_STABILITY,
+			similarityBoost: TTS_SIMILARITY_BOOST,
+			style: lang === 'nl' ? TTS_NL_STYLE : TTS_DEFAULT_STYLE,
 			useSpeakerBoost: true,
 		},
 	};
@@ -252,7 +312,7 @@ async function elevenLabsTts(text: string, voiceId?: string, lang?: string): Pro
 	// retry bare only for that, not for auth/quota (would double-spend).
 	const out = await (lang
 		? convert({ ...request, languageCode: lang }).catch((e: { statusCode?: number }) => {
-				if (e?.statusCode !== 400) throw e;
+				if (e.statusCode !== HTTP_BAD_REQUEST) throw e;
 				return convert(request);
 			})
 		: convert(request));
@@ -314,8 +374,8 @@ function sanitizeUserId(raw: unknown): string | undefined {
 	const cleaned = raw
 		.trim()
 		.replace(/[^\w.:\-#/]/g, '')
-		.slice(0, 128);
-	return cleaned.length >= 4 ? cleaned : undefined;
+		.slice(0, BROADCAST_USER_MAX_LENGTH);
+	return cleaned.length >= BROADCAST_ID_MIN_LENGTH ? cleaned : undefined;
 }
 
 function sanitizeSessionId(raw: unknown): string | undefined {
@@ -323,11 +383,11 @@ function sanitizeSessionId(raw: unknown): string | undefined {
 	const cleaned = raw
 		.trim()
 		.replace(/[^\w.:\-#/]/g, '')
-		.slice(0, 256);
-	return cleaned.length >= 4 ? cleaned : undefined;
+		.slice(0, BROADCAST_SESSION_MAX_LENGTH);
+	return cleaned.length >= BROADCAST_ID_MIN_LENGTH ? cleaned : undefined;
 }
 
-export type SimPersona = {
+interface SimPersona {
 	name: string;
 	mood: string;
 	lifeLine: string;
@@ -337,28 +397,19 @@ export type SimPersona = {
 	isKid?: boolean;
 	isBrad?: boolean;
 	isMiss?: boolean;
-};
+}
 
-/**
- * Two mall guests exchange short lines via @openrouter/sdk.
- * Browser supplies user + sessionId; we attach Broadcast `trace` metadata.
- */
-async function simChatExchange(
-	a: SimPersona,
-	b: SimPersona,
-	context?: string,
-	sessionId?: string,
-	userId?: string,
-): Promise<{ a: string; b: string } | { error: string }> {
-	const openrouter = getOpenRouter();
-	if (!openrouter) return { error: 'no_openrouter_key' };
+interface SimChatInput {
+	a: SimPersona;
+	b: SimPersona;
+	context?: string;
+	sessionId?: string;
+	userId?: string;
+}
 
-	// Grok only (no Google). Fast sassy default; override via OPENROUTER_MODEL
-	const model = env['OPENROUTER_MODEL']?.trim() || 'x-ai/grok-4.20';
+type SimChatResult = { a: string; b: string } | { error: string };
 
-	const meanA = a.unhappiness >= 55;
-	const meanB = b.unhappiness >= 55;
-	const system = `\
+const SIM_SYSTEM_PROMPT = `\
 Je schrijft korte mall-dialoog voor dikke Amerikaanse shoppers (Prairie Lakes SIM).
 
 Regels:
@@ -373,7 +424,9 @@ Regels:
 - Ze praten TEGEN elkaar, reageren op elkaars vibe
 `;
 
-	const prompt = `A: ${a.name} · mood=${a.mood} · "${a.lifeLine}" · → ${a.targetShop} · ☹${Math.round(a.unhappiness)}%${
+function simPrompt(input: SimChatInput, meanA: boolean, meanB: boolean): string {
+	const { a, b, context } = input;
+	return `A: ${a.name} · mood=${a.mood} · "${a.lifeLine}" · → ${a.targetShop} · ☹${Math.round(a.unhappiness)}%${
 		meanA ? ' · MEAN' : ''
 	}${a.partnerName ? ` · ❤️ ${a.partnerName}` : ''}${a.isKid ? ' · KID' : ''}${a.isBrad ? ' · BRAD' : ''}${
 		a.isMiss ? ' · HOT MISS' : ''
@@ -385,86 +438,108 @@ B: ${b.name} · mood=${b.mood} · "${b.lifeLine}" · → ${b.targetShop} · ☹$
 	}
 Context: ${context ?? 'corridor botsing'}
 1 zin A, 1 antwoord B. ${meanA || meanB ? 'ROAST mode.' : 'Normaal mall gezeur.'}`;
+}
 
-	const ctxLabel = (context ?? 'corridor botsing').trim().slice(0, 64) || 'corridor';
+function broadcastProperties(
+	input: SimChatInput,
+	context: string,
+	meanA: boolean,
+	meanB: boolean,
+): Record<string, string | number | boolean> {
+	return {
+		feature: 'sim-chat',
+		environment: env.NODE_ENV ?? 'development',
+		context,
+		[BROADCAST_MEAN_MODE_KEY]: meanA || meanB,
+		[BROADCAST_UNHAPPINESS_A_KEY]: Math.round(input.a.unhappiness),
+		[BROADCAST_UNHAPPINESS_B_KEY]: Math.round(input.b.unhappiness),
+		[BROADCAST_PERSONA_A_KEY]: input.a.name.split(' ')[0] ?? input.a.name,
+		[BROADCAST_PERSONA_B_KEY]: input.b.name.split(' ')[0] ?? input.b.name,
+		[BROADCAST_IS_KID_A_KEY]: !!input.a.isKid,
+		[BROADCAST_IS_KID_B_KEY]: !!input.b.isKid,
+	};
+}
+
+function simChatRequest(input: SimChatInput, meanA: boolean, meanB: boolean): Parameters<OpenRouter['chat']['send']>[0] {
+	const context = (input.context ?? 'corridor botsing').trim().slice(0, SIM_CONTEXT_MAX_LENGTH) || 'corridor';
+	return {
+		chatRequest: {
+			model: env['OPENROUTER_MODEL']?.trim() || 'x-ai/grok-4.20',
+			temperature: SIM_TEMPERATURE,
+			maxTokens: SIM_MAX_TOKENS,
+			stream: false,
+			responseFormat: {
+				type: 'json_schema',
+				jsonSchema: {
+					name: 'mall_banter',
+					strict: true,
+					schema: {
+						type: 'object',
+						properties: {
+							a: { type: 'string', description: 'wat A zegt, max 14 woorden' },
+							b: { type: 'string', description: 'wat B terugzegt, max 14 woorden' },
+						},
+						required: ['a', 'b'],
+						additionalProperties: false,
+					},
+				},
+			},
+			...(input.userId ? { user: input.userId } : {}),
+			...(input.sessionId ? { sessionId: input.sessionId } : {}),
+			trace: {
+				traceName: 'Prairie Lakes Mall SIM',
+				spanName: 'sim-chat',
+				generationName: 'guest-banter',
+				additionalProperties: broadcastProperties(input, context, meanA, meanB),
+			},
+			messages: [
+				{ role: 'system', content: SIM_SYSTEM_PROMPT },
+				{ role: 'user', content: simPrompt(input, meanA, meanB) },
+			],
+		},
+	};
+}
+
+function chatContentText(content: unknown): string {
+	if (typeof content === 'string') return content.trim();
+	if (!Array.isArray(content)) return '';
+	return content
+		.map((part) => (isRecord(part) ? readString(part, 'text') : ''))
+		.join('')
+		.trim();
+}
+
+function parseSimChat(raw: string): SimChatResult {
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (isRecord(parsed)) {
+			const lineA = readString(parsed, 'a').trim().slice(0, SIM_LINE_MAX_LENGTH);
+			const lineB = readString(parsed, 'b').trim().slice(0, SIM_LINE_MAX_LENGTH);
+			if (lineA && lineB) return { a: lineA, b: lineB };
+		}
+	} catch {
+		// Schema violation is returned to the caller instead of guessed around.
+	}
+	return { error: `bad_json: ${raw.slice(0, SIM_BAD_JSON_PREVIEW_LENGTH)}` };
+}
+
+/**
+ * Two mall guests exchange short lines via @openrouter/sdk.
+ * Browser supplies user + sessionId; we attach Broadcast `trace` metadata.
+ */
+async function simChatExchange(input: SimChatInput): Promise<SimChatResult> {
+	const openrouter = getOpenRouter();
+	if (!openrouter) return { error: 'no_openrouter_key' };
+	const meanA = input.a.unhappiness >= SIM_MEAN_UNHAPPINESS;
+	const meanB = input.b.unhappiness >= SIM_MEAN_UNHAPPINESS;
 
 	try {
-		const completion = await openrouter.chat.send({
-			chatRequest: {
-				model,
-				temperature: 1.05,
-				maxTokens: 100,
-				stream: false,
-				// Schema-constrained output — no prompt-begging for JSON, no
-				// scraping A:/B: out of freeform Grok.
-				responseFormat: {
-					type: 'json_schema',
-					jsonSchema: {
-						name: 'mall_banter',
-						strict: true,
-						schema: {
-							type: 'object',
-							properties: {
-								a: { type: 'string', description: 'wat A zegt, max 14 woorden' },
-								b: { type: 'string', description: 'wat B terugzegt, max 14 woorden' },
-							},
-							required: ['a', 'b'],
-							additionalProperties: false,
-						},
-					},
-				},
-				// Broadcast optional trace data
-				// https://openrouter.ai/docs/guides/features/broadcast
-				...(userId ? { user: userId } : {}),
-				...(sessionId ? { sessionId } : {}),
-				trace: {
-					traceName: 'Prairie Lakes Mall SIM',
-					spanName: 'sim-chat',
-					generationName: 'guest-banter',
-					additionalProperties: {
-						feature: 'sim-chat',
-						environment: env.NODE_ENV ?? 'development',
-						context: ctxLabel,
-						mean_mode: meanA || meanB,
-						unhappiness_a: Math.round(a.unhappiness),
-						unhappiness_b: Math.round(b.unhappiness),
-						persona_a: a.name.split(' ')[0] ?? a.name,
-						persona_b: b.name.split(' ')[0] ?? b.name,
-						is_kid_a: !!a.isKid,
-						is_kid_b: !!b.isKid,
-					},
-				},
-				messages: [
-					{ role: 'system', content: system },
-					{ role: 'user', content: prompt },
-				],
-			},
-		});
-
-		// Non-streaming ChatResult
-		if (!('choices' in completion) || !completion.choices?.length) {
+		const completion = await openrouter.chat.send(simChatRequest(input, meanA, meanB));
+		if (!('choices' in completion && completion.choices && completion.choices.length > 0)) {
 			return { error: 'openrouter_empty_choices' };
 		}
 		const content = completion.choices[0]?.message?.content;
-		const raw = (
-			typeof content === 'string'
-				? content
-				: Array.isArray(content)
-					? content
-							.map((p) => (typeof p === 'object' && p && 'text' in p ? String((p as { text?: string }).text ?? '') : ''))
-							.join('')
-					: ''
-		).trim();
-
-		try {
-			const parsed = JSON.parse(raw) as { a?: string; b?: string };
-			const lineA = (parsed.a ?? '').trim().slice(0, 60);
-			const lineB = (parsed.b ?? '').trim().slice(0, 60);
-			if (lineA && lineB) return { a: lineA, b: lineB };
-		} catch {
-			/* schema violated — report it instead of guessing */
-		}
-		return { error: `bad_json: ${raw.slice(0, 100)}` };
+		return parseSimChat(chatContentText(content));
 	} catch (e) {
 		return { error: String(e) };
 	}
@@ -489,17 +564,18 @@ async function youtubeSearch(query: string): Promise<{ videoId: string; title: s
 	const res = await fetch(url);
 	if (!res.ok) {
 		const err = await res.text();
-		return { error: `youtube_search ${res.status}: ${err.slice(0, 180)}` };
+		return { error: `youtube_search ${res.status}: ${err.slice(0, YOUTUBE_ERROR_PREVIEW_LENGTH)}` };
 	}
-	const data = (await res.json()) as {
-		items?: Array<{ id?: { videoId?: string }; snippet?: { title?: string } }>;
-	};
-	const hit = data.items?.find((it) => it.id?.videoId);
-	if (!hit?.id?.videoId) return { error: 'no_results' };
-	return {
-		videoId: hit.id.videoId,
-		title: hit.snippet?.title ?? hit.id.videoId,
-	};
+	const data: unknown = await res.json();
+	if (!(isRecord(data) && Array.isArray(data['items']))) return { error: 'no_results' };
+	for (const item of data['items']) {
+		if (!(isRecord(item) && isRecord(item['id']))) continue;
+		const videoId = readString(item['id'], 'videoId');
+		if (!videoId) continue;
+		const title = isRecord(item['snippet']) ? readString(item['snippet'], 'title') : '';
+		return { videoId, title: title || videoId };
+	}
+	return { error: 'no_results' };
 }
 
 async function newestMusicFile(beforeMs: number): Promise<string | undefined> {
@@ -510,338 +586,318 @@ async function newestMusicFile(beforeMs: number): Promise<string | undefined> {
 			mtime: Bun.file(join(MUSIC_DIR, t.file)).lastModified,
 		})),
 	);
-	return stamped.filter((t) => t.mtime >= beforeMs - 500).sort((a, b) => b.mtime - a.mtime)[0]?.file;
+	return stamped.filter((t) => t.mtime >= beforeMs - NEW_FILE_CLOCK_TOLERANCE_MS).sort((a, b) => b.mtime - a.mtime)[0]?.file;
 }
 
-async function runYtDlpUrl(
-	watchUrl: string,
-): Promise<{ ok: boolean; log: string; file?: string; metadata?: LibraryTrack; dump?: string }> {
+interface YtDlpResult {
+	ok: boolean;
+	log: string;
+	file?: string;
+	metadata?: LibraryTrack;
+	dump?: string;
+}
+
+function ytDlpArgs(watchUrl: string): string[] {
+	// biome-ignore format: leave me alone
+	return [
+		'-f', 'bestaudio/best',
+		'-x',
+		'--audio-format', 'mp3',
+		'--audio-quality', '5',
+		'--no-playlist',
+		'--no-warnings',
+		'--no-progress',
+		'--no-mtime',
+		// Part suffixes keep interrupted downloads out of the audio library.
+		'--max-filesize', '150M',
+		'--match-filter', `duration<=${MAX_TRACK_DURATION_SECONDS}`,
+		'--retries', '1',
+		'--socket-timeout', '15',
+		'-o', join(MUSIC_DIR, '%(title).80s [%(id)s].%(ext)s'),
+		'--no-write-info-json',
+		'--print', YT_DLP_META_PRINT,
+		'--extractor-args', 'youtube:player_client=android,web',
+		watchUrl,
+	];
+}
+
+async function executeYtDlp(watchUrl: string): Promise<{ out: string; err: string; code: number }> {
+	const proc = Bun.spawn(['yt-dlp', ...ytDlpArgs(watchUrl)], { cwd: cwd(), stdout: 'pipe', stderr: 'pipe' });
+	const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+	return { out, err, code };
+}
+
+function ytDlpLog(out: string, err: string): string {
+	return [out, err]
+		.flatMap((stream) => stream.split('\n'))
+		.filter((line) => !line.trim().startsWith('MALLMETA:'))
+		.join('\n')
+		.slice(-YT_DLP_LOG_LENGTH);
+}
+
+async function runYtDlpUrl(watchUrl: string): Promise<YtDlpResult> {
 	await ensureMusicDir();
 	const before = Date.now();
-	const outTpl = join(MUSIC_DIR, '%(title).80s [%(id)s].%(ext)s');
-	{
-		// Direct URL — no ytsearch. Audio-only from the start: `-f bestaudio`
-		// stops yt-dlp from ever pulling a video stream just to strip it again,
-		// which is most of the download time and bandwidth.
-		const args = [
-			'-f',
-			'bestaudio/best',
-			'-x',
-			'--audio-format',
-			'mp3',
-			'--audio-quality',
-			'5',
-			'--no-playlist',
-			'--no-warnings',
-			'--no-progress',
-			'--no-mtime',
-			// NB: no `--no-part` — with .part suffixes an interrupted download never
-			// carries an audio extension, so half files cannot enter the library.
-			// Refuse absurd inputs instead of filling the disk: ≤ 150 MB and ≤ 1 h
-			// (DJ sets are long; bartek_deep_house alone is 66 MB).
-			'--max-filesize',
-			'150M',
-			'--match-filter',
-			'duration<=3600',
-			// One retry, fail fast — the request endpoint already rate-limits
-			'--retries',
-			'1',
-			'--socket-timeout',
-			'15',
-			'-o',
-			outTpl,
-			// Capture metadata after conversion, when filepath names the final mp3.
-			// SQLite replaces sidecars so playlist reads need no extra file per track.
-			'--no-write-info-json',
-			'--print',
-			YT_DLP_META_PRINT,
-			// Prefer clients that still get media (ytsearch was the flaky bit)
-			'--extractor-args',
-			'youtube:player_client=android,web',
-			watchUrl,
-		];
-		try {
-			const proc = Bun.spawn(['yt-dlp', ...args], {
-				cwd: process.cwd(),
-				stdout: 'pipe',
-				stderr: 'pipe',
-			});
-			const [out, err, code] = await Promise.all([
-				new Response(proc.stdout).text(),
-				new Response(proc.stderr).text(),
-				proc.exited,
-			]);
-			const fileFromDisk = await newestMusicFile(before);
-			const capture = parseYtDlpOutput(out, fileFromDisk) ?? parseYtDlpOutput(err, fileFromDisk);
-			const capturedFile = capture?.track.file;
-			const file = capturedFile && (await Bun.file(join(MUSIC_DIR, capturedFile)).exists()) ? capturedFile : fileFromDisk;
-			const logOutput = [out, err]
-				.flatMap((stream) => stream.split('\n'))
-				.filter((line) => !line.trim().startsWith('MALLMETA:'))
-				.join('\n');
-			return {
-				// 101 = --match-filter rejected it; still not a crash
-				ok: (code === 0 || code === 101) && !!file,
-				log: logOutput.slice(-2500),
-				file,
-				...(capture ? { metadata: capture.track, dump: capture.dump } : {}),
-			};
-		} catch (e) {
-			return { ok: false, log: String(e) };
-		}
+	try {
+		const { out, err, code } = await executeYtDlp(watchUrl);
+		const fileFromDisk = await newestMusicFile(before);
+		const capture = parseYtDlpOutput(out, fileFromDisk) ?? parseYtDlpOutput(err, fileFromDisk);
+		const capturedFile = capture?.track.file;
+		const capturedFileExists = capturedFile ? await Bun.file(join(MUSIC_DIR, capturedFile)).exists() : false;
+		const file = capturedFileExists ? capturedFile : fileFromDisk;
+		return {
+			ok: (code === 0 || code === YT_DLP_FILTER_REJECTED_EXIT_CODE) && !!file,
+			log: ytDlpLog(out, err),
+			file,
+			...(capture ? { metadata: capture.track, dump: capture.dump } : {}),
+		};
+	} catch (e) {
+		return { ok: false, log: String(e) };
 	}
+}
+
+interface TrackRequestResult {
+	ok: boolean;
+	log: string;
+	file?: string;
+	title?: string;
+	videoId?: string;
+}
+
+interface TrackSearch {
+	watchUrl: string;
+	log: string;
+	title?: string;
+	videoId?: string;
+}
+
+async function resolveTrackSearch(clean: string): Promise<TrackSearch> {
+	if (!env['YOUTUBE_API_KEY']) return { watchUrl: `ytsearch1:${clean}`, log: '[fallback] ytsearch1 (no API hit)\n' };
+	const hit = await youtubeSearch(clean);
+	if ('error' in hit) {
+		return { watchUrl: `ytsearch1:${clean}`, log: `[youtube-api] ${hit.error}\n[fallback] ytsearch1 (no API hit)\n` };
+	}
+	return {
+		watchUrl: `https://www.youtube.com/watch?v=${hit.videoId}`,
+		log: `[youtube-api] ${hit.videoId} · ${hit.title}\n`,
+		title: hit.title,
+		videoId: hit.videoId,
+	};
+}
+
+async function existingTrack(library: DjLibrary, search: TrackSearch): Promise<TrackRequestResult | undefined> {
+	if (!search.videoId) return undefined;
+	const track = library.trackByYoutubeId(search.videoId);
+	if (!(track && (await Bun.file(join(MUSIC_DIR, track.file)).exists()))) return undefined;
+	return {
+		ok: true,
+		log: `${search.log}[library] already have ${track.file}\n`.slice(-TRACK_REQUEST_LOG_LENGTH),
+		file: track.file,
+		title: track.title,
+		videoId: search.videoId,
+	};
 }
 
 /** Search (YouTube API) → download (yt-dlp by URL). Fallback: ytsearch. */
-async function requestTrack(
-	query: string,
-): Promise<{ ok: boolean; log: string; file?: string; title?: string; videoId?: string }> {
+async function requestTrack(query: string): Promise<TrackRequestResult> {
 	const clean = query
 		.replace(/[^\w\s\-'.!&()áéíóúäëïöüàèìòùñç]/gi, ' ')
 		.trim()
-		.slice(0, 100);
+		.slice(0, TRACK_QUERY_MAX_LENGTH);
 	if (!clean) return { ok: false, log: 'empty query' };
 
 	const library = await ensureLibrary();
-	let watchUrl = '';
-	let title: string | undefined;
-	let videoId: string | undefined;
-	let log = '';
-
-	// Prefer official API search when key is present
-	const ytKey = env['YOUTUBE_API_KEY'];
-	if (ytKey) {
-		const hit = await youtubeSearch(clean);
-		if ('error' in hit) {
-			log += `[youtube-api] ${hit.error}\n`;
-		} else {
-			videoId = hit.videoId;
-			title = hit.title;
-			watchUrl = `https://www.youtube.com/watch?v=${hit.videoId}`;
-			log += `[youtube-api] ${hit.videoId} · ${hit.title}\n`;
-		}
-	}
-
-	if (videoId) {
-		const existing = library.trackByYoutubeId(videoId);
-		if (existing && (await Bun.file(join(MUSIC_DIR, existing.file)).exists())) {
-			log += `[library] already have ${existing.file}\n`;
-			return { ok: true, log: log.slice(-3000), file: existing.file, title: existing.title, videoId };
-		}
-	}
-
-	// Fallback: yt-dlp's own search (often flaky / 403)
-	if (!watchUrl) {
-		watchUrl = `ytsearch1:${clean}`;
-		log += '[fallback] ytsearch1 (no API hit)\n';
-	}
-
-	const dl = await runYtDlpUrl(watchUrl);
-	log += dl.log;
+	const search = await resolveTrackSearch(clean);
+	const existing = await existingTrack(library, search);
+	if (existing) return existing;
+	const dl = await runYtDlpUrl(search.watchUrl);
 	if (dl.ok && dl.file) {
 		const metadata = dl.metadata ?? {
 			file: dl.file,
-			title: title ?? basename(dl.file, extname(dl.file)),
+			title: search.title ?? basename(dl.file, extname(dl.file)),
 			downloadedAt: Date.now(),
-			...(videoId ? { youtubeId: videoId } : {}),
+			...(search.videoId ? { youtubeId: search.videoId } : {}),
 		};
 		library.saveTrack({ ...metadata, file: dl.file, requestedQuery: clean, downloadedAt: Date.now() }, dl.dump);
 	}
 	return {
 		ok: dl.ok,
-		log: log.slice(-3000),
+		log: `${search.log}${dl.log}`.slice(-TRACK_REQUEST_LOG_LENGTH),
 		file: dl.file,
-		title: dl.metadata?.title ?? title,
-		videoId: dl.metadata?.youtubeId ?? videoId,
+		title: dl.metadata?.title ?? search.title,
+		videoId: dl.metadata?.youtubeId ?? search.videoId,
 	};
 }
 
-/** Returns null when the request is not an API route (caller serves static). */
-export async function handleApi(req: Request, peer: string): Promise<Response> {
-	const url = new URL(req.url).pathname;
-	// De peer is de proxy, niet de bezoeker: op de peer limiteren betekent
-	// iedereen samen in één emmer.
-	const ip = clientIp(req, peer);
+interface SimChatBody extends Record<string, unknown> {
+	a?: SimPersona;
+	b?: SimPersona;
+	context?: string;
+	user?: string;
+	userId?: string;
+	sessionId?: string;
+}
 
-	if (url === '/api/healthz' && req.method === 'GET') {
-		return json(200, { ok: true, uptime: uptimeSeconds() });
+async function handleStatus(ip: string): Promise<Response> {
+	const body: Record<string, unknown> = { ok: true, uptime: uptimeSeconds() };
+	if (await isOurs(ip)) {
+		body['version'] = typeof __GIT_DESCRIBE__ === 'undefined' ? 'dev' : __GIT_DESCRIBE__;
+		body['features'] = typeof __MALL_FEATURES__ === 'undefined' ? [] : __MALL_FEATURES__;
 	}
+	return json(HTTP_OK, body);
+}
 
-	if (url === '/api/statusz' && req.method === 'GET') {
-		const body: Record<string, unknown> = { ok: true, uptime: uptimeSeconds() };
-		if (await isOurs(ip)) {
-			body['version'] = typeof __GIT_DESCRIBE__ === 'undefined' ? 'dev' : __GIT_DESCRIBE__;
-			body['features'] = typeof __MALL_FEATURES__ === 'undefined' ? [] : __MALL_FEATURES__;
-		}
-		return json(200, body);
+async function handleDjStatus(): Promise<Response> {
+	const app = openRouterAppMeta();
+	return json(HTTP_OK, {
+		ok: true,
+		elevenlabs: !!env['ELEVENLABS_API_KEY'],
+		youtubeApi: !!env['YOUTUBE_API_KEY'],
+		openrouter: !!env['OPENROUTER_API_KEY'],
+		openrouterSdk: true,
+		openrouterApp: app.appTitle,
+		openrouterCategories: app.appCategories,
+		openrouterReferer: app.httpReferer,
+		openrouterBroadcast: ['user', 'session_id', 'trace'],
+		tracks: (await listPlaylist()).length,
+		ttsCharacters,
+		booth: 'DJ Bartek · Trap-gat · Prairie Lakes',
+		voice: env['ELEVENLABS_VOICE_ID']?.trim() || STATUS_VOICE_ID,
+	});
+}
+
+async function handleSimChat(req: Request): Promise<Response> {
+	const body = await readJson<SimChatBody>(req);
+	if (!(body.a?.name && body.b?.name)) return json(HTTP_BAD_REQUEST, { error: 'a and b personas required' });
+	const sessionId = sanitizeSessionId(body.sessionId ?? body[EXTERNAL_SESSION_ID_KEY]);
+	const userId = sanitizeUserId(body.user ?? body.userId ?? body[EXTERNAL_USER_ID_KEY]);
+	const result = await simChatExchange({ a: body.a, b: body.b, context: body.context, sessionId, userId });
+	if ('error' in result) return json(HTTP_BAD_GATEWAY, { ok: false, error: result.error });
+	return json(HTTP_OK, { ok: true, ...result, user: userId ?? null, sessionId: sessionId ?? null });
+}
+
+async function handleTrackRequest(req: Request): Promise<Response> {
+	const body = await readJson<{ query?: string }>(req);
+	const query = (body.query ?? '').trim();
+	if (!query) return json(HTTP_BAD_REQUEST, { ok: false, error: 'query required' });
+	const result = await requestTrack(query);
+	return json(result.ok ? HTTP_OK : HTTP_INTERNAL_SERVER_ERROR, {
+		ok: result.ok,
+		file: result.file,
+		title: result.title,
+		videoId: result.videoId,
+		tracks: await listPlaylist(),
+		log: result.log.slice(-TRACK_RESPONSE_LOG_LENGTH),
+		error: result.ok ? undefined : 'download_failed',
+	});
+}
+
+async function handleTts(req: Request): Promise<Response> {
+	const body = await readJson<{ text?: string; voiceId?: string; lang?: string }>(req);
+	const text = (body.text ?? '').trim();
+	if (!text) return json(HTTP_BAD_REQUEST, { error: 'text required' });
+	if (Date.now() < ttsBreakerUntil && ttsBreakerInfo) {
+		return json(ttsBreakerInfo.status, { error: ttsBreakerInfo.message, code: ttsBreakerInfo.code, breaker: 'open' });
 	}
-
-	if (crossSite(req)) return json(403, { error: 'cross_site_blocked' });
-	if (rateLimited(ip, url)) {
-		return json(429, { error: 'rate_limited', hint: 'even chillen' });
-	}
-
 	try {
-		if (url === '/api/dj/status' && req.method === 'GET') {
-			const hasKey = !!env['ELEVENLABS_API_KEY'];
-			return json(200, {
-				ok: true,
-				elevenlabs: hasKey,
-				youtubeApi: !!env['YOUTUBE_API_KEY'],
-				openrouter: !!env['OPENROUTER_API_KEY'],
-				openrouterSdk: true,
-				openrouterApp: openRouterAppMeta().appTitle,
-				openrouterCategories: openRouterAppMeta().appCategories,
-				openrouterReferer: openRouterAppMeta().httpReferer,
-				/** Broadcast optional fields sent on /api/sim/chat */
-				openrouterBroadcast: ['user', 'session_id', 'trace'],
-				tracks: (await listPlaylist()).length,
-				ttsCharacters,
-				booth: 'DJ Bartek · Trap-gat · Prairie Lakes',
-				voice: env['ELEVENLABS_VOICE_ID']?.trim() || 'pNInz6obpgDQGcFmaJgB',
+		const tts = await elevenLabsTts(text, body.voiceId, body.lang);
+		if (!tts) {
+			return json(HTTP_SERVICE_UNAVAILABLE, {
+				error: 'no_elevenlabs_key',
+				code: 'no_key',
+				hint: 'envctl set .env ELEVENLABS_API_KEY sk_…',
 			});
 		}
-
-		if (url === '/api/sim/chat' && req.method === 'POST') {
-			const body = await readJson<{
-				a?: SimPersona;
-				b?: SimPersona;
-				context?: string;
-				/** End-user id for OpenRouter Broadcast `user` (≤128) */
-				user?: string;
-				userId?: string;
-				user_id?: string;
-				/** Browser tab session for sticky routing + session grouping (≤256) */
-				sessionId?: string;
-				session_id?: string;
-			}>(req);
-			if (!body.a?.name || !body.b?.name) {
-				return json(400, { error: 'a and b personas required' });
-			}
-			const sessionId = sanitizeSessionId(body.sessionId ?? body.session_id);
-			const userId = sanitizeUserId(body.user ?? body.userId ?? body.user_id);
-			const result = await simChatExchange(body.a, body.b, body.context, sessionId, userId);
-			if ('error' in result) {
-				return json(502, { ok: false, error: result.error });
-			}
-			return json(200, {
-				ok: true,
-				...result,
-				user: userId ?? null,
-				sessionId: sessionId ?? null,
-			});
-		}
-
-		if (url === '/api/dj/playlist' && req.method === 'GET') {
-			return json(200, { tracks: await listPlaylist() });
-		}
-
-		if (url === '/api/dj/request' && req.method === 'POST') {
-			const body = await readJson<{ query?: string }>(req);
-			const query = (body.query ?? '').trim();
-			if (!query) return json(400, { ok: false, error: 'query required' });
-			const result = await requestTrack(query);
-			return json(result.ok ? 200 : 500, {
-				ok: result.ok,
-				file: result.file,
-				title: result.title,
-				videoId: result.videoId,
-				tracks: await listPlaylist(),
-				log: result.log.slice(-800),
-				error: result.ok ? undefined : 'download_failed',
-			});
-		}
-
-		if (url === '/api/tts' && req.method === 'POST') {
-			const body = await readJson<{
-				text?: string;
-				voiceId?: string;
-				lang?: string;
-			}>(req);
-			const text = (body.text ?? '').trim();
-			if (!text) return json(400, { error: 'text required' });
-			if (Date.now() < ttsBreakerUntil && ttsBreakerInfo) {
-				return json(ttsBreakerInfo.status, { error: ttsBreakerInfo.message, code: ttsBreakerInfo.code, breaker: 'open' });
-			}
-			try {
-				const tts = await elevenLabsTts(text, body.voiceId, body.lang);
-				if (!tts) {
-					return json(503, {
-						error: 'no_elevenlabs_key',
-						code: 'no_key',
-						hint: 'envctl set .env ELEVENLABS_API_KEY sk_…',
-					});
-				}
-				return new Response(tts.audio, {
-					headers: {
-						'Content-Type': 'audio/mpeg',
-						'Cache-Control': 'no-store',
-						// Billing + debug ids straight from ElevenLabs
-						'Character-Cost': String(tts.characterCost),
-						'Character-Cost-Total': String(ttsCharacters),
-						...(tts.requestId ? { 'Request-Id': tts.requestId } : {}),
-						...(tts.traceId ? { 'X-Trace-Id': tts.traceId } : {}),
-					},
-				});
-			} catch (e) {
-				const info = classifyTtsError(e);
-				tripTtsBreaker(info);
-				return json(info.status, { error: info.message, code: info.code });
-			}
-		}
-
-		// Primary track route from private storage, shared by dev and production.
-		// Speaks HTTP Range: <audio> switches to range-requests on long tracks
-		// (and on every seek); answering those with a plain 200 stalls playback
-		// partway through — which made the 24-minute tracks "not quite work".
-		if (url.startsWith('/api/dj/file/') && req.method === 'GET') {
-			const name = decodeURIComponent(url.replace('/api/dj/file/', ''));
-			const safe = basename(name);
-			if (!isAudioFileName(name)) return json(404, { error: 'not found' });
-			const track = Bun.file(join(MUSIC_DIR, safe));
-			if (!(await track.exists())) return json(404, { error: 'not found' });
-
-			const size = track.size;
-			const base = {
-				'Content-Type': AUDIO_MIME[extname(safe).toLowerCase()] ?? 'audio/mpeg',
-				'Accept-Ranges': 'bytes',
-			};
-			const range = req.headers.get('range');
-			const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
-
-			if (m && (m[1] !== '' || m[2] !== '')) {
-				// bytes=a-b | bytes=a- | bytes=-suffix
-				let start = m[1] === '' ? size - Number(m[2]) : Number(m[1]);
-				let end = m[1] !== '' && m[2] !== '' ? Number(m[2]) : size - 1;
-				start = Math.max(0, start);
-				end = Math.min(end, size - 1);
-				if (start > end || start >= size) {
-					return new Response(null, {
-						status: 416,
-						headers: { ...base, 'Content-Range': `bytes */${size}` },
-					});
-				}
-				return new Response(track.slice(start, end + 1), {
-					status: 206,
-					headers: {
-						...base,
-						'Content-Range': `bytes ${start}-${end}/${size}`,
-						'Content-Length': String(end - start + 1),
-					},
-				});
-			}
-
-			return new Response(track, {
-				headers: { ...base, 'Content-Length': String(size) },
-			});
-		}
-
-		return json(404, { error: 'unknown_route' });
+		return new Response(tts.audio, {
+			headers: {
+				'Content-Type': 'audio/mpeg',
+				'Cache-Control': 'no-store',
+				'Character-Cost': String(tts.characterCost),
+				'Character-Cost-Total': String(ttsCharacters),
+				...(tts.requestId ? { 'Request-Id': tts.requestId } : {}),
+				...(tts.traceId ? { 'X-Trace-Id': tts.traceId } : {}),
+			},
+		});
 	} catch (e) {
-		const msg = String(e);
-		if (msg.includes('body_too_large')) {
-			return json(413, { error: 'body_too_large' });
-		}
-		return json(500, { error: msg });
+		const info = classifyTtsError(e);
+		tripTtsBreaker(info);
+		return json(info.status, { error: info.message, code: info.code });
 	}
 }
+
+function trackRangeResponse(
+	track: ReturnType<typeof Bun.file>,
+	size: number,
+	base: Record<string, string>,
+	match: RegExpExecArray,
+): Response {
+	const startText = match[1] ?? '';
+	const endText = match[2] ?? '';
+	let start = startText === '' ? size - Number(endText) : Number(startText);
+	let end = startText !== '' && endText !== '' ? Number(endText) : size - 1;
+	start = Math.max(0, start);
+	end = Math.min(end, size - 1);
+	if (start > end || start >= size) {
+		return new Response(null, {
+			status: HTTP_RANGE_NOT_SATISFIABLE,
+			headers: { ...base, 'Content-Range': `bytes */${size}` },
+		});
+	}
+	return new Response(track.slice(start, end + 1), {
+		status: HTTP_PARTIAL_CONTENT,
+		headers: {
+			...base,
+			'Content-Range': `bytes ${start}-${end}/${size}`,
+			'Content-Length': String(end - start + 1),
+		},
+	});
+}
+
+async function handleTrackFile(req: Request, path: string): Promise<Response> {
+	const name = decodeURIComponent(path.replace('/api/dj/file/', ''));
+	const safe = basename(name);
+	if (!isAudioFileName(name)) return json(HTTP_NOT_FOUND, { error: 'not found' });
+	const track = Bun.file(join(MUSIC_DIR, safe));
+	if (!(await track.exists())) return json(HTTP_NOT_FOUND, { error: 'not found' });
+	const size = track.size;
+	const base = {
+		'Content-Type': AUDIO_MIME[extname(safe).toLowerCase()] ?? 'audio/mpeg',
+		'Accept-Ranges': 'bytes',
+	};
+	const range = req.headers.get('range');
+	const match = range ? BYTE_RANGE_PATTERN.exec(range.trim()) : null;
+	const startText = match?.[1] ?? '';
+	const endText = match?.[2] ?? '';
+	if (match && (startText !== '' || endText !== '')) return trackRangeResponse(track, size, base, match);
+	return new Response(track, { headers: { ...base, 'Content-Length': String(size) } });
+}
+
+async function dispatchApi(req: Request, path: string): Promise<Response> {
+	if (path === '/api/dj/status' && req.method === 'GET') return handleDjStatus();
+	if (path === '/api/sim/chat' && req.method === 'POST') return handleSimChat(req);
+	if (path === '/api/dj/playlist' && req.method === 'GET') return json(HTTP_OK, { tracks: await listPlaylist() });
+	if (path === '/api/dj/request' && req.method === 'POST') return handleTrackRequest(req);
+	if (path === '/api/tts' && req.method === 'POST') return handleTts(req);
+	if (path.startsWith('/api/dj/file/') && req.method === 'GET') return handleTrackFile(req, path);
+	return json(HTTP_NOT_FOUND, { error: 'unknown_route' });
+}
+
+/** Returns null when the request is not an API route (caller serves static). */
+async function handleApi(req: Request, peer: string): Promise<Response> {
+	const path = new URL(req.url).pathname;
+	const ip = clientIp(req, peer);
+	if (path === '/api/healthz' && req.method === 'GET') return json(HTTP_OK, { ok: true, uptime: uptimeSeconds() });
+	if (path === '/api/statusz' && req.method === 'GET') return handleStatus(ip);
+	if (crossSite(req)) return json(HTTP_FORBIDDEN, { error: 'cross_site_blocked' });
+	if (rateLimited(ip, path)) return json(HTTP_TOO_MANY_REQUESTS, { error: 'rate_limited', hint: 'even chillen' });
+	try {
+		return await dispatchApi(req, path);
+	} catch (e) {
+		const message = String(e);
+		if (message.includes('body_too_large')) return json(HTTP_CONTENT_TOO_LARGE, { error: 'body_too_large' });
+		return json(HTTP_INTERNAL_SERVER_ERROR, { error: message });
+	}
+}
+
+export type { SimPersona, TrackMeta };
+export { ensureMusicDir, handleApi };

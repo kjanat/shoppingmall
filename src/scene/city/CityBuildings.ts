@@ -1,4 +1,15 @@
-import * as THREE from 'three';
+import type { BufferGeometry, CanvasTexture, Material } from 'three';
+import {
+	BoxGeometry,
+	Color,
+	CylinderGeometry,
+	Group,
+	InstancedMesh,
+	Mesh,
+	MeshBasicMaterial,
+	Object3D,
+	SphereGeometry,
+} from 'three';
 import { shellShadowOn } from '#/render/graphicsPrefs';
 import { lit } from '#/render/material';
 import type { Rand, TowerSpec } from '#/scene/city/cityPlan';
@@ -31,28 +42,28 @@ const RAAM_BREEDTE = 0.56;
 const RAAM_HOOGTE = 0.5;
 
 interface Beacon {
-	mat: THREE.MeshBasicMaterial;
+	mat: MeshBasicMaterial;
 	phase: number;
 	level: number;
 }
 
 export class CityBuildings {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly instanced: THREE.InstancedMesh[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: CanvasTexture[] = [];
+	private readonly instanced: InstancedMesh[] = [];
 	private readonly beacons: Beacon[] = [];
 
 	/** Eenheidskubus met origin op straatniveau — torens én dakbakken schalen hieruit. */
-	private readonly unitBox: THREE.BoxGeometry;
-	private readonly dummy = new THREE.Object3D();
+	private readonly unitBox: BoxGeometry;
+	private readonly dummy = new Object3D();
 
 	constructor() {
 		this.group.name = 'city_buildings';
 
-		this.unitBox = new THREE.BoxGeometry(1, 1, 1);
+		this.unitBox = new BoxGeometry(1, 1, 1);
 		this.unitBox.translate(0, 0.5, 0);
 		this.geometries.push(this.unitBox);
 
@@ -99,13 +110,13 @@ export class CityBuildings {
 
 		// BoxGeometry-groups: +x,-x,+y,-y,+z,-z → dak en bodem zónder raampjes,
 		// anders kijkt de drone op verlichte plafonds neer.
-		const mesh = new THREE.InstancedMesh(this.unitBox, [facade, facade, roof, roof, facade, facade], specs.length);
+		const mesh = new InstancedMesh(this.unitBox, [facade, facade, roof, roof, facade, facade], specs.length);
 		mesh.name = 'city_towers';
 		// Buiten de zon-schaduwcamera (±55/±45 rond de oorsprong), dus dit werpt pas
 		// iets zodra die camera de torens omvat; hier voor de volledigheid van de schil.
 		mesh.castShadow = shellShadowOn();
 
-		const tint = new THREE.Color();
+		const tint = new Color();
 		specs.forEach((s, i) => {
 			this.dummy.position.set(s.x, 0, s.z);
 			this.dummy.rotation.set(0, s.rot, 0);
@@ -150,8 +161,8 @@ export class CityBuildings {
 				const [x, z] = opDak(plusMinusWith(mx, rand), plusMinusWith(mz, rand));
 				water.push({ x, y: s.h, z, sx: sc, sy: sc * 1.3, sz: sc, rot: s.rot });
 			}
-			const nAC = Math.floor(rand() * 3);
-			for (let i = 0; i < nAC; i++) {
+			const nAc = Math.floor(rand() * 3);
+			for (let i = 0; i < nAc; i++) {
 				const [x, z] = opDak(plusMinusWith(mx, rand), plusMinusWith(mz, rand));
 				boxes.push({
 					x,
@@ -169,16 +180,16 @@ export class CityBuildings {
 			}
 		}
 
-		const cyl = new THREE.CylinderGeometry(0.5, 0.62, 1, 7);
+		const cyl = new CylinderGeometry(0.5, 0.62, 1, 7);
 		cyl.translate(0, 0.5, 0);
 		this.geometries.push(cyl);
 		const waterMat = lit({ color: 0x4b3a30, roughness: 0.9 });
 		const boxMat = lit({ color: 0x262c36, roughness: 0.85 });
 		this.materials.push(waterMat, boxMat);
 
-		const vul = (geo: THREE.BufferGeometry, mat: THREE.Material, list: Blob[], name: string) => {
+		const vul = (geo: BufferGeometry, mat: Material, list: Blob[], name: string) => {
 			if (list.length === 0) return;
-			const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+			const mesh = new InstancedMesh(geo, mat, list.length);
 			mesh.name = name;
 			list.forEach((b, i) => {
 				this.dummy.position.set(b.x, b.y, b.z);
@@ -197,19 +208,19 @@ export class CityBuildings {
 
 	/** Rood knipperlicht op de 3 hoogste torens — pure emissive, geen lamp. */
 	private buildBeacons(specs: readonly TowerSpec[]): void {
-		const bulbGeo = new THREE.SphereGeometry(0.5, 10, 8);
-		const mastGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 6);
+		const bulbGeo = new SphereGeometry(0.5, 10, 8);
+		const mastGeo = new CylinderGeometry(0.06, 0.06, 1.4, 6);
 		this.geometries.push(bulbGeo, mastGeo);
 		const mastMat = lit({ color: 0x2b313c, roughness: 0.8 });
 		this.materials.push(mastMat);
 
 		const hoogste = [...specs].sort((a, b) => b.h - a.h).slice(0, 3);
 		hoogste.forEach((s, i) => {
-			const mat = new THREE.MeshBasicMaterial({ color: 0xff1a1a, toneMapped: false });
+			const mat = new MeshBasicMaterial({ color: 0xff1a1a, toneMapped: false });
 			this.materials.push(mat);
-			const mast = new THREE.Mesh(mastGeo, mastMat);
+			const mast = new Mesh(mastGeo, mastMat);
 			mast.position.set(s.x, s.h + 0.7, s.z);
-			const bulb = new THREE.Mesh(bulbGeo, mat);
+			const bulb = new Mesh(bulbGeo, mat);
 			bulb.position.set(s.x, s.h + 1.55, s.z);
 			this.group.add(mast, bulb);
 			// Uit fase — synchroon knipperende torens zien eruit als een bug.
@@ -218,7 +229,7 @@ export class CityBuildings {
 	}
 
 	/** Gedeelde gevel-textuur: donkere nacht, ~30% ramen aan, één raam rood. */
-	private makeWindowTexture(rand: Rand): THREE.CanvasTexture {
+	private makeWindowTexture(rand: Rand): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(256, 512);
 		const bg = ctx.createLinearGradient(0, 0, 0, 512);
 		bg.addColorStop(0, '#0d1019');

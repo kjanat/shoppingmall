@@ -1,4 +1,18 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Texture } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	ConeGeometry,
+	CylinderGeometry,
+	Group,
+	LatheGeometry,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	TorusGeometry,
+	Vector2,
+} from 'three';
 import { levelY } from '#/data/levels';
 import { TIKI_BAR_SPEC } from '#/data/world';
 import type { LitMaterial } from '#/render/material';
@@ -177,41 +191,41 @@ function loungeLeg(lift: number): { thigh: number; knee: number; foot: number } 
 	return { thigh: -(Math.PI / 2 + lift), knee: lift + bend, foot: Math.PI / 2 - bend - toe };
 }
 
-type Rig = {
-	root: THREE.Group;
-	body: THREE.Group;
-	legL: THREE.Group;
-	legR: THREE.Group;
-	kneeL: THREE.Group;
-	kneeR: THREE.Group;
-	footL: THREE.Mesh;
-	footR: THREE.Mesh;
-	armL: THREE.Group;
-	armR: THREE.Group;
-	head: THREE.Group;
-};
+interface Rig {
+	root: Group;
+	body: Group;
+	legL: Group;
+	legR: Group;
+	kneeL: Group;
+	kneeR: Group;
+	footL: Mesh;
+	footR: Mesh;
+	armL: Group;
+	armR: Group;
+	head: Group;
+}
 
-type Swimmer = {
-	root: THREE.Group;
+interface Swimmer {
+	root: Group;
 	baseY: number;
 	phase: number;
 	speed: number;
 	spin: number;
-};
+}
 
 export class PoolPeople {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private materials: THREE.Material[] = [];
-	private geos: THREE.BufferGeometry[] = [];
-	private textures: THREE.Texture[] = [];
+	private materials: Material[] = [];
+	private geos: BufferGeometry[] = [];
+	private textures: Texture[] = [];
 	private matCache = new Map<string, LitMaterial>();
 
 	private readonly s: ReturnType<PoolPeople['buildShared']>;
 	private swimmers: Swimmer[] = [];
-	private crewHeads: THREE.Group[] = [];
-	private oilArm: THREE.Group;
-	private banner: THREE.Group;
+	private crewHeads: Group[] = [];
+	private oilArm: Group;
+	private banner: Group;
 
 	constructor() {
 		this.group.name = 'poolPeople';
@@ -256,99 +270,94 @@ export class PoolPeople {
 	/** Eén set geometries voor iedereen — de Pi telt draw calls, geen dijen. */
 	private buildShared() {
 		// Hourglass-profiel in body-space: taille op de origin, schouders +0.54 (zelfde les als de Catwalk: onder→boven, anders kijk je door haar heen).
-		const femaleProfile: THREE.Vector2[] = [
-			new THREE.Vector2(0.001, -0.12),
-			new THREE.Vector2(0.205, -0.12),
-			new THREE.Vector2(0.2, -0.06), // heupflare
-			new THREE.Vector2(0.115, 0.12), // taille
-			new THREE.Vector2(0.135, 0.28), // onderbuste
-			new THREE.Vector2(0.185, 0.4), // buste
-			new THREE.Vector2(0.155, 0.54), // schouders
-			new THREE.Vector2(0.055, 0.62), // nek
-			new THREE.Vector2(0.001, 0.62),
+		const femaleProfile: Vector2[] = [
+			new Vector2(0.001, -0.12),
+			new Vector2(0.205, -0.12),
+			new Vector2(0.2, -0.06), // heupflare
+			new Vector2(0.115, 0.12), // taille
+			new Vector2(0.135, 0.28), // onderbuste
+			new Vector2(0.185, 0.4), // buste
+			new Vector2(0.155, 0.54), // schouders
+			new Vector2(0.055, 0.62), // nek
+			new Vector2(0.001, 0.62),
 		];
 		// Mannenprofiel: minder zandloper, meer koelkast met schouders.
-		const maleProfile: THREE.Vector2[] = [
-			new THREE.Vector2(0.001, -0.12),
-			new THREE.Vector2(0.195, -0.12),
-			new THREE.Vector2(0.185, 0.02),
-			new THREE.Vector2(0.165, 0.16),
-			new THREE.Vector2(0.195, 0.34),
-			new THREE.Vector2(0.215, 0.5), // schouders
-			new THREE.Vector2(0.15, 0.57),
-			new THREE.Vector2(0.055, 0.62),
-			new THREE.Vector2(0.001, 0.62),
+		const maleProfile: Vector2[] = [
+			new Vector2(0.001, -0.12),
+			new Vector2(0.195, -0.12),
+			new Vector2(0.185, 0.02),
+			new Vector2(0.165, 0.16),
+			new Vector2(0.195, 0.34),
+			new Vector2(0.215, 0.5), // schouders
+			new Vector2(0.15, 0.57),
+			new Vector2(0.055, 0.62),
+			new Vector2(0.001, 0.62),
 		];
 		return {
-			torsoF: this.geo(new THREE.LatheGeometry(femaleProfile, 18)),
-			torsoM: this.geo(new THREE.LatheGeometry(maleProfile, 14)),
-			pelvis: this.geo(new THREE.SphereGeometry(0.185, 14, 10)),
-			bust: this.geo(new THREE.SphereGeometry(0.115, 12, 10)),
-			thigh: this.geo(new THREE.CapsuleGeometry(THIGH_R, 0.34, 5, 9)),
-			calf: this.geo(new THREE.CapsuleGeometry(CALF_R, CALF_CYL, 5, 8)),
-			foot: this.geo(new THREE.BoxGeometry(0.1, FOOT_H, FOOT_LEN)),
-			upperArm: this.geo(new THREE.CapsuleGeometry(0.052, 0.24, 4, 7)),
-			lowerArm: this.geo(new THREE.CapsuleGeometry(0.042, 0.22, 4, 7)),
-			hand: this.geo(new THREE.SphereGeometry(0.045, 8, 6)),
-			skull: this.geo(new THREE.SphereGeometry(0.125, 14, 12)),
-			neck: this.geo(new THREE.CylinderGeometry(0.045, 0.05, 0.12, 8)),
-			lips: this.geo(new THREE.SphereGeometry(0.03, 10, 8)),
-			hairLong: this.geo(new THREE.CapsuleGeometry(0.115, 0.34, 6, 12)),
-			fringe: this.geo(new THREE.SphereGeometry(0.132, 12, 8, Math.PI * 0.22, Math.PI * 1.56, 0, Math.PI * 0.55)),
-			bun: this.geo(new THREE.SphereGeometry(0.078, 10, 8)),
-			capHair: this.geo(new THREE.SphereGeometry(0.128, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45)),
+			torsoF: this.geo(new LatheGeometry(femaleProfile, 18)),
+			torsoM: this.geo(new LatheGeometry(maleProfile, 14)),
+			pelvis: this.geo(new SphereGeometry(0.185, 14, 10)),
+			bust: this.geo(new SphereGeometry(0.115, 12, 10)),
+			thigh: this.geo(new CapsuleGeometry(THIGH_R, 0.34, 5, 9)),
+			calf: this.geo(new CapsuleGeometry(CALF_R, CALF_CYL, 5, 8)),
+			foot: this.geo(new BoxGeometry(0.1, FOOT_H, FOOT_LEN)),
+			upperArm: this.geo(new CapsuleGeometry(0.052, 0.24, 4, 7)),
+			lowerArm: this.geo(new CapsuleGeometry(0.042, 0.22, 4, 7)),
+			hand: this.geo(new SphereGeometry(0.045, 8, 6)),
+			skull: this.geo(new SphereGeometry(0.125, 14, 12)),
+			neck: this.geo(new CylinderGeometry(0.045, 0.05, 0.12, 8)),
+			lips: this.geo(new SphereGeometry(0.03, 10, 8)),
+			hairLong: this.geo(new CapsuleGeometry(0.115, 0.34, 6, 12)),
+			fringe: this.geo(new SphereGeometry(0.132, 12, 8, Math.PI * 0.22, Math.PI * 1.56, 0, Math.PI * 0.55)),
+			bun: this.geo(new SphereGeometry(0.078, 10, 8)),
+			capHair: this.geo(new SphereGeometry(0.128, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45)),
 			// Sportzonnebril: één brede lens plus zwart bandje rond de kop.
-			lens: this.geo(new THREE.BoxGeometry(0.17, 0.05, 0.05)),
-			band: this.geo(new THREE.TorusGeometry(0.13, 0.011, 6, 16)),
-			chain: this.geo(new THREE.TorusGeometry(0.08, 0.011, 6, 14)),
-			collar: this.geo(new THREE.TorusGeometry(0.062, 0.014, 6, 12)),
-			bikiniBand: this.geo(new THREE.TorusGeometry(0.165, 0.018, 6, 14)),
-			bikiniCup: this.geo(new THREE.SphereGeometry(0.062, 8, 6)),
-			armband: this.geo(new THREE.TorusGeometry(0.075, 0.028, 6, 12)),
-			ring: this.geo(new THREE.TorusGeometry(0.36, 0.11, 8, 18)),
-			loungerLeg: this.geo(new THREE.BoxGeometry(LOUNGER.legW, LOUNGER.legH, LOUNGER.legLen)),
-			loungerSeat: this.geo(new THREE.BoxGeometry(LOUNGER.w, LOUNGER.seatH, LOUNGER.seatLen)),
-			loungerBack: this.geo(new THREE.BoxGeometry(LOUNGER.w, LOUNGER.backH, LOUNGER.backLen)),
-			towel: this.geo(new THREE.BoxGeometry(LOUNGER.towelW, LOUNGER.towelH, LOUNGER.towelLen)),
-			bottle: this.geo(new THREE.CylinderGeometry(0.032, 0.038, 0.15, 8)),
-			bottleCap: this.geo(new THREE.CylinderGeometry(0.012, 0.012, 0.05, 6)),
-			pole: this.geo(new THREE.CylinderGeometry(0.035, 0.035, 2.7, 8)),
-			canopy: this.geo(new THREE.ConeGeometry(PARASOL_CANOPY_RADIUS, 0.4, 10)),
-			bannerPlane: this.geo(new THREE.PlaneGeometry(0.85, 0.55)),
+			lens: this.geo(new BoxGeometry(0.17, 0.05, 0.05)),
+			band: this.geo(new TorusGeometry(0.13, 0.011, 6, 16)),
+			chain: this.geo(new TorusGeometry(0.08, 0.011, 6, 14)),
+			collar: this.geo(new TorusGeometry(0.062, 0.014, 6, 12)),
+			bikiniBand: this.geo(new TorusGeometry(0.165, 0.018, 6, 14)),
+			bikiniCup: this.geo(new SphereGeometry(0.062, 8, 6)),
+			armband: this.geo(new TorusGeometry(0.075, 0.028, 6, 12)),
+			ring: this.geo(new TorusGeometry(0.36, 0.11, 8, 18)),
+			loungerLeg: this.geo(new BoxGeometry(LOUNGER.legW, LOUNGER.legH, LOUNGER.legLen)),
+			loungerSeat: this.geo(new BoxGeometry(LOUNGER.w, LOUNGER.seatH, LOUNGER.seatLen)),
+			loungerBack: this.geo(new BoxGeometry(LOUNGER.w, LOUNGER.backH, LOUNGER.backLen)),
+			towel: this.geo(new BoxGeometry(LOUNGER.towelW, LOUNGER.towelH, LOUNGER.towelLen)),
+			bottle: this.geo(new CylinderGeometry(0.032, 0.038, 0.15, 8)),
+			bottleCap: this.geo(new CylinderGeometry(0.012, 0.012, 0.05, 6)),
+			pole: this.geo(new CylinderGeometry(0.035, 0.035, 2.7, 8)),
+			canopy: this.geo(new ConeGeometry(PARASOL_CANOPY_RADIUS, 0.4, 10)),
+			bannerPlane: this.geo(new PlaneGeometry(0.85, 0.55)),
 		};
 	}
 
 	// ── figuren ────────────────────────────────────────────
 
 	/** Basisrig: voeten op root y=0, heupscharnier op 0.9, taille op 1.0. */
-	private buildRig(
-		torsoGeo: THREE.BufferGeometry,
-		torsoMat: THREE.Material,
-		skinMat: THREE.Material,
-		footMat: THREE.Material,
-	): Rig {
-		const root = new THREE.Group();
+	private buildRig(torsoGeo: BufferGeometry, torsoMat: Material, skinMat: Material, footMat: Material): Rig {
+		const root = new Group();
 
-		const hips = new THREE.Group();
+		const hips = new Group();
 		hips.position.y = HIP_Y;
 		root.add(hips);
 
-		const makeLeg = (side: -1 | 1): { leg: THREE.Group; knee: THREE.Group; foot: THREE.Mesh } => {
-			const leg = new THREE.Group();
+		const makeLeg = (side: -1 | 1): { leg: Group; knee: Group; foot: Mesh } => {
+			const leg = new Group();
 			leg.position.set(side * 0.085, 0, 0);
-			const thigh = new THREE.Mesh(this.s.thigh, skinMat);
+			const thigh = new Mesh(this.s.thigh, skinMat);
 			thigh.position.y = -0.22;
 			leg.add(thigh);
 			// Knie als echt scharnier: zonder dit kan een been alleen als plank
 			// draaien, en dan zakt de ligstoel-pose dwars door het ligvlak.
-			const knee = new THREE.Group();
+			const knee = new Group();
 			knee.position.y = -THIGH_LEN;
 			leg.add(knee);
-			const calf = new THREE.Mesh(this.s.calf, skinMat);
+			const calf = new Mesh(this.s.calf, skinMat);
 			calf.position.y = -CALF_MID;
 			knee.add(calf);
 			// Teenslipper of blote voet — de badstranduniform.
-			const foot = new THREE.Mesh(this.s.foot, footMat);
+			const foot = new Mesh(this.s.foot, footMat);
 			foot.position.set(0, -CALF_LEN, FOOT_FWD);
 			knee.add(foot);
 			hips.add(leg);
@@ -357,22 +366,22 @@ export class PoolPeople {
 		const l = makeLeg(-1);
 		const r = makeLeg(1);
 
-		const body = new THREE.Group();
+		const body = new Group();
 		body.position.y = WAIST_Y;
 		root.add(body);
-		const torso = new THREE.Mesh(torsoGeo, torsoMat);
+		const torso = new Mesh(torsoGeo, torsoMat);
 		body.add(torso);
 
-		const makeArm = (side: -1 | 1): THREE.Group => {
-			const arm = new THREE.Group();
+		const makeArm = (side: -1 | 1): Group => {
+			const arm = new Group();
 			arm.position.set(side * SHOULDER_X, SHOULDER_Y, 0);
-			const upper = new THREE.Mesh(this.s.upperArm, skinMat);
+			const upper = new Mesh(this.s.upperArm, skinMat);
 			upper.position.y = -0.17;
 			arm.add(upper);
-			const lower = new THREE.Mesh(this.s.lowerArm, skinMat);
+			const lower = new Mesh(this.s.lowerArm, skinMat);
 			lower.position.y = -0.43;
 			arm.add(lower);
-			const hand = new THREE.Mesh(this.s.hand, skinMat);
+			const hand = new Mesh(this.s.hand, skinMat);
 			hand.scale.set(0.85, 1.15, 0.85);
 			hand.position.y = -ARM_LEN;
 			arm.add(hand);
@@ -382,12 +391,12 @@ export class PoolPeople {
 		const armL = makeArm(-1);
 		const armR = makeArm(1);
 
-		const head = new THREE.Group();
+		const head = new Group();
 		head.position.y = 0.78;
 		body.add(head);
-		const skull = new THREE.Mesh(this.s.skull, skinMat);
+		const skull = new Mesh(this.s.skull, skinMat);
 		head.add(skull);
-		const neck = new THREE.Mesh(this.s.neck, skinMat);
+		const neck = new Mesh(this.s.neck, skinMat);
 		neck.position.y = -0.14;
 		head.add(neck);
 
@@ -408,12 +417,12 @@ export class PoolPeople {
 	}
 
 	/** Sportzonnebril met zwart bandje — niemand kijkt hier iemand aan. */
-	private addShades(head: THREE.Group): void {
+	private addShades(head: Group): void {
 		const dark = this.mat(0x121212, 0.3, 0.35);
-		const lens = new THREE.Mesh(this.s.lens, dark);
+		const lens = new Mesh(this.s.lens, dark);
 		lens.position.set(0, 0.02, 0.095);
 		head.add(lens);
-		const band = new THREE.Mesh(this.s.band, dark);
+		const band = new Mesh(this.s.band, dark);
 		band.rotation.x = Math.PI / 2;
 		band.position.y = 0.02;
 		head.add(band);
@@ -426,62 +435,62 @@ export class PoolPeople {
 
 		// Bikinibroekje: het bekken in felle kleur, klaar. Hangt aan de romp en
 		// niet aan de root, anders blijft het rechtop staan zodra iemand leunt.
-		const pelvis = new THREE.Mesh(this.s.pelvis, kit);
+		const pelvis = new Mesh(this.s.pelvis, kit);
 		pelvis.scale.set(1.05, 0.62, 0.92);
 		pelvis.position.y = 0.96 - WAIST_Y;
 		rig.body.add(pelvis);
 
 		// Buste plus bikinitop: bandje rondom, twee cups ervoor. PG, cartoon.
-		const bust = new THREE.Mesh(this.s.bust, skin);
+		const bust = new Mesh(this.s.bust, skin);
 		bust.scale.set(1.15, 0.68, 0.8);
 		bust.position.set(0, 0.4, 0.095);
 		rig.body.add(bust);
-		const bikBand = new THREE.Mesh(this.s.bikiniBand, kit);
+		const bikBand = new Mesh(this.s.bikiniBand, kit);
 		bikBand.rotation.x = Math.PI / 2;
 		bikBand.position.y = 0.38;
 		rig.body.add(bikBand);
 		for (const side of [-1, 1] as const) {
-			const cup = new THREE.Mesh(this.s.bikiniCup, kit);
+			const cup = new Mesh(this.s.bikiniCup, kit);
 			cup.scale.set(1, 0.85, 0.7);
 			cup.position.set(side * 0.068, 0.4, 0.125);
 			rig.body.add(cup);
 		}
 
-		const lips = new THREE.Mesh(this.s.lips, this.mat(0xc2185b, 0.35));
+		const lips = new Mesh(this.s.lips, this.mat(0xc2185b, 0.35));
 		lips.scale.set(1.4, 0.65, 0.5);
 		lips.position.set(0, -0.052, 0.114);
 		rig.head.add(lips);
 		this.addShades(rig.head);
 
 		const hairMat = this.mat(hairColor, 0.78);
-		const fringe = new THREE.Mesh(this.s.fringe, hairMat);
+		const fringe = new Mesh(this.s.fringe, hairMat);
 		fringe.position.y = 0.02;
 		rig.head.add(fringe);
 		if (hairStyle === 'long') {
-			const hair = new THREE.Mesh(this.s.hairLong, hairMat);
+			const hair = new Mesh(this.s.hairLong, hairMat);
 			hair.position.set(0, -0.08, -0.06);
 			rig.head.add(hair);
 		} else {
-			const bun = new THREE.Mesh(this.s.bun, hairMat);
+			const bun = new Mesh(this.s.bun, hairMat);
 			bun.position.set(0, 0.1, -0.1);
 			rig.head.add(bun);
 		}
 		return rig;
 	}
 
-	private buildMan(skinColor: number, torsoMat: THREE.Material, shortsColor: number): Rig {
+	private buildMan(skinColor: number, torsoMat: Material, shortsColor: number): Rig {
 		const skin = this.mat(skinColor, 0.72);
 		const shorts = this.mat(shortsColor, 0.6);
 		const rig = this.buildRig(this.s.torsoM, torsoMat, skin, skin);
 
 		// Zwembroek/korte broek: bekken iets hoger geschaald zodat het kledt.
-		const pelvis = new THREE.Mesh(this.s.pelvis, shorts);
+		const pelvis = new Mesh(this.s.pelvis, shorts);
 		pelvis.scale.set(1.05, 0.75, 0.95);
 		pelvis.position.y = 0.93 - WAIST_Y;
 		rig.body.add(pelvis);
 
 		const hairMat = this.mat(0x1a1a1a, 0.8);
-		const cap = new THREE.Mesh(this.s.capHair, hairMat);
+		const cap = new Mesh(this.s.capHair, hairMat);
 		cap.position.y = 0.015;
 		rig.head.add(cap);
 		this.addShades(rig.head);
@@ -533,21 +542,21 @@ export class PoolPeople {
 		looks.forEach(([skin, kit, hair, style], i) => {
 			const x = at(loungerX, i);
 			// Ligstoel: twee sledes, ligvlak, schuine rugleuning, handdoek erop.
-			const lounger = new THREE.Group();
+			const lounger = new Group();
 			lounger.position.set(x, DECK_Y, LOUNGER_Z);
 			for (const side of [-1, 1] as const) {
-				const leg = new THREE.Mesh(this.s.loungerLeg, frameMat);
+				const leg = new Mesh(this.s.loungerLeg, frameMat);
 				leg.position.set(side * LOUNGER.legX, LOUNGER.legY, 0);
 				lounger.add(leg);
 			}
-			const seat = new THREE.Mesh(this.s.loungerSeat, frameMat);
+			const seat = new Mesh(this.s.loungerSeat, frameMat);
 			seat.position.y = LOUNGER.seatY;
 			lounger.add(seat);
-			const back = new THREE.Mesh(this.s.loungerBack, frameMat);
+			const back = new Mesh(this.s.loungerBack, frameMat);
 			back.position.set(0, LOUNGER.backY, LOUNGER.backZ);
 			back.rotation.x = LOUNGER.backTilt;
 			lounger.add(back);
-			const towel = new THREE.Mesh(this.s.towel, this.mat(at(towelColors, i), 0.9));
+			const towel = new Mesh(this.s.towel, this.mat(at(towelColors, i), 0.9));
 			towel.position.y = TOWEL_Y;
 			lounger.add(towel);
 			this.group.add(lounger);
@@ -576,7 +585,7 @@ export class PoolPeople {
 	}
 
 	/** De dame die zich insmeert. Retourneert de smeerarm voor update(). */
-	private buildOilLady(): THREE.Group {
+	private buildOilLady(): Group {
 		const rig = this.buildWoman(0xa9714b, 0xaa00ff, 0x111111, 'long');
 		rig.root.position.set(-25.5, DECK_Y, -12.5);
 		rig.root.rotation.y = 0.35;
@@ -586,10 +595,10 @@ export class PoolPeople {
 		rig.armL.rotation.set(-2.05, 0, 0.5);
 
 		// Oliefles-prop in de smeerhand, factor 30 zon, factor 0 bescherming.
-		const bottle = new THREE.Group();
-		const fles = new THREE.Mesh(this.s.bottle, this.mat(0xe07b1f, 0.35, 0.1));
+		const bottle = new Group();
+		const fles = new Mesh(this.s.bottle, this.mat(0xe07b1f, 0.35, 0.1));
 		bottle.add(fles);
-		const dop = new THREE.Mesh(this.s.bottleCap, this.mat(0xf6f6f2, 0.5));
+		const dop = new Mesh(this.s.bottleCap, this.mat(0xf6f6f2, 0.5));
 		dop.position.y = 0.095;
 		bottle.add(dop);
 		bottle.position.set(0, -0.58, 0.04);
@@ -624,7 +633,7 @@ export class PoolPeople {
 
 			// Zwembandjes om de bovenarmen — volwassen mensen, nul vertrouwen.
 			for (const arm of [rig.armL, rig.armR]) {
-				const band = new THREE.Mesh(this.s.armband, bandMat);
+				const band = new Mesh(this.s.armband, bandMat);
 				band.rotation.x = Math.PI / 2;
 				band.position.y = -0.12;
 				arm.add(band);
@@ -638,7 +647,7 @@ export class PoolPeople {
 			let baseY = WATER_Y - 1.15; // borst op de waterlijn
 			if (c.ring) {
 				baseY = WATER_Y - 0.9; // in de band hang je hoger
-				const ring = new THREE.Mesh(this.s.ring, this.mat(0xff5b8d, 0.45, 0.1));
+				const ring = new Mesh(this.s.ring, this.mat(0xff5b8d, 0.45, 0.1));
 				ring.rotation.x = Math.PI / 2;
 				ring.position.y = 0.92;
 				rig.root.add(ring);
@@ -678,11 +687,11 @@ export class PoolPeople {
 			rig.root.rotation.y = (i - 1.5) * 0.12; // losjes naar de bar gedraaid
 
 			// Polokraagje plus ketting — het uniform van de vereniging.
-			const collar = new THREE.Mesh(this.s.collar, polo);
+			const collar = new Mesh(this.s.collar, polo);
 			collar.rotation.x = Math.PI / 2;
 			collar.position.y = 0.56;
 			rig.body.add(collar);
-			const chain = new THREE.Mesh(this.s.chain, gold);
+			const chain = new Mesh(this.s.chain, gold);
 			chain.rotation.x = 1.3;
 			chain.position.set(0, 0.44, 0.08);
 			rig.body.add(chain);
@@ -694,14 +703,14 @@ export class PoolPeople {
 	}
 
 	/** Parasolpaal naast de crew, met het clubvaandel. Retourneert het vaandel. */
-	private buildParasol(): THREE.Group {
-		const post = new THREE.Group();
+	private buildParasol(): Group {
+		const post = new Group();
 		post.position.set(PARASOL_POSITION.x, DECK_Y, PARASOL_POSITION.z);
 
-		const paal = new THREE.Mesh(this.s.pole, this.mat(0x8a6a45, 0.7));
+		const paal = new Mesh(this.s.pole, this.mat(0x8a6a45, 0.7));
 		paal.position.y = 1.35;
 		post.add(paal);
-		const kap = new THREE.Mesh(this.s.canopy, this.mat(0xc9a05a, 0.85));
+		const kap = new Mesh(this.s.canopy, this.mat(0xc9a05a, 0.85));
 		kap.position.y = 2.75;
 		post.add(kap);
 
@@ -716,7 +725,7 @@ export class PoolPeople {
 		fitText(ctx, 'AL ZUT', { x: 20, y: 20, w: 216, h: 120 }, { size: 58 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
-		const vaandelMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+		const vaandelMat = new MeshBasicMaterial({ map: tex, toneMapped: false });
 		this.materials.push(vaandelMat);
 		const vaandel = backToBackLabel(this.s.bannerPlane, vaandelMat);
 		vaandel.position.set(0.48, 2.1, 0);
@@ -738,7 +747,7 @@ export class PoolPeople {
 		return m;
 	}
 
-	private geo<T extends THREE.BufferGeometry>(g: T): T {
+	private geo<T extends BufferGeometry>(g: T): T {
 		this.geos.push(g);
 		return g;
 	}

@@ -21,7 +21,10 @@ import { isSoftwareHeadless, launchPerfBrowser } from './playwright.ts';
 import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample, ZoneCullTally, ZoneOwnerTiming } from './probe.ts';
 import { probeSource } from './probe.ts';
 
-export type StaticServer = { url: string; stop: () => Promise<void> };
+export interface StaticServer {
+	url: string;
+	stop: () => Promise<void>;
+}
 
 function contentType(path: string): string {
 	if (path.endsWith('.html')) return 'text/html; charset=utf-8';
@@ -105,7 +108,7 @@ export async function serveGame(): Promise<StaticServer> {
 	};
 }
 
-export type GameSession = {
+export interface GameSession {
 	server: StaticServer;
 	/** Load the game and wait until it is genuinely running and settled. */
 	boot: (options?: { settleQuietMs?: number }) => Promise<{ readyMs: number; settleMs: number }>;
@@ -117,7 +120,7 @@ export type GameSession = {
 	environment: () => Promise<Environment>;
 	setViewport: (width: number, height: number) => Promise<void>;
 	close: () => Promise<void>;
-};
+}
 
 /**
  * `url` points the run at a deployed site instead of the local build, which is
@@ -363,7 +366,7 @@ export function bar(label: string, value: string): string {
  * of reading one total and guessing. A frame nobody accounts for is being paced
  * by something outside the game.
  */
-export type FrameAccount = {
+export interface FrameAccount {
 	frameMs: number;
 	/** Logic and batching. The driver cannot block inside either. */
 	appCpuMs: number;
@@ -373,7 +376,7 @@ export type FrameAccount = {
 	gpuWaitMs: number;
 	cpuWaitMs: number;
 	accounted: 'gpu' | 'app-cpu' | 'submit' | 'nothing';
-};
+}
 
 /** Share of the frame a side must reach before it explains the frame. */
 const PARITY = 0.9;

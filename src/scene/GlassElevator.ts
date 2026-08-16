@@ -1,4 +1,22 @@
-import * as THREE from 'three';
+import type { CanvasTexture, ExtrudeGeometry, Material, Object3D, PerspectiveCamera } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	CircleGeometry,
+	CylinderGeometry,
+	DoubleSide,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	Raycaster,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TorusGeometry,
+	Vector2,
+	Vector3,
+} from 'three';
 import { speakLine } from '#/audio/ElevenVoice';
 import type { LevelId } from '#/data/levels';
 import { LEVELS, level, levelAt, levelAtElevationIndex, levelElevationIndex, levelY } from '#/data/levels';
@@ -32,7 +50,7 @@ const SHAFT_GAP = ELEVATOR_SPEC.shaftGap;
  * cabinemaat plus speling: wordt de cabine ooit breder, dan groeit het gat mee in
  * plaats van dat de cabine er weer doorheen begint te snijden.
  */
-function padWithShaftHole(): THREE.ExtrudeGeometry {
+function padWithShaftHole(): ExtrudeGeometry {
 	const center = { x: 0, z: 0 };
 	const padPlan = rectanglePlan({ center, size: ELEVATOR_SPEC.landingPad });
 	const shaftPlan = rectanglePlan({
@@ -89,15 +107,15 @@ const HANS_LINES: Record<LevelId, string[]> = {
  * Hans greets / announces floors (ElevenLabs when credits allow).
  */
 export class GlassElevator {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	/** Shaft center XZ */
-	readonly pos = new THREE.Vector3(ELEVATOR_SPEC.center.x, 0, ELEVATOR_SPEC.center.z);
-	private materials: THREE.Material[] = [];
-	private cabin = new THREE.Group();
-	private cabinFloor!: THREE.Mesh;
-	private liftman!: THREE.Group;
-	private doorL!: THREE.Mesh;
-	private doorR!: THREE.Mesh;
+	readonly pos = new Vector3(ELEVATOR_SPEC.center.x, 0, ELEVATOR_SPEC.center.z);
+	private materials: Material[] = [];
+	private cabin = new Group();
+	private cabinFloor!: Mesh;
+	private liftman!: Group;
+	private doorL!: Mesh;
+	private doorR!: Mesh;
 	private cabinY = FLOOR0;
 	private targetY = FLOOR0;
 	/** wait at floor before next trip */
@@ -109,11 +127,11 @@ export class GlassElevator {
 	/** When true, doors stay open until player picks a floor */
 	private holdForCall = false;
 	private moving = false;
-	private signSprite!: THREE.Sprite;
-	private signTex!: THREE.CanvasTexture;
+	private signSprite!: Sprite;
+	private signTex!: CanvasTexture;
 	private signCtx!: CanvasRenderingContext2D;
-	private speech!: THREE.Sprite;
-	private speechTex!: THREE.CanvasTexture;
+	private speech!: Sprite;
+	private speechTex!: CanvasTexture;
 	private speechCtx!: CanvasRenderingContext2D;
 	private speechLife = 0;
 	private wasInside = false;
@@ -121,11 +139,11 @@ export class GlassElevator {
 	private speaking = false;
 	private onLine: ((text: string) => void) | null = null;
 	/** Meshes you can look at + press E (Hans, call buttons, cabin panel) */
-	private interactables: THREE.Object3D[] = [];
-	private raycaster = new THREE.Raycaster();
-	private ndc = new THREE.Vector2(0, 0); // screen center (FPS look)
+	private interactables: Object3D[] = [];
+	private raycaster = new Raycaster();
+	private ndc = new Vector2(0, 0); // screen center (FPS look)
 	/** Glowing roof call buttons (pulse in update) */
-	private roofCallBtns: THREE.Mesh[] = [];
+	private roofCallBtns: Mesh[] = [];
 	private pool: LightPool;
 
 	constructor(pool: LightPool) {
@@ -208,12 +226,12 @@ export class GlassElevator {
 	}
 
 	/** Result of looking at elevator controls (FPS reticle). */
-	getLookHit(camera: THREE.PerspectiveCamera, maxDist = 5.5): { kind: 'hans' | 'panel' | 'call'; level?: LevelId } | null {
+	getLookHit(camera: PerspectiveCamera, maxDist = 5.5): { kind: 'hans' | 'panel' | 'call'; level?: LevelId } | null {
 		this.raycaster.setFromCamera(this.ndc, camera);
 		this.raycaster.far = maxDist;
 		const hits = this.raycaster.intersectObjects(this.interactables, true);
 		for (const h of hits) {
-			let o: THREE.Object3D | null = h.object;
+			let o: Object3D | null = h.object;
 			while (o) {
 				const k = o.userData['elevInteract'];
 				if (k === 'call') {
@@ -228,12 +246,12 @@ export class GlassElevator {
 		const cam = camera.position;
 		if (!this.contains(cam.x, cam.z, 0.2)) return null;
 		if (Math.abs(cam.y - (this.cabinY + 1.6)) > 2.5) return null;
-		const forward = new THREE.Vector3();
+		const forward = new Vector3();
 		camera.getWorldDirection(forward);
 		forward.y = 0;
 		if (forward.lengthSq() < 1e-4) return { kind: 'hans' };
 		forward.normalize();
-		const hansWorld = new THREE.Vector3();
+		const hansWorld = new Vector3();
 		this.liftman.getWorldPosition(hansWorld);
 		const toHans = hansWorld.clone().sub(cam);
 		toHans.y = 0;
@@ -243,7 +261,7 @@ export class GlassElevator {
 		return null;
 	}
 
-	isLookingAtControls(camera: THREE.PerspectiveCamera, maxDist = 4.2): boolean {
+	isLookingAtControls(camera: PerspectiveCamera, maxDist = 4.2): boolean {
 		return this.getLookHit(camera, maxDist) !== null;
 	}
 
@@ -269,7 +287,7 @@ export class GlassElevator {
 		return true;
 	}
 
-	private tagInteract(obj: THREE.Object3D, kind: string, id?: LevelId): void {
+	private tagInteract(obj: Object3D, kind: string, id?: LevelId): void {
 		obj.userData['elevInteract'] = kind;
 		if (id !== undefined) obj.userData['elevFloor'] = id;
 		obj.traverse((c) => {
@@ -326,7 +344,7 @@ export class GlassElevator {
 	/**
 	 * @param playerPos optional — Hans only talks when you're near / inside
 	 */
-	update(dt: number, playerPos?: THREE.Vector3): void {
+	update(dt: number, playerPos?: Vector3): void {
 		this.t += dt;
 		this.speakCd = Math.max(0, this.speakCd - dt);
 		if (this.speechLife > 0) {
@@ -363,7 +381,28 @@ export class GlassElevator {
 		this.wasInside = inside;
 
 		// Wait with doors open, or travel
-		if (!this.moving) {
+		if (this.moving) {
+			// Doors closed while moving
+			this.doorL.position.x = lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
+			this.doorR.position.x = lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
+			const dir = Math.sign(this.targetY - this.cabinY);
+			if (dir === 0) {
+				this.moving = false;
+			} else {
+				this.cabinY += dir * SPEED * dt;
+				if ((dir > 0 && this.cabinY >= this.targetY) || (dir < 0 && this.cabinY <= this.targetY)) {
+					this.cabinY = this.targetY;
+					this.moving = false;
+					this.waitT = 3.2 + Math.random() * 1.5;
+					this.stop = levelAt(this.cabinY);
+					if (inside || near) {
+						this.hansSay(pick(HANS_LINES[this.stop]), true);
+						// Offer next choice if still aboard
+						if (inside) this.holdForCall = true;
+					}
+				}
+			}
+		} else {
 			// Doors open
 			this.doorL.position.x = lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorOpenOffset, 0.12);
 			this.doorR.position.x = lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorOpenOffset, 0.12);
@@ -383,27 +422,6 @@ export class GlassElevator {
 					this.targetY = levelY(this.stop);
 					this.moving = true;
 				}
-			}
-		} else {
-			// Doors closed while moving
-			this.doorL.position.x = lerp(this.doorL.position.x, -ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
-			this.doorR.position.x = lerp(this.doorR.position.x, ELEVATOR_SPEC.cabin.doorClosedOffset, 0.15);
-			const dir = Math.sign(this.targetY - this.cabinY);
-			if (dir !== 0) {
-				this.cabinY += dir * SPEED * dt;
-				if ((dir > 0 && this.cabinY >= this.targetY) || (dir < 0 && this.cabinY <= this.targetY)) {
-					this.cabinY = this.targetY;
-					this.moving = false;
-					this.waitT = 3.2 + Math.random() * 1.5;
-					this.stop = levelAt(this.cabinY);
-					if (inside || near) {
-						this.hansSay(pick(HANS_LINES[this.stop]), true);
-						// Offer next choice if still aboard
-						if (inside) this.holdForCall = true;
-					}
-				}
-			} else {
-				this.moving = false;
 			}
 		}
 
@@ -463,7 +481,7 @@ export class GlassElevator {
 		this.speechLife = 3.4;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -483,7 +501,7 @@ export class GlassElevator {
 				opacity: 0.18,
 				roughness: 0.05,
 				metalness: 0.1,
-				side: THREE.DoubleSide,
+				side: DoubleSide,
 				depthWrite: false,
 			}),
 		);
@@ -494,10 +512,7 @@ export class GlassElevator {
 		const postH = postTop - postBottom;
 		const postMid = midpoint(postTop, postBottom);
 		for (const postSpec of ELEVATOR_SHAFT_POSTS) {
-			const post = new THREE.Mesh(
-				new THREE.BoxGeometry(ELEVATOR_SPEC.shaft.postThickness, postH, ELEVATOR_SPEC.shaft.postThickness),
-				chrome,
-			);
+			const post = new Mesh(new BoxGeometry(ELEVATOR_SPEC.shaft.postThickness, postH, ELEVATOR_SPEC.shaft.postThickness), chrome);
 			post.name = `elevator-shaft-post-${postSpec.id}`;
 			post.position.set(postSpec.center.x - this.pos.x, postMid, postSpec.center.z - this.pos.z);
 			this.group.add(post);
@@ -505,7 +520,7 @@ export class GlassElevator {
 
 		// Glass shaft panels (N, W, E) — open south for boarding all floors
 		for (const wall of ELEVATOR_SHAFT_WALLS) {
-			const panel = new THREE.Mesh(new THREE.BoxGeometry(wall.size.width, postH - 0.4, wall.size.depth), glass);
+			const panel = new Mesh(new BoxGeometry(wall.size.width, postH - 0.4, wall.size.depth), glass);
 			panel.position.set(wall.center.x - this.pos.x, postMid, wall.center.z - this.pos.z);
 			this.group.add(panel);
 		}
@@ -530,8 +545,8 @@ export class GlassElevator {
 			// cabinemaat, zodat het niet los kan lopen als die verandert.
 			const wide = isRoof || isGarage;
 			const pad = wide
-				? new THREE.Mesh(padWithShaftHole(), isRoof ? roofPadMat : garagePadMat)
-				: new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 1.0), padMat);
+				? new Mesh(padWithShaftHole(), isRoof ? roofPadMat : garagePadMat)
+				: new Mesh(new BoxGeometry(2.6, 0.12, 1.0), padMat);
 			pad.position.set(0, y + 0.02, wide ? 0 : 1.55);
 			this.group.add(pad);
 
@@ -544,8 +559,8 @@ export class GlassElevator {
 				this.buildRoofWalkway();
 			} else {
 				// Compact landing call plate (P1 / V0 / V1)
-				const btn = new THREE.Mesh(
-					new THREE.BoxGeometry(0.32, 0.5, 0.14),
+				const btn = new Mesh(
+					new BoxGeometry(0.32, 0.5, 0.14),
 					this.track(
 						lit({
 							color: isGarage ? 0x42a5f5 : 0xffc107,
@@ -572,21 +587,21 @@ export class GlassElevator {
 			intensity: 2.2,
 			distance: 14,
 			decay: 2,
-			position: new THREE.Vector3(this.pos.x, 7, this.pos.z),
+			position: new Vector3(this.pos.x, 7, this.pos.z),
 		});
 		this.pool.register({
 			color: 0x00e676,
 			intensity: 5,
 			distance: 18,
 			decay: 2,
-			position: new THREE.Vector3(this.pos.x + 2.2, FLOOR2 + 2.5, this.pos.z + 2.5),
+			position: new Vector3(this.pos.x + 2.2, FLOOR2 + 2.5, this.pos.z + 2.5),
 		});
 	}
 
 	/** Painted path from helipad approach → lift hatch */
 	private buildRoofWalkway(): void {
 		const paint = this.track(
-			new THREE.MeshBasicMaterial({
+			new MeshBasicMaterial({
 				color: 0xffc107,
 				toneMapped: false,
 				transparent: true,
@@ -594,12 +609,12 @@ export class GlassElevator {
 			}),
 		);
 		// Strip along +Z (toward helipad)
-		const strip = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.04, 14), paint);
+		const strip = new Mesh(new BoxGeometry(1.4, 0.04, 14), paint);
 		strip.position.set(2.2, FLOOR2 + 0.04, 7.5);
 		this.group.add(strip);
 		// Chevrons pointing to shaft
 		for (let i = 0; i < 5; i++) {
-			const chev = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.35), paint);
+			const chev = new Mesh(new BoxGeometry(0.9, 0.05, 0.35), paint);
 			chev.position.set(2.2, FLOOR2 + 0.06, 3 + i * 2.4);
 			this.group.add(chev);
 		}
@@ -614,7 +629,7 @@ export class GlassElevator {
 	 * @param localX/localZ relative to shaft center (group origin)
 	 */
 	private buildRoofCallStation(id: LevelId, localX: number, localZ: number): void {
-		const station = new THREE.Group();
+		const station = new Group();
 		station.position.set(localX, FLOOR2, localZ);
 
 		const metal = this.track(
@@ -644,21 +659,21 @@ export class GlassElevator {
 		);
 
 		// Lage voetplaat: markeert de plek, is geen obstakel om overheen te struikelen
-		const base = new THREE.Mesh(new THREE.CylinderGeometry(CALL_BASE_R, CALL_BASE_R + 0.06, CALL_BASE_H, 14), metal);
+		const base = new Mesh(new CylinderGeometry(CALL_BASE_R, CALL_BASE_R + 0.06, CALL_BASE_H, 14), metal);
 		base.position.y = half(CALL_BASE_H);
 		station.add(base);
-		const pole = new THREE.Mesh(new THREE.CylinderGeometry(CALL_POLE_R, CALL_POLE_R + 0.02, CALL_BTN_Y, 10), metal);
+		const pole = new Mesh(new CylinderGeometry(CALL_POLE_R, CALL_POLE_R + 0.02, CALL_BTN_Y, 10), metal);
 		pole.position.y = half(CALL_BTN_Y);
 		station.add(pole);
 
 		// Housing box so it reads as a CONTROL PANEL, not a ball
-		const housing = new THREE.Mesh(new THREE.BoxGeometry(CALL_HOUSING_W, CALL_HOUSING_H, CALL_HOUSING_D), redFrame);
+		const housing = new Mesh(new BoxGeometry(CALL_HOUSING_W, CALL_HOUSING_H, CALL_HOUSING_D), redFrame);
 		housing.position.y = CALL_BTN_Y;
 		station.add(housing);
 
 		// Paddenstoelknop steekt net uit het paneel, genoeg om te zien dat je hem indrukt
 		const face = half(CALL_HOUSING_D);
-		const btn = new THREE.Mesh(new THREE.CylinderGeometry(CALL_BTN_R, CALL_BTN_R + 0.01, 0.08, 20), green);
+		const btn = new Mesh(new CylinderGeometry(CALL_BTN_R, CALL_BTN_R + 0.01, 0.08, 20), green);
 		btn.position.set(0, CALL_BTN_Y, face + 0.01);
 		btn.rotation.x = Math.PI / 2;
 		station.add(btn);
@@ -667,7 +682,7 @@ export class GlassElevator {
 		this.roofCallBtns.push(btn);
 
 		// Dome cap on button
-		const dome = new THREE.Mesh(new THREE.SphereGeometry(CALL_BTN_R, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), green);
+		const dome = new Mesh(new SphereGeometry(CALL_BTN_R, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), green);
 		dome.position.set(0, CALL_BTN_Y, face + 0.05);
 		dome.rotation.x = Math.PI / 2;
 		station.add(dome);
@@ -699,8 +714,8 @@ export class GlassElevator {
 
 		// Gele ring om de voet: laag genoeg om als vloermarkering te lezen, maar net hoger
 		// dan de streep en de chevrons uit buildRoofWalkway, anders z-fighten ze.
-		const ring = new THREE.Mesh(
-			new THREE.TorusGeometry(CALL_BASE_R * 2.3, 0.035, 6, 24),
+		const ring = new Mesh(
+			new TorusGeometry(CALL_BASE_R * 2.3, 0.035, 6, 24),
 			this.track(
 				lit({
 					color: 0xffc107,
@@ -718,7 +733,7 @@ export class GlassElevator {
 		this.group.add(station);
 	}
 
-	private makeCallSign(text: string, w: number, h: number): THREE.Group {
+	private makeCallSign(text: string, w: number, h: number): Group {
 		const cw = CALL_SIGN_TEX_W;
 		const ch = CALL_SIGN_TEX_H;
 		const { canvas: c, ctx } = labelCanvas(cw, ch);
@@ -733,13 +748,10 @@ export class GlassElevator {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, half(cw), half(ch));
 		const tex = labelTexture(c);
-		return backToBackLabel(
-			new THREE.PlaneGeometry(w, h),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		return backToBackLabel(new PlaneGeometry(w, h), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 	}
 
-	private makeCallSprite(text: string): THREE.Sprite {
+	private makeCallSprite(text: string): Sprite {
 		const cw = CALL_SPRITE_TEX_W;
 		const ch = CALL_SPRITE_TEX_H;
 		const { canvas: c, ctx } = labelCanvas(cw, ch);
@@ -754,8 +766,8 @@ export class GlassElevator {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, half(cw), half(ch));
 		const tex = labelTexture(c);
-		return new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		return new Sprite(
+			new SpriteMaterial({
 				map: tex,
 				transparent: true,
 				depthTest: true,
@@ -779,7 +791,7 @@ export class GlassElevator {
 				opacity: 0.28,
 				roughness: 0.08,
 				metalness: 0.15,
-				side: THREE.DoubleSide,
+				side: DoubleSide,
 				depthWrite: false,
 			}),
 		);
@@ -792,12 +804,12 @@ export class GlassElevator {
 		);
 
 		// Floor
-		this.cabinFloor = new THREE.Mesh(new THREE.BoxGeometry(CABIN_W - 0.1, 0.1, CABIN_D - 0.1), floorMat);
+		this.cabinFloor = new Mesh(new BoxGeometry(CABIN_W - 0.1, 0.1, CABIN_D - 0.1), floorMat);
 		this.cabinFloor.position.y = 0.05;
 		this.cabin.add(this.cabinFloor);
 
 		// Ceiling
-		const ceil = new THREE.Mesh(new THREE.BoxGeometry(CABIN_W - 0.1, 0.08, CABIN_D - 0.1), chrome);
+		const ceil = new Mesh(new BoxGeometry(CABIN_W - 0.1, 0.08, CABIN_D - 0.1), chrome);
 		ceil.position.y = CABIN_H;
 		this.cabin.add(ceil);
 		// De cabine rijdt op en neer, dus dit lampje volgt hem.
@@ -807,13 +819,13 @@ export class GlassElevator {
 			distance: 4,
 			decay: 2,
 			follow: this.cabin,
-			offset: new THREE.Vector3(0, CABIN_H - 0.15, 0),
+			offset: new Vector3(0, CABIN_H - 0.15, 0),
 		});
 
 		// Glass walls (N, W, E) + frame
 		const wallH = CABIN_H - 0.2;
 		const mkWall = (w: number, d: number, x: number, z: number) => {
-			const m = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, d), glass);
+			const m = new Mesh(new BoxGeometry(w, wallH, d), glass);
 			m.position.set(x, half(wallH) + 0.1, z);
 			this.cabin.add(m);
 		};
@@ -822,8 +834,8 @@ export class GlassElevator {
 		mkWall(ELEVATOR_SPEC.cabin.wallThickness, CABIN_D - 0.15, half(CABIN_W) - ELEVATOR_SPEC.cabin.wallInset, 0);
 
 		// Sliding glass doors (south = boarding)
-		this.doorL = new THREE.Mesh(
-			new THREE.BoxGeometry(ELEVATOR_SPEC.cabin.doorPanelWidth, wallH - 0.1, ELEVATOR_SPEC.cabin.doorThickness),
+		this.doorL = new Mesh(
+			new BoxGeometry(ELEVATOR_SPEC.cabin.doorPanelWidth, wallH - 0.1, ELEVATOR_SPEC.cabin.doorThickness),
 			glass,
 		);
 		this.doorL.position.set(
@@ -837,22 +849,19 @@ export class GlassElevator {
 		this.cabin.add(this.doorR);
 
 		// Handrail
-		const rail = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.025, 6, 16, Math.PI), chrome);
+		const rail = new Mesh(new TorusGeometry(0.35, 0.025, 6, 16, Math.PI), chrome);
 		rail.rotation.x = Math.PI / 2;
 		rail.position.set(0, 1.1, -0.75);
 		this.cabin.add(rail);
 
 		// Control panel (look + E)
-		const panel = new THREE.Mesh(
-			new THREE.BoxGeometry(0.32, 0.6, 0.1),
-			this.track(lit({ color: 0x263238, metalness: 0.5, roughness: 0.4 })),
-		);
+		const panel = new Mesh(new BoxGeometry(0.32, 0.6, 0.1), this.track(lit({ color: 0x263238, metalness: 0.5, roughness: 0.4 })));
 		panel.position.set(0.75, 1.25, -0.85);
 		this.cabin.add(panel);
 		this.tagInteract(panel, 'panel');
 		for (let i = 0; i < 4; i++) {
-			const b = new THREE.Mesh(
-				new THREE.CircleGeometry(0.045, 10),
+			const b = new Mesh(
+				new CircleGeometry(0.045, 10),
 				this.track(
 					lit({
 						color: i === 0 ? 0x42a5f5 : i === 3 ? 0x00e676 : 0xffc107,
@@ -869,7 +878,7 @@ export class GlassElevator {
 
 	/** Liftman — uniform, cap; tucked in back corner so you don't stand inside him */
 	private buildLiftman(): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		// NW corner of cabin, clear of boarding path (+Z open side)
 		g.position.set(-0.62, 0.02, -0.62);
 		g.rotation.y = Math.PI * 0.75;
@@ -886,43 +895,43 @@ export class GlassElevator {
 		);
 		const hairM = this.track(lit({ color: 0x1a1a1a, roughness: 0.9 }));
 
-		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.42, 3, 6), pants);
+		const legL = new Mesh(new CapsuleGeometry(0.08, 0.42, 3, 6), pants);
 		const legR = legL.clone();
 		legL.position.set(-0.09, 0.38, 0);
 		legR.position.set(0.09, 0.38, 0);
 		g.add(legL, legR);
 
-		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.5, 4, 8), uni);
+		const body = new Mesh(new CapsuleGeometry(0.18, 0.5, 4, 8), uni);
 		body.position.y = 1.0;
 		g.add(body);
 
 		// Gold buttons
 		for (let i = 0; i < 3; i++) {
-			const btn = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), gold);
+			const btn = new Mesh(new SphereGeometry(0.03, 6, 6), gold);
 			btn.position.set(0, 1.15 - i * 0.12, 0.17);
 			g.add(btn);
 		}
 
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), skin);
+		const head = new Mesh(new SphereGeometry(0.15, 12, 12), skin);
 		head.position.y = 1.5;
 		g.add(head);
-		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), hairM);
+		const hair = new Mesh(new SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), hairM);
 		hair.position.set(0, 1.56, -0.01);
 		g.add(hair);
 
 		// Cap
-		const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.1, 12), uni);
+		const cap = new Mesh(new CylinderGeometry(0.16, 0.17, 0.1, 12), uni);
 		cap.position.set(0, 1.68, 0);
 		g.add(cap);
-		const brim = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.12), uni);
+		const brim = new Mesh(new BoxGeometry(0.22, 0.03, 0.12), uni);
 		brim.position.set(0, 1.64, 0.12);
 		g.add(brim);
-		const badge = new THREE.Mesh(new THREE.CircleGeometry(0.035, 8), gold);
+		const badge = new Mesh(new CircleGeometry(0.035, 8), gold);
 		badge.position.set(0, 1.7, 0.17);
 		g.add(badge);
 
 		// Moustache
-		const stache = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.03), this.track(lit({ color: 0x3e2723, roughness: 0.9 })));
+		const stache = new Mesh(new BoxGeometry(0.1, 0.02, 0.03), this.track(lit({ color: 0x3e2723, roughness: 0.9 })));
 		stache.position.set(0, 1.44, 0.13);
 		g.add(stache);
 
@@ -941,7 +950,7 @@ export class GlassElevator {
 			{ size: 14, weight: '500', maxLines: 1 },
 		);
 		const tex = labelTexture(c);
-		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		const sp = new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(1.2, 0.3, 1);
 		sp.position.set(0, 2.05, 0);
 		g.add(sp);
@@ -952,8 +961,8 @@ export class GlassElevator {
 		this.speechTex = labelTexture(sc);
 		// depthTest stays off: the bubble sits 2.47 m up in a 2.55 m cabin, so the
 		// chrome ceiling would slice the top line off for everyone riding along
-		this.speech = new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		this.speech = new Sprite(
+			new SpriteMaterial({
 				map: this.speechTex,
 				transparent: true,
 				depthTest: false,
@@ -982,10 +991,7 @@ export class GlassElevator {
 		ctx.font = '16px system-ui';
 		ctx.fillText('P1 · V0 · V1 · DAK · Hans', 192, 72);
 		const tex = labelTexture(c);
-		const board = new THREE.Mesh(
-			new THREE.PlaneGeometry(2.4, 0.6),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		const board = new Mesh(new PlaneGeometry(2.4, 0.6), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 		board.position.set(0, 3.4, 1.2);
 		this.group.add(board);
 
@@ -993,8 +999,8 @@ export class GlassElevator {
 		const { canvas: sc, ctx: __ctx } = labelCanvas(256, 96);
 		this.signCtx = __ctx;
 		this.signTex = labelTexture(sc);
-		this.signSprite = new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		this.signSprite = new Sprite(
+			new SpriteMaterial({
 				map: this.signTex,
 				transparent: true,
 				depthTest: true,

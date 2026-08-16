@@ -5,23 +5,23 @@
 
 export type StockKind = 'box' | 'bottle' | 'can' | 'bag' | 'device' | 'shoe' | 'garment' | 'sphere' | 'book';
 
-export type StockItem = {
+export interface StockItem {
 	name: string;
 	price: number;
 	kind: StockKind;
 	color: number;
 	/** relative size 0.5–1.5 */
 	size?: number;
-};
+}
 
-export type StoreInventory = {
+export interface StoreInventory {
 	storeId: string;
 	slogan: string;
 	/** items stocked on shelves */
 	items: StockItem[];
 	/** what the cashier usually sells */
 	bestsellers: string[];
-};
+}
 
 export const INVENTORIES: Record<string, StoreInventory> = {
 	zara: {

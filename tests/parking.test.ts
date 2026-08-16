@@ -51,7 +51,12 @@ const P1 = levelY('p1');
 const V0 = levelY('v0');
 const BUILDER = await read('src/scene/ParkingGarage.ts');
 
-type Rect = { minX: number; maxX: number; minZ: number; maxZ: number };
+interface Rect {
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+}
 
 function rectanglesOverlap(a: Rect, b: Rect): boolean {
 	return a.maxX > b.minX && a.minX < b.maxX && a.maxZ > b.minZ && a.minZ < b.maxZ;
@@ -68,7 +73,7 @@ function footprintOf(spot: { x: number; z: number; yaw: number }, body: { width:
 }
 
 describe('driving out of the garage', () => {
-	const STEPS = 320;
+	const Steps = 320;
 
 	// The ramp lies diagonally in x and y, so the z-only ramp reading never saw it; this walks
 	// it in player-sized steps and asks collision at every one whether the passage is open.
@@ -78,8 +83,8 @@ describe('driving out of the garage', () => {
 	] as const)('walking %s the exit ramp stays on the incline', (_way, direction) => {
 		const faults: string[] = [];
 		let currentY = direction === 1 ? PARKING_EXIT_RAMP.start.y : PARKING_EXIT_RAMP.end.y;
-		for (let i = 0; i <= STEPS && faults.length === 0; i++) {
-			const t = direction === 1 ? i / STEPS : 1 - i / STEPS;
+		for (let i = 0; i <= Steps && faults.length === 0; i++) {
+			const t = direction === 1 ? i / Steps : 1 - i / Steps;
 			const x = lerp(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x, t);
 			const z = lerp(PARKING_EXIT_RAMP.start.z, PARKING_EXIT_RAMP.end.z, t);
 			const expected = lerp(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y, t);
@@ -105,7 +110,7 @@ describe('driving out of the garage', () => {
  * the rail deliberately runs on a little, because a rail stopping on that seam leaves a gap.
  */
 describe('the rail along the exit', () => {
-	const MARGIN = 1e-4;
+	const Margin = 1e-4;
 	const halfSpanX =
 		half(PARKING_EXIT_RAIL.length) * Math.abs(Math.cos(PARKING_EXIT_RAIL.angle)) +
 		half(PARKING_EXIT_RAIL.height) * Math.abs(Math.sin(PARKING_EXIT_RAIL.angle));
@@ -114,14 +119,14 @@ describe('the rail along the exit', () => {
 
 	test('stops at the mouth instead of running onto the plaza', () => {
 		expect(PARKING_EXIT_RAIL.centerX - halfSpanX, 'the rail reaches past the mouth onto the plaza').toBeGreaterThanOrEqual(
-			mouth - MARGIN,
+			mouth - Margin,
 		);
 	});
 
 	describe.each([-1, 1] as const)('on the %d side', (side) => {
 		const midZ = side * PARKING_EXIT_RAIL.offsetZ;
 		const head = PARKING_EXIT_RAIL_HEADS.find(
-			(candidate) => midZ >= candidate.minZ - MARGIN && midZ <= candidate.maxZ + MARGIN && candidate.minX <= mouth + MARGIN,
+			(candidate) => midZ >= candidate.minZ - Margin && midZ <= candidate.maxZ + Margin && candidate.minX <= mouth + Margin,
 		);
 
 		test('the open end is capped', () => {
@@ -130,14 +135,14 @@ describe('the rail along the exit', () => {
 
 		test('the cap stays between the mouth and the deck', () => {
 			if (!head) return;
-			expect(head.minX, `the cap at z ${nr(midZ)} reaches past the mouth`).toBeGreaterThanOrEqual(mouth - MARGIN);
-			expect(head.maxX, `the cap at z ${nr(midZ)} reaches past the deck`).toBeLessThanOrEqual(deck + MARGIN);
+			expect(head.minX, `the cap at z ${nr(midZ)} reaches past the mouth`).toBeGreaterThanOrEqual(mouth - Margin);
+			expect(head.maxX, `the cap at z ${nr(midZ)} reaches past the deck`).toBeLessThanOrEqual(deck + Margin);
 		});
 
 		test('the cap covers the full height of the rail', () => {
 			if (!head) return;
 			expect(head.maxY, `the cap at z ${nr(midZ)} leaves the top of the rail open`).toBeGreaterThanOrEqual(
-				PARKING_EXIT_RAMP.end.y + PARKING_EXIT_RAIL.height - MARGIN,
+				PARKING_EXIT_RAMP.end.y + PARKING_EXIT_RAIL.height - Margin,
 			);
 		});
 	});
@@ -148,14 +153,14 @@ describe('the rail along the exit', () => {
  * that collision fell away and you dropped into the trench with no visible warning.
  */
 describe('the fence along the open trench', () => {
-	const POSE = { x: -37.2, z: -3.6, heading: 181 } as const;
-	const STEP = 0.05;
+	const Pose = { x: -37.2, z: -3.6, heading: 181 } as const;
+	const Step = 0.05;
 	const guard = PARKING_EXIT_TRENCH_GUARDS.find(
-		(candidate) => candidate.centerZ < 0 && POSE.x >= candidate.minX && POSE.x <= candidate.maxX,
+		(candidate) => candidate.centerZ < 0 && Pose.x >= candidate.minX && Pose.x <= candidate.maxX,
 	);
 
 	test('exists on the pose it was reported from', () => {
-		expect(guard, `no northern fence along the trench at (${nr(POSE.x)}, ${nr(POSE.z)})`).toBeDefined();
+		expect(guard, `no northern fence along the trench at (${nr(Pose.x)}, ${nr(Pose.z)})`).toBeDefined();
 	});
 
 	test('stands higher than a jump reaches', () => {
@@ -170,13 +175,13 @@ describe('the fence along the open trench', () => {
 		['jumping', V0 + JUMP_RISE],
 	] as const)('%s into it does not get through', (_how, feetY) => {
 		if (!guard) return;
-		const yaw = (POSE.heading * Math.PI) / 180;
-		let x: number = POSE.x;
-		let z: number = POSE.z;
+		const yaw = (Pose.heading * Math.PI) / 180;
+		let x: number = Pose.x;
+		let z: number = Pose.z;
 		for (let i = 0; i < 20; i++) {
 			const solved = world.resolveCircle(
-				x - Math.sin(yaw) * STEP,
-				z - Math.cos(yaw) * STEP,
+				x - Math.sin(yaw) * Step,
+				z - Math.cos(yaw) * Step,
 				feetY,
 				PLAYER_RADIUS,
 				3,
@@ -198,9 +203,9 @@ describe('the fence along the open trench', () => {
  * on the background colour.
  */
 describe('the shell around P1', () => {
-	const STEP = 0.25;
+	const Step = 0.25;
 	/** Slack under the ceiling and above the deck where the shell still has to be solid. */
-	const MARGIN = 0.05;
+	const Margin = 0.05;
 	const shell = [PARKING_DECK_ENTITY, PARKING_EXIT_TRENCH_ENTITY];
 	const ceilingUnderside = P1 + PARKING_DECK_SPEC.ceiling.height - half(PARKING_DECK_SPEC.ceiling.thickness);
 	const wallTop = P1 + PARKING_DECK_SPEC.clearHeight;
@@ -242,7 +247,7 @@ describe('the shell around P1', () => {
 
 	const wallX = half(PARKING_FOOTPRINT.width) - PARKING_DECK_SPEC.wall.inset;
 	const wallZ = half(PARKING_FOOTPRINT.depth) - PARKING_DECK_SPEC.wall.inset;
-	const heights = [P1 + MARGIN, midpoint(P1, ceilingUnderside), ceilingUnderside - MARGIN];
+	const heights = [P1 + Margin, midpoint(P1, ceilingUnderside), ceilingUnderside - Margin];
 	const sides = [
 		{ name: 'north', alongX: true, fixed: -wallZ, from: -half(PARKING_FOOTPRINT.width), to: half(PARKING_FOOTPRINT.width) },
 		{ name: 'south', alongX: true, fixed: wallZ, from: -half(PARKING_FOOTPRINT.width), to: half(PARKING_FOOTPRINT.width) },
@@ -252,9 +257,9 @@ describe('the shell around P1', () => {
 
 	test.each(sides.map((side) => side.name))('the %s facade is closed', (name) => {
 		const side = sides.find((candidate) => candidate.name === name);
-		if (!side || !lintel) return;
+		if (!(side && lintel)) return;
 		const holes: string[] = [];
-		for (let s = side.from; s <= side.to && holes.length === 0; s += STEP) {
+		for (let s = side.from; s <= side.to && holes.length === 0; s += Step) {
 			const x = side.alongX ? s : side.fixed;
 			const z = side.alongX ? side.fixed : s;
 			for (const y of heights) {
@@ -270,10 +275,10 @@ describe('the shell around P1', () => {
 	test('the trench is walled over its whole length', () => {
 		const bandZ = midpoint(PARKING_EXIT_RAIL_OUTER, PARKING_EXIT_WALL_GAP);
 		const holes: string[] = [];
-		for (let x = PARKING_EXIT_TRENCH.minX; x <= PARKING_EXIT_TRENCH.maxX && holes.length === 0; x += STEP) {
+		for (let x = PARKING_EXIT_TRENCH.minX; x <= PARKING_EXIT_TRENCH.maxX && holes.length === 0; x += Step) {
 			const top = x < PARKING_EXIT_TRENCH.coverX ? PARKING_EXIT_TRENCH.skyTopY : PARKING_EXIT_TRENCH.coveredTopY;
 			for (const z of [-bandZ, bandZ]) {
-				for (const y of [PARKING_EXIT_TRENCH.baseY + MARGIN, parkingExitRampY(x), top - MARGIN]) {
+				for (const y of [PARKING_EXIT_TRENCH.baseY + Margin, parkingExitRampY(x), top - Margin]) {
 					if (solidAt(shell, x, y, z)) continue;
 					holes.push(`open at (${nr(x)}, ${nr(z)}) at height ${nr(y)}, so you look out under the world`);
 					break;
@@ -290,13 +295,13 @@ describe('the shell around P1', () => {
 	 */
 	test('the cavity over the covered trench is closed', () => {
 		const holes: string[] = [];
-		const bandZ = [-PARKING_EXIT_RAIL_OUTER + MARGIN, 0, PARKING_EXIT_RAIL_OUTER - MARGIN];
+		const bandZ = [-PARKING_EXIT_RAIL_OUTER + Margin, 0, PARKING_EXIT_RAIL_OUTER - Margin];
 		const heightsInCavity = [
-			PARKING_CEILING_SPEC.topY + MARGIN,
+			PARKING_CEILING_SPEC.topY + Margin,
 			midpoint(PARKING_CEILING_SPEC.topY, PARKING_EXIT_TRENCH.coveredTopY),
-			PARKING_EXIT_TRENCH.coveredTopY - MARGIN,
+			PARKING_EXIT_TRENCH.coveredTopY - Margin,
 		];
-		for (let x = PARKING_EXIT_TRENCH.coverX; x <= PARKING_EXIT_TRENCH.maxX && holes.length === 0; x += STEP) {
+		for (let x = PARKING_EXIT_TRENCH.coverX; x <= PARKING_EXIT_TRENCH.maxX && holes.length === 0; x += Step) {
 			for (const z of bandZ) {
 				for (const y of heightsInCavity) {
 					if (solidAt(shell, x, y, z)) continue;
@@ -405,7 +410,7 @@ describe('the paint on the deck', () => {
  * distance is measured along the normal and checked vertically.
  */
 describe('the chevron patch on the exit ramp', () => {
-	const MARGIN = 1e-4;
+	const Margin = 1e-4;
 	const cos = Math.cos(PARKING_EXIT_CHEVRONS.angle);
 	const expected = PARKING_EXIT_CHEVRONS.lift / cos;
 	const corners = [-half(PARKING_EXIT_CHEVRONS.length), half(PARKING_EXIT_CHEVRONS.length)].flatMap((along) =>
@@ -426,9 +431,9 @@ describe('the chevron patch on the exit ramp', () => {
 	test.each(corners.map((_corner, index) => index))('corner %d stays on the incline', (index) => {
 		const corner = corners[index];
 		if (!corner) return;
-		expect(corner.x, 'the patch reaches past the foot of the incline').toBeGreaterThanOrEqual(PARKING_EXIT_RAMP.end.x - MARGIN);
-		expect(corner.x, 'the patch reaches past the top of the incline').toBeLessThanOrEqual(PARKING_EXIT_RAMP.start.x + MARGIN);
-		expect(Math.abs(corner.z), 'the patch lies beside the incline').toBeLessThanOrEqual(half(PARKING_EXIT_RAMP.width) + MARGIN);
+		expect(corner.x, 'the patch reaches past the foot of the incline').toBeGreaterThanOrEqual(PARKING_EXIT_RAMP.end.x - Margin);
+		expect(corner.x, 'the patch reaches past the top of the incline').toBeLessThanOrEqual(PARKING_EXIT_RAMP.start.x + Margin);
+		expect(Math.abs(corner.z), 'the patch lies beside the incline').toBeLessThanOrEqual(half(PARKING_EXIT_RAMP.width) + Margin);
 	});
 });
 

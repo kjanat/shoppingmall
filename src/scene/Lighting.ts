@@ -1,8 +1,9 @@
-import * as THREE from 'three';
+import type { Light, Scene } from 'three';
+import { AmbientLight, Color, DirectionalLight, Fog, HemisphereLight, Vector3 } from 'three';
 import type { LightPool } from '#/render/LightPool';
 
 /** Turns the daylight down for the disco and puts it back exactly as it was. */
-export type DaylightDimmer = {
+export interface DaylightDimmer {
 	dimDaylight(on: boolean): void;
 	/**
 	 * A real light owned elsewhere that must follow the dim. The old traverse
@@ -10,10 +11,10 @@ export type DaylightDimmer = {
 	 * Miss one and it blasts at full power through the "deep arcade night"
 	 * (the catwalk spot did exactly that).
 	 */
-	register(light: THREE.Light, factor: number): void;
+	register(light: Light, factor: number): void;
 	/** Scale the everywhere-light. Live, no rebuild: it is only an intensity. */
 	setFill(scale: number): void;
-};
+}
 
 /**
  * Warm daylight American mall, no neon club vibes.
@@ -24,18 +25,18 @@ export type DaylightDimmer = {
  * became most of the picture and the mall read as a photocopy of itself. The
  * sun and the pool do the modelling; these two only lift the shadows.
  */
-export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimmer {
-	scene.background = new THREE.Color(0xc8d4e4);
-	scene.fog = new THREE.Fog(0xc8d4e4, 100, 200);
+export function setupLighting(scene: Scene, pool: LightPool): DaylightDimmer {
+	scene.background = new Color(0xc8d4e4);
+	scene.fog = new Fog(0xc8d4e4, 100, 200);
 
-	const ambient = new THREE.AmbientLight(0xfff6e8, 0.55);
+	const ambient = new AmbientLight(0xfff6e8, 0.55);
 	scene.add(ambient);
 
-	const hemi = new THREE.HemisphereLight(0xe8f0ff, 0xd4c4a8, 0.45);
+	const hemi = new HemisphereLight(0xe8f0ff, 0xd4c4a8, 0.45);
 	scene.add(hemi);
 
 	// Soft sun through skylight
-	const sun = new THREE.DirectionalLight(0xfff2dd, 1.35);
+	const sun = new DirectionalLight(0xfff2dd, 1.35);
 	sun.position.set(25, 55, 20);
 	sun.castShadow = true;
 	sun.shadow.mapSize.set(1024, 1024);
@@ -49,7 +50,7 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 	scene.add(sun);
 
 	// Soft fill
-	const fill = new THREE.DirectionalLight(0xdde8ff, 0.4);
+	const fill = new DirectionalLight(0xdde8ff, 0.4);
 	fill.position.set(-20, 30, -15);
 	scene.add(fill);
 
@@ -63,7 +64,7 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 		distance: 50,
 		decay: 1.5,
 		priority: 2,
-		position: new THREE.Vector3(0, 12, 0),
+		position: new Vector3(0, 12, 0),
 	});
 	for (const [y, z, intensity, distance] of [
 		[5, -12, 12, 35],
@@ -77,7 +78,7 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 			distance,
 			decay: 1.8,
 			priority: 2,
-			position: new THREE.Vector3(0, y, z),
+			position: new Vector3(0, y, z),
 		});
 	}
 
@@ -89,7 +90,7 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 	// `fills` marks the two that light everything from every side, the ones the
 	// Zaallicht setting scales. The sun and its fill carry direction, so they
 	// keep their shape whatever the player picks.
-	const entries: { light: THREE.Light; factor: number; base: number; fills?: boolean }[] = [
+	const entries: { light: Light; factor: number; base: number; fills?: boolean }[] = [
 		{ light: ambient, factor: 0.12, base: ambient.intensity, fills: true },
 		{ light: hemi, factor: 0.1, base: hemi.intensity, fills: true },
 		{ light: sun, factor: 0.08, base: sun.intensity },
@@ -109,7 +110,7 @@ export function setupLighting(scene: THREE.Scene, pool: LightPool): DaylightDimm
 			fill_ = scale;
 			apply();
 		},
-		register(light: THREE.Light, factor: number): void {
+		register(light: Light, factor: number): void {
 			const entry = { light, factor, base: light.intensity };
 			entries.push(entry);
 			if (active) light.intensity = entry.base * factor;

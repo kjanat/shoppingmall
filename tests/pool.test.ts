@@ -70,10 +70,10 @@ describe('the basin', () => {
  * see this: it only samples columns whose floor is the deck itself, and the basin is below it.
  */
 describe('the deep end lets a body stand up', () => {
-	const STEP = 0.75;
+	const Step = 0.75;
 	const samples: { x: number; z: number; bottom: number; free: number }[] = [];
-	for (let x = POOL_CENTER.x - 8; x <= POOL_CENTER.x + 8; x += STEP) {
-		for (let z = POOL_CENTER.z - 5; z <= POOL_CENTER.z + 5; z += STEP) {
+	for (let x = POOL_CENTER.x - 8; x <= POOL_CENTER.x + 8; x += Step) {
+		for (let z = POOL_CENTER.z - 5; z <= POOL_CENTER.z + 5; z += Step) {
 			const bottom = poolFloorY(x, z);
 			if (bottom === null) continue;
 			samples.push({ x, z, bottom, free: world.headroomAt(x, z, bottom) });
@@ -89,7 +89,7 @@ describe('the deep end lets a body stand up', () => {
 		expect(
 			Math.abs((deepest?.bottom ?? 0) - POOL_FLOOR_Y),
 			`the deepest sample is ${nr(deepest?.bottom ?? 0)} and the bottom is ${nr(POOL_FLOOR_Y)}`,
-		).toBeLessThanOrEqual(STEP);
+		).toBeLessThanOrEqual(Step);
 	});
 
 	test('a standing body fits everywhere on the bottom', () => {

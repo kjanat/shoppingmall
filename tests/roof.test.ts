@@ -53,7 +53,7 @@ test('the slide ladder carries a climber from the roof onto the platform', () =>
  * you off the roof instead.
  */
 describe('the glass roof over the atrium', () => {
-	const GRID = 0.4;
+	const Grid = 0.4;
 	const minX = -half(ATRIUM_VOID.width);
 	const maxX = half(ATRIUM_VOID.width);
 	const minZ = -half(ATRIUM_VOID.depth);
@@ -62,8 +62,8 @@ describe('the glass roof over the atrium', () => {
 	const pushed: string[] = [];
 	const stuckOverTheVoid: string[] = [];
 
-	for (let x = minX + 0.05; x <= maxX; x += GRID) {
-		for (let z = minZ + 0.05; z <= maxZ; z += GRID) {
+	for (let x = minX + 0.05; x <= maxX; x += Grid) {
+		for (let z = minZ + 0.05; z <= maxZ; z += Grid) {
 			const ground = world.groundHeightAt(x, z, ROOF, WALK_STEP);
 			if (Math.abs(ground - ROOF) > EPS) noFloor.push(`(${nr(x)}, ${nr(z)}) answers ${nr(ground)} instead of ${nr(ROOF)}`);
 			const onTheRoof = world.resolveCircle(x, z, ROOF, PLAYER_RADIUS, 3, true, false);
@@ -99,7 +99,7 @@ describe('the glass roof over the atrium', () => {
  * roof into the building. The pool falls out of it: there `poolFloorY` gives the bottom.
  */
 describe('the roof deck', () => {
-	const GRID = 0.5;
+	const Grid = 0.5;
 	const holes = SLAB_SPEC_BY_LEVEL.roof.holes.map((hole) => planBounds(hole));
 	const edgeX = half(MALL_FOOTPRINT.width);
 	const edgeZ = half(MALL_FOOTPRINT.depth);
@@ -108,8 +108,8 @@ describe('the roof deck', () => {
 
 	test('carries a walker on every solid point of the slab', () => {
 		const sagging: string[] = [];
-		for (let x = -edgeX; x <= edgeX && sagging.length === 0; x += GRID) {
-			for (let z = -edgeZ; z <= edgeZ; z += GRID) {
+		for (let x = -edgeX; x <= edgeX && sagging.length === 0; x += Grid) {
+			for (let z = -edgeZ; z <= edgeZ; z += Grid) {
 				if (!solid(x, z) || inPool(x, z)) continue;
 				const ground = world.groundHeightAt(x, z, ROOF, WALK_STEP);
 				if (Math.abs(ground - ROOF) <= EPS) continue;
@@ -121,10 +121,10 @@ describe('the roof deck', () => {
 	});
 
 	test.each([
-		[edgeX + GRID, 0],
-		[-edgeX - GRID, 0],
-		[0, edgeZ + GRID],
-		[0, -edgeZ - GRID],
+		[edgeX + Grid, 0],
+		[-edgeX - Grid, 0],
+		[0, edgeZ + Grid],
+		[0, -edgeZ - Grid],
 	])('just past the edge at (%d, %d) nothing carries you', (x, z) => {
 		expect(
 			Math.abs(world.groundHeightAt(x, z, ROOF, WALK_STEP) - ROOF) > EPS,
@@ -139,11 +139,11 @@ describe('the roof deck', () => {
 	 * the wall pushes you, and the height is the dip the fall came out at.
 	 */
 	test.each([
-		[edgeX - (PLAYER_RADIUS + GRID), 6.7],
-		[edgeX - (PLAYER_RADIUS + GRID), -12],
-		[-edgeX + (PLAYER_RADIUS + GRID), 15],
-		[0, edgeZ - (PLAYER_RADIUS + GRID)],
-		[0, -edgeZ + (PLAYER_RADIUS + GRID)],
+		[edgeX - (PLAYER_RADIUS + Grid), 6.7],
+		[edgeX - (PLAYER_RADIUS + Grid), -12],
+		[-edgeX + (PLAYER_RADIUS + Grid), 15],
+		[0, edgeZ - (PLAYER_RADIUS + Grid)],
+		[0, -edgeZ + (PLAYER_RADIUS + Grid)],
 	])('inside the edge at (%d, %d) a dip still lands on the roof', (x, z) => {
 		expect(
 			world.groundHeightAt(x, z, V1 + 3, WALK_STEP),

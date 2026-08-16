@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Texture } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3 } from 'three';
 import { ENTRANCE_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
 import { CITY_GROUND_Y, COLOSSEUM_PLAN, ENTRANCE_CARPET } from '#/scene/city/cityPlan';
@@ -38,27 +39,27 @@ export const COLOSSEUM_TRANSPORT_STOPS = {
  * the Shopping Mall Main Entrance Plaza directly to the Mega Colosseum Arena.
  */
 export class ColosseumTransport {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly unitBox = new BoxGeometry(1, 1, 1);
 
-	private chariotMesh: THREE.Group;
-	private pos = new THREE.Vector3();
+	private chariotMesh: Group;
+	private pos = new Vector3();
 	private state: TransportState = { kind: 'stopped', stop: 'mall', remaining: STOP_SECONDS };
 	private passenger = false;
 	private readonly routeLength: number;
 	private heading = 0;
 
 	// Key stops along the route
-	private readonly stopMall = new THREE.Vector3(
+	private readonly stopMall = new Vector3(
 		COLOSSEUM_TRANSPORT_STOPS.mall.x,
 		COLOSSEUM_TRANSPORT_STOPS.mall.y,
 		COLOSSEUM_TRANSPORT_STOPS.mall.z,
 	);
-	private readonly stopColosseum = new THREE.Vector3(
+	private readonly stopColosseum = new Vector3(
 		COLOSSEUM_TRANSPORT_STOPS.colosseum.x,
 		COLOSSEUM_TRANSPORT_STOPS.colosseum.y,
 		COLOSSEUM_TRANSPORT_STOPS.colosseum.z,
@@ -111,27 +112,27 @@ export class ColosseumTransport {
 		return this.state.kind === 'stopped' ? this.otherStop(this.state.stop) : this.state.to;
 	}
 
-	distanceTo(point: THREE.Vector3): number {
+	distanceTo(point: Vector3): number {
 		return Math.hypot(point.x - this.pos.x, point.z - this.pos.z);
 	}
 
-	isBoardable(point: THREE.Vector3): boolean {
+	isBoardable(point: Vector3): boolean {
 		return !this.passenger && this.state.kind === 'stopped' && this.distanceTo(point) < BOARD_RADIUS;
 	}
 
-	board(point: THREE.Vector3): boolean {
+	board(point: Vector3): boolean {
 		if (!this.isBoardable(point) || this.state.kind !== 'stopped') return false;
 		this.passenger = true;
 		this.state.remaining = BOARD_DEPART_SECONDS;
 		return true;
 	}
 
-	seatPosition(out: THREE.Vector3): THREE.Vector3 {
+	seatPosition(out: Vector3): Vector3 {
 		out.set(Math.sin(this.heading) * SEAT_BACK, SEAT_HEIGHT, Math.cos(this.heading) * SEAT_BACK);
 		return out.add(this.pos);
 	}
 
-	release(out: THREE.Vector3): THREE.Vector3 | null {
+	release(out: Vector3): Vector3 | null {
 		if (!this.passenger || this.state.kind !== 'stopped') return null;
 		this.passenger = false;
 		out.set(Math.cos(this.heading) * EXIT_SIDE, CITY_GROUND_Y, -Math.sin(this.heading) * EXIT_SIDE);
@@ -144,8 +145,8 @@ export class ColosseumTransport {
 		for (const t of this.textures) t.dispose();
 	}
 
-	private box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
-		const m = new THREE.Mesh(this.unitBox, mat);
+	private box(w: number, h: number, d: number, mat: Material, x: number, y: number, z: number): Mesh {
+		const m = new Mesh(this.unitBox, mat);
 		m.scale.set(w, h, d);
 		m.position.set(x, y, z);
 		m.castShadow = true;
@@ -153,8 +154,8 @@ export class ColosseumTransport {
 		return m;
 	}
 
-	private buildChariot(): THREE.Group {
-		const chariot = new THREE.Group();
+	private buildChariot(): Group {
+		const chariot = new Group();
 
 		const goldMat = lit({ color: 0xd4af37, roughness: 0.3, metalness: 0.8 });
 		const redMat = lit({ color: 0x990000, roughness: 0.6 });
@@ -180,21 +181,21 @@ export class ColosseumTransport {
 
 		// Two Majestic Sculpted White Horses
 		for (const side of [-0.8, 0.8]) {
-			const horseGroup = new THREE.Group();
+			const horseGroup = new Group();
 			horseGroup.position.set(side, 0, 3.4);
 
 			// Torso
 			const horseBody = this.box(0.7, 0.9, 1.8, whiteHorseMat, 0, 0.95, 0);
 			// Legs
-			const legFL = this.box(0.2, 0.8, 0.2, whiteHorseMat, -0.22, 0.4, 0.6);
-			const legFR = this.box(0.2, 0.8, 0.2, whiteHorseMat, 0.22, 0.4, 0.6);
-			const legBL = this.box(0.2, 0.8, 0.2, whiteHorseMat, -0.22, 0.4, -0.6);
-			const legBR = this.box(0.2, 0.8, 0.2, whiteHorseMat, 0.22, 0.4, -0.6);
+			const legFl = this.box(0.2, 0.8, 0.2, whiteHorseMat, -0.22, 0.4, 0.6);
+			const legFr = this.box(0.2, 0.8, 0.2, whiteHorseMat, 0.22, 0.4, 0.6);
+			const legBl = this.box(0.2, 0.8, 0.2, whiteHorseMat, -0.22, 0.4, -0.6);
+			const legBr = this.box(0.2, 0.8, 0.2, whiteHorseMat, 0.22, 0.4, -0.6);
 			// Neck & Head
 			const neck = this.box(0.4, 0.9, 0.4, whiteHorseMat, 0, 1.6, 0.7);
 			neck.rotation.x = -Math.PI / 6;
 
-			horseGroup.add(horseBody, legFL, legFR, legBL, legBR, neck);
+			horseGroup.add(horseBody, legFl, legFr, legBl, legBr, neck);
 			chariot.add(horseGroup);
 		}
 
@@ -215,10 +216,10 @@ export class ColosseumTransport {
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
 
-		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
 		this.materials.push(mat);
 
-		const geo = new THREE.PlaneGeometry(8, 1.5);
+		const geo = new PlaneGeometry(8, 1.5);
 		this.geometries.push(geo);
 
 		const sign = backToBackLabel(geo, mat);
@@ -230,7 +231,7 @@ export class ColosseumTransport {
 		this.group.add(colosseumSign);
 	}
 
-	private stopPosition(stop: ColosseumStop): THREE.Vector3 {
+	private stopPosition(stop: ColosseumStop): Vector3 {
 		return stop === 'mall' ? this.stopMall : this.stopColosseum;
 	}
 

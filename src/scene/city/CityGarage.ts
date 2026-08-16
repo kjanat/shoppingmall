@@ -1,4 +1,15 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Texture } from 'three';
+import {
+	BoxGeometry,
+	Color,
+	CylinderGeometry,
+	Group,
+	InstancedMesh,
+	Mesh,
+	MeshBasicMaterial,
+	Object3D,
+	PlaneGeometry,
+} from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import type { GarageRampRun, Rand } from '#/scene/city/cityPlan';
@@ -79,16 +90,16 @@ interface Placement {
 const P = (x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, ry = 0): Placement => ({ x, y, z, sx, sy, sz, ry });
 
 export class CityGarage {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly instanced: THREE.InstancedMesh[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly instanced: InstancedMesh[] = [];
 
 	/** Gedeelde eenheidskubus — zo'n beetje elk plat en hoekig ding hier is deze kubus, geschaald. */
-	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
-	private readonly dummy = new THREE.Object3D();
+	private readonly unitBox = new BoxGeometry(1, 1, 1);
+	private readonly dummy = new Object3D();
 
 	private readonly beton: LitMaterial;
 	private readonly betonDonker: LitMaterial;
@@ -155,7 +166,7 @@ export class CityGarage {
 
 		// Tl-balken onder elk dek: MeshBasicMaterial dat koud kantoorlicht
 		// suggereert zonder de GPU om een gunst te vragen.
-		const stripMat = this.track(new THREE.MeshBasicMaterial({ color: 0xbcd6e4, toneMapped: false }));
+		const stripMat = this.track(new MeshBasicMaterial({ color: 0xbcd6e4, toneMapped: false }));
 		const strips: Placement[] = [];
 		for (let i = 1; i <= DECKS; i++) {
 			const y = i * FLOOR_H - half(SLAB_T) - 0.05;
@@ -263,9 +274,9 @@ export class CityGarage {
 
 		// Donker draagvlak over de open gevel, anders hangt het bord in het niets.
 		this.addBox(this.betonDonker, 0.14, 4.9, 3.4, X0 + 0.02, 8.6, CZ);
-		const geo = new THREE.PlaneGeometry(3.1, 4.65);
+		const geo = new PlaneGeometry(3.1, 4.65);
 		this.geometries.push(geo);
-		const sign = new THREE.Mesh(geo, this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })));
+		const sign = new Mesh(geo, this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 		sign.rotation.y = -Math.PI / 2; // kijkt naar −x, dus naar de mall
 		sign.position.set(X0 - 0.12, 8.6, CZ);
 		this.group.add(sign);
@@ -273,11 +284,11 @@ export class CityGarage {
 
 	/** 18 geparkeerde auto's: zelfde silhouet als het ringweg-wagenpark, kleur per instance. */
 	private buildCars(rand: Rand): void {
-		const bodyGeo = new THREE.BoxGeometry(4.2, 0.75, 1.85);
+		const bodyGeo = new BoxGeometry(4.2, 0.75, 1.85);
 		bodyGeo.translate(0, 0.73, 0);
-		const cabinGeo = new THREE.BoxGeometry(2.1, 0.6, 1.6);
+		const cabinGeo = new BoxGeometry(2.1, 0.6, 1.6);
 		cabinGeo.translate(-0.3, 1.32, 0);
-		const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10);
+		const wheelGeo = new CylinderGeometry(0.34, 0.34, 0.24, 10);
 		wheelGeo.rotateX(Math.PI / 2);
 		this.geometries.push(bodyGeo, cabinGeo, wheelGeo);
 
@@ -318,7 +329,7 @@ export class CityGarage {
 		// Gedempte lakkleuren met een tikje jitter — hetzelfde palet als buiten,
 		// want in deze stad bestaat er precies één autodealer.
 		const palet = [0xb0413e, 0x3e63a8, 0x4a4e57, 0xd8d3c8, 0x3f6f4f, 0x23262d, 0x9a7b4f];
-		const kleur = new THREE.Color();
+		const kleur = new Color();
 		for (let i = 0; i < bodies.length; i++) {
 			kleur.setHex(pickWith(palet, rand));
 			kleur.offsetHSL(0, 0, jitterWith(0.08, rand));
@@ -336,7 +347,7 @@ export class CityGarage {
 	 * wereldmodel, met een beleid dat zegt wie erlangs mag.
 	 */
 	private buildTicketMachine(): void {
-		const scherm = this.track(new THREE.MeshBasicMaterial({ color: 0x8fd8a0, toneMapped: false }));
+		const scherm = this.track(new MeshBasicMaterial({ color: 0x8fd8a0, toneMapped: false }));
 		this.addBox(this.betonDonker, 0.55, 1.15, 0.45, 56.9, 0.58, 49.2); // kaartautomaat
 		this.addBox(scherm, 0.05, 0.3, 0.32, 56.6, 0.85, 49.2); // schermpje: altijd groen, betekent niets
 	}
@@ -344,8 +355,8 @@ export class CityGarage {
 	// ── gereedschap ─────────────────────────────────────────────
 
 	/** Eén InstancedMesh uit een lijstje plaatsingen — het stedelijke standaardrecept. */
-	private fill(geo: THREE.BufferGeometry, mat: THREE.Material, items: readonly Placement[], name: string): THREE.InstancedMesh {
-		const mesh = new THREE.InstancedMesh(geo, mat, items.length);
+	private fill(geo: BufferGeometry, mat: Material, items: readonly Placement[], name: string): InstancedMesh {
+		const mesh = new InstancedMesh(geo, mat, items.length);
 		mesh.name = name;
 		items.forEach((p, i) => {
 			this.dummy.position.set(p.x, p.y, p.z);
@@ -361,8 +372,8 @@ export class CityGarage {
 	}
 
 	/** Losse geschaalde unit-kubus voor eenmalige onderdelen (platen, poten, paal). */
-	private addBox(mat: THREE.Material, sx: number, sy: number, sz: number, x: number, y: number, z: number, rx = 0, rz = 0): void {
-		const m = new THREE.Mesh(this.unitBox, mat);
+	private addBox(mat: Material, sx: number, sy: number, sz: number, x: number, y: number, z: number, rx = 0, rz = 0): void {
+		const m = new Mesh(this.unitBox, mat);
 		m.scale.set(sx, sy, sz);
 		m.position.set(x, y, z);
 		m.rotation.x = rx;
@@ -370,7 +381,7 @@ export class CityGarage {
 		this.group.add(m);
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

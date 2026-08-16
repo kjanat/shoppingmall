@@ -4,7 +4,8 @@
 	"private": true,
 	"type": "module",
 	"imports": {
-		"#/*": "./src/*.ts"
+		"#/*": "./src/*.ts",
+		"#pkg": "./package.json"
 	},
 	"scripts": {
 		"bd": "run build",
@@ -12,6 +13,7 @@
 		"bench:headless": "MALL_PERF_SOFTWARE=1 node scripts/perf/bench.ts",
 		"build": "run -s typecheck test build.ts",
 		"build:static": "run -s typecheck test static",
+		"compress": "glb-compressor --quiet --force ./models/*.glb -o ./public/models/",
 		"dev": "bun --hot server/main.ts",
 		"diagnose": "node scripts/perf/diagnose.ts",
 		"diagnose:headless": "MALL_PERF_SOFTWARE=1 node scripts/perf/diagnose.ts",
@@ -35,8 +37,8 @@
 		"dreamcli": "npm:@kjanat/dreamcli@next"
 	},
 	"dependencies": {
-		"@elevenlabs/elevenlabs-js": "^2.60",
-		"@openrouter/sdk": "^1.2.29",
+		"@elevenlabs/elevenlabs-js": "^2.64.0",
+		"@openrouter/sdk": "^1.2.37",
 		"ansispeck": "^0.4",
 		"drizzle-orm": "^0.45.2",
 		"gsap": "^3.15",
@@ -50,15 +52,16 @@
 		"dprint": "^0.55",
 		"dreamcli": "npm:@kjanat/dreamcli@^4.0.0-rc.1",
 		"drizzle-kit": "^0.31.10",
+		"glb-compressor": "^1.0.2",
 		"playwright": "^1.62.1",
 		"runner-run": "^0.25.1",
 		"typescript": "^7",
 		"zod": "^4.4.3"
 	},
-	"packageManager": "bun@1.3.14",
+	"packageManager": "bun@1.4.0",
 	"volta": {
 		"node": "26.7.0",
 		"npm": "11.19.0"
 	},
-	"trustedDependencies": ["@openrouter/sdk", "dprint", "esbuild"]
+	"trustedDependencies": ["@openrouter/sdk", "dprint", "esbuild", "sharp"]
 }

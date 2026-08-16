@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Material, Mesh as MeshType } from 'three';
+import { BufferAttribute, BufferGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial } from 'three';
 import { clamp } from '#/util/math';
 import { plusMinus } from '#/util/rand';
 
@@ -25,19 +26,19 @@ const BOB_AMP_BASIS = 0.4;
 const BOB_AMP_SPREIDING = 0.5;
 
 export class CityBirds {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private materials: THREE.Material[] = [];
-	private geometries: THREE.BufferGeometry[] = [];
+	private materials: Material[] = [];
+	private geometries: BufferGeometry[] = [];
 
 	/**
 	 * Per-vogel vluchtplan, voorgebakken — update() alloceert niks. Eén record
 	 * per vogel in plaats van vijftien arrays op dezelfde index.
 	 */
 	private readonly vogels: {
-		mesh: THREE.Group;
-		vleugelL: THREE.Mesh;
-		vleugelR: THREE.Mesh;
+		mesh: Group;
+		vleugelL: MeshType;
+		vleugelR: MeshType;
 		cx: number;
 		cy: number;
 		cz: number;
@@ -62,10 +63,10 @@ export class CityBirds {
 		// Eén driehoekje voor alle 28 vleugels: scharnier op x=0 langs de z-as,
 		// punt naar +x. De linkervleugel is dezelfde geometry met scale.x = -1 —
 		// spiegelen is gratis, een tweede geometry niet.
-		const vleugelGeo = new THREE.BufferGeometry();
-		vleugelGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -0.28, 0, 0, 0.34, 1.0, 0, -0.02]), 3));
+		const vleugelGeo = new BufferGeometry();
+		vleugelGeo.setAttribute('position', new BufferAttribute(new Float32Array([0, 0, -0.28, 0, 0, 0.34, 1.0, 0, -0.02]), 3));
 		this.geometries.push(vleugelGeo);
-		const silhouet = this.track(new THREE.MeshBasicMaterial({ color: 0x151a1f, side: THREE.DoubleSide }));
+		const silhouet = this.track(new MeshBasicMaterial({ color: 0x151a1f, side: DoubleSide }));
 
 		for (let i = 0; i < N_VOGELS; i++) {
 			const straal = 6 + Math.random() * 8;
@@ -90,10 +91,10 @@ export class CityBirds {
 			const maxX = WERELD_X - straal - 2;
 			const maxZ = WERELD_Z - straal - 2;
 
-			const vogel = new THREE.Group();
-			const rechts = new THREE.Mesh(vleugelGeo, silhouet);
+			const vogel = new Group();
+			const rechts = new Mesh(vleugelGeo, silhouet);
 			rechts.position.x = 0.05;
-			const links = new THREE.Mesh(vleugelGeo, silhouet);
+			const links = new Mesh(vleugelGeo, silhouet);
 			links.position.x = -0.05;
 			links.scale.x = -1;
 			// Piepkleine mesh + grote vliegcirkel: culling zou per frame gaan
@@ -174,7 +175,7 @@ export class CityBirds {
 		for (const g of this.geometries) g.dispose();
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

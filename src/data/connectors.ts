@@ -255,7 +255,7 @@ function commonConnectorProblems(spec: VerticalConnector): readonly ConnectorPro
 	if (spec.from === spec.to || rise <= 0) {
 		problems.push({ message: 'destination level must be physically above the origin level', path: ['to'] });
 	}
-	if (!spec.opening.connects.includes(spec.from) || !spec.opening.connects.includes(spec.to)) {
+	if (!(spec.opening.connects.includes(spec.from) && spec.opening.connects.includes(spec.to))) {
 		problems.push({ message: 'floor opening must declare both connected levels', path: ['opening', 'connects'] });
 	}
 	if (new Set(spec.opening.connects).size !== spec.opening.connects.length) {

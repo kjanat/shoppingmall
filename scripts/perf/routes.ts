@@ -42,8 +42,16 @@ const PARK_VIEW = {
 	aimLevel: 'v1',
 } as const satisfies { x: number; z: number; aimLevel: LevelId };
 
-export type ProfilePoint = { name: string; pose: RoutePose };
-export type ProfileRoute = { id: string; description: string; seed: number | null; points: readonly ProfilePoint[] };
+export interface ProfilePoint {
+	name: string;
+	pose: RoutePose;
+}
+export interface ProfileRoute {
+	id: string;
+	description: string;
+	seed: number | null;
+	points: readonly ProfilePoint[];
+}
 
 function eye(level: LevelId): number {
 	return levelY(level) + EYE;
@@ -111,11 +119,11 @@ const PARK_TOWARD_MALL = point(
 /** Dezelfde plek met de mall in de rug: wat er van het gebouw overblijft als niets ervan in beeld staat. */
 const PARK_AWAY_FROM_MALL = backTo('park-buiten-weg', PARK_TOWARD_MALL);
 
-type LevelCourse = {
+interface LevelCourse {
 	entry: ProfilePoint;
 	areas: readonly ProfilePoint[];
 	exit?: ProfilePoint;
-};
+}
 
 const FULL_COURSE: readonly LevelCourse[] = [
 	{

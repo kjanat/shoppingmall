@@ -61,11 +61,20 @@ function beschrijfTreffers(hits: unknown): string {
 		.join('  |  ');
 }
 
-function routePose(values: readonly number[]): RoutePose | undefined {
-	if (values.length === 0) return undefined;
+function poseCoordinate(raw: string, name: string): number {
+	const value = Number(raw.trim());
+	if (!Number.isFinite(value)) throw new Error(`${name} moet een eindig getal zijn`);
+	return value;
+}
+
+function parsePose(raw: unknown): RoutePose {
+	if (typeof raw !== 'string') throw new Error('verwacht x,y,z,lookX,lookY,lookZ');
+	const values = raw.split(',');
+	if (values.length !== POSE_VALUE_COUNT) {
+		throw new Error(`verwacht x,y,z,lookX,lookY,lookZ; kreeg ${values.length} waarden`);
+	}
 	const [x, y, z, lookX, lookY, lookZ] = values;
 	if (
-		values.length !== POSE_VALUE_COUNT ||
 		x === undefined ||
 		y === undefined ||
 		z === undefined ||
@@ -73,13 +82,19 @@ function routePose(values: readonly number[]): RoutePose | undefined {
 		lookY === undefined ||
 		lookZ === undefined
 	) {
-		throw new CLIError(`--pose wil x,y,z,lookX,lookY,lookZ, kreeg ${values.length} waarden`, {
-			code: 'INVALID_POSE',
-			exitCode: 2,
-		});
+		throw new Error('verwacht x,y,z,lookX,lookY,lookZ');
 	}
-	return { x, y, z, lookX, lookY, lookZ };
+	return {
+		x: poseCoordinate(x, 'x'),
+		y: poseCoordinate(y, 'y'),
+		z: poseCoordinate(z, 'z'),
+		lookX: poseCoordinate(lookX, 'lookX'),
+		lookY: poseCoordinate(lookY, 'lookY'),
+		lookZ: poseCoordinate(lookZ, 'lookZ'),
+	};
 }
+
+const poseFlag = flag.custom(parsePose).describe('Losse pose als x,y,z,lookX,lookY,lookZ');
 
 function alleStandpunten(): string[] {
 	const namen = new Set<string>();
@@ -92,7 +107,7 @@ function alleStandpunten(): string[] {
 const shots = command('shots')
 	.description('Maak screenshots van de gebouwde mall vanaf profielstandpunten of een losse pose')
 	.arg('names', arg.string().variadic().default([]).describe('Namen van profielstandpunten'))
-	.flag('pose', flag.array(flag.number()).separator(',').describe('Losse pose als x,y,z,lookX,lookY,lookZ'))
+	.flag('pose', poseFlag)
 	.flag('name', flag.string().default(DEFAULT_SHOT_NAME).describe('Bestandsnaam voor een losse pose'))
 	.flag('out', flag.path({ type: 'directory', create: true }).default(SHOTS_DIR).describe('Uitvoermap'))
 	.flag('width', flag.number({ int: true, min: 1 }).default(DEFAULT_VIEWPORT_WIDTH).describe('Breedte van het browservenster'))
@@ -104,16 +119,15 @@ const shots = command('shots')
 	.derive(({ args, flags }) => {
 		const uitvoermap = resolve(flags.out);
 		if (flags.list) return { opnames: [], uitvoermap };
-		const pose = routePose(flags.pose);
 
-		if (pose === undefined && flags.name !== DEFAULT_SHOT_NAME) {
+		if (flags.pose === undefined && flags.name !== DEFAULT_SHOT_NAME) {
 			throw new CLIError('--name hoort bij --pose; een benoemd standpunt levert zijn eigen bestandsnaam.', {
 				code: 'INVALID_FLAG_COMBINATION',
 			});
 		}
 
-		const opnames: { naam: string; pose: RoutePose }[] = pose
-			? [{ naam: flags.name, pose }]
+		const opnames: { naam: string; pose: RoutePose }[] = flags.pose
+			? [{ naam: flags.name, pose: flags.pose }]
 			: args.names.map((naam) => ({ naam, pose: profilePoint(naam).pose }));
 		if (opnames.length === 0) {
 			throw new CLIError('geef een standpunt op, of --pose x,y,z,lookX,lookY,lookZ.', {

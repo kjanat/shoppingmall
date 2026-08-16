@@ -66,7 +66,7 @@ const VIEW_DISTANCE = 4;
 const LOOK_FAR = 40;
 
 stubDocument();
-const THREE = await import('three');
+const { PerspectiveCamera, Scene, Sphere, Vector3 } = await import('three');
 const [{ LightPool }, { CityTheatre }, { ZoneCuller }] = await Promise.all([
 	import('#/render/LightPool'),
 	import('#/scene/city/CityTheatre'),
@@ -450,7 +450,7 @@ describe('the central stage door', () => {
 
 /** The collision floor between backstage and stage existed, but the builder skipped the sills. */
 describe('the theatre builder', () => {
-	const drawn = new CityTheatre(new LightPool(new THREE.Scene()));
+	const drawn = new CityTheatre(new LightPool(new Scene()));
 
 	test.each(['stage-door-sill', 'wing-door-sill-west', 'wing-door-sill-east', 'artist-door-sill'])('%s', (id) => {
 		expect(
@@ -467,7 +467,7 @@ describe('the theatre builder', () => {
  * a cone culls nothing.
  */
 describe('the auditorium seen from outside', () => {
-	const camera = new THREE.PerspectiveCamera(70, 16 / 9, 0.1, 500);
+	const camera = new PerspectiveCamera(70, 16 / 9, 0.1, 500);
 	const culler = new ZoneCuller();
 	const eye = THEATRE_FLOOR_Y + 1.6;
 	const atTheDoor = { x: THEATRE_PORTAL.centerX, z: THEATRE_PLAN.stair.zTop + VIEW_DISTANCE };
@@ -488,14 +488,14 @@ describe('the auditorium seen from outside', () => {
 
 	test('straight at the bay the foyer behind the doors is kept', () => {
 		look({ x: atTheDoor.x, y: eye, z: atTheDoor.z }, { x: atTheDoor.x, y: eye, z: THEATRE_INTERIOR.minZ }, 'stad');
-		const inTheFoyer = new THREE.Sphere(new THREE.Vector3(THEATRE_PORTAL.centerX, eye, THEATRE_INTERIOR.maxZ - VIEW_DISTANCE), 1);
+		const inTheFoyer = new Sphere(new Vector3(THEATRE_PORTAL.centerX, eye, THEATRE_INTERIOR.maxZ - VIEW_DISTANCE), 1);
 		expect(culler.accepts(SEAT_MASK, inTheFoyer), 'the foyer behind the doors is culled away').toBeTrue();
 	});
 
 	test('with your back to the bay the hall is gone', () => {
 		look({ x: atTheDoor.x, y: eye, z: atTheDoor.z }, { x: atTheDoor.x, y: eye, z: atTheDoor.z + LOOK_FAR }, 'stad');
 		expect(culler.seesZone('theatre'), 'with your back to the bay the hall is still called visible').toBeFalse();
-		const onTheRow = new THREE.Sphere(new THREE.Vector3(THEATRE_PORTAL.centerX, THEATRE_FLOOR_Y, TARGET_Z), 1);
+		const onTheRow = new Sphere(new Vector3(THEATRE_PORTAL.centerX, THEATRE_FLOOR_Y, TARGET_Z), 1);
 		expect(culler.accepts(SEAT_MASK, onTheRow), 'a seat in the hall is still accepted').toBeFalse();
 	});
 

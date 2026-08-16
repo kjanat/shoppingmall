@@ -189,8 +189,17 @@ describe('the atrium void', () => {
 	});
 });
 
-type LineFault = { x: number; z: number; ground: number; line: number };
-type PadOverlap = { fromZ: number; toZ: number; y: number };
+interface LineFault {
+	x: number;
+	z: number;
+	ground: number;
+	line: number;
+}
+interface PadOverlap {
+	fromZ: number;
+	toZ: number;
+	y: number;
+}
 
 /** Three lanes and not only the centre line: a flight can carry you down its heart and nowhere else. */
 function walkFlight(ramp: Ramp): { faults: LineFault[]; pad: PadOverlap | null } {

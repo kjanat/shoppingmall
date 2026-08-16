@@ -50,7 +50,7 @@ const saveAs = flagValue('--save');
 const compareTo = flagValue('--compare');
 const sampleCount = Math.max(WARMUP_SAMPLES + 3, Number(flagValue('--samples') ?? 5));
 
-type Run = {
+interface Run {
 	gpu: string;
 	canvas: string;
 	megapixels: number;
@@ -63,7 +63,7 @@ type Run = {
 	/** Every sample taken, warm-up first. */
 	samples: number[];
 	warmupSamples: number;
-};
+}
 
 /**
  * Least-squares slope over the samples, normalised by the median, so it reads as

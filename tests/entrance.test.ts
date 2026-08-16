@@ -158,7 +158,7 @@ describe('the canopy', () => {
 		'%s touches the slab',
 		(id) => {
 			const part = ENTRANCE_CANOPY_PARTS.find((candidate) => candidate.id === id);
-			if (!part || !slab) return;
+			if (!(part && slab)) return;
 			expect(boxesOverlap(part, slab), `${id} does not touch the canopy slab and hangs loose beside it`).toBeTrue();
 		},
 	);

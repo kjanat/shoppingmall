@@ -1,4 +1,19 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import {
+	BufferAttribute,
+	BufferGeometry,
+	Color,
+	CylinderGeometry,
+	DynamicDrawUsage,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	Points,
+	PointsMaterial,
+	Sphere,
+	SphereGeometry,
+	Vector3,
+} from 'three';
 import { coversColumn } from '#/data/zones';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
@@ -32,8 +47,8 @@ const PUFFS = 3;
 /** Breedte en diepte van één puff, als deel van zijn eigen grootte: basis plus random erbovenop. */
 const PUFF_BREEDTE_BASIS = 0.8;
 const PUFF_BREEDTE_SPREIDING = 0.5;
-const KLEUR_HELDER = new THREE.Color(0xf4f6f8);
-const KLEUR_STORM = new THREE.Color(0x3d434c);
+const KLEUR_HELDER = new Color(0xf4f6f8);
+const KLEUR_STORM = new Color(0x3d434c);
 
 // ── regen ────────────────────────────────────────────────
 const N_DRUPPELS = 700;
@@ -47,24 +62,24 @@ const BOLT_TOP = 40;
 const BOLT_ZICHT = 0.1;
 
 export class CitySky {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private materials: THREE.Material[] = [];
-	private geometries: THREE.BufferGeometry[] = [];
+	private materials: Material[] = [];
+	private geometries: BufferGeometry[] = [];
 
-	private readonly clusters: THREE.Group[] = [];
+	private readonly clusters: Group[] = [];
 	/** Driftsnelheid per cluster — ieder wolkje z'n eigen tempo. */
 	private readonly drift: number[] = [];
 	private readonly basisY: number[] = [];
 	private readonly cloudMat: LitMaterial;
 
-	private readonly regen: THREE.Points;
-	private readonly regenMat: THREE.PointsMaterial;
-	private readonly regenAttr: THREE.BufferAttribute;
+	private readonly regen: Points;
+	private readonly regenMat: PointsMaterial;
+	private readonly regenAttr: BufferAttribute;
 	private readonly regenPos: Float32Array;
 	private readonly valsnelheid: Float32Array;
 
-	private readonly bolts: THREE.Group[] = [];
+	private readonly bolts: Group[] = [];
 	private boltIndex = 0;
 	private boltTimer = 0;
 
@@ -81,7 +96,7 @@ export class CitySky {
 		this.group.name = 'city_sky';
 
 		// ── wolken: 12 clusters × 3 puffs, allemaal dezelfde platte bol ──
-		const puffGeo = new THREE.SphereGeometry(1, 10, 7);
+		const puffGeo = new SphereGeometry(1, 10, 7);
 		this.geometries.push(puffGeo);
 		this.cloudMat = this.track(
 			lit({
@@ -95,9 +110,9 @@ export class CitySky {
 			}),
 		);
 		for (let i = 0; i < N_CLUSTERS; i++) {
-			const cluster = new THREE.Group();
+			const cluster = new Group();
 			for (let j = 0; j < PUFFS; j++) {
-				const puff = new THREE.Mesh(puffGeo, this.cloudMat);
+				const puff = new Mesh(puffGeo, this.cloudMat);
 				const s = 3.2 + Math.random() * 2.6;
 				puff.scale.set(
 					s * (PUFF_BREEDTE_BASIS + Math.random() * PUFF_BREEDTE_SPREIDING),
@@ -131,15 +146,15 @@ export class CitySky {
 			this.regenPos[i * 3 + 2] = z;
 			this.valsnelheid[i] = 16 + Math.random() * 10;
 		}
-		const regenGeo = new THREE.BufferGeometry();
-		this.regenAttr = new THREE.BufferAttribute(this.regenPos, 3);
-		this.regenAttr.setUsage(THREE.DynamicDrawUsage);
+		const regenGeo = new BufferGeometry();
+		this.regenAttr = new BufferAttribute(this.regenPos, 3);
+		this.regenAttr.setUsage(DynamicDrawUsage);
 		regenGeo.setAttribute('position', this.regenAttr);
 		// Vaste boundingSphere, anders gaat three per frame zitten rekenen.
-		regenGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, half(REGEN_TOP), 0), 150);
+		regenGeo.boundingSphere = new Sphere(new Vector3(0, half(REGEN_TOP), 0), 150);
 		this.geometries.push(regenGeo);
 		this.regenMat = this.track(
-			new THREE.PointsMaterial({
+			new PointsMaterial({
 				color: 0x8fa6ba,
 				size: 0.28,
 				transparent: true,
@@ -147,14 +162,14 @@ export class CitySky {
 				depthWrite: false,
 			}),
 		);
-		this.regen = new THREE.Points(regenGeo, this.regenMat);
+		this.regen = new Points(regenGeo, this.regenMat);
 		this.regen.visible = false;
 		this.group.add(this.regen);
 
 		// ── bliksempool: dun cilindertje, vier keer anders gekarteld ──
-		const segGeo = new THREE.CylinderGeometry(0.09, 0.16, 1, 5);
+		const segGeo = new CylinderGeometry(0.09, 0.16, 1, 5);
 		this.geometries.push(segGeo);
-		const boltMat = this.track(new THREE.MeshBasicMaterial({ color: 0xf8fbff, toneMapped: false }));
+		const boltMat = this.track(new MeshBasicMaterial({ color: 0xf8fbff, toneMapped: false }));
 		for (let i = 0; i < N_BOLTS; i++) {
 			const bolt = this.buildBolt(segGeo, boltMat);
 			this.bolts.push(bolt);
@@ -263,19 +278,19 @@ export class CitySky {
 	 * Gekartelde bolt: 5-6 dunne segmenten die van wolkhoogte naar de grond
 	 * zigzaggen. Constructor-tijd, dus hier mag gewoon gealloceerd worden.
 	 */
-	private buildBolt(segGeo: THREE.BufferGeometry, mat: THREE.Material): THREE.Group {
-		const g = new THREE.Group();
+	private buildBolt(segGeo: BufferGeometry, mat: Material): Group {
+		const g = new Group();
 		const segs = 5 + Math.floor(Math.random() * 2);
 		const stapY = BOLT_TOP / segs;
-		const punt = new THREE.Vector3(0, 0, 0);
-		const richting = new THREE.Vector3();
-		const omhoog = new THREE.Vector3(0, 1, 0);
+		const punt = new Vector3(0, 0, 0);
+		const richting = new Vector3();
+		const omhoog = new Vector3(0, 1, 0);
 		for (let i = 0; i < segs; i++) {
 			const dx = (i % 2 === 0 ? 1 : -1) * (0.9 + Math.random() * 1.6);
 			const dz = plusMinus(1.2);
 			richting.set(dx, -stapY, dz);
 			const len = richting.length();
-			const seg = new THREE.Mesh(segGeo, mat);
+			const seg = new Mesh(segGeo, mat);
 			seg.position.copy(punt).addScaledVector(richting, 0.5);
 			seg.quaternion.setFromUnitVectors(omhoog, richting.normalize());
 			seg.scale.y = len; // unit-cilinder → segmentlengte
@@ -286,7 +301,7 @@ export class CitySky {
 		return g;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

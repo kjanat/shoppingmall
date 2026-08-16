@@ -25,7 +25,7 @@ export class Pathfinder {
 		for (const e of EDGES) {
 			const a = this.nodes.get(e.from);
 			const b = this.nodes.get(e.to);
-			if (!a || !b) continue;
+			if (!(a && b)) continue;
 			const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) * (e.cost ?? 1);
 			add(e.from, e.to, dist);
 			add(e.to, e.from, dist);
@@ -70,9 +70,9 @@ export class Pathfinder {
 
 		while (open.size > 0) {
 			let current = '';
-			let best = Infinity;
+			let best = Number.POSITIVE_INFINITY;
 			for (const id of open) {
-				const score = f.get(id) ?? Infinity;
+				const score = f.get(id) ?? Number.POSITIVE_INFINITY;
 				if (score < best) {
 					best = score;
 					current = id;
@@ -83,8 +83,8 @@ export class Pathfinder {
 
 			open.delete(current);
 			for (const link of this.adj.get(current) ?? []) {
-				const tent = (g.get(current) ?? Infinity) + link.cost;
-				if (tent < (g.get(link.to) ?? Infinity)) {
+				const tent = (g.get(current) ?? Number.POSITIVE_INFINITY) + link.cost;
+				if (tent < (g.get(link.to) ?? Number.POSITIVE_INFINITY)) {
 					came.set(link.to, current);
 					g.set(link.to, tent);
 					f.set(link.to, tent + this.h(link.to, goalId));
@@ -101,7 +101,7 @@ export class Pathfinder {
 		for (let i = 1; i < path.length; i++) {
 			const a = path[i - 1];
 			const b = path[i];
-			if (!a || !b) continue;
+			if (!(a && b)) continue;
 			d += Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 		}
 		return d;
@@ -111,7 +111,7 @@ export class Pathfinder {
 		const na = this.nodes.get(a);
 		const nb = this.nodes.get(b);
 		// Unknown id: unreachable, so A* never picks it as the next best node.
-		if (!na || !nb) return Infinity;
+		if (!(na && nb)) return Number.POSITIVE_INFINITY;
 		return Math.hypot(na.x - nb.x, na.y - nb.y, na.z - nb.z);
 	}
 

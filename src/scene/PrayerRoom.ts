@@ -1,4 +1,19 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	ConeGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import { spatial } from '#/audio/SpatialAudio';
 import { levelY } from '#/data/levels';
 import { PRAYER_ROOM_SPEC } from '#/data/world';
@@ -41,13 +56,13 @@ const BAG_TILT_Z = 0.5;
  * Prayer poses lock to the trapbar BPM / playback clock.
  */
 export class PrayerRoom {
-	readonly group = new THREE.Group();
-	readonly pos = new THREE.Vector3(PRAYER_ROOM_SPEC.center.x, levelY('v0'), PRAYER_ROOM_SPEC.center.z);
-	private materials: THREE.Material[] = [];
+	readonly group = new Group();
+	readonly pos = new Vector3(PRAYER_ROOM_SPEC.center.x, levelY('v0'), PRAYER_ROOM_SPEC.center.z);
+	private materials: Material[] = [];
 	private audioStarted = false;
 	private stopAudio: (() => void) | null = null;
-	private ayatollahs: THREE.Group[] = [];
-	private goat: THREE.Group | null = null;
+	private ayatollahs: Group[] = [];
+	private goat: Group | null = null;
 	private t = 0;
 	private bleatCd = 2.2;
 	private lastScreamIdx = -1;
@@ -149,7 +164,7 @@ export class PrayerRoom {
 		if (el.readyState >= 2) tryPlay();
 		else el.addEventListener('canplay', tryPlay, { once: true });
 		// Extra kick after a tick (iOS / delayed unlock)
-		window.setTimeout(tryPlay, 120);
+		globalThis.setTimeout(tryPlay, 120);
 
 		// Soft crowd chants under the trap beat
 		const chants = spatial.startLoopAt({ x: this.pos.x, y: 1.3, z: this.pos.z }, (ctx, dest) => startAllahuLoop(ctx, dest), {
@@ -168,7 +183,7 @@ export class PrayerRoom {
 		};
 
 		// Immediate first scream so you hear The Screaming Sheep original
-		window.setTimeout(() => this.playGoatScream(), 600);
+		globalThis.setTimeout(() => this.playGoatScream(), 600);
 	}
 
 	/** Seconds into the trapbar loop (or free-run clock before audio ready) */
@@ -245,13 +260,13 @@ export class PrayerRoom {
 			.finally(() => {
 				// full original is ~6s; shorter cuts free earlier via max
 				const unlockMs = url.includes('original') ? 6500 : 2000;
-				window.setTimeout(() => {
+				globalThis.setTimeout(() => {
 					this.screaming = false;
 				}, unlockMs);
 			});
 	}
 
-	update(dt: number, listener: THREE.Vector3): void {
+	update(dt: number, listener: Vector3): void {
 		void listener;
 		this.t += dt;
 		this.bleatCd -= dt;
@@ -280,7 +295,7 @@ export class PrayerRoom {
 					if (!a) return;
 					const line = onDrop ? 'Allahu Trapbar!' : pick(CHANTS);
 					// 16th-note cascade within the bar
-					window.setTimeout(() => this.showBubble(a, line), k * (TRAP_BEAT * 250));
+					globalThis.setTimeout(() => this.showBubble(a, line), k * (TRAP_BEAT * 250));
 				});
 			}
 			// Goat on phrase start / drop
@@ -313,7 +328,7 @@ export class PrayerRoom {
 			if (life > 0) {
 				a.userData['speechLife'] = life - dt;
 				if (life - dt <= 0) {
-					const sp = a.userData['speech'] as THREE.Sprite | undefined;
+					const sp = a.userData['speech'] as Sprite | undefined;
 					if (sp) sp.visible = false;
 				}
 			}
@@ -322,7 +337,7 @@ export class PrayerRoom {
 		// Goat idle: head bob + occasional bleat bubble
 		if (this.goat) {
 			const goat = this.goat;
-			const head = goat.userData['head'] as THREE.Object3D | undefined;
+			const head = goat.userData['head'] as Object3D | undefined;
 			if (head) {
 				head.rotation.x = Math.sin(this.t * 2.4) * 0.12;
 				head.rotation.y = Math.sin(this.t * 0.7) * 0.18;
@@ -332,7 +347,7 @@ export class PrayerRoom {
 			if (life > 0) {
 				goat.userData['speechLife'] = life - dt;
 				if (life - dt <= 0) {
-					const sp = goat.userData['speech'] as THREE.Sprite | undefined;
+					const sp = goat.userData['speech'] as Sprite | undefined;
 					if (sp) sp.visible = false;
 				}
 			}
@@ -344,18 +359,18 @@ export class PrayerRoom {
 		this.stopAudio?.();
 	}
 
-	private showBubble(fig: THREE.Group, text: string): void {
-		const sp = fig.userData['speech'] as THREE.Sprite | undefined;
+	private showBubble(fig: Group, text: string): void {
+		const sp = fig.userData['speech'] as Sprite | undefined;
 		const ctx = fig.userData['speechCtx'] as CanvasRenderingContext2D | undefined;
-		const tex = fig.userData['speechTex'] as THREE.CanvasTexture | undefined;
-		if (!sp || !ctx || !tex) return;
+		const tex = fig.userData['speechTex'] as CanvasTexture | undefined;
+		if (!(sp && ctx && tex)) return;
 		const w = 320;
 		const h = 80;
 		ctx.clearRect(0, 0, w, h);
 		ctx.fillStyle = 'rgba(27,94,32,0.94)';
 		ctx.strokeStyle = '#ffd700';
 		ctx.lineWidth = 5;
-		roundRect(ctx, 8, 4, w - 16, h - 18, 12);
+		roundRect(ctx, { x: 8, y: 4, width: w - 16, height: h - 18, radius: 12 });
 		ctx.fill();
 		ctx.stroke();
 		speechTail(ctx, w, h);
@@ -369,7 +384,7 @@ export class PrayerRoom {
 		fig.userData['speechLife'] = 2.2 + Math.random() * 0.9;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -379,26 +394,26 @@ export class PrayerRoom {
 		const { room, floorThickness, wallHeight, wallThickness, backWallOffset, sideWallOffset } = PRAYER_ROOM_SPEC;
 		const rug = PRAYER_ROOM_SPEC.carpet;
 		const wall = this.track(lit({ color: 0xe8e4d9, roughness: 0.9 }));
-		const floor = new THREE.Mesh(
-			new THREE.BoxGeometry(room.width, floorThickness, room.depth),
+		const floor = new Mesh(
+			new BoxGeometry(room.width, floorThickness, room.depth),
 			this.track(lit({ color: 0xc4a574, roughness: 0.85 })),
 		);
 		floor.position.y = half(floorThickness);
 		this.group.add(floor);
 
 		// three walls (open to mall corridor on +X toward center)
-		const back = new THREE.Mesh(new THREE.BoxGeometry(room.width, wallHeight, wallThickness), wall);
+		const back = new Mesh(new BoxGeometry(room.width, wallHeight, wallThickness), wall);
 		back.position.set(0, half(wallHeight), -backWallOffset);
 		this.group.add(back);
 		for (const sign of [-1, 1] as const) {
-			const side = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, room.depth), wall);
+			const side = new Mesh(new BoxGeometry(wallThickness, wallHeight, room.depth), wall);
 			side.position.set(sign * sideWallOffset, half(wallHeight), 0);
 			this.group.add(side);
 		}
 
 		// green carpet strip
-		const carpet = new THREE.Mesh(
-			new THREE.BoxGeometry(rug.width, rug.thickness, rug.depth),
+		const carpet = new Mesh(
+			new BoxGeometry(rug.width, rug.thickness, rug.depth),
 			this.track(lit({ color: 0x1b5e20, roughness: 0.95 })),
 		);
 		carpet.position.set(0, rug.centerY, rug.offsetZ);
@@ -406,7 +421,7 @@ export class PrayerRoom {
 
 		// prayer mats (enough for the ayatollahs)
 		for (let i = 0; i < 4; i++) {
-			const mat = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.02, 1.35), this.track(lit({ color: 0x2e7d32, roughness: 0.9 })));
+			const mat = new Mesh(new BoxGeometry(0.85, 0.02, 1.35), this.track(lit({ color: 0x2e7d32, roughness: 0.9 })));
 			mat.position.set(-1.45 + i * 0.95, 0.12, -0.35);
 			this.group.add(mat);
 		}
@@ -417,7 +432,7 @@ export class PrayerRoom {
 			intensity: 6,
 			distance: 8,
 			decay: 2,
-			position: new THREE.Vector3(this.pos.x, 2.6, this.pos.z),
+			position: new Vector3(this.pos.x, 2.6, this.pos.z),
 		});
 
 		// sign
@@ -431,10 +446,7 @@ export class PrayerRoom {
 		ctx.font = '13px system-ui';
 		ctx.fillText('Allahu Trapbar · geit · wudu ernaast', 160, 70);
 		const tex = labelTexture(c);
-		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(2.2, 0.65),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		const sign = new Mesh(new PlaneGeometry(2.2, 0.65), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 		sign.position.set(0, 2.8, 2.15);
 		this.group.add(sign);
 
@@ -454,15 +466,15 @@ export class PrayerRoom {
 		};
 
 		// McD bag
-		const makeBag = (seed: number): THREE.Group => {
-			const g = new THREE.Group();
+		const makeBag = (seed: number): Group => {
+			const g = new Group();
 			const red = this.track(lit({ color: 0xda291c, roughness: 0.85 }));
 			const yellow = this.track(lit({ color: 0xffc72c, roughness: 0.7 }));
-			const bag = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.12), red);
+			const bag = new Mesh(new BoxGeometry(0.22, 0.28, 0.12), red);
 			bag.position.y = 0.14;
 			g.add(bag);
 			// M arch as two yellow half-circles-ish boxes
-			const m1 = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.012, 4, 8, Math.PI), yellow);
+			const m1 = new Mesh(new TorusGeometry(0.04, 0.012, 4, 8, Math.PI), yellow);
 			m1.position.set(-0.03, 0.18, 0.065);
 			m1.rotation.x = Math.PI;
 			const m2 = m1.clone();
@@ -477,15 +489,15 @@ export class PrayerRoom {
 		};
 
 		// Fries carton
-		const makeFries = (seed: number): THREE.Group => {
-			const g = new THREE.Group();
+		const makeFries = (seed: number): Group => {
+			const g = new Group();
 			const red = this.track(lit({ color: 0xc62828, roughness: 0.8 }));
 			const fryM = this.track(lit({ color: 0xffc107, roughness: 0.75 }));
-			const box = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.1), red);
+			const box = new Mesh(new BoxGeometry(0.12, 0.14, 0.1), red);
 			box.position.y = 0.07;
 			g.add(box);
 			for (let i = 0; i < 5; i++) {
-				const f = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.12, 0.018), fryM);
+				const f = new Mesh(new BoxGeometry(0.018, 0.12, 0.018), fryM);
 				f.position.set(
 					jitterWith(0.08, () => rng(seed + i * 3)),
 					0.16 + rng(seed + i) * 0.04,
@@ -500,18 +512,18 @@ export class PrayerRoom {
 		};
 
 		// Soft drink cup + straw
-		const makeCup = (seed: number): THREE.Group => {
-			const g = new THREE.Group();
+		const makeCup = (seed: number): Group => {
+			const g = new Group();
 			const red = this.track(lit({ color: 0xb71c1c, roughness: 0.75 }));
 			const lidM = this.track(lit({ color: 0xeeeeee, roughness: 0.6 }));
 			const strawM = this.track(lit({ color: 0xf5f5f5, roughness: 0.5 }));
-			const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.16, 10), red);
+			const cup = new Mesh(new CylinderGeometry(0.045, 0.055, 0.16, 10), red);
 			cup.position.y = 0.08;
 			g.add(cup);
-			const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 10), lidM);
+			const lid = new Mesh(new CylinderGeometry(0.05, 0.05, 0.02, 10), lidM);
 			lid.position.y = 0.17;
 			g.add(lid);
-			const straw = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14, 5), strawM);
+			const straw = new Mesh(new CylinderGeometry(0.008, 0.008, 0.14, 5), strawM);
 			straw.position.set(0.02, 0.24, 0);
 			straw.rotation.z = 0.15;
 			g.add(straw);
@@ -525,14 +537,14 @@ export class PrayerRoom {
 		};
 
 		// Burger wrapper (flat crumpled disc/box)
-		const makeWrapper = (seed: number): THREE.Mesh => {
+		const makeWrapper = (seed: number): Mesh => {
 			const paper = this.track(
 				lit({
 					color: rng(seed) > 0.5 ? 0xfff8e1 : 0xffecb3,
 					roughness: 0.95,
 				}),
 			);
-			const w = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.01, 0.14), paper);
+			const w = new Mesh(new BoxGeometry(0.16, 0.01, 0.14), paper);
 			w.rotation.y = rng(seed) * Math.PI * 2;
 			w.rotation.z = jitterWith(0.4, () => rng(seed + 1));
 			w.position.y = 0.02;
@@ -548,11 +560,11 @@ export class PrayerRoom {
 			fanta: { body: 0xef6c00, accent: 0xffe082, label: 'FANTA' },
 			generic: { body: 0x546e7a, accent: 0xcfd8dc, label: 'ENERGY' },
 		};
-		const makeCan = (seed: number, kind: CanKind): THREE.Group => {
-			const g = new THREE.Group();
+		const makeCan = (seed: number, kind: CanKind): Group => {
+			const g = new Group();
 			const col = canColors[kind];
-			const body = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.035, 0.035, 0.13, 12),
+			const body = new Mesh(
+				new CylinderGeometry(0.035, 0.035, 0.13, 12),
 				this.track(
 					lit({
 						color: col.body,
@@ -563,8 +575,8 @@ export class PrayerRoom {
 			);
 			body.position.y = 0.065;
 			g.add(body);
-			const rim = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.036, 0.036, 0.015, 12),
+			const rim = new Mesh(
+				new CylinderGeometry(0.036, 0.036, 0.015, 12),
 				this.track(
 					lit({
 						color: 0xc0c0c0,
@@ -576,8 +588,8 @@ export class PrayerRoom {
 			rim.position.y = 0.13;
 			g.add(rim);
 			// Label stripe
-			const stripe = new THREE.Mesh(
-				new THREE.BoxGeometry(0.072, 0.05, 0.01),
+			const stripe = new Mesh(
+				new BoxGeometry(0.072, 0.05, 0.01),
 				this.track(
 					lit({
 						color: col.accent,
@@ -623,7 +635,7 @@ export class PrayerRoom {
 
 		spots.forEach(({ x, z }, i) => {
 			const roll = rng(i * 11.3);
-			let item: THREE.Object3D;
+			let item: Object3D;
 			if (roll < 0.22) item = makeBag(i);
 			else if (roll < 0.4) item = makeFries(i + 50);
 			else if (roll < 0.55) item = makeCup(i + 90);
@@ -668,7 +680,7 @@ export class PrayerRoom {
 		arrow.rotation.z = -0.08;
 		this.group.add(arrow);
 
-		type Note = {
+		interface Note {
 			lines: string[];
 			bg: string;
 			fg: string;
@@ -679,7 +691,7 @@ export class PrayerRoom {
 			rz: number;
 			w: number;
 			h: number;
-		};
+		}
 		const notes: Note[] = [
 			// Back wall scatter
 			{
@@ -840,8 +852,8 @@ export class PrayerRoom {
 		}
 
 		// Cork strip under post-its on back wall
-		const cork = new THREE.Mesh(
-			new THREE.BoxGeometry(4.8, 1.4, 0.04),
+		const cork = new Mesh(
+			new BoxGeometry(4.8, 1.4, 0.04),
 			this.track(
 				lit({
 					color: 0xc4a574,
@@ -855,7 +867,7 @@ export class PrayerRoom {
 	}
 
 	/** Classic sticky note: paper color + sharpie text + slight curl shadow */
-	private makePostIt(lines: string[], bg: string, fg: string, worldW: number, worldH: number): THREE.Group {
+	private makePostIt(lines: string[], bg: string, fg: string, worldW: number, worldH: number): Group {
 		const { canvas: c, ctx } = labelCanvas(256, 256);
 		// Paper
 		ctx.fillStyle = bg;
@@ -881,10 +893,7 @@ export class PrayerRoom {
 			ctx.fillText(line, 128, y);
 		});
 		const tex = labelTexture(c);
-		return backToBackLabel(
-			new THREE.PlaneGeometry(worldW, worldH),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		return backToBackLabel(new PlaneGeometry(worldW, worldH), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 	}
 
 	/**
@@ -977,7 +986,7 @@ export class PrayerRoom {
 
 		// More mats for the back row
 		for (let i = 0; i < 4; i++) {
-			const mat = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.02, 1.15), this.track(lit({ color: 0x33691e, roughness: 0.9 })));
+			const mat = new Mesh(new BoxGeometry(0.85, 0.02, 1.15), this.track(lit({ color: 0x33691e, roughness: 0.9 })));
 			mat.position.set(-1.55 + i * 1.0, 0.12, 0.95);
 			this.group.add(mat);
 		}
@@ -996,7 +1005,7 @@ export class PrayerRoom {
 
 	/** Low-poly goat standing in front of the ayatollah row */
 	private buildGoat(): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		const fur = this.track(lit({ color: 0xd7ccc8, roughness: 0.92 }));
 		const dark = this.track(lit({ color: 0x5d4037, roughness: 0.85 }));
 		const hornM = this.track(
@@ -1006,16 +1015,16 @@ export class PrayerRoom {
 				metalness: 0.05,
 			}),
 		);
-		const black = this.track(new THREE.MeshBasicMaterial({ color: 0x111111 }));
+		const black = this.track(new MeshBasicMaterial({ color: 0x111111 }));
 
 		// Body
-		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.38, 4, 8), fur);
+		const body = new Mesh(new CapsuleGeometry(0.18, 0.38, 4, 8), fur);
 		body.rotation.z = Math.PI / 2;
 		body.position.set(0, 0.42, 0);
 		g.add(body);
 
 		// Chest fluff
-		const chest = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), fur);
+		const chest = new Mesh(new SphereGeometry(0.16, 10, 8), fur);
 		chest.position.set(0.22, 0.4, 0);
 		chest.scale.set(1, 0.9, 0.85);
 		g.add(chest);
@@ -1027,38 +1036,38 @@ export class PrayerRoom {
 			[-0.16, 0.1],
 			[-0.16, -0.1],
 		] as const) {
-			const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.34, 6), dark);
+			const leg = new Mesh(new CylinderGeometry(0.035, 0.04, 0.34, 6), dark);
 			leg.position.set(lx, 0.17, lz);
 			g.add(leg);
-			const hoof = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.07), black);
+			const hoof = new Mesh(new BoxGeometry(0.06, 0.04, 0.07), black);
 			hoof.position.set(lx, 0.02, lz);
 			g.add(hoof);
 		}
 
 		// Head group (bobs in update)
-		const head = new THREE.Group();
+		const head = new Group();
 		head.position.set(0.38, 0.58, 0);
-		const skull = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), fur);
+		const skull = new Mesh(new SphereGeometry(0.13, 12, 10), fur);
 		skull.scale.set(1.15, 0.95, 0.9);
 		head.add(skull);
 		// Snout
-		const snout = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.1, 3, 6), fur);
+		const snout = new Mesh(new CapsuleGeometry(0.05, 0.1, 3, 6), fur);
 		snout.rotation.z = Math.PI / 2;
 		snout.position.set(0.12, -0.02, 0);
 		head.add(snout);
 		// Nose
-		const nose = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), black);
+		const nose = new Mesh(new SphereGeometry(0.03, 6, 6), black);
 		nose.position.set(0.2, -0.01, 0);
 		head.add(nose);
 		// Eyes
 		for (const sz of [-1, 1] as const) {
-			const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), black);
+			const eye = new Mesh(new SphereGeometry(0.022, 6, 6), black);
 			eye.position.set(0.08, 0.04, sz * 0.07);
 			head.add(eye);
 		}
 		// Ears
 		for (const sz of [-1, 1] as const) {
-			const ear = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 5), fur);
+			const ear = new Mesh(new ConeGeometry(0.04, 0.12, 5), fur);
 			ear.position.set(0.02, 0.08, sz * 0.12);
 			ear.rotation.z = sz * 0.9;
 			ear.rotation.x = -0.4;
@@ -1066,14 +1075,14 @@ export class PrayerRoom {
 		}
 		// Curved horns
 		for (const sz of [-1, 1] as const) {
-			const horn = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.22, 6), hornM);
+			const horn = new Mesh(new ConeGeometry(0.028, 0.22, 6), hornM);
 			horn.position.set(-0.02, 0.16, sz * 0.06);
 			horn.rotation.z = -0.55;
 			horn.rotation.x = sz * 0.35;
 			head.add(horn);
 		}
 		// Chin beard
-		const beard = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.16, 5), fur);
+		const beard = new Mesh(new ConeGeometry(0.04, 0.16, 5), fur);
 		beard.position.set(0.1, -0.14, 0);
 		beard.rotation.x = Math.PI;
 		head.add(beard);
@@ -1081,21 +1090,15 @@ export class PrayerRoom {
 		g.userData['head'] = head;
 
 		// Short tail
-		const tail = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), fur);
+		const tail = new Mesh(new SphereGeometry(0.05, 6, 6), fur);
 		tail.position.set(-0.28, 0.48, 0);
 		g.add(tail);
 
 		// Rope / stake so it "belongs" to the room
-		const stake = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.02, 0.025, 0.55, 6),
-			this.track(lit({ color: 0x6d4c41, roughness: 0.8 })),
-		);
+		const stake = new Mesh(new CylinderGeometry(0.02, 0.025, 0.55, 6), this.track(lit({ color: 0x6d4c41, roughness: 0.8 })));
 		stake.position.set(-0.55, 0.28, 0.25);
 		g.add(stake);
-		const rope = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.008, 0.008, 0.7, 4),
-			this.track(lit({ color: 0xa1887f, roughness: 0.9 })),
-		);
+		const rope = new Mesh(new CylinderGeometry(0.008, 0.008, 0.7, 4), this.track(lit({ color: 0xa1887f, roughness: 0.9 })));
 		rope.position.set(-0.22, 0.38, 0.12);
 		rope.rotation.z = Math.PI / 2.4;
 		rope.rotation.y = 0.3;
@@ -1111,8 +1114,8 @@ export class PrayerRoom {
 		// Speech bubble
 		const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
 		const speechTex = labelTexture(sc);
-		const speech = new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		const speech = new Sprite(
+			new SpriteMaterial({
 				map: speechTex,
 				transparent: true,
 				depthTest: true,
@@ -1122,7 +1125,7 @@ export class PrayerRoom {
 		speech.visible = false;
 		// The anchor carries the deck culling, not the sprite: `speech.visible`
 		// is the bubble's own lifetime and cullByLevel would overwrite it.
-		const speechAnchor = new THREE.Group();
+		const speechAnchor = new Group();
 		speechAnchor.position.set(0, 1.25, 0);
 		speechAnchor.add(speech);
 		g.add(speechAnchor);
@@ -1144,21 +1147,21 @@ export class PrayerRoom {
 	 * blend 0 = kleermakerszit (cross-legged sit), 1 = doggy (all fours).
 	 * Uses rig parts stored on userData.
 	 */
-	private applyPrayerPose(fig: THREE.Group, blend: number): void {
+	private applyPrayerPose(fig: Group, blend: number): void {
 		const rig = fig.userData['rig'] as
 			| {
-					hips: THREE.Object3D;
-					torso: THREE.Object3D;
-					headG: THREE.Object3D;
-					lap: THREE.Object3D;
-					armL: THREE.Object3D;
-					armR: THREE.Object3D;
-					legL: THREE.Object3D;
-					legR: THREE.Object3D;
-					handL: THREE.Object3D;
-					handR: THREE.Object3D;
-					plate: THREE.Object3D;
-					speech: THREE.Object3D;
+					hips: Object3D;
+					torso: Object3D;
+					headG: Object3D;
+					lap: Object3D;
+					armL: Object3D;
+					armR: Object3D;
+					legL: Object3D;
+					legR: Object3D;
+					handL: Object3D;
+					handR: Object3D;
+					plate: Object3D;
+					speech: Object3D;
 			  }
 			| undefined;
 		if (!rig) return;
@@ -1207,26 +1210,26 @@ export class PrayerRoom {
 		rig.speech.position.set(0, L(2.05, 1.7), L(0.1, 0.25));
 	}
 
-	private makeAyatollah(name: string, title: string, turbanColor: number): THREE.Group {
-		const g = new THREE.Group();
+	private makeAyatollah(name: string, title: string, turbanColor: number): Group {
+		const g = new Group();
 		const skin = this.track(lit({ color: 0xc68642, roughness: 0.88 }));
 		const robe = this.track(lit({ color: 0x141414, roughness: 0.92 }));
 		const beardM = this.track(lit({ color: 0xf5f5f5, roughness: 0.95 }));
 		const turbanM = this.track(lit({ color: turbanColor, roughness: 0.85 }));
 
 		// Hips
-		const hips = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), robe);
+		const hips = new Mesh(new SphereGeometry(0.22, 10, 8), robe);
 		hips.scale.set(1.15, 0.55, 1.0);
 		hips.position.set(0, 0.28, 0.02);
 		g.add(hips);
 
 		// Lap (sit-only silhouette)
-		const lap = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.4), robe);
+		const lap = new Mesh(new BoxGeometry(0.55, 0.18, 0.4), robe);
 		lap.position.set(0, 0.18, 0.22);
 		g.add(lap);
 
 		// Legs (folded sit → rear doggy)
-		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.32, 3, 6), robe);
+		const legL = new Mesh(new CapsuleGeometry(0.07, 0.32, 3, 6), robe);
 		const legR = legL.clone();
 		legL.position.set(-0.12, 0.2, 0.05);
 		legR.position.set(0.12, 0.2, 0.05);
@@ -1237,12 +1240,12 @@ export class PrayerRoom {
 		g.add(legL, legR);
 
 		// Torso
-		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.45, 4, 8), robe);
+		const torso = new Mesh(new CapsuleGeometry(0.2, 0.45, 4, 8), robe);
 		torso.position.set(0, 0.72, 0);
 		g.add(torso);
 
 		// Arms
-		const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.32, 3, 6), robe);
+		const armL = new Mesh(new CapsuleGeometry(0.07, 0.32, 3, 6), robe);
 		const armR = armL.clone();
 		armL.position.set(-0.28, 0.65, 0.08);
 		armR.position.set(0.28, 0.65, 0.08);
@@ -1251,34 +1254,34 @@ export class PrayerRoom {
 		armL.rotation.x = 0.35;
 		armR.rotation.x = 0.35;
 		g.add(armL, armR);
-		const handL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), skin);
+		const handL = new Mesh(new SphereGeometry(0.05, 6, 6), skin);
 		const handR = handL.clone();
 		handL.position.set(-0.38, 0.48, 0.18);
 		handR.position.set(0.38, 0.48, 0.18);
 		g.add(handL, handR);
 
 		// Head group (moves as unit)
-		const headG = new THREE.Group();
+		const headG = new Group();
 		headG.position.set(0, 1.15, 0.02);
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), skin);
+		const head = new Mesh(new SphereGeometry(0.15, 12, 12), skin);
 		headG.add(head);
-		const beard = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.38, 8), beardM);
+		const beard = new Mesh(new ConeGeometry(0.14, 0.38, 8), beardM);
 		beard.position.set(0, -0.23, 0.08);
 		beard.rotation.x = Math.PI;
 		headG.add(beard);
-		const moustache = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.035, 0.05), beardM);
+		const moustache = new Mesh(new BoxGeometry(0.14, 0.035, 0.05), beardM);
 		moustache.position.set(0, -0.07, 0.11);
 		headG.add(moustache);
-		const turbanBase = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), turbanM);
+		const turbanBase = new Mesh(new SphereGeometry(0.17, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), turbanM);
 		turbanBase.position.set(0, 0.07, -0.02);
 		headG.add(turbanBase);
-		const turbanTop = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), turbanM);
+		const turbanTop = new Mesh(new SphereGeometry(0.12, 10, 8), turbanM);
 		turbanTop.position.set(0, 0.17, -0.04);
 		turbanTop.scale.set(1.05, 0.7, 1.05);
 		headG.add(turbanTop);
-		const lid = this.track(new THREE.MeshBasicMaterial({ color: 0x2c1810 }));
+		const lid = this.track(new MeshBasicMaterial({ color: 0x2c1810 }));
 		for (const sx of [-1, 1] as const) {
-			const eye = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.012, 0.02), lid);
+			const eye = new Mesh(new BoxGeometry(0.045, 0.012, 0.02), lid);
 			eye.position.set(sx * 0.05, 0.02, 0.13);
 			headG.add(eye);
 		}
@@ -1294,8 +1297,8 @@ export class PrayerRoom {
 		// Speech bubble
 		const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
 		const speechTex = labelTexture(sc);
-		const speech = new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		const speech = new Sprite(
+			new SpriteMaterial({
 				map: speechTex,
 				transparent: true,
 				depthTest: true,
@@ -1306,7 +1309,7 @@ export class PrayerRoom {
 		// The anchor carries the deck culling, not the sprite: `speech.visible`
 		// is the bubble's own lifetime and cullByLevel would overwrite it. The
 		// pose rig drives the anchor, so the bubble still rides the pose.
-		const speechAnchor = new THREE.Group();
+		const speechAnchor = new Group();
 		speechAnchor.position.set(0, 2.05, 0.1);
 		speechAnchor.add(speech);
 		g.add(speechAnchor);
@@ -1333,7 +1336,7 @@ export class PrayerRoom {
 		return g;
 	}
 
-	private makeNamePlate(name: string, title: string): THREE.Sprite {
+	private makeNamePlate(name: string, title: string): Sprite {
 		const { canvas: c, ctx } = labelCanvas(320, 80);
 		ctx.fillStyle = 'rgba(27,94,32,0.88)';
 		ctx.fillRect(0, 0, 320, 80);
@@ -1348,7 +1351,7 @@ export class PrayerRoom {
 		ctx.font = '14px system-ui,sans-serif';
 		ctx.fillText(title, 160, 56);
 		const tex = labelTexture(c);
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		return new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }
 
@@ -1358,7 +1361,7 @@ export class PrayerRoom {
  */
 function startAllahuLoop(ctx: AudioContext, dest: AudioNode): { stop: () => void } {
 	let alive = true;
-	let timer: number | null = null;
+	let timer: ReturnType<typeof setTimeout> | null = null;
 
 	/** One syllabic "voice" with formant filters */
 	const voice = (t0: number, basePitch: number, vol: number, detuneCents: number) => {
@@ -1435,7 +1438,7 @@ function startAllahuLoop(ctx: AudioContext, dest: AudioNode): { stop: () => void
 				voice(burst + i * 0.04, base * (0.95 + i * 0.03), 0.05, (i - 2) * 10);
 			}
 		}
-		timer = window.setTimeout(phrase, 4200 + Math.random() * 1800);
+		timer = globalThis.setTimeout(phrase, 4200 + Math.random() * 1800);
 	};
 	phrase();
 

@@ -15,11 +15,14 @@
  * Results arrive a frame or two late because the query cannot be read until the
  * GPU is done with it. For a number that updates twice a second that is fine.
  */
-type TimerExt = { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number };
+interface TimerExt {
+	TIME_ELAPSED_EXT: number;
+	GPU_DISJOINT_EXT: number;
+}
 
 function readExt(value: unknown): TimerExt | null {
 	if (typeof value !== 'object' || value === null) return null;
-	if (!('TIME_ELAPSED_EXT' in value) || !('GPU_DISJOINT_EXT' in value)) return null;
+	if (!('TIME_ELAPSED_EXT' in value && 'GPU_DISJOINT_EXT' in value)) return null;
 	const { TIME_ELAPSED_EXT, GPU_DISJOINT_EXT } = value;
 	if (typeof TIME_ELAPSED_EXT !== 'number' || typeof GPU_DISJOINT_EXT !== 'number') return null;
 	return { TIME_ELAPSED_EXT, GPU_DISJOINT_EXT };
@@ -57,7 +60,7 @@ export class GpuTimer {
 	}
 
 	end(): void {
-		if (!this.ext || !this.active) return;
+		if (!(this.ext && this.active)) return;
 		this.gl.endQuery(this.ext.TIME_ELAPSED_EXT);
 		// Three in flight is plenty: the oldest is normally readable by now, and
 		// a longer queue only delays a number nobody reads more than twice a second.

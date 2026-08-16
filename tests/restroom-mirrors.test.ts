@@ -33,7 +33,7 @@ describe('every restroom mirror hangs on a closed wall', () => {
 	test.each(RESTROOMS_MIRRORS.map((mirror) => mirror.id))('%s', (id) => {
 		const mirror = RESTROOMS_MIRRORS.find((candidate) => candidate.id === id);
 		expect(mirror).toBeDefined();
-		if (!mirror || !RESTROOMS) return;
+		if (!(mirror && RESTROOMS)) return;
 
 		const wallId = WALL_VOLUME[mirror.wall];
 		expect(wallId, `hangs on '${mirror.wall}', which is the opening and not a closed wall of the shell`).toBeDefined();

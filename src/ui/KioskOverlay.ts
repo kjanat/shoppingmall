@@ -17,9 +17,13 @@ import { clamp, half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** One dot on the map — a sim, mostly. */
-export type MapBlip = { x: number; z: number; level: LevelId };
+export interface MapBlip {
+	x: number;
+	z: number;
+	level: LevelId;
+}
 
-export type MapState = {
+export interface MapState {
 	x: number;
 	y: number;
 	z: number;
@@ -28,7 +32,7 @@ export type MapState = {
 	path: { x: number; y: number; z: number }[];
 	blips: MapBlip[];
 	target: { x: number; z: number; level: LevelId; name: string } | null;
-};
+}
 
 const ZOOM_STEPS = [2.4, 3.4, 4.8, 6.6] as const;
 
@@ -41,7 +45,7 @@ const KIOSK = requireStore('info');
 const CORRIDORS = EDGES.flatMap((e) => {
 	const a = NODE_BY_ID.get(e.from);
 	const b = NODE_BY_ID.get(e.to);
-	if (!a || !b) return [];
+	if (!(a && b)) return [];
 	const la = levelAt(a.y);
 	if (la !== levelAt(b.y)) return [];
 	return [{ level: la, ax: a.x, az: a.z, bx: b.x, bz: b.z }];
@@ -451,7 +455,10 @@ function labelFont(weight: number, size: number): string {
  * meten. Zo kan de wereldcontrole de kaartlabels naleggen zonder een canvas te hebben,
  * en meet ze met dezelfde regels als de kiosk.
  */
-export type LabelMeasure = { font: string; measureText(text: string): Readonly<{ width: number }> };
+export interface LabelMeasure {
+	font: string;
+	measureText(text: string): Readonly<{ width: number }>;
+}
 
 /**
  * `text` afgekapt tot het gemeten binnen `maxWidth` past, of null als er geen
@@ -823,7 +830,7 @@ export function minimapLabelPlan(ctx: LabelMeasure, view: MinimapView): LabelPla
 	);
 }
 
-export type UICallbacks = {
+export interface UICallbacks {
 	onSelectStore: (store: StoreDef) => void;
 	onStartRoute: (store: StoreDef) => void;
 	onCancel: () => void;
@@ -834,7 +841,7 @@ export type UICallbacks = {
 	onGiveMoney: () => void;
 	onSummonThief: () => void;
 	onMood: (delta: number) => void;
-};
+}
 
 export class KioskOverlay {
 	private root: HTMLElement;
@@ -1226,8 +1233,8 @@ export class KioskOverlay {
 			{ passive: false },
 		);
 
-		window.addEventListener('keydown', (e) => {
-			if (isTypingTarget(e.target)) return;
+		globalThis.addEventListener('keydown', (e) => {
+			if (!(e instanceof KeyboardEvent) || isTypingTarget(e.target)) return;
 			if (e.code === 'KeyM' || e.code === 'Tab') {
 				e.preventDefault();
 				this.toggleBigMap();
@@ -1450,7 +1457,7 @@ export class KioskOverlay {
 				for (let i = 1; i < path.length; i++) {
 					const a = path[i - 1];
 					const b = path[i];
-					if (!a || !b) continue;
+					if (!(a && b)) continue;
 					const here = levelAt(midpoint(a.y, b.y)) === lvl;
 					if ((pass === 0) === here) continue;
 					ctx.moveTo(a.x, a.z);

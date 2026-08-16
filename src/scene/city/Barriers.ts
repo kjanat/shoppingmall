@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material } from 'three';
+import { BoxGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
 import type { TrafficClass } from '#/data/spatial';
 import type { BarrierSpec } from '#/data/world';
 import {
@@ -27,49 +28,49 @@ import { clamp, half } from '#/util/math';
  * springen waar de botsingslus elke frame drie keer overheen loopt.
  */
 
-type Barrier = {
+interface Barrier {
 	spec: BarrierSpec;
-	pivot: THREE.Group;
+	pivot: Group;
 	gate: AABB;
 	/** 0 = dicht over de rijstrook, 1 = rechtop. */
 	open: number;
 	/** Wat er deze frame is aangekomen en langs mag. */
 	want: boolean;
-};
+}
 
 export class Barriers {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
 	private readonly barriers = new Map<string, Barrier>();
 
 	constructor(world: CollisionWorld) {
 		this.group.name = 'city_barriers';
 
 		const staal = this.track(lit({ color: 0xe8e8e2, roughness: 0.5, metalness: 0.2 }));
-		const rood = this.track(new THREE.MeshBasicMaterial({ color: 0xc62f28, toneMapped: false }));
+		const rood = this.track(new MeshBasicMaterial({ color: 0xc62f28, toneMapped: false }));
 		const donker = this.track(lit({ color: 0x3b4046, roughness: 0.8 }));
 
 		const { post, arm, pivotY } = BARRIER_HARDWARE;
-		const postGeo = new THREE.CylinderGeometry(post.radius, post.radius, post.height, 10);
-		const sleeveGeo = new THREE.BoxGeometry(arm.thickness + 0.02, arm.thickness + 0.02, arm.sleeveLength);
+		const postGeo = new CylinderGeometry(post.radius, post.radius, post.height, 10);
+		const sleeveGeo = new BoxGeometry(arm.thickness + 0.02, arm.thickness + 0.02, arm.sleeveLength);
 		this.geometries.push(postGeo, sleeveGeo);
 
 		for (const spec of BARRIER_SPECS) {
-			const paal = new THREE.Mesh(postGeo, donker);
+			const paal = new Mesh(postGeo, donker);
 			paal.position.set(spec.post.x, spec.post.y + half(post.height), spec.post.z);
 			this.group.add(paal);
 
-			const armGeo = new THREE.BoxGeometry(arm.thickness, arm.thickness, spec.armLength);
+			const armGeo = new BoxGeometry(arm.thickness, arm.thickness, spec.armLength);
 			this.geometries.push(armGeo);
-			const pivot = new THREE.Group();
+			const pivot = new Group();
 			pivot.position.set(spec.post.x, spec.post.y + pivotY, spec.post.z);
-			const balk = new THREE.Mesh(armGeo, staal);
+			const balk = new Mesh(armGeo, staal);
 			balk.position.z = spec.armSide * half(spec.armLength);
 			pivot.add(balk);
 			for (let i = 0; i < arm.sleeves; i++) {
-				const sleeve = new THREE.Mesh(sleeveGeo, rood);
+				const sleeve = new Mesh(sleeveGeo, rood);
 				sleeve.position.z = (spec.armSide * spec.armLength * (i + 1)) / (arm.sleeves + 1);
 				pivot.add(sleeve);
 			}
@@ -126,7 +127,7 @@ export class Barriers {
 		this.group.clear();
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Object3D, Texture } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, Vector3 } from 'three';
 import {
 	CON_ADULT_GATE,
 	CON_ADULT_GATE_LEAF,
@@ -33,42 +34,42 @@ const PAD_PULSE_SPAN = 0.45;
 
 type Pose = 'doggy' | 'stand' | 'oral' | 'bench' | 'wall' | 'ride';
 
-type Scene = {
-	group: THREE.Group;
-	top: THREE.Group;
-	bottom: THREE.Group;
+interface Scene {
+	group: Group;
+	top: Group;
+	bottom: Group;
 	pose: Pose;
 	phase: number;
 	busy: boolean;
 	baseTopZ: number;
 	baseBotZ: number;
-};
+}
 
 /**
  * Age-gated adult wing: darkroom + studio, explicit m/m fursuit scenes.
  */
 export class ConAdult {
-	readonly group = new THREE.Group();
-	readonly filmCam = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 80);
+	readonly group = new Group();
+	readonly filmCam = new PerspectiveCamera(50, 16 / 9, 0.1, 80);
 
 	private unlocked = false;
 	private declined = false;
-	private gateMesh: THREE.Mesh | null = null;
-	private readonly gateSign: THREE.Object3D;
+	private gateMesh: Mesh | null = null;
+	private readonly gateSign: Object3D;
 	private gateBox: AABB;
 	private readonly scenes: Scene[] = [];
 	private joined: Scene | null = null;
-	private readonly joinHold = new THREE.Vector3();
+	private readonly joinHold = new Vector3();
 	private filmMode = false;
 	private filmRec = 0;
 	private ageHud: HTMLDivElement | null = null;
 	private promptHud: HTMLDivElement | null = null;
 	private filmHud: HTMLDivElement | null = null;
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
-	private readonly pulseMats: THREE.MeshBasicMaterial[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly unitBox = new BoxGeometry(1, 1, 1);
+	private readonly pulseMats: MeshBasicMaterial[] = [];
 
 	constructor(pool: LightPool, world: CollisionWorld) {
 		this.group.name = 'con_adult';
@@ -90,7 +91,7 @@ export class ConAdult {
 		this.syncGate();
 	}
 
-	update(dt: number, viewer: THREE.Vector3): void {
+	update(dt: number, viewer: Vector3): void {
 		const atGate = inBounds3(CON_ADULT_GATE_TRIGGER, viewer.x, viewer.y, viewer.z);
 		if (!atGate) this.declined = false;
 		if (!this.unlocked && atGate && !this.declined) this.showAgeGate();
@@ -113,7 +114,7 @@ export class ConAdult {
 			const counter = Math.sin(scene.phase * Math.PI * 2 * THRUST_HZ + 0.4) * THRUST_AMP * COUNTER_FRAC;
 			const hipsTop = scene.top.getObjectByName('hips');
 			const hipsBot = scene.bottom.getObjectByName('hips');
-			if (!hipsTop || !hipsBot) continue;
+			if (!(hipsTop && hipsBot)) continue;
 
 			switch (scene.pose) {
 				case 'doggy':
@@ -166,11 +167,11 @@ export class ConAdult {
 		}
 	}
 
-	nearestScene(viewer: THREE.Vector3, maxDist = 3.2): boolean {
+	nearestScene(viewer: Vector3, maxDist = 3.2): boolean {
 		return this.nearest(viewer, maxDist) !== null;
 	}
 
-	tryJoin(viewer: THREE.Vector3): boolean {
+	tryJoin(viewer: Vector3): boolean {
 		if (!this.unlocked || this.joined) return false;
 		const scene = this.nearest(viewer);
 		if (!scene) return false;
@@ -187,8 +188,8 @@ export class ConAdult {
 		return true;
 	}
 
-	toggleFilm(viewer: THREE.Vector3): boolean {
-		if (!this.unlocked || !inRect2(CON_STUDIO, viewer.x, viewer.z)) return false;
+	toggleFilm(viewer: Vector3): boolean {
+		if (!(this.unlocked && inRect2(CON_STUDIO, viewer.x, viewer.z))) return false;
 		this.filmMode = !this.filmMode;
 		if (this.filmMode) this.filmRec = 0;
 		this.syncFilmHud();
@@ -199,7 +200,7 @@ export class ConAdult {
 		return this.filmMode;
 	}
 
-	get joinAnchor(): THREE.Vector3 | null {
+	get joinAnchor(): Vector3 | null {
 		return this.joined ? this.joinHold : null;
 	}
 
@@ -216,7 +217,7 @@ export class ConAdult {
 		this.filmHud?.remove();
 	}
 
-	private nearest(viewer: THREE.Vector3, maxDist = 3.2): Scene | null {
+	private nearest(viewer: Vector3, maxDist = 3.2): Scene | null {
 		if (!this.unlocked || this.joined) return null;
 		let best: Scene | null = null;
 		let bestD = maxDist;
@@ -233,17 +234,17 @@ export class ConAdult {
 	private buildRooms(pool: LightPool): void {
 		const black = lit({ color: 0x120810, roughness: 1 });
 		this.materials.push(black);
-		const red = new THREE.MeshBasicMaterial({ color: 0xff2244, toneMapped: false, transparent: true, opacity: 0.7 });
+		const red = new MeshBasicMaterial({ color: 0xff2244, toneMapped: false, transparent: true, opacity: 0.7 });
 		this.materials.push(red);
 		this.pulseMats.push(red);
 		const d = rectInterior(CON_DARKROOM);
 		const dc = rectCenter(CON_DARKROOM);
-		const floor = new THREE.Mesh(this.unitBox, black);
+		const floor = new Mesh(this.unitBox, black);
 		floor.scale.set(rectSize(CON_DARKROOM).w - 1, 0.1, rectSize(CON_DARKROOM).d - 1);
 		floor.position.set(dc.x, CON_FLOOR_Y + 0.08, dc.z);
 		this.group.add(floor);
 		for (let i = 0; i < 6; i++) {
-			const strip = new THREE.Mesh(this.unitBox, red);
+			const strip = new Mesh(this.unitBox, red);
 			strip.scale.set(rectSize(d).w - 1, 0.06, 0.18);
 			strip.position.set(dc.x, 2.4, d.minZ + 2 + i * ((d.maxZ - d.minZ - 4) / 5));
 			this.group.add(strip);
@@ -253,7 +254,7 @@ export class ConAdult {
 		this.group.add(title);
 
 		pool.register({
-			position: new THREE.Vector3(dc.x, 2.6, dc.z),
+			position: new Vector3(dc.x, 2.6, dc.z),
 			intensity: 12,
 			distance: 28,
 			decay: 2,
@@ -261,7 +262,7 @@ export class ConAdult {
 			priority: 1.0,
 		});
 		pool.register({
-			position: new THREE.Vector3(dc.x - 10, 2.2, dc.z + 8),
+			position: new Vector3(dc.x - 10, 2.2, dc.z + 8),
 			intensity: 8,
 			distance: 18,
 			decay: 2,
@@ -269,7 +270,7 @@ export class ConAdult {
 			priority: 0.8,
 		});
 		pool.register({
-			position: new THREE.Vector3(dc.x + 10, 2.2, dc.z - 8),
+			position: new Vector3(dc.x + 10, 2.2, dc.z - 8),
 			intensity: 8,
 			distance: 18,
 			decay: 2,
@@ -279,33 +280,33 @@ export class ConAdult {
 
 		const sc = rectCenter(CON_STUDIO);
 		const s = rectInterior(CON_STUDIO);
-		const chroma = new THREE.MeshBasicMaterial({ color: 0x1a0a14, toneMapped: false });
+		const chroma = new MeshBasicMaterial({ color: 0x1a0a14, toneMapped: false });
 		this.materials.push(chroma);
-		const back = new THREE.Mesh(this.unitBox, chroma);
+		const back = new Mesh(this.unitBox, chroma);
 		back.scale.set(rectSize(s).w - 1, 3.2, 0.15);
 		back.position.set(sc.x, 1.8, s.minZ + 0.4);
 		this.group.add(back);
 		const floorSMat = lit({ color: 0x181018, roughness: 0.95 });
 		this.materials.push(floorSMat);
-		const floorS = new THREE.Mesh(this.unitBox, floorSMat);
+		const floorS = new Mesh(this.unitBox, floorSMat);
 		floorS.scale.set(rectSize(CON_STUDIO).w - 1.2, 0.08, rectSize(CON_STUDIO).d - 1.2);
 		floorS.position.set(sc.x, CON_FLOOR_Y + 0.06, sc.z);
 		this.group.add(floorS);
 
 		const camBody = lit({ color: 0x222228, roughness: 0.4 });
 		this.materials.push(camBody);
-		const cam = new THREE.Mesh(this.unitBox, camBody);
+		const cam = new Mesh(this.unitBox, camBody);
 		cam.scale.set(0.5, 0.4, 0.9);
 		cam.position.set(sc.x - 5, 1.5, sc.z + 4);
 		this.group.add(cam);
-		const rec = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
+		const rec = new MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
 		this.materials.push(rec);
-		const recMesh = new THREE.Mesh(this.unitBox, rec);
+		const recMesh = new Mesh(this.unitBox, rec);
 		recMesh.scale.set(0.18, 0.18, 0.18);
 		recMesh.position.set(sc.x - 5, 1.9, sc.z + 4);
 		this.group.add(recMesh);
 		pool.register({
-			position: new THREE.Vector3(sc.x, 3.2, sc.z),
+			position: new Vector3(sc.x, 3.2, sc.z),
 			intensity: 22,
 			distance: 22,
 			decay: 2,
@@ -313,7 +314,7 @@ export class ConAdult {
 			priority: 1.3,
 		});
 		pool.register({
-			position: new THREE.Vector3(sc.x + 4, 2.4, sc.z - 3),
+			position: new Vector3(sc.x + 4, 2.4, sc.z - 3),
 			intensity: 10,
 			distance: 14,
 			decay: 2,
@@ -325,19 +326,19 @@ export class ConAdult {
 		this.group.add(studioSign);
 	}
 
-	private buildGateMesh(): THREE.Mesh {
+	private buildGateMesh(): Mesh {
 		const leaf = CON_ADULT_GATE_LEAF;
 		const mat = lit({ color: 0x220018, roughness: 0.9 });
 		this.materials.push(mat);
-		const gate = new THREE.Mesh(this.unitBox, mat);
+		const gate = new Mesh(this.unitBox, mat);
 		gate.scale.set(span(leaf.minX, leaf.maxX), span(leaf.minY, leaf.maxY), span(leaf.minZ, leaf.maxZ));
 		gate.position.set(midpoint(leaf.minX, leaf.maxX), midpoint(leaf.minY, leaf.maxY), midpoint(leaf.minZ, leaf.maxZ));
 		return gate;
 	}
 
-	private buildGateSign(): THREE.Object3D {
+	private buildGateSign(): Object3D {
 		const leaf = CON_ADULT_GATE_LEAF;
-		const wrap = new THREE.Group();
+		const wrap = new Group();
 		const sign = this.sign('18+  ·  DARKROOM / STUDIO', 4.2, 0.5, 0xff3355);
 		sign.position.set(leaf.minX - 0.15, CON_FLOOR_Y + CON_ADULT_GATE.headY + 0.35, midpoint(leaf.minZ, leaf.maxZ));
 		sign.rotation.y = Math.PI / 2;
@@ -349,11 +350,11 @@ export class ConAdult {
 		return wrap;
 	}
 
-	get doorMesh(): THREE.Mesh | null {
+	get doorMesh(): Mesh | null {
 		return this.gateMesh;
 	}
 
-	get doorSign(): THREE.Object3D {
+	get doorSign(): Object3D {
 		return this.gateSign;
 	}
 
@@ -391,7 +392,7 @@ export class ConAdult {
 	}
 
 	private makeScene(x: number, z: number, yaw: number, pose: Pose, label: string, studio: boolean): Scene {
-		const group = new THREE.Group();
+		const group = new Group();
 		group.position.set(x, CON_FLOOR_Y, z);
 		group.rotation.y = yaw;
 		const rand = mulberry32(hash(label));
@@ -413,7 +414,7 @@ export class ConAdult {
 			{ male: true },
 		);
 
-		const matPad = new THREE.MeshBasicMaterial({
+		const matPad = new MeshBasicMaterial({
 			color: studio ? 0xff4488 : 0xaa1133,
 			toneMapped: false,
 			transparent: true,
@@ -421,7 +422,7 @@ export class ConAdult {
 		});
 		this.materials.push(matPad);
 		this.pulseMats.push(matPad);
-		const pad = new THREE.Mesh(this.unitBox, matPad);
+		const pad = new Mesh(this.unitBox, matPad);
 		pad.scale.set(1.6, 0.04, 1.6);
 		pad.position.set(0, 0.03, 0);
 		group.add(pad);
@@ -429,7 +430,7 @@ export class ConAdult {
 		if (pose === 'bench' || pose === 'ride' || studio) {
 			const benchMat = lit({ color: 0x1a1018, roughness: 0.95 });
 			this.materials.push(benchMat);
-			const bench = new THREE.Mesh(this.unitBox, benchMat);
+			const bench = new Mesh(this.unitBox, benchMat);
 			bench.scale.set(1.5, 0.38, 0.7);
 			bench.position.set(0, 0.22, pose === 'ride' ? 0 : -0.15);
 			group.add(bench);
@@ -450,10 +451,10 @@ export class ConAdult {
 		};
 	}
 
-	private applyPose(top: THREE.Group, bottom: THREE.Group, pose: Pose): { topZ: number; botY: number } {
+	private applyPose(top: Group, bottom: Group, pose: Pose): { topZ: number; botY: number } {
 		const hipsT = top.getObjectByName('hips');
 		const hipsB = bottom.getObjectByName('hips');
-		if (!hipsT || !hipsB) return { topZ: 0, botY: 0 };
+		if (!(hipsT && hipsB)) return { topZ: 0, botY: 0 };
 
 		let topZ = 0;
 		let botY = 0;
@@ -566,7 +567,7 @@ export class ConAdult {
 		};
 		el.querySelector('#con-age-yes')?.addEventListener('click', () => close(true));
 		el.querySelector('#con-age-no')?.addEventListener('click', () => close(false));
-		window.setTimeout(() => {
+		globalThis.setTimeout(() => {
 			const btn = el.querySelector('#con-age-yes');
 			if (btn instanceof HTMLElement) btn.focus();
 		}, 0);
@@ -605,7 +606,7 @@ export class ConAdult {
 		this.filmHud.textContent = `● REC  ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}  ·  F to stop`;
 	}
 
-	private sign(text: string, w: number, h: number, tint: number): THREE.Object3D {
+	private sign(text: string, w: number, h: number, tint: number): Object3D {
 		const pxW = Math.max(128, Math.round(w * 48));
 		const pxH = Math.max(48, Math.round(h * 48));
 		const { canvas, ctx } = labelCanvas(pxW, pxH);
@@ -615,9 +616,9 @@ export class ConAdult {
 		fitText(ctx, text, { x: 8, y: 4, w: pxW - 16, h: pxH - 8 }, { size: pxH * 0.55, maxLines: 2 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
-		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: tint, toneMapped: false });
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, color: tint, toneMapped: false });
 		this.materials.push(mat);
-		const geo = new THREE.PlaneGeometry(w, h);
+		const geo = new PlaneGeometry(w, h);
 		this.geometries.push(geo);
 		return backToBackLabel(geo, mat);
 	}

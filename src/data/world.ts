@@ -4443,7 +4443,7 @@ function slideSegments(): readonly SlideSegment[] {
 	for (let index = 1; index < path.length; index++) {
 		const start = path[index - 1];
 		const end = path[index];
-		if (!start || !end) continue;
+		if (!(start && end)) continue;
 		segments.push({ id: `tube-${index}`, start, end });
 	}
 	return segments;

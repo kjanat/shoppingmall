@@ -2,14 +2,17 @@ import type { Database } from 'bun:sqlite';
 import { basename, extname, join } from 'node:path';
 import { desc, eq } from 'drizzle-orm';
 import { finiteNumber, isRecord, readString } from '#/util/values.ts';
-import { type DjLibraryDb, openDjLibraryDb } from './db/client.ts';
-import { type DjTrackRow, type DjYtDumpRow, djTracks, djYtDumps } from './db/schema.ts';
+import type { DjLibraryDb } from './db/client.ts';
+import { openDjLibraryDb } from './db/client.ts';
+import type { DjTrackRow, DjYtDumpRow } from './db/schema.ts';
+import { djTracks, djYtDumps } from './db/schema.ts';
 
-export const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.ogg', '.webm', '.wav', '.opus'] as const;
-export const YT_DLP_META_PREFIX = 'MALLMETA:';
-export const YT_DLP_META_PRINT = `after_move:${YT_DLP_META_PREFIX}%()j`;
+const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.ogg', '.webm', '.wav', '.opus'] as const;
+const YT_DLP_META_PREFIX = 'MALLMETA:';
+const YT_DLP_META_PRINT = `after_move:${YT_DLP_META_PREFIX}%()j`;
+const RE_YTID = /^[A-Za-z0-9_-]{8,16}$/;
 
-export type LibraryTrack = {
+interface LibraryTrack {
 	id?: number;
 	file: string;
 	title: string;
@@ -19,38 +22,38 @@ export type LibraryTrack = {
 	sourceUrl?: string;
 	requestedQuery?: string;
 	downloadedAt: number;
-};
+}
 
-export type YtDlpCapture = {
+interface YtDlpCapture {
 	track: LibraryTrack;
 	/** Exact JSON text after the prefix, without lossy parse/stringify. */
 	dump: string;
-};
+}
 
-export type YtDumpRow = DjYtDumpRow;
+type YtDumpRow = DjYtDumpRow;
 
 function nonempty(value: string): string | undefined {
 	const trimmed = value.trim();
 	return trimmed || undefined;
 }
 
-export function libraryBasename(path: string): string | undefined {
+function libraryBasename(path: string): string | undefined {
 	const file = basename(path.trim());
 	if (!file || file === '.' || file === '..' || file.includes('/') || file.includes('\\')) return undefined;
 	return file;
 }
 
-export function validYoutubeId(id: string): string | undefined {
+function validYoutubeId(id: string): string | undefined {
 	const trimmed = id.trim();
-	return /^[A-Za-z0-9_-]{8,16}$/.test(trimmed) ? trimmed : undefined;
+	return RE_YTID.test(trimmed) ? trimmed : undefined;
 }
 
-export function isAudioFileName(name: string): boolean {
+function isAudioFileName(name: string): boolean {
 	return basename(name) === name && AUDIO_EXTENSIONS.some((extension) => extname(name).toLowerCase() === extension);
 }
 
 /** Parse yt-dlp's untyped info dict before it reaches the DJ library. */
-export function parseYtDlpInfo(raw: unknown, fallbackFile?: string): LibraryTrack | undefined {
+function parseYtDlpInfo(raw: unknown, fallbackFile?: string): LibraryTrack | undefined {
 	if (!isRecord(raw)) return undefined;
 	const file = libraryBasename(readString(raw, 'filepath') || readString(raw, 'filename') || fallbackFile || '');
 	if (!file) return undefined;
@@ -70,7 +73,7 @@ export function parseYtDlpInfo(raw: unknown, fallbackFile?: string): LibraryTrac
 	};
 }
 
-export function parseYtDlpOutput(output: string, fallbackFile?: string): YtDlpCapture | undefined {
+function parseYtDlpOutput(output: string, fallbackFile?: string): YtDlpCapture | undefined {
 	for (const line of output.split('\n')) {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith(YT_DLP_META_PREFIX)) continue;
@@ -93,14 +96,14 @@ function trackFromRow(row: DjTrackRow): LibraryTrack {
 		title: row.title,
 		downloadedAt: row.downloadedAt,
 		...(row.artist ? { artist: row.artist } : {}),
-		...(row.durationSeconds !== null ? { durationSeconds: row.durationSeconds } : {}),
+		...(row.durationSeconds === null ? {} : { durationSeconds: row.durationSeconds }),
 		...(row.youtubeId ? { youtubeId: row.youtubeId } : {}),
 		...(row.sourceUrl ? { sourceUrl: row.sourceUrl } : {}),
 		...(row.requestedQuery ? { requestedQuery: row.requestedQuery } : {}),
 	};
 }
 
-export class DjLibrary {
+class DjLibrary {
 	readonly sqlite: Database;
 	readonly db: DjLibraryDb;
 
@@ -181,15 +184,17 @@ export class DjLibrary {
 }
 
 async function matchingAudio(dir: string, stem: string): Promise<string | undefined> {
-	for (const ext of AUDIO_EXTENSIONS) {
-		const file = `${stem}${ext}`;
-		if (await Bun.file(join(dir, file)).exists()) return file;
-	}
-	return undefined;
+	const matches = await Promise.all(
+		AUDIO_EXTENSIONS.map(async (extension) => {
+			const file = `${stem}${extension}`;
+			return (await Bun.file(join(dir, file)).exists()) ? file : undefined;
+		}),
+	);
+	return matches.find((file) => file !== undefined);
 }
 
 /** Import old yt-dlp sidecars without making them part of the live contract. */
-export async function importLegacySidecars(dir: string, library: DjLibrary): Promise<number> {
+async function importLegacySidecars(dir: string, library: DjLibrary): Promise<number> {
 	let imported = 0;
 	for await (const name of new Bun.Glob('*.info.json').scan({ cwd: dir, onlyFiles: true })) {
 		const sidecar = Bun.file(join(dir, name));
@@ -215,3 +220,17 @@ export async function importLegacySidecars(dir: string, library: DjLibrary): Pro
 	}
 	return imported;
 }
+
+export type { LibraryTrack, YtDlpCapture, YtDumpRow };
+export {
+	AUDIO_EXTENSIONS,
+	DjLibrary,
+	importLegacySidecars,
+	isAudioFileName,
+	libraryBasename,
+	parseYtDlpInfo,
+	parseYtDlpOutput,
+	validYoutubeId,
+	YT_DLP_META_PREFIX,
+	YT_DLP_META_PRINT,
+};

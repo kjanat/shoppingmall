@@ -1,4 +1,18 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import { levelY } from '#/data/levels';
 import { ISLAND_HOP_BANNERS, ISLAND_HOP_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
@@ -28,15 +42,15 @@ const FROND_STEP = 0.5;
  * cancelled/elite-meme vibes, no graphic crime content.
  */
 export class TravelAgency {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	/** World center — east of the gold cave mouth */
 	/** West wall, between toilets and beard cave */
-	readonly pos = new THREE.Vector3(ISLAND_HOP_SPEC.center.x, levelY('v0'), ISLAND_HOP_SPEC.center.z);
-	private materials: THREE.Material[] = [];
-	private bob: THREE.Object3D[] = [];
+	readonly pos = new Vector3(ISLAND_HOP_SPEC.center.x, levelY('v0'), ISLAND_HOP_SPEC.center.z);
+	private readonly materials: Material[] = [];
+	private readonly bob: Object3D[] = [];
+	private readonly pool: LightPool;
+	private agentRoot!: Group;
 	private t = 0;
-	private agentRoot!: THREE.Group;
-	private pool: LightPool;
 
 	constructor(pool: LightPool) {
 		this.pool = pool;
@@ -98,7 +112,7 @@ export class TravelAgency {
 		});
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -116,15 +130,15 @@ export class TravelAgency {
 
 		const { slab: slabSpec, wallHeight, backWall, sideWall, fascia: fasciaSpec } = ISLAND_HOP_SPEC;
 
-		const slab = new THREE.Mesh(new THREE.BoxGeometry(slabSpec.width, slabSpec.thickness, slabSpec.depth), floor);
+		const slab = new Mesh(new BoxGeometry(slabSpec.width, slabSpec.thickness, slabSpec.depth), floor);
 		slab.position.set(0, half(slabSpec.thickness), 0);
 		this.group.add(slab);
 
 		// Three-sided booth open to +X (mall)
-		const back = new THREE.Mesh(new THREE.BoxGeometry(backWall.thickness, wallHeight, slabSpec.depth), wall);
+		const back = new Mesh(new BoxGeometry(backWall.thickness, wallHeight, slabSpec.depth), wall);
 		back.position.set(backWall.offsetX, half(wallHeight), 0);
 		this.group.add(back);
-		const n = new THREE.Mesh(new THREE.BoxGeometry(sideWall.width, wallHeight, sideWall.thickness), wall);
+		const n = new Mesh(new BoxGeometry(sideWall.width, wallHeight, sideWall.thickness), wall);
 		n.position.set(sideWall.offsetX, half(wallHeight), -sideWall.offsetZ);
 		this.group.add(n);
 		const s = n.clone();
@@ -132,7 +146,7 @@ export class TravelAgency {
 		this.group.add(s);
 
 		// Gold trim fascia
-		const fascia = new THREE.Mesh(new THREE.BoxGeometry(fasciaSpec.width, fasciaSpec.height, fasciaSpec.depth), trim);
+		const fascia = new Mesh(new BoxGeometry(fasciaSpec.width, fasciaSpec.height, fasciaSpec.depth), trim);
 		fascia.position.set(fasciaSpec.offsetX, fasciaSpec.centerY, 0);
 		this.group.add(fascia);
 
@@ -142,7 +156,7 @@ export class TravelAgency {
 			intensity: 1.4,
 			distance: 7,
 			decay: 2,
-			position: new THREE.Vector3(this.pos.x + 0.2, 2.1, this.pos.z),
+			position: new Vector3(this.pos.x + 0.2, 2.1, this.pos.z),
 		});
 	}
 
@@ -156,21 +170,21 @@ export class TravelAgency {
 			}),
 		);
 		const deskSpec = ISLAND_HOP_SPEC.desk;
-		const desk = new THREE.Mesh(new THREE.BoxGeometry(deskSpec.width, deskSpec.height, deskSpec.depth), wood);
+		const desk = new Mesh(new BoxGeometry(deskSpec.width, deskSpec.height, deskSpec.depth), wood);
 		desk.position.set(deskSpec.offsetX, half(deskSpec.height), 0);
 		this.group.add(desk);
-		const deskTop = new THREE.Mesh(new THREE.BoxGeometry(deskSpec.top.width, deskSpec.top.thickness, deskSpec.top.depth), top);
+		const deskTop = new Mesh(new BoxGeometry(deskSpec.top.width, deskSpec.top.thickness, deskSpec.top.depth), top);
 		deskTop.position.set(deskSpec.offsetX, deskSpec.height + half(deskSpec.top.thickness), 0);
 		this.group.add(deskTop);
 
 		// Computer
-		const mon = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.32, 0.04), this.track(lit({ color: 0x111111, metalness: 0.5 })));
+		const mon = new Mesh(new BoxGeometry(0.45, 0.32, 0.04), this.track(lit({ color: 0x111111, metalness: 0.5 })));
 		mon.position.set(0.3, 1.25, -0.1);
 		mon.rotation.y = 0.3;
 		this.group.add(mon);
-		const screen = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.4, 0.26),
-			this.track(new THREE.MeshBasicMaterial({ color: 0x00bcd4, toneMapped: false })),
+		const screen = new Mesh(
+			new PlaneGeometry(0.4, 0.26),
+			this.track(new MeshBasicMaterial({ color: 0x00bcd4, toneMapped: false })),
 		);
 		screen.position.set(0.3, 1.25, -0.07);
 		screen.rotation.y = 0.3;
@@ -178,8 +192,8 @@ export class TravelAgency {
 
 		// Brochure stack
 		for (let i = 0; i < 4; i++) {
-			const b = new THREE.Mesh(
-				new THREE.BoxGeometry(0.22, 0.02, 0.28),
+			const b = new Mesh(
+				new BoxGeometry(0.22, 0.02, 0.28),
 				this.track(
 					lit({
 						color: [0xff7043, 0x29b6f6, 0xffee58, 0x66bb6a][i],
@@ -195,7 +209,7 @@ export class TravelAgency {
 
 	/** Shady travel agent — shades, Hawaiian shirt, clipboard */
 	private buildAgent(): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		g.position.set(-0.15, 0, -0.15);
 		g.rotation.y = Math.PI / 2;
 
@@ -204,33 +218,33 @@ export class TravelAgency {
 		const pants = this.track(lit({ color: 0xf5f5f5, roughness: 0.8 }));
 		const hairM = this.track(lit({ color: 0x1a1a1a, roughness: 0.9 }));
 
-		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.45, 3, 6), pants);
+		const legL = new Mesh(new CapsuleGeometry(0.1, 0.45, 3, 6), pants);
 		const legR = legL.clone();
 		legL.position.set(-0.11, 0.4, 0);
 		legR.position.set(0.11, 0.4, 0);
 		g.add(legL, legR);
 
-		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.55, 4, 8), shirt);
+		const body = new Mesh(new CapsuleGeometry(0.24, 0.55, 4, 8), shirt);
 		body.position.y = 1.05;
 		g.add(body);
 
 		// Flower pattern dots
 		for (let i = 0; i < 6; i++) {
-			const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), this.track(lit({ color: 0xe91e63, roughness: 0.6 })));
+			const dot = new Mesh(new SphereGeometry(0.04, 6, 6), this.track(lit({ color: 0xe91e63, roughness: 0.6 })));
 			dot.position.set(((i % 3) - 1) * 0.12, 0.95 + Math.floor(i / 3) * 0.2, 0.22);
 			g.add(dot);
 		}
 
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 12), skin);
+		const head = new Mesh(new SphereGeometry(0.17, 12, 12), skin);
 		head.position.y = 1.65;
 		g.add(head);
-		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), hairM);
+		const hair = new Mesh(new SphereGeometry(0.18, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), hairM);
 		hair.position.set(0, 1.72, -0.02);
 		g.add(hair);
 
 		// Sunglasses
-		const shades = new THREE.Mesh(
-			new THREE.BoxGeometry(0.22, 0.06, 0.04),
+		const shades = new Mesh(
+			new BoxGeometry(0.22, 0.06, 0.04),
 			this.track(
 				lit({
 					color: 0x111111,
@@ -243,7 +257,7 @@ export class TravelAgency {
 		g.add(shades);
 
 		// Clipboard
-		const clip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.02), this.track(lit({ color: 0xeeeeee, roughness: 0.6 })));
+		const clip = new Mesh(new BoxGeometry(0.18, 0.24, 0.02), this.track(lit({ color: 0xeeeeee, roughness: 0.6 })));
 		clip.position.set(0.28, 1.2, 0.2);
 		clip.rotation.z = -0.3;
 		g.add(clip);
@@ -261,19 +275,16 @@ export class TravelAgency {
 	private buildPosters(): void {
 		// Big destination poster — private island silhouette
 		const island = this.makeIslandPoster();
-		const p1 = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.5, 1.1),
-			this.track(new THREE.MeshBasicMaterial({ map: island, toneMapped: false })),
-		);
+		const p1 = new Mesh(new PlaneGeometry(1.5, 1.1), this.track(new MeshBasicMaterial({ map: island, toneMapped: false })));
 		p1.position.set(-1.78, 1.55, 0);
 		p1.rotation.y = Math.PI / 2;
 		this.group.add(p1);
 
 		// Side posters
-		const p2 = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.1, 0.75),
+		const p2 = new Mesh(
+			new PlaneGeometry(1.1, 0.75),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					map: this.makeTextPoster(['EPSTEIN ISLAND', 'VIP CHARTER', '⚠ FLIGHTS SUSPENDED', 'since 2019'], '#004d40', '#ffeb3b'),
 					toneMapped: false,
 				}),
@@ -282,10 +293,10 @@ export class TravelAgency {
 		p2.position.set(-0.3, 1.7, -1.74);
 		this.group.add(p2);
 
-		const p3 = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.1, 0.75),
+		const p3 = new Mesh(
+			new PlaneGeometry(1.1, 0.75),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					map: this.makeTextPoster(
 						['LITTLE ST. JAMES', 'PRIVATE · ELITE', 'guest list: ████', 'NDA included'],
 						'#1a237e',
@@ -300,7 +311,7 @@ export class TravelAgency {
 		this.group.add(p3);
 	}
 
-	private makeIslandPoster(): THREE.CanvasTexture {
+	private makeIslandPoster(): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(512, 384);
 		// Sky
 		const sky = ctx.createLinearGradient(0, 0, 0, 280);
@@ -372,7 +383,7 @@ export class TravelAgency {
 		return tex;
 	}
 
-	private makeTextPoster(lines: string[], bg: string, fg: string): THREE.CanvasTexture {
+	private makeTextPoster(lines: string[], bg: string, fg: string): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(384, 256);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 384, 256);
@@ -392,11 +403,11 @@ export class TravelAgency {
 	private buildProps(): void {
 		// Suitcase
 		const caseM = this.track(lit({ color: 0x37474f, roughness: 0.6, metalness: 0.2 }));
-		const bag = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.22), caseM);
+		const bag = new Mesh(new BoxGeometry(0.45, 0.55, 0.22), caseM);
 		bag.position.set(1.2, 0.3, 1.1);
 		this.group.add(bag);
-		const handle = new THREE.Mesh(
-			new THREE.TorusGeometry(0.1, 0.02, 6, 12, Math.PI),
+		const handle = new Mesh(
+			new TorusGeometry(0.1, 0.02, 6, 12, Math.PI),
 			this.track(lit({ color: 0xffd54f, metalness: 0.6, roughness: 0.3 })),
 		);
 		handle.position.set(1.2, 0.6, 1.1);
@@ -404,8 +415,8 @@ export class TravelAgency {
 		this.group.add(handle);
 
 		// Globe
-		const globe = new THREE.Mesh(
-			new THREE.SphereGeometry(0.18, 16, 12),
+		const globe = new Mesh(
+			new SphereGeometry(0.18, 16, 12),
 			this.track(
 				lit({
 					color: 0x1565c0,
@@ -421,16 +432,16 @@ export class TravelAgency {
 		this.bob.push(globe);
 		// Continents blobs
 		for (let i = 0; i < 5; i++) {
-			const land = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), this.track(lit({ color: 0x2e7d32, roughness: 0.9 })));
+			const land = new Mesh(new SphereGeometry(0.06, 6, 6), this.track(lit({ color: 0x2e7d32, roughness: 0.9 })));
 			const a = (i / 5) * Math.PI * 2;
 			land.position.set(1.05 + Math.cos(a) * 0.14, 1.2 + Math.sin(a * 1.3) * 0.1, -0.2 + Math.sin(a) * 0.14);
 			this.group.add(land);
 		}
 
 		// Tiny plane model on desk
-		const plane = new THREE.Group();
-		const fus = new THREE.Mesh(
-			new THREE.CapsuleGeometry(0.04, 0.28, 4, 6),
+		const plane = new Group();
+		const fus = new Mesh(
+			new CapsuleGeometry(0.04, 0.28, 4, 6),
 			this.track(
 				lit({
 					color: 0xffffff,
@@ -441,7 +452,7 @@ export class TravelAgency {
 		);
 		fus.rotation.z = Math.PI / 2;
 		plane.add(fus);
-		const wing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.02, 0.1), this.track(lit({ color: 0xb0bec5, metalness: 0.5 })));
+		const wing = new Mesh(new BoxGeometry(0.35, 0.02, 0.1), this.track(lit({ color: 0xb0bec5, metalness: 0.5 })));
 		plane.add(wing);
 		plane.position.set(0.85, 1.05, -0.25);
 		plane.rotation.y = -0.5;
@@ -451,13 +462,10 @@ export class TravelAgency {
 		this.bob.push(plane);
 
 		// "No cameras" bin
-		const bin = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.18, 0.15, 0.4, 10),
-			this.track(lit({ color: 0x212121, roughness: 0.7 })),
-		);
+		const bin = new Mesh(new CylinderGeometry(0.18, 0.15, 0.4, 10), this.track(lit({ color: 0x212121, roughness: 0.7 })));
 		bin.position.set(1.3, 0.22, -1.2);
 		this.group.add(bin);
-		const cam = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.08), this.track(lit({ color: 0x424242, metalness: 0.4 })));
+		const cam = new Mesh(new BoxGeometry(0.14, 0.1, 0.08), this.track(lit({ color: 0x424242, metalness: 0.4 })));
 		cam.position.set(1.3, 0.48, -1.2);
 		this.group.add(cam);
 	}
@@ -465,18 +473,15 @@ export class TravelAgency {
 	private buildPalm(): void {
 		const trunkM = this.track(lit({ color: 0x6d4c41, roughness: 0.9 }));
 		const leafM = this.track(lit({ color: 0x2e7d32, roughness: 0.85 }));
-		const pot = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.22, 0.18, 0.35, 10),
-			this.track(lit({ color: 0xbf360c, roughness: 0.7 })),
-		);
+		const pot = new Mesh(new CylinderGeometry(0.22, 0.18, 0.35, 10), this.track(lit({ color: 0xbf360c, roughness: 0.7 })));
 		pot.position.set(1.35, 0.18, 0.9);
 		this.group.add(pot);
-		const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 1.1, 6), trunkM);
+		const trunk = new Mesh(new CylinderGeometry(0.04, 0.06, 1.1, 6), trunkM);
 		trunk.position.set(1.35, 0.9, 0.9);
 		trunk.rotation.z = 0.08;
 		this.group.add(trunk);
 		for (let i = 0; i < 6; i++) {
-			const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.04, 0.12), leafM);
+			const leaf = new Mesh(new BoxGeometry(0.55, 0.04, 0.12), leafM);
 			const a = (i / 6) * Math.PI * 2;
 			leaf.position.set(1.35 + Math.cos(a) * 0.15, 1.45, 0.9 + Math.sin(a) * 0.15);
 			leaf.rotation.y = a;
@@ -499,8 +504,8 @@ export class TravelAgency {
 			const text = copy[board.id];
 			if (!text) continue;
 			const banner = backToBackLabel(
-				new THREE.PlaneGeometry(span(board.minZ, board.maxZ), span(board.minY, board.maxY)),
-				this.track(new THREE.MeshBasicMaterial({ map: this.makeLabel(text.text, text.bg, text.width, text.height) })),
+				new PlaneGeometry(span(board.minZ, board.maxZ), span(board.minY, board.maxY)),
+				this.track(new MeshBasicMaterial({ map: this.makeLabel(text.text, text.bg, text.width, text.height) })),
 			);
 			banner.position.set(
 				midpoint(board.minX, board.maxX) - this.pos.x,
@@ -513,10 +518,10 @@ export class TravelAgency {
 		}
 
 		// Floor A-board
-		const board = new THREE.Mesh(
-			new THREE.BoxGeometry(0.7, 0.9, 0.08),
+		const board = new Mesh(
+			new BoxGeometry(0.7, 0.9, 0.08),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					map: this.makeTextPoster(['BOOK NOW', 'EPSTEIN', 'ISLAND', '⚠ void ticket'], '#ffeb3b', '#b71c1c'),
 					toneMapped: false,
 				}),
@@ -527,7 +532,7 @@ export class TravelAgency {
 		this.group.add(board);
 	}
 
-	private makeLabel(text: string, bg: string, w: number, h: number): THREE.CanvasTexture {
+	private makeLabel(text: string, bg: string, w: number, h: number): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
@@ -537,8 +542,8 @@ export class TravelAgency {
 		return labelTexture(c);
 	}
 
-	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
+	private makeSprite(text: string, bg: string, w: number, h: number): Sprite {
 		const tex = this.makeLabel(text, bg, w, h);
-		return new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
+		return new Sprite(this.track(new SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
 	}
 }

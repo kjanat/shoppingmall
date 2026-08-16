@@ -1,4 +1,16 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Mesh as MeshType, PlaneGeometry as PlaneGeometryType, Texture } from 'three';
+import {
+	BoxGeometry,
+	CylinderGeometry,
+	Group,
+	InstancedMesh,
+	Mesh,
+	MeshBasicMaterial,
+	Object3D,
+	PlaneGeometry,
+	RepeatWrapping,
+	SphereGeometry,
+} from 'three';
 import { lit } from '#/render/material';
 import type { RoadPaintKind, RoadPaintPatch } from '#/scene/city/cityPlan';
 import {
@@ -101,30 +113,30 @@ const SEG_ENDS = [
 
 type LampState = 'red' | 'amber' | 'green';
 
-type Head = {
+interface Head {
 	dir: 'ns' | 'ew';
-	red: THREE.Mesh;
-	amber: THREE.Mesh;
-	green: THREE.Mesh;
-};
+	red: MeshType;
+	amber: MeshType;
+	green: MeshType;
+}
 
 export class CityRoads {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private materials: THREE.Material[] = [];
-	private geometries: THREE.BufferGeometry[] = [];
-	private textures: THREE.Texture[] = [];
+	private materials: Material[] = [];
+	private geometries: BufferGeometry[] = [];
+	private textures: Texture[] = [];
 	private heads: Head[] = [];
-	private zebras!: THREE.InstancedMesh;
-	private paint: THREE.InstancedMesh[] = [];
+	private zebras!: InstancedMesh;
+	private paint: InstancedMesh[] = [];
 
 	// Lampmaterialen — gedeeld over alle koppen, we wisselen alleen referenties
-	private redOn!: THREE.Material;
-	private amberOn!: THREE.Material;
-	private greenOn!: THREE.Material;
-	private redOff!: THREE.Material;
-	private amberOff!: THREE.Material;
-	private greenOff!: THREE.Material;
+	private redOn!: Material;
+	private amberOn!: Material;
+	private greenOn!: Material;
+	private redOff!: Material;
+	private amberOff!: Material;
+	private greenOff!: Material;
 
 	private clock = 0;
 	private seg = -1; // -1 forceert de eerste applyLamps in update
@@ -190,11 +202,11 @@ export class CityRoads {
 	 * zodat de zebrapaden er als gaten uit gesneden zijn; in de doorlopende texture-tegel
 	 * liep de kantstreep dwars over de zebra en de middenstreep als plus door het midden.
 	 */
-	private makeAsphaltTexture(len: number): THREE.Texture {
+	private makeAsphaltTexture(len: number): Texture {
 		const { canvas: c, ctx } = labelCanvas(TILE_PX, ROAD_PX);
 		this.paveAsphalt(ctx, TILE_PX, ROAD_PX);
 		const tex = labelTexture(c);
-		tex.wrapS = THREE.RepeatWrapping;
+		tex.wrapS = RepeatWrapping;
 		tex.repeat.set(Math.max(1, Math.round(len / TILE_LEN)), 1);
 		this.textures.push(tex);
 		return tex;
@@ -209,7 +221,7 @@ export class CityRoads {
 	 * kolom 0 is de kleinste x en rij 0 de kleinste z. De andere drie hoeken zijn
 	 * dezelfde tegel, gedraaid.
 	 */
-	private makeCornerTexture(): THREE.Texture {
+	private makeCornerTexture(): Texture {
 		const { canvas: c, ctx } = labelCanvas(ROAD_PX, ROAD_PX);
 		this.paveAsphalt(ctx, ROAD_PX, ROAD_PX);
 
@@ -253,26 +265,26 @@ export class CityRoads {
 		const nsMat = this.track(lit({ map: this.makeAsphaltTexture(NS_LEN), roughness: 0.95 }));
 		const cornerMat = this.track(lit({ map: this.makeCornerTexture(), roughness: 0.95 }));
 
-		const ewGeo = new THREE.PlaneGeometry(EW_LEN, ROAD_W);
+		const ewGeo = new PlaneGeometry(EW_LEN, ROAD_W);
 		ewGeo.rotateX(-Math.PI / 2);
 		this.geometries.push(ewGeo);
-		const nsGeo = new THREE.PlaneGeometry(NS_LEN, ROAD_W);
+		const nsGeo = new PlaneGeometry(NS_LEN, ROAD_W);
 		nsGeo.rotateX(-Math.PI / 2);
 		this.geometries.push(nsGeo);
-		const cornerGeo = new THREE.PlaneGeometry(ROAD_W, ROAD_W);
+		const cornerGeo = new PlaneGeometry(ROAD_W, ROAD_W);
 		cornerGeo.rotateX(-Math.PI / 2);
 		this.geometries.push(cornerGeo);
 
 		// Oost-west stroken (rijrichting langs x), tussen de hoeken in
 		for (const sz of [-1, 1] as const) {
-			const strip = new THREE.Mesh(ewGeo, ewMat);
+			const strip = new Mesh(ewGeo, ewMat);
 			strip.position.set(0, ROAD_Y, sz * LANE_Z);
 			strip.receiveShadow = true;
 			this.group.add(strip);
 		}
 		// Noord-zuid stroken (rijrichting langs z), ook tussen de hoeken in
 		for (const sx of [-1, 1] as const) {
-			const strip = new THREE.Mesh(nsGeo, nsMat);
+			const strip = new Mesh(nsGeo, nsMat);
 			strip.rotation.y = Math.PI / 2;
 			strip.position.set(sx * LANE_X, ROAD_Y, 0);
 			strip.receiveShadow = true;
@@ -282,7 +294,7 @@ export class CityRoads {
 		// binnenbocht naar de mall toe, welke hoek het ook wordt.
 		for (const sx of [-1, 1] as const) {
 			for (const sz of [-1, 1] as const) {
-				const tile = new THREE.Mesh(cornerGeo, cornerMat);
+				const tile = new Mesh(cornerGeo, cornerMat);
 				tile.position.set(sx * LANE_X, ROAD_Y, sz * LANE_Z);
 				tile.rotation.y = Math.atan2(sx - sz, sx + sz);
 				tile.receiveShadow = true;
@@ -302,7 +314,7 @@ export class CityRoads {
 	 */
 	private buildPaint(): void {
 		const patches = roadPaintPatches();
-		const geo = new THREE.PlaneGeometry(1, 1);
+		const geo = new PlaneGeometry(1, 1);
 		geo.rotateX(-Math.PI / 2);
 		this.geometries.push(geo);
 		this.paintLayer(geo, patches, 'dash', PAINT_DASH);
@@ -310,11 +322,11 @@ export class CityRoads {
 	}
 
 	/** Alle strepen van één soort als één InstancedMesh, elk instantievlak op zijn eigen rechthoek geschaald. */
-	private paintLayer(geo: THREE.PlaneGeometry, patches: readonly RoadPaintPatch[], kind: RoadPaintKind, color: string): void {
+	private paintLayer(geo: PlaneGeometryType, patches: readonly RoadPaintPatch[], kind: RoadPaintKind, color: string): void {
 		const rects = patches.filter((patch) => patch.kind === kind).map((patch) => patch.rect);
 		const mat = this.track(lit({ color, roughness: 0.9 }));
-		const mesh = new THREE.InstancedMesh(geo, mat, rects.length);
-		const dummy = new THREE.Object3D();
+		const mesh = new InstancedMesh(geo, mat, rects.length);
+		const dummy = new Object3D();
 		rects.forEach((rect, index) => {
 			dummy.position.set(midpoint(rect.minX, rect.maxX), DASH_Y, midpoint(rect.minZ, rect.maxZ));
 			dummy.scale.set(span(rect.minX, rect.maxX), 1, span(rect.minZ, rect.maxZ));
@@ -335,13 +347,13 @@ export class CityRoads {
 	 */
 	private buildZebras(): void {
 		const { bars, pitch, barWidth, sideInset } = ZEBRA_PLAN;
-		const barGeo = new THREE.PlaneGeometry(barWidth, ROAD_W - sideInset * 2);
+		const barGeo = new PlaneGeometry(barWidth, ROAD_W - sideInset * 2);
 		barGeo.rotateX(-Math.PI / 2);
 		this.geometries.push(barGeo);
 		const barMat = this.track(lit({ color: 0xd8d8d8, roughness: 0.9 }));
 
-		this.zebras = new THREE.InstancedMesh(barGeo, barMat, bars * ROAD_CROSSINGS.length);
-		const dummy = new THREE.Object3D();
+		this.zebras = new InstancedMesh(barGeo, barMat, bars * ROAD_CROSSINGS.length);
+		const dummy = new Object3D();
 		let idx = 0;
 		// Balk-lange-as staat haaks op de rijrichting: bestuurder ziet een ladder.
 		for (const crossing of ROAD_CROSSINGS) {
@@ -362,19 +374,19 @@ export class CityRoads {
 	private buildConAccess(): void {
 		const len = span(CON_ACCESS.minX, CON_ACCESS.maxX);
 		const mat = this.track(lit({ map: this.makeAsphaltTexture(len), roughness: 0.95 }));
-		const geo = new THREE.PlaneGeometry(len, ROAD_W);
+		const geo = new PlaneGeometry(len, ROAD_W);
 		geo.rotateX(-Math.PI / 2);
 		this.geometries.push(geo);
-		const strip = new THREE.Mesh(geo, mat);
+		const strip = new Mesh(geo, mat);
 		strip.position.set(midpoint(CON_ACCESS.minX, CON_ACCESS.maxX), ROAD_Y, CON_ACCESS.z);
 		strip.receiveShadow = true;
 		this.group.add(strip);
 
 		// Junction pad where the spur meets the east ring (covers the T-join).
-		const join = new THREE.PlaneGeometry(ROAD_W + 1.5, ROAD_W + 1.5);
+		const join = new PlaneGeometry(ROAD_W + 1.5, ROAD_W + 1.5);
 		join.rotateX(-Math.PI / 2);
 		this.geometries.push(join);
-		const pad = new THREE.Mesh(join, mat);
+		const pad = new Mesh(join, mat);
 		pad.position.set(CON_ACCESS.minX - half(ROAD_W) * 0.15, ROAD_Y - 0.001, CON_ACCESS.z);
 		pad.receiveShadow = true;
 		this.group.add(pad);
@@ -387,9 +399,9 @@ export class CityRoads {
 		const tex = labelTexture(c);
 		this.textures.push(tex);
 		const a = CON_ACCESS_APRON;
-		const geo = new THREE.BoxGeometry(span(a.minX, a.maxX), APRON_THICKNESS, span(a.minZ, a.maxZ));
+		const geo = new BoxGeometry(span(a.minX, a.maxX), APRON_THICKNESS, span(a.minZ, a.maxZ));
 		this.geometries.push(geo);
-		const apron = new THREE.Mesh(geo, this.track(lit({ map: tex, roughness: 0.95 })));
+		const apron = new Mesh(geo, this.track(lit({ map: tex, roughness: 0.95 })));
 		apron.position.set(midpoint(a.minX, a.maxX), ROAD_Y + 0.01, midpoint(a.minZ, a.maxZ));
 		apron.receiveShadow = true;
 		this.group.add(apron);
@@ -399,28 +411,28 @@ export class CityRoads {
 	private buildConJunctionLights(): void {
 		const poleMat = this.track(lit({ color: 0x37404a, metalness: 0.6, roughness: 0.45 }));
 		const housingMat = this.track(lit({ color: 0x14171a, roughness: 0.7 }));
-		const poleGeo = new THREE.CylinderGeometry(0.09, 0.11, 4.2, 8);
+		const poleGeo = new CylinderGeometry(0.09, 0.11, 4.2, 8);
 		this.geometries.push(poleGeo);
-		const housingGeo = new THREE.BoxGeometry(0.5, 1.35, 0.3);
+		const housingGeo = new BoxGeometry(0.5, 1.35, 0.3);
 		this.geometries.push(housingGeo);
-		const bulbGeo = new THREE.SphereGeometry(0.14, 10, 8);
+		const bulbGeo = new SphereGeometry(0.14, 10, 8);
 		this.geometries.push(bulbGeo);
 
 		// Poles at the NW and SW corners of the T (ring-side of the spur).
 		for (const sz of [-1, 1] as const) {
-			const post = new THREE.Group();
+			const post = new Group();
 			post.position.set(CON_ACCESS.minX - 1.2, 0, CON_ACCESS.z + sz * (half(ROAD_W) + 1.1));
-			const pole = new THREE.Mesh(poleGeo, poleMat);
+			const pole = new Mesh(poleGeo, poleMat);
 			pole.position.y = 2.1;
 			post.add(pole);
-			const head = new THREE.Group();
+			const head = new Group();
 			head.position.y = 4.4;
 			// Face into the junction (toward ring centre from SE/NE).
 			head.rotation.y = Math.atan2(-sz, -1);
 			post.add(head);
-			head.add(new THREE.Mesh(housingGeo, housingMat));
-			const bulb = (y: number, off: THREE.Material): THREE.Mesh => {
-				const b = new THREE.Mesh(bulbGeo, off);
+			head.add(new Mesh(housingGeo, housingMat));
+			const bulb = (y: number, off: Material): MeshType => {
+				const b = new Mesh(bulbGeo, off);
 				b.position.set(0, y, 0.14);
 				head.add(b);
 				return b;
@@ -453,9 +465,9 @@ export class CityRoads {
 		const tex = labelTexture(c);
 		this.textures.push(tex);
 		const minX = EXIT_APRON.minX - APRON_OVERLAP;
-		const geo = new THREE.BoxGeometry(span(minX, EXIT_APRON.maxX), APRON_THICKNESS, span(EXIT_APRON.minZ, EXIT_APRON.maxZ));
+		const geo = new BoxGeometry(span(minX, EXIT_APRON.maxX), APRON_THICKNESS, span(EXIT_APRON.minZ, EXIT_APRON.maxZ));
 		this.geometries.push(geo);
-		const apron = new THREE.Mesh(geo, this.track(lit({ map: tex, roughness: 0.95 })));
+		const apron = new Mesh(geo, this.track(lit({ map: tex, roughness: 0.95 })));
 		apron.position.set(
 			midpoint(minX, EXIT_APRON.maxX),
 			EXIT_APRON_TOP_Y - half(APRON_THICKNESS),
@@ -470,9 +482,9 @@ export class CityRoads {
 	private buildLampMaterials(): void {
 		// Aan = MeshBasic zonder tone mapping (fel, gratis licht). Uit = dof
 		// getint glas, zodat je nog ziet welk bolletje wat zou kunnen.
-		this.redOn = this.track(new THREE.MeshBasicMaterial({ color: 0xff2418, toneMapped: false }));
-		this.amberOn = this.track(new THREE.MeshBasicMaterial({ color: 0xffb300, toneMapped: false }));
-		this.greenOn = this.track(new THREE.MeshBasicMaterial({ color: 0x22e05a, toneMapped: false }));
+		this.redOn = this.track(new MeshBasicMaterial({ color: 0xff2418, toneMapped: false }));
+		this.amberOn = this.track(new MeshBasicMaterial({ color: 0xffb300, toneMapped: false }));
+		this.greenOn = this.track(new MeshBasicMaterial({ color: 0x22e05a, toneMapped: false }));
 		this.redOff = this.track(lit({ color: 0x3a1210, roughness: 0.4 }));
 		this.amberOff = this.track(lit({ color: 0x3a2c0c, roughness: 0.4 }));
 		this.greenOff = this.track(lit({ color: 0x0f2f18, roughness: 0.4 }));
@@ -486,35 +498,35 @@ export class CityRoads {
 	private buildTrafficLights(): void {
 		const poleMat = this.track(lit({ color: 0x37404a, metalness: 0.6, roughness: 0.45 }));
 		const housingMat = this.track(lit({ color: 0x14171a, roughness: 0.7 }));
-		const poleGeo = new THREE.CylinderGeometry(0.09, 0.11, 4.2, 8);
+		const poleGeo = new CylinderGeometry(0.09, 0.11, 4.2, 8);
 		this.geometries.push(poleGeo);
-		const housingGeo = new THREE.BoxGeometry(0.5, 1.35, 0.3);
+		const housingGeo = new BoxGeometry(0.5, 1.35, 0.3);
 		this.geometries.push(housingGeo);
-		const bulbGeo = new THREE.SphereGeometry(0.14, 10, 8);
+		const bulbGeo = new SphereGeometry(0.14, 10, 8);
 		this.geometries.push(bulbGeo);
 
 		for (const sx of [-1, 1] as const) {
 			for (const sz of [-1, 1] as const) {
-				const post = new THREE.Group();
+				const post = new Group();
 				// Binnenhoek van de weg, op de denkbeeldige stoep
 				post.position.set(sx * (ROAD_INNER_X - 1.4), 0, sz * (ROAD_INNER_Z - 1.4));
 
-				const pole = new THREE.Mesh(poleGeo, poleMat);
+				const pole = new Mesh(poleGeo, poleMat);
 				pole.position.y = 2.1;
 				post.add(pole);
 
-				const head = new THREE.Group();
+				const head = new Group();
 				head.position.y = 4.4;
 				// Kop kijkt diagonaal de kruising op — cosmetisch, geen CBR-examen
 				head.rotation.y = Math.atan2(sx, sz);
 				post.add(head);
 
-				const housing = new THREE.Mesh(housingGeo, housingMat);
+				const housing = new Mesh(housingGeo, housingMat);
 				head.add(housing);
 
 				const dir: 'ns' | 'ew' = sx * sz > 0 ? 'ns' : 'ew';
-				const bulb = (y: number, off: THREE.Material): THREE.Mesh => {
-					const b = new THREE.Mesh(bulbGeo, off);
+				const bulb = (y: number, off: Material): MeshType => {
+					const b = new Mesh(bulbGeo, off);
 					b.position.set(0, y, 0.14);
 					head.add(b);
 					return b;
@@ -543,7 +555,7 @@ export class CityRoads {
 		}
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

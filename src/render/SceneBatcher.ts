@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Object3D, Scene } from 'three';
+import { BatchedMesh, Box3, Color, InstancedMesh, Matrix4, Mesh, SkinnedMesh, Sphere, Texture, Vector4 } from 'three';
 import { levelAt } from '#/data/levels';
 import { ZONES, zoneMaskAround, zoneMaskOfBounds } from '#/data/zones';
 import type { BatchMode } from '#/render/graphicsPrefs';
@@ -8,9 +9,9 @@ import type { ZoneCuller, ZoneOwnerTally } from '#/render/ZoneCuller';
 import { zoneSpanOf } from '#/render/ZoneVisibility';
 import { span } from '#/util/math';
 
-type ColorMaterial = THREE.Material & { color?: THREE.Color };
-type SourceInstance = {
-	mesh: THREE.Mesh<THREE.BufferGeometry, ColorMaterial>;
+type ColorMaterial = Material & { color?: Color };
+interface SourceInstance {
+	mesh: Mesh<BufferGeometry, ColorMaterial>;
 	instanceId: number;
 	geometryId: number;
 	/**
@@ -18,8 +19,8 @@ type SourceInstance = {
 	 * one of its data textures dirty and a dirty texture is re-uploaded whole on
 	 * the next render, so the batch is only told about a value that changed.
 	 */
-	matrix: THREE.Matrix4;
-	color: THREE.Vector4;
+	matrix: Matrix4;
+	color: Vector4;
 	visible: boolean;
 	streak: number;
 	/** World-space radius, taken once: a zone question needs a body and not a point. */
@@ -32,20 +33,24 @@ type SourceInstance = {
 	 * twee vlakken samenvoegt en de losse-occupantweg het niet meer ziet.
 	 */
 	declared: number;
-};
+}
 
 /**
  * How many of a batch's sources one owner contributed, and where that owner's
  * cull tally lives. The tally is resolved on first use because the culler only
  * shows up at applyZoneVisibility time, long after the batch was built.
  */
-type OwnerShare = { name: string; sources: number; tally: ZoneOwnerTally | null };
+interface OwnerShare {
+	name: string;
+	sources: number;
+	tally: ZoneOwnerTally | null;
+}
 
-type Batch = {
-	mesh: THREE.BatchedMesh;
+interface Batch {
+	mesh: BatchedMesh;
 	sources: SourceInstance[];
 	owners: OwnerShare[];
-	dynamicRoot: THREE.Object3D | null;
+	dynamicRoot: Object3D | null;
 	/**
 	 * How many of this batch's instances stand in each zone, and the union of those
 	 * zones. Counted rather than recomputed: a batch of 1726 sources would otherwise
@@ -53,9 +58,9 @@ type Batch = {
 	 */
 	zoneCounts: Int32Array;
 	zoneMask: number;
-};
+}
 
-export type SceneBatchStats = {
+export interface SceneBatchStats {
 	mode: BatchMode;
 	sourceMeshes: number;
 	dynamicSources: number;
@@ -63,16 +68,16 @@ export type SceneBatchStats = {
 	drawCalls: number;
 	largestRadius: number;
 	owners: readonly BatchOwnerStats[];
-};
+}
 
 /** Eén batch zoals de wereldcontrole hem naleest: zijn zonemasker, bol en bronnen. */
-export type BatchAudit = {
+export interface BatchAudit {
 	zoneMask: number;
-	sphere: THREE.Sphere | null;
-	sources: readonly THREE.Object3D[];
-};
+	sphere: Sphere | null;
+	sources: readonly Object3D[];
+}
 
-export type BatchOwnerStats = {
+export interface BatchOwnerStats {
 	name: string;
 	sources: number;
 	dynamicSources: number;
@@ -81,7 +86,7 @@ export type BatchOwnerStats = {
 	/** Sources whose batch casts a shadow, so what this owner offers the shadow pass. */
 	casters: number;
 	largestRadius: number;
-};
+}
 
 /** A cell is wide enough to avoid turning every shop into its own draw call,
  * while keeping shared wall and floor materials out of a mall-wide sphere. */
@@ -91,14 +96,14 @@ const MIN_SPATIAL_GROUP = 12;
 const STATIC_STREAK = 60;
 const COLD_SHARDS = 8;
 
-const WHITE = new THREE.Color(0xffffff);
-const INSTANCE_COLOR = new THREE.Vector4(1, 1, 1, 1);
-const MOVED_SPHERE = new THREE.Sphere();
-const SOURCE_SPHERE = new THREE.Sphere();
-const SOURCE_BOX = new THREE.Box3();
+const WHITE = new Color(0xffffff);
+const INSTANCE_COLOR = new Vector4(1, 1, 1, 1);
+const MOVED_SPHERE = new Sphere();
+const SOURCE_SPHERE = new Sphere();
+const SOURCE_BOX = new Box3();
 
 /** The world-space radius of one source mesh, so its zone question uses its body. */
-function sourceRadius(mesh: THREE.Mesh<THREE.BufferGeometry, ColorMaterial>): number {
+function sourceRadius(mesh: Mesh<BufferGeometry, ColorMaterial>): number {
 	const geometry = mesh.geometry;
 	if (!geometry.boundingSphere) geometry.computeBoundingSphere();
 	const sphere = geometry.boundingSphere;
@@ -114,7 +119,7 @@ function sourceRadius(mesh: THREE.Mesh<THREE.BufferGeometry, ColorMaterial>): nu
  * every deck plus the city. Only the box gets that slab tagged as one deck, and a
  * batch is as wide as its widest member.
  */
-function boxZoneMask(mesh: THREE.Object3D): number {
+function boxZoneMask(mesh: Object3D): number {
 	SOURCE_BOX.setFromObject(mesh, true);
 	if (SOURCE_BOX.isEmpty()) return 0;
 	return zoneMaskOfBounds({
@@ -134,7 +139,7 @@ function boxZoneMask(mesh: THREE.Object3D): number {
  * the sphere costs nothing in precision, and it is the only shape that survives a
  * rotation without re-deriving a box every frame.
  */
-function instanceZoneMask(matrix: THREE.Matrix4, radius: number): number {
+function instanceZoneMask(matrix: Matrix4, radius: number): number {
 	const e = matrix.elements;
 	return zoneMaskAround(e[12] ?? 0, e[13] ?? 0, e[14] ?? 0, radius);
 }
@@ -166,7 +171,7 @@ function refreshZoneMask(batch: Batch): void {
  * in every animated limb. A null sphere needs nothing: the lazy compute reads
  * the matrices as they are now.
  */
-function growBounds(mesh: THREE.BatchedMesh, source: SourceInstance): void {
+function growBounds(mesh: BatchedMesh, source: SourceInstance): void {
 	const sphere = mesh.boundingSphere;
 	if (!sphere) return;
 	// null only for an unknown geometryId, which addInstance guaranteed exists
@@ -174,12 +179,12 @@ function growBounds(mesh: THREE.BatchedMesh, source: SourceInstance): void {
 	if (moved) sphere.union(moved.applyMatrix4(source.matrix));
 }
 
-function instanceColor(material: ColorMaterial): THREE.Vector4 {
+function instanceColor(material: ColorMaterial): Vector4 {
 	const color = material.color ?? WHITE;
 	return INSTANCE_COLOR.set(color.r, color.g, color.b, material.opacity);
 }
 
-function geometryTriangles(geometry: THREE.BufferGeometry): number {
+function geometryTriangles(geometry: BufferGeometry): number {
 	return (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
 }
 
@@ -190,7 +195,7 @@ function materialKey(material: ColorMaterial): string {
 	const props = material as unknown as Record<string, unknown>;
 	const texture = (name: string): string => {
 		const value = props[name];
-		return value instanceof THREE.Texture ? value.uuid : '';
+		return value instanceof Texture ? value.uuid : '';
 	};
 	const number = (name: string, fallback = 0): number => {
 		const value = props[name];
@@ -206,7 +211,7 @@ function materialKey(material: ColorMaterial): string {
 	// gold (#664400 @0.2) batched with the elevator's dark red frame (#8b0000
 	// @0.35), so the whole hoard rendered with a red cast, picked by traversal order.
 	const emissive = props['emissive'];
-	const emissiveKey = emissive instanceof THREE.Color && quantize('emissiveIntensity') > 0 ? emissive.getHexString() : '';
+	const emissiveKey = emissive instanceof Color && quantize('emissiveIntensity') > 0 ? emissive.getHexString() : '';
 
 	return JSON.stringify({
 		type: material.type,
@@ -249,7 +254,7 @@ function materialKey(material: ColorMaterial): string {
 	});
 }
 
-function geometryLayoutKey(geometry: THREE.BufferGeometry): string {
+function geometryLayoutKey(geometry: BufferGeometry): string {
 	const attributes = Object.entries(geometry.attributes)
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([name, attribute]) => {
@@ -262,8 +267,8 @@ function geometryLayoutKey(geometry: THREE.BufferGeometry): string {
 	return `${indexType}|${attributes}`;
 }
 
-function isVisible(object: THREE.Object3D): boolean {
-	for (let current: THREE.Object3D | null = object; current; current = current.parent) {
+function isVisible(object: Object3D): boolean {
+	for (let current: Object3D | null = object; current; current = current.parent) {
 		if (!current.visible) return false;
 	}
 	return true;
@@ -277,15 +282,15 @@ function isVisible(object: THREE.Object3D): boolean {
 export class SceneBatcher {
 	readonly stats: SceneBatchStats;
 	private readonly batches: Batch[] = [];
-	private readonly dynamicRoots: THREE.Object3D[];
+	private readonly dynamicRoots: Object3D[];
 	private shard = 0;
 
-	constructor(scene: THREE.Scene, dynamicRoots: readonly THREE.Object3D[] = []) {
+	constructor(scene: Scene, dynamicRoots: readonly Object3D[] = []) {
 		const mode = batchMode();
 		// Build-time is the one full hierarchy pass. From the first live frame on,
 		// only explicitly animated roots are refreshed.
 		scene.updateMatrixWorld(true);
-		const ownerByObject = new WeakMap<THREE.Object3D, THREE.Object3D>();
+		const ownerByObject = new WeakMap<Object3D, Object3D>();
 		const rootSet = new Set(dynamicRoots);
 		this.dynamicRoots = dynamicRoots.filter((root) => {
 			for (let parent = root.parent; parent; parent = parent.parent) {
@@ -295,17 +300,17 @@ export class SceneBatcher {
 		});
 		for (const root of this.dynamicRoots) root.traverse((object) => ownerByObject.set(object, root));
 
-		type CompatibleGroup = {
-			dynamicRoot: THREE.Object3D | null;
-			meshes: THREE.Mesh<THREE.BufferGeometry, ColorMaterial>[];
-		};
+		interface CompatibleGroup {
+			dynamicRoot: Object3D | null;
+			meshes: Mesh<BufferGeometry, ColorMaterial>[];
+		}
 		const compatible = new Map<string, CompatibleGroup>();
 
 		scene.traverse((object) => {
-			if (!(object instanceof THREE.Mesh) || object instanceof THREE.BatchedMesh || object instanceof THREE.InstancedMesh) {
+			if (!(object instanceof Mesh) || object instanceof BatchedMesh || object instanceof InstancedMesh) {
 				return;
 			}
-			if (object instanceof THREE.SkinnedMesh || Array.isArray(object.material)) return;
+			if (object instanceof SkinnedMesh || Array.isArray(object.material)) return;
 			if (Object.keys(object.geometry.morphAttributes).length > 0) return;
 
 			const material = object.material as ColorMaterial;
@@ -319,8 +324,8 @@ export class SceneBatcher {
 				dynamicRoot?.uuid ?? 'static',
 			].join('::');
 			const group = compatible.get(key);
-			if (group) group.meshes.push(object as THREE.Mesh<THREE.BufferGeometry, ColorMaterial>);
-			else compatible.set(key, { dynamicRoot, meshes: [object as THREE.Mesh<THREE.BufferGeometry, ColorMaterial>] });
+			if (group) group.meshes.push(object as Mesh<BufferGeometry, ColorMaterial>);
+			else compatible.set(key, { dynamicRoot, meshes: [object as Mesh<BufferGeometry, ColorMaterial>] });
 		});
 
 		let sourceMeshes = 0;
@@ -353,7 +358,7 @@ export class SceneBatcher {
 				groups.push(group);
 				continue;
 			}
-			const cells = new Map<string, THREE.Mesh<THREE.BufferGeometry, ColorMaterial>[]>();
+			const cells = new Map<string, Mesh<BufferGeometry, ColorMaterial>[]>();
 			for (const mesh of group.meshes) {
 				const x = mesh.matrixWorld.elements[12] ?? 0;
 				const y = mesh.matrixWorld.elements[13] ?? 0;
@@ -371,7 +376,7 @@ export class SceneBatcher {
 			if (meshes.length < 2) continue;
 			const first = meshes[0];
 			if (!first) continue;
-			const geometries = new Map<string, THREE.BufferGeometry>();
+			const geometries = new Map<string, BufferGeometry>();
 			for (const mesh of meshes) geometries.set(mesh.geometry.uuid, mesh.geometry);
 
 			let vertices = 0;
@@ -384,7 +389,7 @@ export class SceneBatcher {
 			const material = first.material.clone() as ColorMaterial;
 			material.color?.copy(WHITE);
 			material.opacity = 1;
-			const batched = new THREE.BatchedMesh(meshes.length, vertices, indices, material);
+			const batched = new BatchedMesh(meshes.length, vertices, indices, material);
 			batched.name = `renderBatch_${this.batches.length}`;
 			batched.castShadow = first.castShadow;
 			batched.receiveShadow = first.receiveShadow;
@@ -425,8 +430,8 @@ export class SceneBatcher {
 					mesh,
 					instanceId,
 					geometryId,
-					matrix: new THREE.Matrix4(),
-					color: new THREE.Vector4(),
+					matrix: new Matrix4(),
+					color: new Vector4(),
 					visible: isVisible(mesh),
 					streak: 0,
 					radius,

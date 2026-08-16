@@ -3,7 +3,7 @@
  * One Moroccan-Dutch owner (respectful, warm, bilingual vibe in speech only).
  */
 
-export type ShopOwner = {
+export interface ShopOwner {
 	storeId: string;
 	name: string;
 	title: string;
@@ -18,7 +18,7 @@ export type ShopOwner = {
 	voiceId?: string;
 	/** BCP-47 hint for multilingual model */
 	lang?: string;
-};
+}
 
 export const SHOP_OWNERS: Record<string, ShopOwner> = {
 	zara: {

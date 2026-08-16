@@ -539,7 +539,7 @@ function facadeSideOf(plan: Bounds2, bounds: Bounds3): CardinalSide | null {
 function deckFaceOf(bounds: Bounds3, from: ZoneId, to: ZoneId): Bounds3 | null {
 	const fromLevel = LEVELS.find((entry) => zoneOfLevel(entry.id) === from);
 	const toLevel = LEVELS.find((entry) => zoneOfLevel(entry.id) === to);
-	if (!fromLevel || !toLevel) return null;
+	if (!(fromLevel && toLevel)) return null;
 	const upward = levelElevationIndex(toLevel.id) > levelElevationIndex(fromLevel.id);
 	const boundary = upward ? LEVELS_BOTTOM_UP[levelElevationIndex(fromLevel.id) + 1] : fromLevel;
 	if (!boundary) return null;

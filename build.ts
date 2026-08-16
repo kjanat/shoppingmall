@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { cp } from 'node:fs/promises';
+import process from 'node:process';
 /**
  * Production build. Same settings, two targets — CI picks the second:
  *

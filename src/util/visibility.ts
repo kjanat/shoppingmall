@@ -17,14 +17,15 @@
  * Hang zoiets aan een kind van het getagde object, en haal het dekdeel hier op
  * via `isOnViewerLevel` in plaats van het een tweede keer uit te rekenen.
  */
-import * as THREE from 'three';
+import type { Object3D } from 'three';
+import { Vector3 } from 'three';
 import type { LevelId } from '#/data/levels';
 import { levelAt } from '#/data/levels';
 
-const culled: THREE.Object3D[] = [];
+const culled: Object3D[] = [];
 
 /** Reused: the pass runs per frame over the whole registry. */
-const worldPos = new THREE.Vector3();
+const worldPos = new Vector3();
 
 /**
  * Opt in: this object is only visible while the player is on its deck.
@@ -34,7 +35,7 @@ const worldPos = new THREE.Vector3();
  * height, not a sprite hanging metres above it, and not one whose `visible`
  * already has an owner of its own.
  */
-export function tagLevelCulled(obj: THREE.Object3D): void {
+export function tagLevelCulled(obj: Object3D): void {
 	culled.push(obj);
 }
 
@@ -46,7 +47,7 @@ export function tagLevelCulled(obj: THREE.Object3D): void {
  * dan de wereldpositie van het object en spreekt de pass dan tegen. Dat is wat
  * een sim halverwege de roltrap laat flikkeren.
  */
-export function isOnViewerLevel(obj: THREE.Object3D, viewer: LevelId): boolean {
+export function isOnViewerLevel(obj: Object3D, viewer: LevelId): boolean {
 	obj.getWorldPosition(worldPos);
 	return levelAt(worldPos.y) === viewer;
 }

@@ -1,4 +1,16 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Texture } from 'three';
+import {
+	BoxGeometry,
+	Color,
+	Group,
+	InstancedBufferAttribute,
+	InstancedMesh,
+	Mesh,
+	MeshBasicMaterial,
+	Object3D,
+	PlaneGeometry,
+	Vector3,
+} from 'three';
 import { STANDING_PEDESTRIAN } from '#/data/character';
 import {
 	CON_ADULT_GATE,
@@ -41,22 +53,22 @@ const PASS = STANDING_PEDESTRIAN.radius * 2 * 6;
  * Outer walls have a door hole; floors and partitions match collision.
  */
 export class ConVenue {
-	readonly group = new THREE.Group();
-	readonly plazaSpot = new THREE.Vector3(midpoint(CON_PLAZA.minX, CON_PLAZA.maxX), 1.5, 0);
-	readonly dealersSpot = new THREE.Vector3(
+	readonly group = new Group();
+	readonly plazaSpot = new Vector3(midpoint(CON_PLAZA.minX, CON_PLAZA.maxX), 1.5, 0);
+	readonly dealersSpot = new Vector3(
 		midpoint(CON_DEALERS.minX, CON_DEALERS.maxX),
 		1.5,
 		midpoint(CON_DEALERS.minZ, CON_DEALERS.maxZ),
 	);
-	readonly stageSpot = new THREE.Vector3(midpoint(CON_STAGE.minX, CON_STAGE.maxX), 2, midpoint(CON_STAGE.minZ, CON_STAGE.maxZ));
+	readonly stageSpot = new Vector3(midpoint(CON_STAGE.minX, CON_STAGE.maxX), 2, midpoint(CON_STAGE.minZ, CON_STAGE.maxZ));
 
-	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [this.unitBox];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly pulseMats: THREE.MeshBasicMaterial[] = [];
-	private readonly beams: { mesh: THREE.Mesh; base: number }[] = [];
-	private readonly dummy = new THREE.Object3D();
+	private readonly unitBox = new BoxGeometry(1, 1, 1);
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [this.unitBox];
+	private readonly textures: Texture[] = [];
+	private readonly pulseMats: MeshBasicMaterial[] = [];
+	private readonly beams: { mesh: Mesh; base: number }[] = [];
+	private readonly dummy = new Object3D();
 
 	constructor(pool: LightPool) {
 		this.group.name = 'con_venue';
@@ -90,20 +102,20 @@ export class ConVenue {
 		for (const t of this.textures) t.dispose();
 	}
 
-	private mat(color: number, rough = 0.9): THREE.Material {
+	private mat(color: number, rough = 0.9): Material {
 		const m = lit({ color, roughness: rough });
 		this.materials.push(m);
 		return m;
 	}
 
-	private basic(color: number): THREE.MeshBasicMaterial {
-		const m = new THREE.MeshBasicMaterial({ color, toneMapped: false });
+	private basic(color: number): MeshBasicMaterial {
+		const m = new MeshBasicMaterial({ color, toneMapped: false });
 		this.materials.push(m);
 		return m;
 	}
 
-	private box(w: number, h: number, d: number, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
-		const mesh = new THREE.Mesh(this.unitBox, material);
+	private box(w: number, h: number, d: number, material: Material, x: number, y: number, z: number): Mesh {
+		const mesh = new Mesh(this.unitBox, material);
 		mesh.scale.set(w, h, d);
 		mesh.position.set(x, y, z);
 		return mesh;
@@ -290,7 +302,7 @@ export class ConVenue {
 		this.group.add(path2);
 	}
 
-	private wallSeg(mat: THREE.Material, minX: number, maxX: number, minZ: number, maxZ: number, minY: number, maxY: number): void {
+	private wallSeg(mat: Material, minX: number, maxX: number, minZ: number, maxZ: number, minY: number, maxY: number): void {
 		const w = maxX - minX;
 		const d = maxZ - minZ;
 		const h = maxY - minY;
@@ -328,7 +340,7 @@ export class ConVenue {
 		];
 		for (const s of spots) {
 			pool.register({
-				position: new THREE.Vector3(s.x, CON_HALL_HEIGHT * 0.55, s.z),
+				position: new Vector3(s.x, CON_HALL_HEIGHT * 0.55, s.z),
 				intensity: 22,
 				distance: 45,
 				decay: 2,
@@ -355,10 +367,10 @@ export class ConVenue {
 		const n = slots.length;
 		const topGeo = this.unitBox;
 		const topMat = this.mat(0x2d2a40);
-		const tops = new THREE.InstancedMesh(topGeo, topMat, n);
-		const legs = new THREE.InstancedMesh(topGeo, this.mat(0x1a1820), n * 4);
-		const color = new THREE.Color();
-		tops.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
+		const tops = new InstancedMesh(topGeo, topMat, n);
+		const legs = new InstancedMesh(topGeo, this.mat(0x1a1820), n * 4);
+		const color = new Color();
+		tops.instanceColor = new InstancedBufferAttribute(new Float32Array(n * 3), 3);
 		let legI = 0;
 		for (let i = 0; i < n; i++) {
 			const s = at(slots, i);
@@ -400,7 +412,7 @@ export class ConVenue {
 			this.beams.push({ mesh, base: i * 0.4 });
 		}
 		pool.register({
-			position: new THREE.Vector3(cx, 8, midpoint(inner.minZ, inner.maxZ)),
+			position: new Vector3(cx, 8, midpoint(inner.minZ, inner.maxZ)),
 			intensity: 18,
 			distance: 40,
 			decay: 2,
@@ -512,7 +524,7 @@ export class ConVenue {
 		const names = ['TAKO TRUCK', 'BUNNY BITES', 'PAWBBLE TEA', 'HOTDOGGO'];
 		for (let i = 0; i < spots.length; i++) {
 			const s = at(spots, i);
-			const g = new THREE.Group();
+			const g = new Group();
 			g.position.set(s.x, CON_FLOOR_Y, s.z);
 			g.add(this.box(5.5, 2.4, 2.4, body, 0, 1.4, 0));
 			g.add(this.box(1.8, 1.6, 2.3, cabin, -2.2, 1.5, 0));
@@ -523,7 +535,7 @@ export class ConVenue {
 		}
 	}
 
-	private sign(text: string, w: number, h: number, tint: number): THREE.Object3D {
+	private sign(text: string, w: number, h: number, tint: number): Object3D {
 		const pxW = Math.max(128, Math.round(w * 48));
 		const pxH = Math.max(48, Math.round(h * 48));
 		const { canvas, ctx } = labelCanvas(pxW, pxH);
@@ -533,9 +545,9 @@ export class ConVenue {
 		fitText(ctx, text, { x: 8, y: 4, w: pxW - 16, h: pxH - 8 }, { size: pxH * 0.55, maxLines: 2 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
-		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: tint, toneMapped: false });
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, color: tint, toneMapped: false });
 		this.materials.push(mat);
-		const geo = new THREE.PlaneGeometry(w, h);
+		const geo = new PlaneGeometry(w, h);
 		this.geometries.push(geo);
 		return backToBackLabel(geo, mat);
 	}

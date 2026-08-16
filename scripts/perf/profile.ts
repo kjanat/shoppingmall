@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import process from 'node:process';
 import { median } from '#/util/math';
 import { isRecord, readArray, readNumber, readString } from '#/util/values';
 import { bar, openGame, sampleWarnings } from './harness.ts';
@@ -45,8 +46,15 @@ function distance(a: RoutePose, b: RoutePose): number {
 	return Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
 }
 
-type SegmentResult = { id: string; from: string; to: string; lap: number; durationMs: number; sample: Sample };
-type RouteArtifact = {
+interface SegmentResult {
+	id: string;
+	from: string;
+	to: string;
+	lap: number;
+	durationMs: number;
+	sample: Sample;
+}
+interface RouteArtifact {
 	format: 1;
 	createdAt: string;
 	build: string;
@@ -61,14 +69,14 @@ type RouteArtifact = {
 	seed: number | null;
 	simulationFrozen: boolean;
 	segments: SegmentResult[];
-};
-type RouteBaseline = {
+}
+interface RouteBaseline {
 	build: string;
 	gpu: string;
 	canvas: string;
 	batchMode: string;
 	segments: Map<string, number>;
-};
+}
 
 function localBuild(): string {
 	const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT_DIR, encoding: 'utf8' });
@@ -116,10 +124,10 @@ async function readBaseline(name: string): Promise<RouteBaseline | null> {
 	if (!isRecord(parsed)) return null;
 	const values = new Map<string, number[]>();
 	for (const entry of readArray(parsed, 'segments')) {
-		if (!isRecord(entry) || !isRecord(entry['sample'])) continue;
+		if (!(isRecord(entry) && isRecord(entry['sample']))) continue;
 		const id = readString(entry, 'id');
 		const wall = readNumber(entry['sample'], 'wallMsMedian', Number.NaN);
-		if (!id || !Number.isFinite(wall)) continue;
+		if (!(id && Number.isFinite(wall))) continue;
 		const existing = values.get(id);
 		if (existing) existing.push(wall);
 		else values.set(id, [wall]);
@@ -179,7 +187,7 @@ try {
 		for (let i = 0; i + 1 < route.points.length; i++) {
 			const from = route.points[i];
 			const to = route.points[i + 1];
-			if (!from || !to) continue;
+			if (!(from && to)) continue;
 			const id = `${from.name}->${to.name}`;
 			const durationMs = Math.max(750, Math.round((distance(from.pose, to.pose) / speed) * 1000));
 			const sample = await session.routeSegment(from.pose, to.pose, durationMs);

@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Camera, ColorRepresentation, Object3D, Scene } from 'three';
+import { Color, PointLight, Vector3 } from 'three';
 import { clamp, easeFactor } from '#/util/math';
 
 /**
@@ -23,8 +24,8 @@ const HYSTERESIS = 1.3;
 /** Clamp on the internally derived frame time, so a backgrounded tab cannot jump. */
 const MAX_DT = 0.1;
 
-type LightBase = {
-	color: THREE.ColorRepresentation;
+interface LightBase {
+	color: ColorRepresentation;
 	intensity: number;
 	distance: number;
 	decay: number;
@@ -38,9 +39,9 @@ type LightBase = {
 	 * its peak reached the screen at a third of its value, 100 ms late.
 	 */
 	snap?: boolean;
-};
+}
 
-export type LightSpec = LightBase & ({ position: THREE.Vector3 } | { follow: THREE.Object3D; offset?: THREE.Vector3 });
+export type LightSpec = LightBase & ({ position: Vector3 } | { follow: Object3D; offset?: Vector3 });
 
 /**
  * What a feature gets back instead of a `THREE.PointLight`. Animate it exactly
@@ -51,19 +52,19 @@ export class LightHandle {
 	intensity: number;
 	distance: number;
 	decay: number;
-	readonly color: THREE.Color;
+	readonly color: Color;
 	/**
 	 * World position. Static lights may write to it. In follow mode the pool
 	 * derives it from the followed object every frame, so writes are overwritten.
 	 */
-	readonly position = new THREE.Vector3();
+	readonly position = new Vector3();
 
 	/** Everything below is the pool's own bookkeeping. */
 	readonly priority: number;
 	readonly dimmable: boolean;
 	readonly snap: boolean;
-	readonly follow: THREE.Object3D | null;
-	readonly offset: THREE.Vector3 | null;
+	readonly follow: Object3D | null;
+	readonly offset: Vector3 | null;
 	/** Which real slot renders this light, or -1. */
 	slot = -1;
 	/** Score of the last `update`, already multiplied by the incumbency bonus. */
@@ -75,13 +76,13 @@ export class LightHandle {
 		this.intensity = spec.intensity;
 		this.distance = spec.distance;
 		this.decay = spec.decay;
-		this.color = new THREE.Color(spec.color);
+		this.color = new Color(spec.color);
 		this.priority = spec.priority ?? 1;
 		this.dimmable = spec.dimmable ?? true;
 		this.snap = spec.snap ?? false;
 		if ('follow' in spec) {
 			this.follow = spec.follow;
-			this.offset = spec.offset ? spec.offset.clone() : new THREE.Vector3();
+			this.offset = spec.offset ? spec.offset.clone() : new Vector3();
 		} else {
 			this.follow = null;
 			this.offset = null;
@@ -113,7 +114,7 @@ function byRank(a: LightHandle, b: LightHandle): number {
  * with `visible = false`.
  */
 export class LightPool {
-	private readonly lights: THREE.PointLight[] = [];
+	private readonly lights: PointLight[] = [];
 	/** Which handle currently rents each slot. */
 	private readonly owners: (LightHandle | null)[] = [];
 	private readonly virtuals: LightHandle[] = [];
@@ -123,9 +124,9 @@ export class LightPool {
 	/** `update` takes no dt (it is called from the frame loop with the camera). */
 	private lastTime = 0;
 
-	constructor(scene: THREE.Scene, slots = LIGHT_POOL_SLOTS) {
+	constructor(scene: Scene, slots = LIGHT_POOL_SLOTS) {
 		for (let i = 0; i < slots; i++) {
-			const light = new THREE.PointLight(0xffffff, 0, 10, 2);
+			const light = new PointLight(0xffffff, 0, 10, 2);
 			// Shadow-casting point lights cost a cubemap pass each; the mall's look
 			// comes from the single directional sun and never wanted these.
 			light.castShadow = false;
@@ -175,7 +176,7 @@ export class LightPool {
 	}
 
 	/** Once per frame, after the scene's world matrices are up to date. */
-	update(camera: THREE.Camera): void {
+	update(camera: Camera): void {
 		const now = performance.now() / 1000;
 		const dt = this.lastTime === 0 ? 1 / 60 : clamp(now - this.lastTime, 0, MAX_DT);
 		this.lastTime = now;

@@ -1,4 +1,21 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	BufferAttribute,
+	BufferGeometry,
+	CapsuleGeometry,
+	ConeGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	Points,
+	PointsMaterial,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import type { NodeId } from '#/data/graph';
 import type { LevelId } from '#/data/levels';
 import { levelAt, levelY } from '#/data/levels';
@@ -21,7 +38,7 @@ import { isOnViewerLevel, tagLevelCulled } from '#/util/visibility';
 
 export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
 
-export type SimFactors = {
+export interface SimFactors {
 	id: number;
 	name: string;
 	thicc: number;
@@ -56,20 +73,20 @@ export type SimFactors = {
 	isMiss: boolean;
 	/** seconds until next possible fart */
 	fartCd: number;
-};
+}
 
-type Limb = {
-	group: THREE.Group;
-	hip: THREE.Group;
-	knee: THREE.Group;
-	foot: THREE.Mesh;
-};
+interface Limb {
+	group: Group;
+	hip: Group;
+	knee: Group;
+	foot: Mesh;
+}
 
 /** Dashboard row: who, where, and what they're doing right now. */
 const LABEL_W = 320;
 const LABEL_H = 120;
 
-export type PersonRow = {
+export interface PersonRow {
 	id: number;
 	name: string;
 	x: number;
@@ -81,59 +98,59 @@ export type PersonRow = {
 	partnerName: string | null;
 	isKid: boolean;
 	dist: number;
-};
+}
 
-const SKULL_OUT = new THREE.Vector3(0, 0, 1);
+const SKULL_OUT = new Vector3(0, 0, 1);
 
 /**
  * Park an object on a head sphere of radius `headR`, local +Z pointing straight
  * out of the surface. `sink` < 1 pushes it slightly into the skull so flattened
  * features sit flush instead of floating.
  */
-function placeOnSkull(obj: THREE.Object3D, headR: number, yaw: number, pitch: number, sink: number): void {
-	const n = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+function placeOnSkull(obj: Object3D, headR: number, yaw: number, pitch: number, sink: number): void {
+	const n = new Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
 	obj.position.copy(n).multiplyScalar(headR * sink);
 	obj.quaternion.setFromUnitVectors(SKULL_OUT, n);
 }
 
-type Sim = {
+interface Sim {
 	f: SimFactors;
-	root: THREE.Group;
-	body: THREE.Group;
+	root: Group;
+	body: Group;
 	legL: Limb;
 	legR: Limb;
-	armL: THREE.Object3D;
-	armR: THREE.Object3D;
-	label: THREE.Sprite;
+	armL: Object3D;
+	armR: Object3D;
+	label: Sprite;
 	/**
 	 * Houder van plaat én ballon op voethoogte: cullByLevel bezit zijn
 	 * `visible`. Eén houder, want beide labels stellen dezelfde dekvraag over
 	 * dezelfde sim; twee houders zijn twee antwoorden die uit elkaar kunnen lopen.
 	 */
-	levelAnchor: THREE.Group;
+	levelAnchor: Group;
 	/** Tekst veranderde terwijl de plaat weggeculld stond */
 	plateDirty: boolean;
-	speech: THREE.Sprite;
-	speechTex: THREE.CanvasTexture;
+	speech: Sprite;
+	speechTex: CanvasTexture;
 	speechCtx: CanvasRenderingContext2D;
 	speechLife: number;
 	/** Simple face: black sphere eyes + oval mouth */
-	eyeL: THREE.Mesh;
-	eyeR: THREE.Mesh;
-	mouth: THREE.Mesh;
+	eyeL: Mesh;
+	eyeR: Mesh;
+	mouth: Mesh;
 	headY: number;
 	/** body.scale scalar — head world Y = headY * bodyScale */
 	bodyScale: number;
 	blinkT: number;
 	talkPhase: number;
-	pos: THREE.Vector3;
+	pos: Vector3;
 	/** unit direction of travel — THE VECTOR */
-	velocity: THREE.Vector3;
+	velocity: Vector3;
 	/** Visible-body footprint used for walls and last-resort overlap repair. */
 	radius: number;
 	/** Velocity ORCA cleared for this frame: the goal direction with every conflict already taken out. */
-	steer: THREE.Vector3;
-	path: THREE.Vector3[];
+	steer: Vector3;
+	path: Vector3[];
 	pathI: number;
 	/** Route length measured when the path was planned, from where the sim stood. */
 	routeLength: number;
@@ -152,7 +169,7 @@ type Sim = {
 	shopId: string;
 	labelCanvas: HTMLCanvasElement;
 	labelCtx: CanvasRenderingContext2D;
-	labelTex: THREE.CanvasTexture;
+	labelTex: CanvasTexture;
 	gibberCd: number;
 	bubbleCd: number;
 	/** next squeak while speech bubble is open */
@@ -170,7 +187,7 @@ type Sim = {
 	 * langs de menigte gaat niet meebepaalt wat er getrokken wordt.
 	 */
 	roll: () => number;
-};
+}
 
 const FIRST = [
 	'Brad',
@@ -226,12 +243,12 @@ const HAIR = [0x2c1810, 0x5c4033, 0xc4a35a, 0x888888, 0x1a1a1a, 0xd35400, 0xf5f5
 // Sims can shop stores + food court (utility places like WC/helipad are out)
 const SHOPABLE = STORES.filter((s) => s.id !== 'info' && (!s.utility || s.id === 'foodcourt'));
 
-function shopEntrance(s: StoreDef): THREE.Vector3 {
+function shopEntrance(s: StoreDef): Vector3 {
 	// stand in corridor in front of store, not inside wall
 	const pull = 3.5;
 	const x = s.x + Math.sin(s.rotation) * pull;
 	const z = s.z + Math.cos(s.rotation) * pull;
-	return new THREE.Vector3(x, levelY(s.level), z);
+	return new Vector3(x, levelY(s.level), z);
 }
 
 /**
@@ -338,26 +355,26 @@ const GIBBER = [
 ];
 
 export class Americans {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	readonly roster: SimFactors[] = [];
 	/** global checkout count → triggers baker thief */
 	transactionCount = 0;
 	private sims: Sim[] = [];
-	private materials: THREE.Material[] = [];
+	private materials: Material[] = [];
 	private pathfinder = new Pathfinder();
 	private world: CollisionWorld;
 	private audio: AudioContext | null = null;
-	private fartClouds: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
-	private coinBursts: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
-	private bubbles: { mesh: THREE.Points; life: number; vel: Float32Array }[] = [];
-	private onTransaction: ((count: number, pos: THREE.Vector3, storeId: string) => void) | null = null;
+	private fartClouds: { mesh: Points; life: number; vel: Float32Array }[] = [];
+	private coinBursts: { mesh: Points; life: number; vel: Float32Array }[] = [];
+	private bubbles: { mesh: Points; life: number; vel: Float32Array }[] = [];
+	private onTransaction: ((count: number, pos: Vector3, storeId: string) => void) | null = null;
 	/** seconds until next OpenRouter gossip attempt */
 	private gossipCd = 4;
 	private gossipBusy = false;
 	/** Don't spam the player with roasts */
 	private roastPlayerCd = 5;
 	/** Player camera — only gossip / bubbles on this floor nearby */
-	private listener: THREE.Vector3 | null = null;
+	private listener: Vector3 | null = null;
 	/** Max distance for visible speech bubbles */
 	private static readonly SPEECH_RANGE = 16;
 	/** Max distance for LLM gossip (same floor only) */
@@ -370,7 +387,7 @@ export class Americans {
 	private readonly neighbourGrid = new Map<number, number[]>();
 	private readonly constraints: VelocityConstraint[] = [];
 	private readonly blockers: AABB[] = [];
-	private readonly desired = new THREE.Vector3();
+	private readonly desired = new Vector3();
 
 	/**
 	 * @param seed Waar de menigte uit getrokken wordt. Vast, want een sim die er
@@ -415,7 +432,7 @@ export class Americans {
 		for (const [a, b, meaning, line] of pairs) {
 			const sa = this.sims.find((s) => s.f.id === a);
 			const sb = this.sims.find((s) => s.f.id === b);
-			if (!sa || !sb) continue;
+			if (!(sa && sb)) continue;
 			// Don't pair two kids as a romantic couple
 			if (sa.f.isKid && sb.f.isKid) continue;
 			sa.f.partnerId = b;
@@ -430,7 +447,7 @@ export class Americans {
 			sb.coupleSide = 1;
 			// Same start shop + shared path
 			sb.shopId = sa.shopId;
-			sb.pos.copy(sa.pos).add(new THREE.Vector3(sa.radius + sb.radius + 0.2, 0, 0));
+			sb.pos.copy(sa.pos).add(new Vector3(sa.radius + sb.radius + 0.2, 0, 0));
 			sb.root.position.copy(sb.pos);
 			this.assignNextShop(sa);
 			// copy path to partner
@@ -443,7 +460,7 @@ export class Americans {
 		}
 	}
 
-	setTransactionCallback(cb: (count: number, pos: THREE.Vector3, storeId: string) => void): void {
+	setTransactionCallback(cb: (count: number, pos: Vector3, storeId: string) => void): void {
 		this.onTransaction = cb;
 	}
 
@@ -459,7 +476,7 @@ export class Americans {
 	dancing = false;
 
 	/** One dashboard row per shopper — where they are and what they're up to. */
-	getPeopleSnapshot(playerPos: THREE.Vector3, out: PersonRow[] = []): PersonRow[] {
+	getPeopleSnapshot(playerPos: Vector3, out: PersonRow[] = []): PersonRow[] {
 		out.length = 0;
 		for (const s of this.sims) {
 			const f = s.f;
@@ -503,12 +520,12 @@ export class Americans {
 		}
 	}
 
-	getSimsNear(worldPos: THREE.Vector3, radius: number): SimFactors[] {
+	getSimsNear(worldPos: Vector3, radius: number): SimFactors[] {
 		return this.sims.filter((s) => s.pos.distanceTo(worldPos) < radius).map((s) => s.f);
 	}
 
 	/** Fat Americans for UFO probe (prefer thicc / hangry) */
-	getProbeCandidates(max = 6): { id: number; pos: THREE.Vector3 }[] {
+	getProbeCandidates(max = 6): { id: number; pos: Vector3 }[] {
 		const ranked = [...this.sims]
 			.filter((s) => !s.f.isKid)
 			.sort((a, b) => b.f.thicc - a.f.thicc || b.f.unhappiness - a.f.unhappiness)
@@ -540,7 +557,7 @@ export class Americans {
 	 * Mall cop open fire — panic nearby shoppers: scream, freeze, then flee path.
 	 * @returns names of sims that flinched (for status line)
 	 */
-	panicFromGunfire(origin: THREE.Vector3, radius = 10): { id: number; name: string }[] {
+	panicFromGunfire(origin: Vector3, radius = 10): { id: number; name: string }[] {
 		const hit: { id: number; name: string }[] = [];
 		const screams = [
 			'AAAAH!!',
@@ -587,7 +604,7 @@ export class Americans {
 			ctx.fillText(line, 140, 36);
 			s.speechTex.needsUpdate = true;
 			s.speech.visible = true;
-			(s.speech.material as THREE.SpriteMaterial).visible = true;
+			(s.speech.material as SpriteMaterial).visible = true;
 			s.speechLife = 2.4 + Math.random();
 			this.paintLabel(s);
 			this.applyFaceMood(s);
@@ -597,7 +614,7 @@ export class Americans {
 	}
 
 	/** All sim positions (same floor-ish) for threat scanning */
-	collectPositions(out: THREE.Vector3[]): void {
+	collectPositions(out: Vector3[]): void {
 		out.length = 0;
 		for (const s of this.sims) out.push(s.pos);
 	}
@@ -610,7 +627,7 @@ export class Americans {
 	}
 
 	/** Crowd at DJ Bartek: speech bubbles + happier + short freeze-dance */
-	cheerNear(worldPos: THREE.Vector3, radius: number): void {
+	cheerNear(worldPos: Vector3, radius: number): void {
 		const cheers = ['BARTEK! BARTEK!', 'DROP IT!', 'Squeak banger!', 'Thicc & thriving', 'Trap-gat forever', 'Yallah dansen!'];
 		for (const s of this.sims) {
 			if (Math.abs(s.pos.y - worldPos.y) > 2.5) continue;
@@ -633,16 +650,16 @@ export class Americans {
 			ctx.fillText(line, 140, 36);
 			s.speechTex.needsUpdate = true;
 			s.speech.visible = true;
-			(s.speech.material as THREE.SpriteMaterial).visible = true;
+			(s.speech.material as SpriteMaterial).visible = true;
 			s.speechLife = 2.2 + Math.random();
 			this.paintLabel(s);
 			this.applyFaceMood(s);
 		}
 	}
 
-	getNearestSimId(worldPos: THREE.Vector3): number | null {
+	getNearestSimId(worldPos: Vector3): number | null {
 		let best: Sim | null = null;
-		let bestD = Infinity;
+		let bestD = Number.POSITIVE_INFINITY;
 		for (const s of this.sims) {
 			const d = s.pos.distanceTo(worldPos);
 			if (d < bestD) {
@@ -658,18 +675,18 @@ export class Americans {
 	 * Eyes sit on the face (+Z in body space); camera must look along the
 	 * character's facing (Three cameras look down −Z → yaw = root.y + π).
 	 */
-	getSimEye(id: number): { pos: THREE.Vector3; yaw: number } | null {
+	getSimEye(id: number): { pos: Vector3; yaw: number } | null {
 		const s = this.sims.find((x) => x.f.id === id);
 		if (!s) return null;
 		// Midpoint of actual eye meshes in world space (respects body scale + bounce)
-		const a = new THREE.Vector3();
-		const b = new THREE.Vector3();
+		const a = new Vector3();
+		const b = new Vector3();
 		s.eyeL.getWorldPosition(a);
 		s.eyeR.getWorldPosition(b);
 		const pos = a.add(b).multiplyScalar(0.5);
 		// Slightly forward of the face so we don't clip the head mesh if un-hidden
 		const yawFace = s.root.rotation.y;
-		const forward = new THREE.Vector3(Math.sin(yawFace), 0, Math.cos(yawFace));
+		const forward = new Vector3(Math.sin(yawFace), 0, Math.cos(yawFace));
 		pos.addScaledVector(forward, 0.12);
 		pos.y += 0.04; // brow / pupil height, not chin
 		// Camera looks −Z; character faces +Z → add π
@@ -689,7 +706,7 @@ export class Americans {
 		if (this.audio.state === 'suspended') void this.audio.resume();
 	}
 
-	update(dt: number, playerPos?: THREE.Vector3): void {
+	update(dt: number, playerPos?: Vector3): void {
 		if (playerPos) this.listener = playerPos;
 		this.frame++;
 		if (this.dancing) {
@@ -761,14 +778,14 @@ export class Americans {
 	private cullSpeechVisibility(sim: Sim): void {
 		const ok = sim.speechLife > 0 && this.isWithinRange(sim, Americans.SPEECH_RANGE);
 		sim.speech.visible = ok;
-		(sim.speech.material as THREE.SpriteMaterial).visible = ok;
+		(sim.speech.material as SpriteMaterial).visible = ok;
 	}
 
 	/**
 	 * Occasionally yell at the player when they walk too close.
 	 * Returns the line if someone roasted you (for HUD).
 	 */
-	maybeRoastPlayer(playerPos: THREE.Vector3, dt: number): string | null {
+	maybeRoastPlayer(playerPos: Vector3, dt: number): string | null {
 		this.roastPlayerCd -= dt;
 		if (this.roastPlayerCd > 0) return null;
 		let best: Sim | null = null;
@@ -878,7 +895,7 @@ export class Americans {
 				if (this.isNearListener(sa, Americans.GOSSIP_RANGE + 4)) {
 					this.sayLine(sa, ex.a, false);
 				}
-				window.setTimeout(() => {
+				globalThis.setTimeout(() => {
 					if (this.isNearListener(sb, Americans.GOSSIP_RANGE + 4)) {
 						this.sayLine(sb, ex.b, false);
 					}
@@ -980,7 +997,7 @@ export class Americans {
 				arr[j + 2] = (arr[j + 2] ?? 0) + (vel[j + 2] ?? 0) * dt;
 			}
 			pos.needsUpdate = true;
-			const mat = c.mesh.material as THREE.PointsMaterial;
+			const mat = c.mesh.material as PointsMaterial;
 			mat.opacity = Math.max(0, c.life * CLOUD_FADE);
 			if (c.life <= 0) {
 				this.group.remove(c.mesh);
@@ -995,7 +1012,7 @@ export class Americans {
 	 * De snelheid waar deze sim heen wil: recht op zijn eigen volgende punt af, en
 	 * niets als hij staat te kijken of er geen punt meer is.
 	 */
-	private desiredVelocity(sim: Sim, out: THREE.Vector3): void {
+	private desiredVelocity(sim: Sim, out: Vector3): void {
 		const target = sim.wait > 0 ? undefined : sim.path[sim.pathI];
 		if (!target) {
 			out.set(0, 0, 0);
@@ -1117,7 +1134,7 @@ export class Americans {
 				for (let j = i + 1; j < this.sims.length; j++) {
 					const a = this.sims[i];
 					const b = this.sims[j];
-					if (!a || !b) continue;
+					if (!(a && b)) continue;
 					if (Math.abs(a.pos.y - b.pos.y) > SIM_DECK_BAND) continue;
 					const minD = a.radius + b.radius;
 					const sep = this.world.separate(a.pos.x, a.pos.z, b.pos.x, b.pos.z, minD);
@@ -1152,7 +1169,7 @@ export class Americans {
 		const isBrad = id === 0;
 		const isKid = !isBrad && id % 5 === 2;
 		// A few Miss USA / pageant types (incl. Eva G.)
-		const isMiss = !isBrad && !isKid && (id === 1 || id === 3 || id === 7 || id === 11);
+		const isMiss = !(isBrad || isKid) && (id === 1 || id === 3 || id === 7 || id === 11);
 		const missIdx = Math.floor(id / 2) % MISS_NAMES.length;
 		// Americans are HUNGRY — thicc by default (Miss stays slim)
 		const thicc = isMiss ? 0.1 + rng() * 0.08 : isKid ? 0.22 + rng() * 0.15 : isBrad ? 0.95 : 0.55 + rng() * 0.42;
@@ -1219,8 +1236,8 @@ export class Americans {
 			fartCd: 3 + rng() * 12,
 		};
 
-		const root = new THREE.Group();
-		const body = new THREE.Group();
+		const root = new Group();
+		const body = new Group();
 		root.add(body);
 
 		// Miss = taller, longer legs, hourglass, more glam ("hotter babes")
@@ -1236,7 +1253,7 @@ export class Americans {
 		body.add(legL.group, legR.group);
 
 		const torsoY = legLen + 0.08;
-		const belly = new THREE.Mesh(new THREE.SphereGeometry(bellyR, 12, 10), this.mat(f.shirt, 0.9));
+		const belly = new Mesh(new SphereGeometry(bellyR, 12, 10), this.mat(f.shirt, 0.9));
 		if (isMiss) {
 			// tight waist
 			belly.scale.set(0.72, 1.0, 0.62);
@@ -1247,7 +1264,7 @@ export class Americans {
 		}
 		body.add(belly);
 
-		const chest = new THREE.Mesh(new THREE.SphereGeometry(bellyR * (isMiss ? 1.15 : 0.7), 10, 8), this.mat(f.shirt, 0.9));
+		const chest = new Mesh(new SphereGeometry(bellyR * (isMiss ? 1.15 : 0.7), 10, 8), this.mat(f.shirt, 0.9));
 		// Miss: bigger chest, push forward
 		chest.scale.set(isMiss ? 1.55 : 1.3, isMiss ? 1.05 : 0.65, isMiss ? 1.05 : 0.85);
 		chest.position.set(0, torsoY + bellyR * (isMiss ? 1.35 : 1.0), isMiss ? 0.12 : 0);
@@ -1255,7 +1272,7 @@ export class Americans {
 
 		// Miss: hip flare + heels
 		if (isMiss) {
-			const hips = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), this.mat(f.pants, 0.85));
+			const hips = new Mesh(new SphereGeometry(0.22, 10, 8), this.mat(f.pants, 0.85));
 			hips.scale.set(1.45, 0.55, 0.85);
 			hips.position.set(0, torsoY - 0.08, 0.02);
 			body.add(hips);
@@ -1268,7 +1285,7 @@ export class Americans {
 				}),
 			);
 			for (const side of [-1, 1] as const) {
-				const heel = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 6), heelMat);
+				const heel = new Mesh(new ConeGeometry(0.04, 0.14, 6), heelMat);
 				heel.position.set(side * 0.14, 0.02, 0.12);
 				heel.rotation.x = Math.PI;
 				body.add(heel);
@@ -1278,14 +1295,14 @@ export class Americans {
 		// Arms pivot AT THE SHOULDER. Rotating the bare mesh spun it around its
 		// own middle, so the hand and the elbow swung in opposite directions.
 		const armLen = 0.45;
-		const armGeo = new THREE.CapsuleGeometry(0.09, armLen, 3, 5);
-		const makeArm = (side: -1 | 1): THREE.Group => {
-			const pivot = new THREE.Group();
+		const armGeo = new CapsuleGeometry(0.09, armLen, 3, 5);
+		const makeArm = (side: -1 | 1): Group => {
+			const pivot = new Group();
 			pivot.position.set(side * bellyR * 1.05, torsoY + bellyR * 1.15, 0);
-			const limb = new THREE.Mesh(armGeo, this.mat(f.shirt));
+			const limb = new Mesh(armGeo, this.mat(f.shirt));
 			limb.position.y = -(half(armLen) + 0.09);
 			pivot.add(limb);
-			const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), this.mat(f.skin, 0.8));
+			const hand = new Mesh(new SphereGeometry(0.075, 8, 6), this.mat(f.skin, 0.8));
 			hand.position.y = -(armLen + 0.13);
 			pivot.add(hand);
 			return pivot;
@@ -1297,7 +1314,7 @@ export class Americans {
 		const headY = torsoY + bellyR * 1.4 + 0.28;
 		const headR = isKid ? 0.2 : isMiss ? 0.23 : 0.24;
 		// Plain skin head — no painted texture face
-		const head = new THREE.Mesh(new THREE.SphereGeometry(headR, 16, 16), this.mat(f.skin, 0.85));
+		const head = new Mesh(new SphereGeometry(headR, 16, 16), this.mat(f.skin, 0.85));
 		head.position.set(0, headY, 0);
 		body.add(head);
 
@@ -1305,21 +1322,21 @@ export class Americans {
 		// Features sit ON the skull surface and point outward. The old version put
 		// flat-Z spheres at 0.8·R, which buried the mouth completely inside the
 		// head and left only a sliver of each eye poking out.
-		const darkMat = this.track(new THREE.MeshBasicMaterial({ color: 0x141414 }));
-		const scleraMat = this.track(new THREE.MeshBasicMaterial({ color: 0xf7f4f0 }));
+		const darkMat = this.track(new MeshBasicMaterial({ color: 0x141414 }));
+		const scleraMat = this.track(new MeshBasicMaterial({ color: 0xf7f4f0 }));
 
 		const eyeRad = isKid ? 0.055 : 0.062;
 		// Pre-scaled geometry: mesh.scale stays free for blinking (tickFace)
-		const scleraGeo = new THREE.SphereGeometry(eyeRad, 12, 10);
+		const scleraGeo = new SphereGeometry(eyeRad, 12, 10);
 		scleraGeo.scale(1, 1.1, 0.45);
-		const pupilGeo = new THREE.SphereGeometry(eyeRad * 0.52, 10, 8);
+		const pupilGeo = new SphereGeometry(eyeRad * 0.52, 10, 8);
 		pupilGeo.scale(1, 1, 0.6);
 
-		const makeEye = (side: -1 | 1): THREE.Mesh => {
-			const anchor = new THREE.Group();
+		const makeEye = (side: -1 | 1): Mesh => {
+			const anchor = new Group();
 			placeOnSkull(anchor, headR, side * 0.36, 0.1, 0.93);
-			const sclera = new THREE.Mesh(scleraGeo, scleraMat);
-			const pupil = new THREE.Mesh(pupilGeo, darkMat);
+			const sclera = new Mesh(scleraGeo, scleraMat);
+			const pupil = new Mesh(pupilGeo, darkMat);
 			pupil.position.z = eyeRad * 0.36;
 			sclera.add(pupil);
 			anchor.add(sclera);
@@ -1332,19 +1349,19 @@ export class Americans {
 		// Mouth = curved arc on the surface: smile, and rotate π for a frown.
 		// Kept as a Mesh whose scale/rotation.z belong to tickFace, inside an
 		// anchor group that owns the orientation.
-		const mouthAnchor = new THREE.Group();
+		const mouthAnchor = new Group();
 		placeOnSkull(mouthAnchor, headR, 0, -0.42, 0.95);
-		const mouthGeo = new THREE.TorusGeometry(headR * 0.3, headR * 0.055, 5, 14, Math.PI);
-		const mouth = new THREE.Mesh(mouthGeo, darkMat);
+		const mouthGeo = new TorusGeometry(headR * 0.3, headR * 0.055, 5, 14, Math.PI);
+		const mouth = new Mesh(mouthGeo, darkMat);
 		mouthAnchor.add(mouth);
 		head.add(mouthAnchor);
 
 		// Brows — cheap, and they carry most of the mood
-		const browGeo = new THREE.BoxGeometry(headR * 0.34, headR * 0.06, headR * 0.05);
+		const browGeo = new BoxGeometry(headR * 0.34, headR * 0.06, headR * 0.05);
 		for (const side of [-1, 1] as const) {
-			const brow = new THREE.Group();
+			const brow = new Group();
 			placeOnSkull(brow, headR, side * 0.36, 0.34, 0.95);
-			const bar = new THREE.Mesh(browGeo, darkMat);
+			const bar = new Mesh(browGeo, darkMat);
 			bar.rotation.z = side * -0.12;
 			brow.add(bar);
 			head.add(brow);
@@ -1353,15 +1370,15 @@ export class Americans {
 		if (f.isMiss) {
 			// Pageant hair volume — open at the front (phi gap) so the wig frames
 			// the face instead of engulfing the eyes.
-			const hair = new THREE.Mesh(
-				new THREE.SphereGeometry(0.28, 14, 10, Math.PI * 0.22, Math.PI * 1.56, 0, Math.PI * 0.68),
+			const hair = new Mesh(
+				new SphereGeometry(0.28, 14, 10, Math.PI * 0.22, Math.PI * 1.56, 0, Math.PI * 0.68),
 				this.mat(f.hair),
 			);
 			hair.position.set(0, headY + 0.06, -0.02);
 			body.add(hair);
 			// Crown
-			const crown = new THREE.Mesh(
-				new THREE.TorusGeometry(0.14, 0.025, 6, 12),
+			const crown = new Mesh(
+				new TorusGeometry(0.14, 0.025, 6, 12),
 				this.track(
 					lit({
 						color: 0xffd700,
@@ -1374,30 +1391,27 @@ export class Americans {
 			crown.position.set(0, headY + 0.22, 0);
 			body.add(crown);
 			// Sash
-			const sash = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.9, 0.02), this.track(lit({ color: 0xffffff, roughness: 0.6 })));
+			const sash = new Mesh(new BoxGeometry(0.12, 0.9, 0.02), this.track(lit({ color: 0xffffff, roughness: 0.6 })));
 			sash.position.set(0.18, torsoY + 0.5, 0.2);
 			sash.rotation.z = -0.35;
 			body.add(sash);
 		} else if (f.hasCap) {
 			const col = f.isBrad ? 0x00a651 : 0x1a5276;
-			const cap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), this.mat(col));
+			const cap = new Mesh(new SphereGeometry(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), this.mat(col));
 			cap.position.set(0, headY + 0.05, 0);
 			body.add(cap);
-			const brim = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.22), this.mat(col));
+			const brim = new Mesh(new BoxGeometry(0.28, 0.04, 0.22), this.mat(col));
 			brim.position.set(0, headY + 0.02, 0.2);
 			body.add(brim);
 		} else {
 			// Same trick: leave the forehead clear of the hair shell
-			const hair = new THREE.Mesh(
-				new THREE.SphereGeometry(0.25, 12, 8, Math.PI * 0.2, Math.PI * 1.6, 0, Math.PI * 0.58),
-				this.mat(f.hair),
-			);
+			const hair = new Mesh(new SphereGeometry(0.25, 12, 8, Math.PI * 0.2, Math.PI * 1.6, 0, Math.PI * 0.58), this.mat(f.hair));
 			hair.position.set(0, headY + 0.04, 0);
 			body.add(hair);
 		}
 
 		if (f.bag && !f.isMiss) {
-			const bag = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.12), this.mat(f.isBrad ? 0xe30613 : 0x333333));
+			const bag = new Mesh(new BoxGeometry(0.28, 0.34, 0.12), this.mat(f.isBrad ? 0xe30613 : 0x333333));
 			bag.position.set(bellyR * BAG_OUT, torsoY * BAG_RISE, 0.15);
 			body.add(bag);
 		}
@@ -1407,9 +1421,9 @@ export class Americans {
 		// Head info plate (not floating store labels — per-sim status)
 		const { canvas: plate, ctx: labelCtx } = labelCanvas(LABEL_W, LABEL_H);
 		const labelTex = labelTexture(plate);
-		const label = new THREE.Sprite(
+		const label = new Sprite(
 			this.track(
-				new THREE.SpriteMaterial({
+				new SpriteMaterial({
 					map: labelTex,
 					transparent: true,
 					depthTest: true,
@@ -1422,7 +1436,7 @@ export class Americans {
 		// De plaat hangt twee tot drie meter boven de voeten, dus op de roltrap
 		// zit hij al in de band van de volgende verdieping terwijl de sim nog
 		// beneden loopt. De houder staat op dekhoogte en beslist over de deck.
-		const levelAnchor = new THREE.Group();
+		const levelAnchor = new Group();
 		levelAnchor.add(label);
 		root.add(levelAnchor);
 		tagLevelCulled(levelAnchor);
@@ -1432,9 +1446,9 @@ export class Americans {
 		const speechTex = labelTexture(speechCanvas);
 		// depthTest AAN: met false zag je vanaf het dak alle tekstballonnen van
 		// twee verdiepingen lager dwars door het beton zweven
-		const speech = new THREE.Sprite(
+		const speech = new Sprite(
 			this.track(
-				new THREE.SpriteMaterial({
+				new SpriteMaterial({
 					map: speechTex,
 					transparent: true,
 					depthTest: true,
@@ -1477,9 +1491,9 @@ export class Americans {
 			blinkT: 1 + rng() * 3,
 			talkPhase: 0,
 			pos: start.clone(),
-			velocity: new THREE.Vector3(),
+			velocity: new Vector3(),
 			radius,
-			steer: new THREE.Vector3(),
+			steer: new Vector3(),
 			path: [],
 			pathI: 0,
 			routeLength: 0,
@@ -1514,36 +1528,36 @@ export class Americans {
 		return this.track(lit({ color, roughness: rough, metalness: 0.05 }));
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
 	/** Hip → knee → FOOT. Feet must swing hard when walking. */
 	private makeLeg(pants: number, legLen: number, side: -1 | 1): Limb {
-		const group = new THREE.Group();
+		const group = new Group();
 		group.position.set(side * 0.16, 0, 0);
 
-		const hip = new THREE.Group();
+		const hip = new Group();
 		hip.position.set(0, legLen, 0);
 
-		const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, legLen * LEG_THIGH_LEN, 3, 6), this.mat(pants));
+		const thigh = new Mesh(new CapsuleGeometry(0.11, legLen * LEG_THIGH_LEN, 3, 6), this.mat(pants));
 		thigh.position.y = -legLen * LEG_THIGH_Y;
 		hip.add(thigh);
 
-		const knee = new THREE.Group();
+		const knee = new Group();
 		knee.position.y = -legLen * LEG_KNEE_Y;
 
-		const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, legLen * LEG_SHIN_LEN, 3, 6), this.mat(pants));
+		const shin = new Mesh(new CapsuleGeometry(0.09, legLen * LEG_SHIN_LEN, 3, 6), this.mat(pants));
 		shin.position.y = -legLen * LEG_SHIN_Y;
 		knee.add(shin);
 
 		// BIG visible foot (pootje)
-		const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.34), this.mat(0xf5f5f5, 0.65));
+		const foot = new Mesh(new BoxGeometry(0.16, 0.09, 0.34), this.mat(0xf5f5f5, 0.65));
 		foot.position.set(0, -legLen * LEG_FOOT_Y, 0.1);
 		knee.add(foot);
 
-		const sole = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.04, 0.36), this.mat(0x1a1a1a));
+		const sole = new Mesh(new BoxGeometry(0.17, 0.04, 0.36), this.mat(0x1a1a1a));
 		sole.position.set(0, -legLen * LEG_SOLE_Y, 0.1);
 		knee.add(sole);
 
@@ -1609,13 +1623,13 @@ export class Americans {
 		const here = this.startNode(sim);
 		const toNode = store.nodeId === 'spaceship' ? 's_kruidvat' : store.nodeId;
 		const nodes = here ? this.pathfinder.findPath(here.id, toNode) : [];
-		const points: THREE.Vector3[] = [];
+		const points: Vector3[] = [];
 		for (const node of nodes) {
 			const y = levelY(levelAt(node.y));
 			// De vide op V1 is een gat, geen route: een knoop erboven schuift naar de rand.
 			const overVoid = levelAt(y) === 'v1' && Math.abs(node.x) < 8 && Math.abs(node.z) < 6;
 			const x = overVoid ? (node.x >= 0 ? 10 : -10) : node.x;
-			points.push(new THREE.Vector3(x, overVoid ? 6 : y, node.z));
+			points.push(new Vector3(x, overVoid ? 6 : y, node.z));
 		}
 		points.push(shopEntrance(store));
 		sim.path = this.routeAround(sim, this.laneRoute(sim, points));
@@ -1652,8 +1666,8 @@ export class Americans {
 	 * in, dus de sim remt af tot nul en blijft staan. Hier komt de hoek in het pad
 	 * te liggen waar hij anders zelf omheen had moeten raden.
 	 */
-	private routeAround(sim: Sim, points: readonly THREE.Vector3[]): THREE.Vector3[] {
-		const out: THREE.Vector3[] = [];
+	private routeAround(sim: Sim, points: readonly Vector3[]): Vector3[] {
+		const out: Vector3[] = [];
 		let fromX = sim.pos.x;
 		let fromZ = sim.pos.z;
 		for (const point of points) {
@@ -1681,7 +1695,7 @@ export class Americans {
 	 * ligt, en niets als geen van de vier kanten begaanbaar is: dan is het gat
 	 * werkelijk dicht en moet de route zelf anders.
 	 */
-	private cornerDetour(sim: Sim, fromX: number, fromZ: number, to: THREE.Vector3, box: AABB): THREE.Vector3[] {
+	private cornerDetour(sim: Sim, fromX: number, fromZ: number, to: Vector3, box: AABB): Vector3[] {
 		const margin = sim.radius + DETOUR_MARGIN;
 		const minX = box.minX - margin;
 		const maxX = box.maxX + margin;
@@ -1693,12 +1707,12 @@ export class Americans {
 			{ ax: minX, az: minZ, bx: maxX, bz: minZ },
 			{ ax: minX, az: maxZ, bx: maxX, bz: maxZ },
 		];
-		let best: THREE.Vector3[] = [];
-		let bestCost = Infinity;
+		let best: Vector3[] = [];
+		let bestCost = Number.POSITIVE_INFINITY;
 		for (const side of sides) {
 			const first = this.standablePoint(side.ax, side.az, to.y, sim.radius);
 			const second = this.standablePoint(side.bx, side.bz, to.y, sim.radius);
-			if (!first || !second) continue;
+			if (!(first && second)) continue;
 			const nearFirst = Math.hypot(first.x - fromX, first.z - fromZ) <= Math.hypot(second.x - fromX, second.z - fromZ);
 			const entry = nearFirst ? first : second;
 			const exit = nearFirst ? second : first;
@@ -1711,17 +1725,17 @@ export class Americans {
 			// Eén hoek is genoeg zodra hij de doos al vrijgeeft; de tweede is er voor
 			// het geval de doos tussen beide einden in ligt.
 			if (!this.world.blockedBy(fromX, fromZ, exit.x, exit.z, to.y, sim.radius, true)) best = [exit];
-			else if (!this.world.blockedBy(entry.x, entry.z, to.x, to.z, to.y, sim.radius, true)) best = [entry];
-			else best = [entry, exit];
+			else if (this.world.blockedBy(entry.x, entry.z, to.x, to.z, to.y, sim.radius, true)) best = [entry, exit];
+			else best = [entry];
 		}
 		return best;
 	}
 
 	/** Het punt zelf als je er kunt staan, en anders niets: een hoek in een muur is geen hoek om langs te lopen. */
-	private standablePoint(x: number, z: number, y: number, radius: number): THREE.Vector3 | null {
+	private standablePoint(x: number, z: number, y: number, radius: number): Vector3 | null {
 		const fixed = this.world.resolveCircle(x, z, y, radius, 3, true);
 		if (Math.hypot(fixed.x - x, fixed.z - z) > radius) return null;
-		return new THREE.Vector3(fixed.x, y, fixed.z);
+		return new Vector3(fixed.x, y, fixed.z);
 	}
 
 	/**
@@ -1733,8 +1747,8 @@ export class Americans {
 	 * loodrecht op het stuk waar hij vandaan komt en komt uit zijn id, dus hij is
 	 * elke sessie dezelfde.
 	 */
-	private laneRoute(sim: Sim, points: readonly THREE.Vector3[]): THREE.Vector3[] {
-		const out: THREE.Vector3[] = [];
+	private laneRoute(sim: Sim, points: readonly Vector3[]): Vector3[] {
+		const out: Vector3[] = [];
 		let fromX = sim.pos.x;
 		let fromZ = sim.pos.z;
 		for (const point of points) {
@@ -1744,7 +1758,7 @@ export class Americans {
 			const wantX = run > 1e-4 ? point.x + (-dz / run) * sim.laneOffset : point.x;
 			const wantZ = run > 1e-4 ? point.z + (dx / run) * sim.laneOffset : point.z;
 			const fixed = this.world.resolveCircle(wantX, wantZ, point.y, sim.radius, 3, true);
-			out.push(new THREE.Vector3(fixed.x, point.y, fixed.z));
+			out.push(new Vector3(fixed.x, point.y, fixed.z));
 			fromX = point.x;
 			fromZ = point.z;
 		}
@@ -1922,7 +1936,7 @@ export class Americans {
 				f.unhappiness = Math.max(0, f.unhappiness + Math.floor(sim.roll() * 8) - 6);
 			}
 
-			this.spawnCoins(sim.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), spend);
+			this.spawnCoins(sim.pos.clone().add(new Vector3(0, 1.2, 0)), spend);
 			this.transactionCount++;
 			// Money paid AT this shop → shopkeeper register
 			const paidAt = sim.f.targetShopId || sim.shopId;
@@ -1992,7 +2006,7 @@ export class Americans {
 			sim.bubbleCd -= dt;
 			if (sim.bubbleCd <= 0) {
 				if (sim.roll() < 0.25) {
-					this.spawnBubbles(sim.pos.clone().add(new THREE.Vector3(0, 0.9, 0)));
+					this.spawnBubbles(sim.pos.clone().add(new Vector3(0, 0.9, 0)));
 				}
 				sim.bubbleCd = 6 + sim.roll() * 10;
 			}
@@ -2003,7 +2017,7 @@ export class Americans {
 			const partner = this.sims.find((s) => s.f.id === f.partnerId);
 			if (partner) {
 				const spacing = sim.radius + partner.radius + 0.2;
-				const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(sim.coupleSide * spacing);
+				const side = new Vector3(-dir.z, 0, dir.x).multiplyScalar(sim.coupleSide * spacing);
 				// Soft pull toward parallel lane next to partner lead path
 				if (f.id > f.partnerId) {
 					// Per seconde en niet per frame: als factor stond hier 0.12 per frame,
@@ -2118,17 +2132,17 @@ export class Americans {
 
 		// soft plate
 		ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-		roundRect(ctx, 4, 4, w - 8, h - 8, 12);
+		roundRect(ctx, { x: 4, y: 4, width: w - 8, height: h - 8, radius: 12 });
 		ctx.fill();
 		ctx.strokeStyle = f.unhappiness > 70 ? '#ef4444' : f.unhappiness > 40 ? '#f59e0b' : '#22c55e';
 		ctx.lineWidth = 3;
-		roundRect(ctx, 4, 4, w - 8, h - 8, 12);
+		roundRect(ctx, { x: 4, y: 4, width: w - 8, height: h - 8, radius: 12 });
 		ctx.stroke();
 
 		ctx.fillStyle = '#fff';
 		ctx.font = 'bold 20px system-ui,sans-serif';
 		ctx.textAlign = 'left';
-		const name = f.partnerName !== null ? `${f.name.slice(0, 10)} ❤️` : f.name.slice(0, 16);
+		const name = f.partnerName === null ? f.name.slice(0, 16) : `${f.name.slice(0, 10)} ❤️`;
 		ctx.fillText(name, 16, 26);
 
 		ctx.font = '600 15px system-ui,sans-serif';
@@ -2150,9 +2164,9 @@ export class Americans {
 	}
 
 	/** Player tips nearest sim — muntjes + happiness */
-	giveMoneyNear(worldPos: THREE.Vector3, amount = 25): SimFactors | null {
+	giveMoneyNear(worldPos: Vector3, amount = 25): SimFactors | null {
 		let best: Sim | null = null;
-		let bestD = Infinity;
+		let bestD = Number.POSITIVE_INFINITY;
 		for (const s of this.sims) {
 			const d = s.pos.distanceTo(worldPos);
 			if (d < bestD && d < 6) {
@@ -2163,14 +2177,14 @@ export class Americans {
 		if (!best) return null;
 		best.f.moneySpent += amount;
 		best.f.unhappiness = Math.max(0, best.f.unhappiness - 20);
-		this.spawnCoins(best.pos.clone().add(new THREE.Vector3(0, 1.3, 0)), amount);
+		this.spawnCoins(best.pos.clone().add(new Vector3(0, 1.3, 0)), amount);
 		this.sayGibberish(best, true);
 		this.paintLabel(best);
 		this.applyFaceMood(best);
 		return best.f;
 	}
 
-	private spawnBubbles(origin: THREE.Vector3): void {
+	private spawnBubbles(origin: Vector3): void {
 		const count = 14;
 		const positions = new Float32Array(count * 3);
 		const vel = new Float32Array(count * 3);
@@ -2182,16 +2196,16 @@ export class Americans {
 			vel[i * 3 + 1] = 0.6 + Math.random() * 1.2;
 			vel[i * 3 + 2] = jitter(0.4);
 		}
-		const geo = new THREE.BufferGeometry();
-		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-		const mat = new THREE.PointsMaterial({
+		const geo = new BufferGeometry();
+		geo.setAttribute('position', new BufferAttribute(positions, 3));
+		const mat = new PointsMaterial({
 			color: 0xa8e6ff,
 			size: 0.12,
 			transparent: true,
 			opacity: 0.7,
 			depthWrite: false,
 		});
-		const mesh = new THREE.Points(geo, mat);
+		const mesh = new Points(geo, mat);
 		this.group.add(mesh);
 		this.bubbles.push({ mesh, life: 1.5, vel });
 	}
@@ -2205,11 +2219,11 @@ export class Americans {
 		const ctx = sim.speechCtx;
 		ctx.clearRect(0, 0, 280, 72);
 		ctx.fillStyle = 'rgba(255,255,255,0.96)';
-		roundRect(ctx, 4, 4, 272, 64, 14);
+		roundRect(ctx, { x: 4, y: 4, width: 272, height: 64, radius: 14 });
 		ctx.fill();
 		ctx.strokeStyle = checkout ? '#16a34a' : '#7c3aed';
 		ctx.lineWidth = 2.5;
-		roundRect(ctx, 4, 4, 272, 64, 14);
+		roundRect(ctx, { x: 4, y: 4, width: 272, height: 64, radius: 14 });
 		ctx.stroke();
 		ctx.fillStyle = '#0f172a';
 		ctx.font = '600 14px system-ui,sans-serif';
@@ -2218,7 +2232,7 @@ export class Americans {
 		fitText(ctx, line, { x: 12, y: 6, w: 256, h: 54 }, { size: 18 });
 		sim.speechTex.needsUpdate = true;
 		sim.speech.visible = true;
-		(sim.speech.material as THREE.SpriteMaterial).visible = true;
+		(sim.speech.material as SpriteMaterial).visible = true;
 		sim.speechLife = 3.2 + sim.roll() * 1.4;
 		sim.squeakT = 0.5;
 		this.playSqueak(sim, 0);
@@ -2274,7 +2288,7 @@ export class Americans {
 		o.stop(t0 + 0.09);
 	}
 
-	private spawnCoins(origin: THREE.Vector3, amount: number): void {
+	private spawnCoins(origin: Vector3, amount: number): void {
 		const count = Math.min(40, 8 + Math.floor(amount / 3));
 		const positions = new Float32Array(count * 3);
 		const vel = new Float32Array(count * 3);
@@ -2286,16 +2300,16 @@ export class Americans {
 			vel[i * 3 + 1] = 2 + Math.random() * 4;
 			vel[i * 3 + 2] = jitter(3);
 		}
-		const geo = new THREE.BufferGeometry();
-		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-		const mat = new THREE.PointsMaterial({
+		const geo = new BufferGeometry();
+		geo.setAttribute('position', new BufferAttribute(positions, 3));
+		const mat = new PointsMaterial({
 			color: 0xffd700,
 			size: 0.16,
 			transparent: true,
 			opacity: 0.95,
 			depthWrite: false,
 		});
-		const mesh = new THREE.Points(geo, mat);
+		const mesh = new Points(geo, mat);
 		this.group.add(mesh);
 		this.coinBursts.push({ mesh, life: 1.6, vel });
 		this.playCoinSound();
@@ -2316,7 +2330,7 @@ export class Americans {
 				vel[j + 1] = (vel[j + 1] ?? 0) - 9 * dt;
 			}
 			pos.needsUpdate = true;
-			const mat = c.mesh.material as THREE.PointsMaterial;
+			const mat = c.mesh.material as PointsMaterial;
 			mat.opacity = Math.max(0, c.life * 0.7);
 			if (c.life <= 0) {
 				this.group.remove(c.mesh);
@@ -2358,16 +2372,16 @@ export class Americans {
 			vel[i * 3 + 1] = 0.3 + Math.random() * 0.6;
 			vel[i * 3 + 2] = jitter(0.8);
 		}
-		const geo = new THREE.BufferGeometry();
-		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-		const mat = new THREE.PointsMaterial({
+		const geo = new BufferGeometry();
+		geo.setAttribute('position', new BufferAttribute(positions, 3));
+		const mat = new PointsMaterial({
 			color: 0x88ff44,
 			size: 0.18,
 			transparent: true,
 			opacity: 0.65,
 			depthWrite: false,
 		});
-		const mesh = new THREE.Points(geo, mat);
+		const mesh = new Points(geo, mat);
 		this.group.add(mesh);
 		this.fartClouds.push({ mesh, life: 1.4, vel });
 
@@ -2392,7 +2406,7 @@ export class Americans {
 				vel[j + 1] = (vel[j + 1] ?? 0) - 0.4 * dt;
 			}
 			pos.needsUpdate = true;
-			const mat = c.mesh.material as THREE.PointsMaterial;
+			const mat = c.mesh.material as PointsMaterial;
 			mat.opacity = Math.max(0, c.life * CLOUD_FADE);
 			if (c.life <= 0) {
 				this.group.remove(c.mesh);

@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import { CapsuleGeometry, ConeGeometry, Group, Mesh, SphereGeometry, Sprite, SpriteMaterial, Vector3 } from 'three';
 import { levelY } from '#/data/levels';
 import { BEARD_CAVE_SPEC } from '#/data/world';
 import type { CollisionWorld } from '#/physics/Collision';
@@ -16,16 +16,16 @@ const SPRINT_SPEED = 0.5;
  * and yeets everyone's juwelen/goud — then dumps it in Beard-man's Cave.
  */
 export class BakerThief {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	active = false;
-	private mesh: THREE.Group;
+	private mesh: Group;
 	private t = 0;
-	private path: THREE.Vector3[] = [];
+	private path: Vector3[] = [];
 	private i = 0;
 	private world: CollisionWorld;
-	private onLoot: ((pos: THREE.Vector3) => void) | null = null;
-	private onHome: ((pos: THREE.Vector3) => void) | null = null;
-	private caveHome = new THREE.Vector3(BEARD_CAVE_SPEC.entrance.x, levelY('v0'), BEARD_CAVE_SPEC.entrance.z);
+	private onLoot: ((pos: Vector3) => void) | null = null;
+	private onHome: ((pos: Vector3) => void) | null = null;
+	private caveHome = new Vector3(BEARD_CAVE_SPEC.entrance.x, levelY('v0'), BEARD_CAVE_SPEC.entrance.z);
 	private homeReported = false;
 	private lingerT = 0;
 
@@ -37,12 +37,12 @@ export class BakerThief {
 		this.group.add(this.mesh);
 	}
 
-	setLootCallback(cb: (pos: THREE.Vector3) => void): void {
+	setLootCallback(cb: (pos: Vector3) => void): void {
 		this.onLoot = cb;
 	}
 
 	/** Fired once when the thief reaches the cave with the sack */
-	setHomeCallback(cb: (pos: THREE.Vector3) => void): void {
+	setHomeCallback(cb: (pos: Vector3) => void): void {
 		this.onHome = cb;
 	}
 
@@ -56,15 +56,15 @@ export class BakerThief {
 		this.lingerT = 0;
 		// Visible sprint path (avoid atrium void on floor 1), end at beard cave
 		this.path = [
-			new THREE.Vector3(22, 0, 6),
-			new THREE.Vector3(10, 0, -6),
-			new THREE.Vector3(-10, 0, 8),
-			new THREE.Vector3(14, 0, 10),
-			new THREE.Vector3(22, 6, -4),
-			new THREE.Vector3(0, 6, -12),
-			new THREE.Vector3(-14, 6, 10),
-			new THREE.Vector3(-22, 0, 4),
-			new THREE.Vector3(-28, 0, 14),
+			new Vector3(22, 0, 6),
+			new Vector3(10, 0, -6),
+			new Vector3(-10, 0, 8),
+			new Vector3(14, 0, 10),
+			new Vector3(22, 6, -4),
+			new Vector3(0, 6, -12),
+			new Vector3(-14, 6, 10),
+			new Vector3(-22, 0, 4),
+			new Vector3(-28, 0, 14),
 			this.caveHome.clone(),
 		];
 		this.mesh.position.copy(at(this.path, 0));
@@ -112,8 +112,8 @@ export class BakerThief {
 		this.mesh.position.y = p.y + Math.abs(Math.sin(performance.now() * 0.02)) * 0.12;
 	}
 
-	private build(): THREE.Group {
-		const g = new THREE.Group();
+	private build(): Group {
+		const g = new Group();
 		const skin = lit({ color: 0xe8b896, roughness: 0.85 });
 		const shirt = lit({ color: 0xf5f5f5, roughness: 0.9 });
 		const pants = lit({ color: 0x1a1a2e, roughness: 0.85 });
@@ -124,30 +124,30 @@ export class BakerThief {
 			roughness: 0.25,
 		});
 
-		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.7, 4, 8), shirt);
+		const body = new Mesh(new CapsuleGeometry(0.28, 0.7, 4, 8), shirt);
 		body.position.y = 1.1;
 		g.add(body);
-		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.45, 3, 6), pants);
+		const legL = new Mesh(new CapsuleGeometry(0.1, 0.45, 3, 6), pants);
 		const legR = legL.clone();
 		legL.position.set(-0.12, 0.4, 0);
 		legR.position.set(0.12, 0.4, 0);
 		g.add(legL, legR);
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10), skin);
+		const head = new Mesh(new SphereGeometry(0.22, 10, 10), skin);
 		head.position.y = 1.7;
 		g.add(head);
 
 		// LONG baker beard
-		const beard = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.85, 8), beardMat);
+		const beard = new Mesh(new ConeGeometry(0.2, 0.85, 8), beardMat);
 		beard.position.set(0, 1.25, 0.12);
 		beard.rotation.x = Math.PI;
 		g.add(beard);
-		const beard2 = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.5, 6), beardMat);
+		const beard2 = new Mesh(new ConeGeometry(0.12, 0.5, 6), beardMat);
 		beard2.position.set(0, 0.95, 0.18);
 		beard2.rotation.x = Math.PI;
 		g.add(beard2);
 
 		// sack of juwelen
-		const sack = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), gold);
+		const sack = new Mesh(new SphereGeometry(0.28, 8, 8), gold);
 		sack.position.set(0.35, 1.0, 0);
 		g.add(sack);
 
@@ -160,7 +160,7 @@ export class BakerThief {
 		ctx.textAlign = 'center';
 		ctx.fillText('BAARD-DIEF 💀', 128, 40);
 		const tex = labelTexture(c);
-		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+		const sp = new Sprite(new SpriteMaterial({ map: tex, transparent: true }));
 		sp.scale.set(2.2, 0.55, 1);
 		sp.position.y = 2.4;
 		g.add(sp);

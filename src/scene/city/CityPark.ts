@@ -1,4 +1,18 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Texture } from 'three';
+import {
+	BoxGeometry,
+	CircleGeometry,
+	Color,
+	ConeGeometry,
+	CylinderGeometry,
+	Group,
+	InstancedMesh,
+	Mesh,
+	MeshBasicMaterial,
+	Object3D,
+	PlaneGeometry,
+	SphereGeometry,
+} from 'three';
 import { lit } from '#/render/material';
 import { distanceToSegment2 } from '#/util/geometry2';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -55,17 +69,17 @@ const PATH: readonly [number, number][] = [
 ];
 
 export class CityPark {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private materials: THREE.Material[] = [];
-	private geometries: THREE.BufferGeometry[] = [];
-	private textures: THREE.Texture[] = [];
-	private trunks!: THREE.InstancedMesh;
-	private leaves!: THREE.InstancedMesh;
+	private materials: Material[] = [];
+	private geometries: BufferGeometry[] = [];
+	private textures: Texture[] = [];
+	private trunks!: InstancedMesh;
+	private leaves!: InstancedMesh;
 	/** Loof-pivot op het parkcentrum; het hele bladerdak wiegt als één geheel. */
-	private sway = new THREE.Group();
-	private jet!: THREE.Mesh;
-	private splash!: THREE.Mesh;
+	private sway = new Group();
+	private jet!: Mesh;
+	private splash!: Mesh;
 
 	/** LCG-seed — elke reload hetzelfde park, de gemeente houdt niet van verrassingen. */
 	private seed = 20260731;
@@ -146,10 +160,10 @@ export class CityPark {
 		drawPath(30, '#d6ccae');
 		const tex = labelTexture(c);
 		this.textures.push(tex);
-		const geo = new THREE.PlaneGeometry(PARK_W, PARK_D);
+		const geo = new PlaneGeometry(PARK_W, PARK_D);
 		geo.rotateX(-Math.PI / 2);
 		this.geometries.push(geo);
-		const ground = new THREE.Mesh(geo, this.track(lit({ map: tex, roughness: 1 })));
+		const ground = new Mesh(geo, this.track(lit({ map: tex, roughness: 1 })));
 		ground.position.set(CX, GROUND_Y, CZ);
 		ground.receiveShadow = true;
 		this.group.add(ground);
@@ -159,14 +173,14 @@ export class CityPark {
 
 	/** Donkere rand-schijf met daarbovenop de lichtere waterschijf. */
 	private buildPond(): void {
-		const rimGeo = new THREE.CircleGeometry(RIM_R, 36);
+		const rimGeo = new CircleGeometry(RIM_R, 36);
 		rimGeo.rotateX(-Math.PI / 2);
-		const waterGeo = new THREE.CircleGeometry(POND_R, 36);
+		const waterGeo = new CircleGeometry(POND_R, 36);
 		waterGeo.rotateX(-Math.PI / 2);
 		this.geometries.push(rimGeo, waterGeo);
-		const rim = new THREE.Mesh(rimGeo, this.track(lit({ color: 0x24506e, roughness: 0.7 })));
+		const rim = new Mesh(rimGeo, this.track(lit({ color: 0x24506e, roughness: 0.7 })));
 		rim.position.set(CX, GROUND_Y + 0.02, CZ);
-		const water = new THREE.Mesh(waterGeo, this.track(lit({ color: 0x3d84c4, roughness: 0.25, metalness: 0.1 })));
+		const water = new Mesh(waterGeo, this.track(lit({ color: 0x3d84c4, roughness: 0.25, metalness: 0.1 })));
 		water.position.set(CX, GROUND_Y + 0.035, CZ);
 		water.receiveShadow = true;
 		this.group.add(rim, water);
@@ -180,19 +194,19 @@ export class CityPark {
 	 * en van het pad.
 	 */
 	private buildTrees(): void {
-		const trunkGeo = new THREE.CylinderGeometry(0.14, 0.2, 1.8, 6);
+		const trunkGeo = new CylinderGeometry(0.14, 0.2, 1.8, 6);
 		trunkGeo.translate(0, 0.9, 0);
-		const leafGeo = new THREE.SphereGeometry(1.15, 8, 6);
+		const leafGeo = new SphereGeometry(1.15, 8, 6);
 		leafGeo.translate(0, 2.4, 0);
 		this.geometries.push(trunkGeo, leafGeo);
 		const trunkMat = this.track(lit({ color: 0x5d4632, roughness: 0.9 }));
 		const leafMat = this.track(lit({ color: 0xffffff, roughness: 0.85 }));
-		this.trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, TREES);
-		this.leaves = new THREE.InstancedMesh(leafGeo, leafMat, TREES);
+		this.trunks = new InstancedMesh(trunkGeo, trunkMat, TREES);
+		this.leaves = new InstancedMesh(leafGeo, leafMat, TREES);
 
 		// Afstand punt→padsegment, zodat er geen boom midden op het grind kiemt
 		const distToPath = (x: number, z: number): number => {
-			let best = Infinity;
+			let best = Number.POSITIVE_INFINITY;
 			for (let i = 0; i < PATH.length - 1; i++) {
 				const [ax, az] = at(PATH, i);
 				const [bx, bz] = at(PATH, i + 1);
@@ -201,8 +215,8 @@ export class CityPark {
 			return best;
 		};
 
-		const dummy = new THREE.Object3D();
-		const tint = new THREE.Color();
+		const dummy = new Object3D();
+		const tint = new Color();
 		const palette = [0x3f7a2e, 0x4c8a38, 0x62953c, 0x8fae3f] as const;
 		let placed = 0;
 		let guard = 0;
@@ -239,9 +253,9 @@ export class CityPark {
 
 	/** Zes bankjes, gedeelde geometrie, allemaal met vijverzicht. */
 	private buildBenches(): void {
-		const seatGeo = new THREE.BoxGeometry(1.7, 0.09, 0.5);
-		const backGeo = new THREE.BoxGeometry(1.7, 0.5, 0.08);
-		const legGeo = new THREE.BoxGeometry(0.09, 0.44, 0.46);
+		const seatGeo = new BoxGeometry(1.7, 0.09, 0.5);
+		const backGeo = new BoxGeometry(1.7, 0.5, 0.08);
+		const legGeo = new BoxGeometry(0.09, 0.44, 0.46);
 		this.geometries.push(seatGeo, backGeo, legGeo);
 		const wood = this.track(lit({ color: 0x7a5638, roughness: 0.8 }));
 		const steel = this.track(lit({ color: 0x2f3438, metalness: 0.5, roughness: 0.5 }));
@@ -254,16 +268,16 @@ export class CityPark {
 			[-86.5, -53],
 		];
 		for (const [x, z] of spots) {
-			const b = new THREE.Group();
-			const seat = new THREE.Mesh(seatGeo, wood);
+			const b = new Group();
+			const seat = new Mesh(seatGeo, wood);
 			seat.position.y = 0.46;
 			b.add(seat);
-			const back = new THREE.Mesh(backGeo, wood);
+			const back = new Mesh(backGeo, wood);
 			back.position.set(0, 0.74, -0.24);
 			back.rotation.x = -0.14;
 			b.add(back);
 			for (const sx of [-0.72, 0.72]) {
-				const leg = new THREE.Mesh(legGeo, steel);
+				const leg = new Mesh(legGeo, steel);
 				leg.position.set(sx, 0.22, 0);
 				b.add(leg);
 			}
@@ -277,24 +291,24 @@ export class CityPark {
 
 	/** Drie palen met een emissive bol — géén PointLight, de Pi mag ook leven. */
 	private buildLanterns(): void {
-		const poleGeo = new THREE.CylinderGeometry(0.06, 0.1, 3.1, 8);
+		const poleGeo = new CylinderGeometry(0.06, 0.1, 3.1, 8);
 		poleGeo.translate(0, 1.55, 0);
-		const bulbGeo = new THREE.SphereGeometry(0.24, 10, 8);
-		const capGeo = new THREE.ConeGeometry(0.3, 0.26, 8);
+		const bulbGeo = new SphereGeometry(0.24, 10, 8);
+		const capGeo = new ConeGeometry(0.3, 0.26, 8);
 		this.geometries.push(poleGeo, bulbGeo, capGeo);
 		const poleMat = this.track(lit({ color: 0x2c353c, metalness: 0.6, roughness: 0.45 }));
-		const bulbMat = this.track(new THREE.MeshBasicMaterial({ color: 0xffd98a, toneMapped: false }));
+		const bulbMat = this.track(new MeshBasicMaterial({ color: 0xffd98a, toneMapped: false }));
 		const spots: readonly [number, number][] = [
 			[-87.5, -59],
 			[-63.5, -59],
 			[-73.5, -43.2],
 		];
 		for (const [x, z] of spots) {
-			const pole = new THREE.Mesh(poleGeo, poleMat);
+			const pole = new Mesh(poleGeo, poleMat);
 			pole.position.set(x, GROUND_Y, z);
-			const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+			const bulb = new Mesh(bulbGeo, bulbMat);
 			bulb.position.set(x, GROUND_Y + 3.2, z);
-			const cap = new THREE.Mesh(capGeo, poleMat);
+			const cap = new Mesh(capGeo, poleMat);
 			cap.position.set(x, GROUND_Y + 3.5, z);
 			this.group.add(pole, bulb, cap);
 		}
@@ -304,26 +318,26 @@ export class CityPark {
 
 	/** Sokkel + waterstraal + platgedrukte spatbol; de straal pulseert in update(). */
 	private buildFountain(): void {
-		const pedGeo = new THREE.CylinderGeometry(0.55, 0.72, 0.4, 12);
-		const jetGeo = new THREE.CylinderGeometry(0.07, 0.14, 1.15, 8);
+		const pedGeo = new CylinderGeometry(0.55, 0.72, 0.4, 12);
+		const jetGeo = new CylinderGeometry(0.07, 0.14, 1.15, 8);
 		jetGeo.translate(0, 0.575, 0); // voet op de sokkel, zodat scale.y omhoog groeit
-		const splashGeo = new THREE.SphereGeometry(0.5, 10, 8);
+		const splashGeo = new SphereGeometry(0.5, 10, 8);
 		splashGeo.scale(1, 0.22, 1);
 		this.geometries.push(pedGeo, jetGeo, splashGeo);
 		const stone = this.track(lit({ color: 0x9aa0a6, roughness: 0.85 }));
 		const waterJet = this.track(
-			new THREE.MeshBasicMaterial({
+			new MeshBasicMaterial({
 				color: 0xbfe4ff,
 				transparent: true,
 				opacity: 0.7,
 				toneMapped: false,
 			}),
 		);
-		const ped = new THREE.Mesh(pedGeo, stone);
+		const ped = new Mesh(pedGeo, stone);
 		ped.position.set(CX, GROUND_Y + 0.2, CZ);
-		this.jet = new THREE.Mesh(jetGeo, waterJet);
+		this.jet = new Mesh(jetGeo, waterJet);
 		this.jet.position.set(CX, GROUND_Y + 0.38, CZ);
-		this.splash = new THREE.Mesh(splashGeo, waterJet);
+		this.splash = new Mesh(splashGeo, waterJet);
 		this.splash.position.set(CX, GROUND_Y + 0.44, CZ);
 		this.group.add(ped, this.jet, this.splash);
 	}
@@ -335,28 +349,28 @@ export class CityPark {
 	 * eenden die stilliggen zijn nog steeds eenden.
 	 */
 	private buildDucks(): void {
-		const bodyGeo = new THREE.SphereGeometry(1, 10, 8);
+		const bodyGeo = new SphereGeometry(1, 10, 8);
 		bodyGeo.scale(0.3, 0.22, 0.42);
-		const headGeo = new THREE.SphereGeometry(0.15, 8, 6);
-		const beakGeo = new THREE.ConeGeometry(0.055, 0.16, 6);
+		const headGeo = new SphereGeometry(0.15, 8, 6);
+		const beakGeo = new ConeGeometry(0.055, 0.16, 6);
 		beakGeo.rotateX(Math.PI / 2); // punt naar voren, zoals bij echte eenden
-		const eyeGeo = new THREE.SphereGeometry(0.03, 6, 4);
+		const eyeGeo = new SphereGeometry(0.03, 6, 4);
 		this.geometries.push(bodyGeo, headGeo, beakGeo, eyeGeo);
 		const black = this.track(lit({ color: 0x111111, roughness: 0.4 }));
-		const makeDuck = (bodyHex: number, headHex: number, beakHex: number): THREE.Group => {
+		const makeDuck = (bodyHex: number, headHex: number, beakHex: number): Group => {
 			const bodyMat = this.track(lit({ color: bodyHex, roughness: 0.8 }));
 			const headMat = this.track(lit({ color: headHex, roughness: 0.8 }));
 			const beakMat = this.track(lit({ color: beakHex, roughness: 0.6 }));
-			const d = new THREE.Group();
-			d.add(new THREE.Mesh(bodyGeo, bodyMat));
-			const head = new THREE.Mesh(headGeo, headMat);
+			const d = new Group();
+			d.add(new Mesh(bodyGeo, bodyMat));
+			const head = new Mesh(headGeo, headMat);
 			head.position.set(0, 0.24, 0.3);
 			d.add(head);
-			const beak = new THREE.Mesh(beakGeo, beakMat);
+			const beak = new Mesh(beakGeo, beakMat);
 			beak.position.set(0, 0.22, 0.46);
 			d.add(beak);
 			for (const ex of [-0.07, 0.07]) {
-				const eye = new THREE.Mesh(eyeGeo, black);
+				const eye = new Mesh(eyeGeo, black);
 				eye.position.set(ex, 0.29, 0.39);
 				d.add(eye);
 			}
@@ -380,7 +394,7 @@ export class CityPark {
 		return this.seed / 2147483647;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

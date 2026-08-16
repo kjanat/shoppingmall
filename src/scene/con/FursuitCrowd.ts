@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry } from 'three';
+import { Color, DynamicDrawUsage, Group, InstancedBufferAttribute, InstancedMesh, Matrix4 } from 'three';
 import {
 	CON_BODY,
 	CON_CROWD_COUNT,
@@ -61,7 +62,7 @@ const PARTS: readonly BodyPartId[] = [
 	'tail',
 ];
 
-type Agent = {
+interface Agent {
 	mode: 'walk' | 'dance' | 'idle';
 	phase: number;
 	speed: number;
@@ -77,29 +78,29 @@ type Agent = {
 	species: Species;
 	partner: number;
 	pairSide: number;
-};
+}
 
-type Layer = {
+interface Layer {
 	id: BodyPartId;
-	mesh: THREE.InstancedMesh;
+	mesh: InstancedMesh;
 	bone: Bone;
-	rest: THREE.Matrix4;
-};
+	rest: Matrix4;
+}
 
 /**
  * Suiters as InstancedMeshes (one per body part).
  * Pose on one off-scene skeleton; GPU gets matrices only.
  */
 export class FursuitCrowd {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	private readonly agents: Agent[] = [];
 	private readonly layers: Layer[] = [];
 	private readonly skeleton = makeSkeleton();
 	private readonly boneById: Map<BodyPartId, Bone>;
-	private readonly scratch = new THREE.Matrix4();
-	private readonly speciesMat = new THREE.Matrix4();
-	private readonly earMat = new THREE.Matrix4();
-	private readonly geos: THREE.BufferGeometry[] = [];
+	private readonly scratch = new Matrix4();
+	private readonly speciesMat = new Matrix4();
+	private readonly earMat = new Matrix4();
+	private readonly geos: BufferGeometry[] = [];
 
 	constructor() {
 		this.group.name = 'fursuit_crowd';
@@ -131,10 +132,10 @@ export class FursuitCrowd {
 			const geo = partGeometry(id);
 			this.geos.push(geo);
 			const rest = partRestMatrix(id);
-			const mesh = new THREE.InstancedMesh(geo, white, n);
-			mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+			const mesh = new InstancedMesh(geo, white, n);
+			mesh.instanceMatrix.setUsage(DynamicDrawUsage);
 			mesh.frustumCulled = false;
-			mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
+			mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(n * 3), 3);
 			this.group.add(mesh);
 			this.layers.push({ id, mesh, bone, rest });
 		}
@@ -151,7 +152,7 @@ export class FursuitCrowd {
 			const roll = rand();
 			const inCouple = i < coupleSlots;
 			const lead = inCouple && i % 2 === 0;
-			const partner = !inCouple ? -1 : lead ? i + 1 : i - 1;
+			const partner = inCouple ? (lead ? i + 1 : i - 1) : -1;
 			this.agents.push({
 				mode: roll < 0.4 ? 'walk' : roll < 0.78 ? 'dance' : 'idle',
 				phase: rand() * Math.PI * 2,
@@ -173,7 +174,7 @@ export class FursuitCrowd {
 		for (let i = 0; i < coupleSlots; i += 2) {
 			const a = this.agents[i];
 			const b = this.agents[i + 1];
-			if (!a || !b) continue;
+			if (!(a && b)) continue;
 			b.path = a.path;
 			b.pathI = a.pathI;
 			b.mode = a.mode === 'idle' ? 'walk' : a.mode;
@@ -318,7 +319,7 @@ export class FursuitCrowd {
 	}
 
 	private writeAll(): void {
-		const color = new THREE.Color();
+		const color = new Color();
 		for (let i = 0; i < this.agents.length; i++) {
 			const a = at(this.agents, i);
 			this.poseAgent(a);

@@ -20,7 +20,12 @@ export function almost(a: number, b: number, eps = EPS): boolean {
 	return Math.abs(a - b) <= eps;
 }
 
-export type Rect = { minX: number; maxX: number; minZ: number; maxZ: number };
+export interface Rect {
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+}
 
 export function covers(rect: Rect, x: number, z: number): boolean {
 	return x >= rect.minX && x <= rect.maxX && z >= rect.minZ && z <= rect.maxZ;

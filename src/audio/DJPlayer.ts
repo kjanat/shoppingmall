@@ -8,7 +8,7 @@ import { clamp, clamp01 } from '#/util/math';
 import type { SpatialElement } from './SpatialAudio';
 import { spatial } from './SpatialAudio';
 
-export type Track = {
+interface Track {
 	file: string;
 	title: string;
 	url: string;
@@ -18,8 +18,7 @@ export type Track = {
 	seconds?: number;
 	videoId?: string;
 	sourceUrl?: string;
-};
-
+}
 /** 263 → "4:23" */
 function clock(seconds: number): string {
 	const m = Math.floor(seconds / 60);
@@ -28,18 +27,26 @@ function clock(seconds: number): string {
 }
 
 const PERSIST_KEY = 'mallsim.dj.v1';
+const RE_VOICE_INTRO = /intro_voice|voice/i;
+const DEFAULT_VOLUME = 0.55;
+const MAX_FAIL_STREAK = 3;
+const MIN_PERSISTED_VOLUME = 0.05;
+const SEEK_END_GUARD_SECONDS = 0.5;
+const MIN_DISTANCE_GAIN = 0.02;
+const REQUEST_LOG_LINES = 3;
+const PERSIST_DELAY_MS = 400;
 
 /** Kwadratische afstands-falloff van de DJ-booth: 1/(1+k·d²). Het audio-pad en de fader-compensatie in App delen hem, zodat ze dezelfde vorm volgen. */
-export const BOOTH_FALLOFF_K = 0.012;
+const BOOTH_FALLOFF_K = 0.012;
 
-type PersistState = {
+interface PersistState {
 	file: string;
 	title: string;
 	index: number;
 	time: number;
 	playing: boolean;
 	volume: number;
-};
+}
 
 function loadPersist(): PersistState | null {
 	try {
@@ -59,22 +66,25 @@ function savePersist(s: PersistState): void {
 	}
 }
 
-export class DJPlayer {
-	private audio = new Audio();
+// biome-ignore lint/style/useNamingConvention: leave me alone
+class DJPlayer {
+	private readonly audio = new Audio();
 	private playlist: Track[] = [];
 	private index = 0;
-	playing = false;
+	playing: boolean;
 	nowPlaying = '';
 	onChange: ((info: { title: string; playing: boolean; index: number }) => void) | null = null;
-	private persistTimer: number | null = null;
-	private restored = false;
+	private persistTimer: ReturnType<typeof setTimeout> | null = null;
+	private restored: boolean;
 	/** Consecutive load failures — breaks the error→next→error spiral */
 	private failStreak = 0;
 	/** Binaural booth bus (null until first user gesture attaches it) */
 	private spatialEl: SpatialElement | null = null;
 
 	constructor() {
-		this.audio.volume = 0.55;
+		this.playing = false;
+		this.restored = false;
+		this.audio.volume = DEFAULT_VOLUME;
 		this.audio.preload = 'auto';
 		this.audio.addEventListener('ended', () => {
 			this.failStreak = 0;
@@ -83,7 +93,7 @@ export class DJPlayer {
 		// Skip a dud track, but never spin the whole library: a broken source
 		// fires error → next → error… faster than the ear can follow.
 		this.audio.addEventListener('error', () => {
-			if (this.playlist.length > 1 && ++this.failStreak < 3) this.next();
+			if (this.playlist.length > 1 && ++this.failStreak < MAX_FAIL_STREAK) this.next();
 			else this.playing = false;
 		});
 		this.audio.addEventListener('playing', () => {
@@ -125,16 +135,16 @@ export class DJPlayer {
 		if (!p?.file) return false;
 		await this.refreshPlaylist();
 		// Skip voice intros
-		const music = this.playlist.filter((t) => !/intro_voice|voice/i.test(t.file));
-		const list = music.length ? music : this.playlist;
+		const music = this.playlist.filter((t) => !RE_VOICE_INTRO.test(t.file));
+		const list = music.length > 0 ? music : this.playlist;
 		let idx = list.findIndex((t) => t.file === p.file);
 		if (idx < 0) idx = 0;
 		const stored = list[idx];
 		if (!stored) return false;
 		// Map back to full playlist index
 		const fullIdx = this.playlist.findIndex((t) => t.file === stored.file);
-		this.setVolume(clamp(p.volume ?? 0.55, 0.05, 1));
-		await this.playIndex(fullIdx >= 0 ? fullIdx : 0, p.time ?? 0, p.playing !== false);
+		this.setVolume(clamp(p.volume, MIN_PERSISTED_VOLUME, 1));
+		await this.playIndex(fullIdx >= 0 ? fullIdx : 0, p.time, p.playing !== false);
 		return true;
 	}
 
@@ -142,7 +152,7 @@ export class DJPlayer {
 		try {
 			const r = await fetch('/api/dj/playlist');
 			const data = (await r.json()) as { tracks: Track[] };
-			this.playlist = data.tracks ?? [];
+			this.playlist = data.tracks;
 			return this.playlist;
 		} catch {
 			this.playlist = [];
@@ -155,8 +165,8 @@ export class DJPlayer {
 	}
 
 	async playIndex(i: number, seekTo = 0, autoplay = true): Promise<void> {
-		if (!this.playlist.length) await this.refreshPlaylist();
-		if (!this.playlist.length) return;
+		if (this.playlist.length === 0) await this.refreshPlaylist();
+		if (this.playlist.length === 0) return;
 		this.index = ((i % this.playlist.length) + this.playlist.length) % this.playlist.length;
 		const t = this.playlist[this.index];
 		if (!t) return;
@@ -168,7 +178,8 @@ export class DJPlayer {
 		this.playing = autoplay;
 		const onMeta = () => {
 			if (seekTo > 0 && Number.isFinite(this.audio.duration)) {
-				this.audio.currentTime = Math.min(seekTo, Math.max(0, this.audio.duration - 0.5));
+				const maxSeekTime = Math.max(0, this.audio.duration - SEEK_END_GUARD_SECONDS);
+				this.audio.currentTime = Math.min(seekTo, maxSeekTime);
 			}
 			this.audio.removeEventListener('loadedmetadata', onMeta);
 		};
@@ -185,8 +196,8 @@ export class DJPlayer {
 	}
 
 	async play(): Promise<void> {
-		if (!this.playlist.length) await this.refreshPlaylist();
-		if (!this.playlist.length) return;
+		if (this.playlist.length === 0) await this.refreshPlaylist();
+		if (this.playlist.length === 0) return;
 		if (this.audio.src && !this.audio.ended) {
 			try {
 				await this.audio.play();
@@ -210,19 +221,19 @@ export class DJPlayer {
 
 	toggle(): void {
 		if (this.playing) this.pause();
-		else void this.play();
+		else this.play().catch(() => undefined);
 	}
 
 	next(): void {
-		void this.playIndex(this.index + 1);
+		this.playIndex(this.index + 1).catch(() => undefined);
 	}
 
 	prev(): void {
-		void this.playIndex(this.index - 1);
+		this.playIndex(this.index - 1).catch(() => undefined);
 	}
 
 	/** Door de gebruiker gekozen volume — afstand schaalt hier bovenop. */
-	private baseVolume = 0.55;
+	private baseVolume = DEFAULT_VOLUME;
 	private distanceGain = 1;
 
 	setVolume(v: number): void {
@@ -238,7 +249,7 @@ export class DJPlayer {
 	 * so UI distance still feels right if pose updates lag a frame.
 	 */
 	setDistanceGain(g: number): void {
-		this.distanceGain = clamp(g, 0.02, 1);
+		this.distanceGain = clamp(g, MIN_DISTANCE_GAIN, 1);
 		this.applyVolume();
 	}
 
@@ -280,7 +291,7 @@ export class DJPlayer {
 				};
 			}
 			// Surface yt-dlp / API log tail so booth status is useful
-			const tail = (data.log ?? '').split('\n').filter(Boolean).slice(-3).join(' · ');
+			const tail = (data.log ?? '').split('\n').filter(Boolean).slice(-REQUEST_LOG_LINES).join(' · ');
 			return {
 				ok: false,
 				message: tail || data.error || 'Download mislukt',
@@ -295,7 +306,7 @@ export class DJPlayer {
 		if (!file) return;
 		// throttle writes
 		if (this.persistTimer !== null) return;
-		this.persistTimer = window.setTimeout(() => {
+		this.persistTimer = globalThis.setTimeout(() => {
 			this.persistTimer = null;
 			const f = this.playlist[this.index]?.file;
 			if (!f) return;
@@ -309,7 +320,7 @@ export class DJPlayer {
 				// de booth het weggezakte afstandsvolume op als jouw voorkeur
 				volume: this.baseVolume,
 			});
-		}, 400);
+		}, PERSIST_DELAY_MS);
 	}
 
 	private emit(): void {
@@ -320,3 +331,6 @@ export class DJPlayer {
 		});
 	}
 }
+
+export type { Track };
+export { BOOTH_FALLOFF_K, DJPlayer };

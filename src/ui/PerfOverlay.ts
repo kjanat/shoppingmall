@@ -49,7 +49,7 @@ const ROWS: [id: string, label: string][] = [
 ];
 
 /** What the frame loop hands over once per frame. */
-export type PerfFrame = {
+export interface PerfFrame {
 	/** Unclamped wall time since the previous frame. */
 	frameMs: number;
 	drawCalls: number;
@@ -84,9 +84,11 @@ export type PerfFrame = {
 	dirX: number;
 	dirY: number;
 	dirZ: number;
-};
+}
 
-type DebugRendererInfo = { UNMASKED_RENDERER_WEBGL: number };
+interface DebugRendererInfo {
+	UNMASKED_RENDERER_WEBGL: number;
+}
 
 function debugRendererInfo(value: unknown): DebugRendererInfo | null {
 	if (typeof value !== 'object' || value === null || !('UNMASKED_RENDERER_WEBGL' in value)) return null;
@@ -200,7 +202,8 @@ export class PerfOverlay {
 		this.values.get('gpuApi')?.replaceChildren(renderer.api);
 
 		this.chip.addEventListener('click', () => this.toggle());
-		window.addEventListener('keydown', (e) => {
+		globalThis.addEventListener('keydown', (e) => {
+			if (!(e instanceof KeyboardEvent)) return;
 			const el = e.target;
 			if (el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
 			if (e.key === 'i' || e.key === 'I') this.toggle();

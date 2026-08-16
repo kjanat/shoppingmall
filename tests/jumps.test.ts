@@ -63,7 +63,7 @@ describe('climbing the atrium planter and jumping the balustrade', () => {
 		expect(planter, 'the planter at the void has no basin tier').toBeDefined();
 	});
 
-	if (!planter || !bench) return;
+	if (!(planter && bench)) return;
 
 	test.each([
 		['the deck onto the bench', V1, bench.topY],

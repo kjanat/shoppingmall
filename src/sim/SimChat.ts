@@ -8,7 +8,7 @@
  */
 import { pick } from '#/util/rand';
 
-export type SimPersona = {
+export interface SimPersona {
 	name: string;
 	mood: string;
 	lifeLine: string;
@@ -18,9 +18,12 @@ export type SimPersona = {
 	isKid?: boolean;
 	isBrad?: boolean;
 	isMiss?: boolean;
-};
+}
 
-export type ChatExchange = { a: string; b: string };
+export interface ChatExchange {
+	a: string;
+	b: string;
+}
 
 let inflight = 0;
 const MAX_INFLIGHT = 1;
@@ -87,22 +90,22 @@ export function localBanter(a: SimPersona, b: SimPersona): ChatExchange {
 	const chillA = [
 		`Yo ${bn}, jij ook naar ${a.targetShop.split(' ')[0]}?`,
 		`Voeten op, man. ${Math.round(a.unhappiness)}% done.`,
-		a.isBrad ? 'Kruidvat-run. Meekomen?' : `Sale vibes. Jij?`,
+		a.isBrad ? 'Kruidvat-run. Meekomen?' : 'Sale vibes. Jij?',
 		a.isMiss ? 'Pageant energy. Compliment accepted.' : a.lifeLine.slice(0, 40),
 	];
 	const roastB = [
 		`Hou je bek, ${an}. Jij bent erger.`,
-		`Lol. Kijk in de spiegel, thicc king.`,
-		b.isMiss ? 'Je sash is lelijker dan je attitude.' : `Tenminste ik weet waar ik heen ga.`,
-		`Roast me later. Nu shoppen, loser.`,
+		'Lol. Kijk in de spiegel, thicc king.',
+		b.isMiss ? 'Je sash is lelijker dan je attitude.' : 'Tenminste ik weet waar ik heen ga.',
+		'Roast me later. Nu shoppen, loser.',
 		`${an}… jij botst met alles. Inclusief smaak.`,
-		b.isBrad ? 'Drink je vitamine water ergens anders.' : `Oké drama queen, tot de kassa.`,
+		b.isBrad ? 'Drink je vitamine water ergens anders.' : 'Oké drama queen, tot de kassa.',
 	];
 	const chillB = [
 		`Same energy, ${an}. ${b.targetShop} next.`,
-		`Haha, bijna botsing. Chill.`,
+		'Haha, bijna botsing. Chill.',
 		b.isKid ? 'IJSJE!' : `Unhappy ${Math.round(b.unhappiness)}. Help.`,
-		b.isBrad ? 'Vitamines. Always.' : `Tot bij de loopband.`,
+		b.isBrad ? 'Vitamines. Always.' : 'Tot bij de loopband.',
 	];
 	const poolA = mean ? roastA : chillA;
 	const poolB = mean ? roastB : chillB;

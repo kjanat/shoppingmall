@@ -1,4 +1,17 @@
-import * as THREE from 'three';
+import type { Material, PerspectiveCamera } from 'three';
+import {
+	BoxGeometry,
+	CylinderGeometry,
+	DoubleSide,
+	Euler,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -10,15 +23,15 @@ import { clamp, lerp } from '#/util/math';
  * Space = stijgen, Shift = dalen, omhoog door het atrium-gat = de stad in.
  */
 export class Drone {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	/** Parkeerplek op de begane grond, oost van de fontein */
-	readonly parkPos = new THREE.Vector3(10, 0, 4);
+	readonly parkPos = new Vector3(10, 0, 4);
 	occupied = false;
-	private body = new THREE.Group();
-	private rotors: THREE.Group[] = [];
-	private materials: THREE.Material[] = [];
+	private body = new Group();
+	private rotors: Group[] = [];
+	private materials: Material[] = [];
 	private rotorSpeed = 2;
-	private prevCam = new THREE.Vector3();
+	private prevCam = new Vector3();
 
 	constructor() {
 		this.group.name = 'drone';
@@ -32,11 +45,11 @@ export class Drone {
 	}
 
 	/** Afstand speler → drone (voor de E-hint). */
-	distanceTo(p: THREE.Vector3): number {
+	distanceTo(p: Vector3): number {
 		return this.body.position.distanceTo(p);
 	}
 
-	parkAt(p: THREE.Vector3): void {
+	parkAt(p: Vector3): void {
 		this.occupied = false;
 		this.parkPos.copy(p);
 		this.body.position.set(p.x, p.y + 0.55, p.z);
@@ -49,7 +62,7 @@ export class Drone {
 	}
 
 	/** Tijdens de vlucht: om de camera heen hangen, kantelen met de beweging. */
-	followCamera(cam: THREE.PerspectiveCamera, dt: number): void {
+	followCamera(cam: PerspectiveCamera, dt: number): void {
 		if (!this.occupied) {
 			this.rotorSpeed = lerp(this.rotorSpeed, 2, dt);
 			for (const r of this.rotors) r.rotation.y += this.rotorSpeed * dt;
@@ -61,7 +74,7 @@ export class Drone {
 		this.prevCam.copy(cam.position);
 
 		this.body.position.set(cam.position.x, cam.position.y - 0.35, cam.position.z);
-		const e = new THREE.Euler().setFromQuaternion(cam.quaternion, 'YXZ');
+		const e = new Euler().setFromQuaternion(cam.quaternion, 'YXZ');
 		// +π: de camera kijkt langs −z; zonder de flip hing de rugleuning van het
 		// stoeltje pal vóór je gezicht en keek je tegen de verkeerde kant aan.
 		this.body.rotation.y = e.y + Math.PI;
@@ -93,46 +106,46 @@ export class Drone {
 			metalness: 0.15,
 			transparent: true,
 			opacity: 0.35,
-			side: THREE.DoubleSide,
+			side: DoubleSide,
 		});
 		this.materials.push(glass);
 
 		// Stoel-pod: open bol zodat je er als speler doorheen kunt kijken
-		const pod = new THREE.Mesh(new THREE.SphereGeometry(0.75, 16, 12, 0, Math.PI * 2, Math.PI * 0.35, Math.PI / 2), glass);
+		const pod = new Mesh(new SphereGeometry(0.75, 16, 12, 0, Math.PI * 2, Math.PI * 0.35, Math.PI / 2), glass);
 		pod.position.y = 0.35;
 		this.body.add(pod);
-		const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.55), dark);
+		const seat = new Mesh(new BoxGeometry(0.6, 0.1, 0.55), dark);
 		seat.position.y = -0.15;
 		this.body.add(seat);
-		const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.55, 0.09), dark);
+		const back = new Mesh(new BoxGeometry(0.6, 0.55, 0.09), dark);
 		back.position.set(0, 0.12, -0.3);
 		this.body.add(back);
 
 		// Onderstel-ring + vier armen met rotors
-		const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.07, 8, 20), frame);
+		const ring = new Mesh(new TorusGeometry(0.85, 0.07, 8, 20), frame);
 		ring.rotation.x = Math.PI / 2;
 		ring.position.y = -0.25;
 		this.body.add(ring);
 
-		const bladeGeo = new THREE.BoxGeometry(0.85, 0.02, 0.09);
+		const bladeGeo = new BoxGeometry(0.85, 0.02, 0.09);
 		for (let i = 0; i < 4; i++) {
 			const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-			const arm = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.06, 0.12), frame);
+			const arm = new Mesh(new BoxGeometry(0.95, 0.06, 0.12), frame);
 			arm.position.set(Math.cos(a) * 0.85, -0.05, Math.sin(a) * 0.85);
 			arm.rotation.y = -a;
 			this.body.add(arm);
 
-			const rotor = new THREE.Group();
+			const rotor = new Group();
 			rotor.position.set(Math.cos(a) * 1.3, 0.05, Math.sin(a) * 1.3);
-			const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.1, 8), dark);
+			const hub = new Mesh(new CylinderGeometry(0.06, 0.06, 0.1, 8), dark);
 			rotor.add(hub);
 			for (const b of [0, Math.PI / 2]) {
-				const blade = new THREE.Mesh(bladeGeo, dark);
+				const blade = new Mesh(bladeGeo, dark);
 				blade.rotation.y = b;
 				rotor.add(blade);
 			}
 			// beschermring om de rotor
-			const guard = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.035, 6, 16), frame);
+			const guard = new Mesh(new TorusGeometry(0.5, 0.035, 6, 16), frame);
 			guard.rotation.x = Math.PI / 2;
 			rotor.add(guard);
 			this.body.add(rotor);
@@ -141,10 +154,10 @@ export class Drone {
 
 		// Pootjes
 		for (const side of [-1, 1] as const) {
-			const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.5, 6), dark);
+			const leg = new Mesh(new CylinderGeometry(0.04, 0.05, 0.5, 6), dark);
 			leg.position.set(side * 0.45, -0.5, 0);
 			this.body.add(leg);
-			const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.7, 6), dark);
+			const foot = new Mesh(new CylinderGeometry(0.05, 0.05, 0.7, 6), dark);
 			foot.rotation.x = Math.PI / 2;
 			foot.position.set(side * 0.45, -0.72, 0);
 			this.body.add(foot);
@@ -160,9 +173,9 @@ export class Drone {
 		ctx.textBaseline = 'middle';
 		ctx.fillText('DRONE', 64, 26);
 		const tex = labelTexture(c);
-		const signMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+		const signMat = new MeshBasicMaterial({ map: tex, toneMapped: false });
 		this.materials.push(signMat);
-		const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.2), signMat);
+		const sign = new Mesh(new PlaneGeometry(0.55, 0.2), signMat);
 		sign.position.y = 0.95;
 		this.body.add(sign);
 	}

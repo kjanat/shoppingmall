@@ -605,7 +605,7 @@ export function pointInPlan(shape: PlanShape, x: number, z: number): boolean {
 	for (let i = 0, j = shape.points.length - 1; i < shape.points.length; j = i, i++) {
 		const current = shape.points[i];
 		const previous = shape.points[j];
-		if (!current || !previous) continue;
+		if (!(current && previous)) continue;
 		const crosses = current.z > z !== previous.z > z;
 		if (crosses && x < ((previous.x - current.x) * (z - current.z)) / (previous.z - current.z) + current.x) inside = !inside;
 	}
@@ -980,8 +980,8 @@ function declaredIntrusion(volume: SpatialVolume, target: WorldEntity, depth: nu
  * visibly through the north wall on the floor plan while this validator passed.
  */
 function undeclaredIntrusion(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, volumeB: SpatialVolume): number {
-	if (!boundedByItsShape(volumeA.geometry) || !boundedByItsShape(volumeB.geometry)) return 0;
-	if (!volumeA.blocksMovement || !volumeB.blocksMovement) return 0;
+	if (!(boundedByItsShape(volumeA.geometry) && boundedByItsShape(volumeB.geometry))) return 0;
+	if (!(volumeA.blocksMovement && volumeB.blocksMovement)) return 0;
 	const depth = intrusionDepth(volumeA.geometry, volumeB.geometry);
 	if (depth <= EPSILON) return 0;
 	if (declaredIntrusion(volumeA, b, depth) || declaredIntrusion(volumeB, a, depth)) return 0;
@@ -995,7 +995,7 @@ function undeclaredIntrusion(a: WorldEntity, volumeA: SpatialVolume, b: WorldEnt
  * and `allowsOverlapFrom` lets any two authored fixtures share space on purpose.
  */
 function obstructedSurface(a: SpatialVolume, b: SpatialVolume): boolean {
-	if (!boundedByItsShape(a.geometry) || !boundedByItsShape(b.geometry)) return false;
+	if (!(boundedByItsShape(a.geometry) && boundedByItsShape(b.geometry))) return false;
 	const walkable = a.role === 'walkable' ? a : b.role === 'walkable' ? b : null;
 	if (!walkable) return false;
 	const obstacle = walkable === a ? b : a;
@@ -1051,8 +1051,8 @@ const VISIBLE_SURFACE_ROLES: readonly SpatialRole[] = ['solid', 'walkable', 'sup
  * different question.
  */
 function coplanarTops(a: SpatialVolume, b: SpatialVolume): boolean {
-	if (!boundedByItsShape(a.geometry) || !boundedByItsShape(b.geometry)) return false;
-	if (!VISIBLE_SURFACE_ROLES.includes(a.role) || !VISIBLE_SURFACE_ROLES.includes(b.role)) return false;
+	if (!(boundedByItsShape(a.geometry) && boundedByItsShape(b.geometry))) return false;
+	if (!(VISIBLE_SURFACE_ROLES.includes(a.role) && VISIBLE_SURFACE_ROLES.includes(b.role))) return false;
 	return Math.abs(geometryBounds(a.geometry).maxY - geometryBounds(b.geometry).maxY) <= COPLANAR_TOLERANCE;
 }
 
@@ -1067,10 +1067,10 @@ const OPAQUE_ROLES: readonly SpatialRole[] = ['solid', 'walkable', 'support'];
  * answered by `coveringInStructure`.
  */
 function clutterInStructure(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, volumeB: SpatialVolume): boolean {
-	if (!boundedByItsShape(volumeA.geometry) || !boundedByItsShape(volumeB.geometry)) return false;
+	if (!(boundedByItsShape(volumeA.geometry) && boundedByItsShape(volumeB.geometry))) return false;
 	const clutter = a.placement.class === 'clutter' ? volumeA : b.placement.class === 'clutter' ? volumeB : null;
 	const structure = a.placement.class === 'structure' ? volumeA : b.placement.class === 'structure' ? volumeB : null;
-	if (!clutter || !structure) return false;
+	if (!(clutter && structure)) return false;
 	return OPAQUE_ROLES.includes(clutter.role) && OPAQUE_ROLES.includes(structure.role);
 }
 
@@ -1094,7 +1094,7 @@ function coveringInStructure(
 	b: WorldEntity,
 	volumeB: SpatialVolume,
 ): Readonly<{ covering: VolumeOfEntity; structure: VolumeOfEntity }> | null {
-	if (!boundedByItsShape(volumeA.geometry) || !boundedByItsShape(volumeB.geometry)) return null;
+	if (!(boundedByItsShape(volumeA.geometry) && boundedByItsShape(volumeB.geometry))) return null;
 	const first = { entity: a, volume: volumeA };
 	const second = { entity: b, volume: volumeB };
 	const covering = volumeA.role === 'decorative-covering' ? first : volumeB.role === 'decorative-covering' ? second : null;
@@ -1140,7 +1140,7 @@ function faceOf(bounds: Bounds3, side: CardinalSide): number {
 
 /** The two axes as intervals, so a rule can pick the one it is not measuring along. */
 function acrossInterval(bounds: Bounds3, side: CardinalSide): AxisInterval {
-	return CARDINAL_OUTWARD[side].x !== 0 ? { min: bounds.minZ, max: bounds.maxZ } : { min: bounds.minX, max: bounds.maxX };
+	return CARDINAL_OUTWARD[side].x === 0 ? { min: bounds.minX, max: bounds.maxX } : { min: bounds.minZ, max: bounds.maxZ };
 }
 
 function intervalsMeet(a: AxisInterval, b: AxisInterval): boolean {
@@ -1156,14 +1156,14 @@ function intervalsMeet(a: AxisInterval, b: AxisInterval): boolean {
  */
 function backingGap(shell: Bounds3, side: CardinalSide, entities: readonly WorldEntity[], owner: WorldEntity): number | null {
 	const outward = CARDINAL_OUTWARD[side];
-	const sign = outward.x !== 0 ? outward.x : outward.z;
+	const sign = outward.x === 0 ? outward.z : outward.x;
 	const face = faceOf(shell, side);
 	const across = acrossInterval(shell, side);
 	let nearest: number | null = null;
 	for (const entity of entities) {
 		if (entity.id === owner.id || entity.placement.class !== 'structure') continue;
 		for (const volume of entity.volumes) {
-			if (!OPAQUE_ROLES.includes(volume.role) || !boundedByItsShape(volume.geometry)) continue;
+			if (!(OPAQUE_ROLES.includes(volume.role) && boundedByItsShape(volume.geometry))) continue;
 			const bounds = geometryBounds(volume.geometry);
 			if (bounds.maxY <= shell.minY + EPSILON || bounds.minY >= shell.maxY - EPSILON) continue;
 			if (!intervalsMeet(across, acrossInterval(bounds, side))) continue;
@@ -1348,7 +1348,7 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 			for (const peerId of port.connectsTo) {
 				const peerOwner = portOwners.get(peerId);
 				const peer = peerOwner?.ports.find((candidate) => candidate.id === peerId);
-				if (!peerOwner || !peer?.connectsTo.includes(port.id) || peer.kind !== port.kind) {
+				if (!(peerOwner && peer?.connectsTo.includes(port.id)) || peer.kind !== port.kind) {
 					problems.push({
 						code: 'broken-connection',
 						message: `${entity.id}.${port.id} does not have a reciprocal ${port.kind} connection to ${peerId}`,

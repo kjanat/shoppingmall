@@ -15,8 +15,21 @@ import { stubDocument } from './helpers/stub-dom.ts';
  * belong to it and everything else counts.
  */
 
-type Box = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; who: string };
-type Cast = { name: string; level: LevelId; own: readonly string[]; group: Object3D };
+interface Box {
+	minX: number;
+	maxX: number;
+	minY: number;
+	maxY: number;
+	minZ: number;
+	maxZ: number;
+	who: string;
+}
+interface Cast {
+	name: string;
+	level: LevelId;
+	own: readonly string[];
+	group: Object3D;
+}
 
 function nr(value: number): string {
 	return Number(value.toFixed(3)).toString();

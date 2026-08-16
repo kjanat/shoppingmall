@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import { Group, Sprite, SpriteMaterial, Vector3 } from 'three';
 import { speakLine } from '#/audio/ElevenVoice';
 import { levelAt } from '#/data/levels';
 import type { ShopOwner } from '#/data/shopOwners';
@@ -10,16 +11,16 @@ import type { CollisionWorld } from '#/physics/Collision';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
 import { tagLevelCulled } from '#/util/visibility';
 
-type KeeperSpeech = {
+interface KeeperSpeech {
 	storeId: string;
-	group: THREE.Group;
-	sprite: THREE.Sprite;
-	tex: THREE.CanvasTexture;
+	group: Group;
+	sprite: Sprite;
+	tex: CanvasTexture;
 	ctx: CanvasRenderingContext2D;
 	life: number;
 	/** world position cache */
-	worldPos: THREE.Vector3;
-};
+	worldPos: Vector3;
+}
 
 /**
  * Shopkeepers who actually talk (ElevenLabs) + speech bubbles over the counter.
@@ -34,33 +35,33 @@ export class ShopVoice {
 	private speaking = false;
 	private lastSpeakAt = new Map<string, number>();
 	private greeted = new Set<string>();
-	private materials: THREE.Material[] = [];
+	private materials: Material[] = [];
 
 	/** Call after MallBuilder.build() — find keeper_* groups */
-	bindFromMall(mallGroup: THREE.Object3D): void {
+	bindFromMall(mallGroup: Object3D): void {
 		mallGroup.traverse((obj) => {
-			if (!(obj instanceof THREE.Group)) return;
+			if (!(obj instanceof Group)) return;
 			if (!obj.name.startsWith('keeper_')) return;
 			const storeId = obj.name.replace('keeper_', '');
 			this.attachSpeech(storeId, obj);
 		});
 	}
 
-	private attachSpeech(storeId: string, group: THREE.Group): void {
+	private attachSpeech(storeId: string, group: Group): void {
 		const { canvas: c, ctx } = labelCanvas(400, 100);
 		const tex = labelTexture(c);
-		const mat = new THREE.SpriteMaterial({
+		const mat = new SpriteMaterial({
 			map: tex,
 			transparent: true,
 			depthTest: true,
 			visible: false,
 		});
 		this.materials.push(mat);
-		const sprite = new THREE.Sprite(mat);
+		const sprite = new Sprite(mat);
 		sprite.scale.set(2.8, 0.7, 1);
 		sprite.visible = false;
 		// The bubble's own `visible` is the talk timer's; the level cull gets the anchor.
-		const anchor = new THREE.Group();
+		const anchor = new Group();
 		anchor.position.set(0, 2.55, 0.2);
 		anchor.add(sprite);
 		group.add(anchor);
@@ -72,7 +73,7 @@ export class ShopVoice {
 			tex,
 			ctx,
 			life: 0,
-			worldPos: new THREE.Vector3(),
+			worldPos: new Vector3(),
 		});
 	}
 
@@ -82,14 +83,14 @@ export class ShopVoice {
 				k.life -= dt;
 				if (k.life <= 0) {
 					k.sprite.visible = false;
-					(k.sprite.material as THREE.SpriteMaterial).visible = false;
+					(k.sprite.material as SpriteMaterial).visible = false;
 				}
 			}
 		}
 	}
 
 	/** World position of a store counter (for proximity) */
-	getKeeperWorldPos(storeId: string): THREE.Vector3 | null {
+	getKeeperWorldPos(storeId: string): Vector3 | null {
 		const k = this.keepers.get(storeId);
 		if (!k) return null;
 		k.group.getWorldPosition(k.worldPos);
@@ -97,11 +98,11 @@ export class ShopVoice {
 	}
 
 	/** Distance from player to Youssef / any keeper */
-	distanceTo(storeId: string, player: THREE.Vector3): number {
+	distanceTo(storeId: string, player: Vector3): number {
 		const p = this.getKeeperWorldPos(storeId);
 		if (!p) {
 			const store = STORES.find((s) => s.id === storeId);
-			if (!store) return Infinity;
+			if (!store) return Number.POSITIVE_INFINITY;
 			return Math.hypot(player.x - store.x, player.z - store.z);
 		}
 		return Math.hypot(player.x - p.x, player.z - p.z);
@@ -140,7 +141,7 @@ export class ShopVoice {
 		fitText(ctx, text, { x: 24, y: 38, w: w - 48, h: h - 50 }, { size: 18 });
 		k.tex.needsUpdate = true;
 		k.sprite.visible = true;
-		(k.sprite.material as THREE.SpriteMaterial).visible = true;
+		(k.sprite.material as SpriteMaterial).visible = true;
 		k.life = life;
 	}
 
@@ -185,7 +186,7 @@ export class ShopVoice {
 		this.world = world;
 	}
 
-	private inSight(storeId: string, player: THREE.Vector3): boolean {
+	private inSight(storeId: string, player: Vector3): boolean {
 		const world = this.world;
 		if (!world) return true;
 		const p = this.getKeeperWorldPos(storeId);
@@ -194,7 +195,7 @@ export class ShopVoice {
 	}
 
 	/** First-time walk-up greeting (once per store visit session) */
-	async greetIfNear(storeId: string, player: THREE.Vector3, radius = 5.5): Promise<boolean> {
+	async greetIfNear(storeId: string, player: Vector3, radius = 5.5): Promise<boolean> {
 		if (this.greeted.has(storeId)) return false;
 		if (this.distanceTo(storeId, player) > radius) return false;
 		// Don't greet through the floor
@@ -220,7 +221,7 @@ export class ShopVoice {
 	}
 
 	/** Player pressed E near a shop */
-	async talkNear(player: THREE.Vector3, radius = 6): Promise<ShopOwner | null> {
+	async talkNear(player: Vector3, radius = 6): Promise<ShopOwner | null> {
 		let best: string | null = null;
 		let bestD = radius;
 		for (const id of this.keepers.keys()) {

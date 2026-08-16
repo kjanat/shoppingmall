@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { Mesh as MeshType } from 'three';
 import { MALL_FOOTPRINT } from '#/data/layout';
 import { levelY } from '#/data/levels';
 import { SLAB_SPEC_BY_LEVEL } from '#/data/world';
@@ -18,7 +19,7 @@ import { stubDocument, stubLocalStorage } from './helpers/stub-dom.ts';
 
 stubDocument();
 stubLocalStorage();
-const THREE = await import('three');
+const { Box3, BoxGeometry, Mesh, MeshLambertMaterial, Scene, Vector3 } = await import('three');
 const { SceneBatcher } = await import('#/render/SceneBatcher');
 const { tagZoneSpan, zoneSpanOf } = await import('#/render/ZoneVisibility');
 
@@ -45,14 +46,14 @@ test('the V1 plate keeps V1 through the rounding at the deck line', () => {
  * A borderline case built on purpose: a sign that declares V1 on top of its V0 box, next to an
  * ordinary surface of the same material, which is what the escalator sign is.
  */
-function batchedScene(): { batcher: InstanceType<typeof SceneBatcher>; sign: InstanceType<typeof THREE.Mesh> } {
-	const scene = new THREE.Scene();
-	const material = new THREE.MeshLambertMaterial({ color: 0x808080 });
-	const geometry = new THREE.BoxGeometry(4, 0.2, 4);
-	const floor = new THREE.Mesh(geometry, material);
+function batchedScene(): { batcher: InstanceType<typeof SceneBatcher>; sign: MeshType } {
+	const scene = new Scene();
+	const material = new MeshLambertMaterial({ color: 0x808080 });
+	const geometry = new BoxGeometry(4, 0.2, 4);
+	const floor = new Mesh(geometry, material);
 	floor.position.set(0, 0, 0.5);
 	scene.add(floor);
-	const sign = new THREE.Mesh(geometry, material);
+	const sign = new Mesh(geometry, material);
 	sign.position.set(0, 0, -0.5);
 	tagZoneSpan(sign, zoneBit('mall-v1'));
 	scene.add(sign);
@@ -84,7 +85,7 @@ describe('every batch covers all of its sources', () => {
 	});
 
 	test('no batch mask misses the deck a source box stands on', () => {
-		const box = new THREE.Box3();
+		const box = new Box3();
 		const lost: string[] = [];
 		for (const batch of BATCHES) {
 			for (const source of batch.sources) {
@@ -106,8 +107,8 @@ describe('every batch covers all of its sources', () => {
 	});
 
 	test('every batch sphere holds the boxes of its sources', () => {
-		const box = new THREE.Box3();
-		const corner = new THREE.Vector3();
+		const box = new Box3();
+		const corner = new Vector3();
 		const outside: string[] = [];
 		for (const batch of BATCHES) {
 			if (!batch.sphere) continue;

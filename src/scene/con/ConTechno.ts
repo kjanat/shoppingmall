@@ -19,9 +19,10 @@ export class ConTechno {
 	unlock(): void {
 		if (this.ready) return;
 		this.ready = true;
-		const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-		if (!AC) return;
-		const ctx = new AC();
+		const Ac =
+			globalThis.AudioContext ?? (globalThis as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+		if (!Ac) return;
+		const ctx = new Ac();
 		const master = ctx.createGain();
 		master.gain.value = 0;
 		master.connect(ctx.destination);
@@ -31,7 +32,7 @@ export class ConTechno {
 	}
 
 	update(viewer: Vector3): void {
-		if (!this.ctx || !this.master) return;
+		if (!(this.ctx && this.master)) return;
 		if (this.ctx.state === 'suspended') void this.ctx.resume();
 
 		const now = this.ctx.currentTime;
@@ -70,7 +71,7 @@ export class ConTechno {
 	}
 
 	private blip(t0: number, freq: number, dur: number, type: OscillatorType, gain: number, drop: boolean): void {
-		if (!this.ctx || !this.master) return;
+		if (!(this.ctx && this.master)) return;
 		const osc = this.ctx.createOscillator();
 		const g = this.ctx.createGain();
 		osc.type = type;

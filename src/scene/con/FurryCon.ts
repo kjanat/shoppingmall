@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { PerspectiveCamera, Vector3 } from 'three';
+import { Group } from 'three';
 import type { CollisionWorld } from '#/physics/Collision';
 import type { LightPool } from '#/render/LightPool';
 import { ConAdult } from '#/scene/con/ConAdult';
@@ -12,7 +13,7 @@ import { disposeFurMats } from '#/scene/con/FursuitKit';
  * Prairie Fur Con — venue + crowd + play hooks + adult + techno.
  */
 export class FurryCon {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
 	private readonly venue: ConVenue;
 	private readonly crowd: FursuitCrowd;
@@ -37,39 +38,39 @@ export class FurryCon {
 		this.group.add(this.adult.doorSign);
 	}
 
-	get plazaSpot(): THREE.Vector3 {
+	get plazaSpot(): Vector3 {
 		return this.venue.plazaSpot;
 	}
-	get dealersSpot(): THREE.Vector3 {
+	get dealersSpot(): Vector3 {
 		return this.venue.dealersSpot;
 	}
-	get stageSpot(): THREE.Vector3 {
+	get stageSpot(): Vector3 {
 		return this.venue.stageSpot;
 	}
-	get filmCam(): THREE.PerspectiveCamera {
+	get filmCam(): PerspectiveCamera {
 		return this.adult.filmCam;
 	}
 	get filming(): boolean {
 		return this.adult.filming;
 	}
-	get joinAnchor(): THREE.Vector3 | null {
+	get joinAnchor(): Vector3 | null {
 		return this.adult.joinAnchor ?? this.play.joinAnchor;
 	}
 	get ageModalOpen(): boolean {
 		return this.adult.ageModalOpen;
 	}
 
-	onLot(viewer: THREE.Vector3): boolean {
+	onLot(viewer: Vector3): boolean {
 		return this.play.onLot(viewer);
 	}
 
-	activityHint(viewer: THREE.Vector3): string | null {
+	activityHint(viewer: Vector3): string | null {
 		const adult = this.adult.nearestScene(viewer);
 		if (adult) return this.adult.filming ? 'F · stop film / E join' : 'E · join scene · F film (studio)';
 		return this.play.activityHint(viewer);
 	}
 
-	update(dt: number, t: number, viewer: THREE.Vector3): void {
+	update(dt: number, t: number, viewer: Vector3): void {
 		this.venue.update(t);
 		this.crowd.update(dt, t);
 		this.adult.update(dt, viewer);
@@ -90,23 +91,23 @@ export class FurryCon {
 	}
 
 	/** True if E would do something at the con (SFW or adult). */
-	canInteract(viewer: THREE.Vector3): boolean {
+	canInteract(viewer: Vector3): boolean {
 		return this.play.inRange(viewer) || this.adult.nearestScene(viewer);
 	}
 
-	nearestScene(viewer: THREE.Vector3): object | null {
+	nearestScene(viewer: Vector3): object | null {
 		return this.adult.nearestScene(viewer) ? this.adult : null;
 	}
 
 	/** Primary E action: play spots first, then adult join. */
-	tryInteract(viewer: THREE.Vector3): ConPlayResult | null {
+	tryInteract(viewer: Vector3): ConPlayResult | null {
 		if (this.adult.tryJoin(viewer)) {
 			return { status: 'Joined scene · Esc to leave (+3)', scoreDelta: 3 };
 		}
 		return this.play.tryUse(viewer);
 	}
 
-	tryJoin(viewer: THREE.Vector3): boolean {
+	tryJoin(viewer: Vector3): boolean {
 		return this.adult.tryJoin(viewer);
 	}
 
@@ -115,7 +116,7 @@ export class FurryCon {
 		return this.adult.tryLeave();
 	}
 
-	toggleFilm(viewer: THREE.Vector3): boolean {
+	toggleFilm(viewer: Vector3): boolean {
 		return this.adult.toggleFilm(viewer);
 	}
 

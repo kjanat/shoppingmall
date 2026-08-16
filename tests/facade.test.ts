@@ -46,7 +46,12 @@ const MARGIN = 1e-6;
 /** How far the drawn ground may sit under the surface you walk on before you can see it. */
 const GROUND_SLACK = 0.1;
 
-type Rect = { minX: number; maxX: number; minZ: number; maxZ: number };
+interface Rect {
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+}
 
 function covers(rect: Rect, x: number, z: number): boolean {
 	return x >= rect.minX && x <= rect.maxX && z >= rect.minZ && z <= rect.maxZ;
@@ -107,7 +112,12 @@ describe('the skin of each building', () => {
 function skinOf(id: string): Rect | null {
 	const own = WALLS.filter((wall) => buildingOf(wall).id === id);
 	if (own.length === 0) return null;
-	const measured: Rect = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+	const measured: Rect = {
+		minX: Number.POSITIVE_INFINITY,
+		maxX: Number.NEGATIVE_INFINITY,
+		minZ: Number.POSITIVE_INFINITY,
+		maxZ: Number.NEGATIVE_INFINITY,
+	};
 	for (const wall of own) {
 		for (const volume of wall.volumes) {
 			const box = geometryBounds(volume.geometry);
@@ -125,7 +135,7 @@ describe.each(ZONE_ENCLOSURES.map((building) => building.id))('the declared enve
 	const skin = skinOf(id);
 
 	test('is the envelope its wall cabinets actually build', () => {
-		if (!building || !skin) return;
+		if (!(building && skin)) return;
 		for (const [axis, declared, built] of [
 			['minX', building.envelope.minX, skin.minX],
 			['maxX', building.envelope.maxX, skin.maxX],
@@ -163,7 +173,7 @@ describe('what sticks out through a facade', () => {
 		const skin = skinOf(buildingOf(entity).id);
 		if (!skin) continue;
 		for (const volume of entity.volumes) {
-			if (!volume.blocksMovement && !BUILT.includes(volume.role)) continue;
+			if (!(volume.blocksMovement || BUILT.includes(volume.role))) continue;
 			const box = geometryBounds(volume.geometry);
 			const out: Record<CardinalSide, number> = {
 				west: skin.minX - box.minX,
@@ -210,7 +220,7 @@ describe('what sticks out through a facade', () => {
 function wallFaces(side: CardinalSide): readonly number[] {
 	const outward = CARDINAL_OUTWARD[side];
 	return MALL_WALL_SPECS.filter((wall) => wall.side === side).map((wall) =>
-		outward.x !== 0 ? wall.position.x + outward.x * half(wall.size.width) : wall.position.z + outward.z * half(wall.size.depth),
+		outward.x === 0 ? wall.position.z + outward.z * half(wall.size.depth) : wall.position.x + outward.x * half(wall.size.width),
 	);
 }
 

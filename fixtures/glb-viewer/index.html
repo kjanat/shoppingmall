@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>motor: origineel vs gecomprimeerd</title>
+<style>
+	body {
+		margin: 0;
+		background: rgb(90 94 102);
+	}
+	#err {
+		position: fixed;
+		top: 8px;
+		left: 8px;
+		color: rgb(255 128 128);
+		font: 14px monospace;
+		white-space: pre;
+	}
+	.tag {
+		position: fixed;
+		bottom: 10px;
+		color: rgb(232 232 232);
+		font: 700 16px monospace;
+	}
+</style>
+<div id="err"></div>
+<div class="tag" style="left: 18%">ORIGINEEL</div>
+<div class="tag" style="right: 14%">GECOMPRIMEERD</div>
+<script type="importmap">
+{
+	"imports": {
+		"three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+		"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+	}
+}
+</script>
+<script type="module">
+	import {
+		ACESFilmicToneMapping,
+		Color,
+		DirectionalLight,
+		HemisphereLight,
+		Mesh,
+		MeshStandardMaterial,
+		PerspectiveCamera,
+		PlaneGeometry,
+		Scene,
+		WebGLRenderer,
+	} from 'three';
+	import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+	import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+	const CONFIG = {
+		achtergrond: 0x5a5e66,
+		grond: { kleur: 0x43464c, ruwheid: 0.95, maat: 30 },
+		camera: {
+			kijkhoek: 45,
+			nabij: 0.05,
+			ver: 60,
+			overzicht: {
+				stand: { x: 0.4, y: 1.5, z: 4.6 },
+				doel: { x: 0, y: 0.7, z: 0 },
+				draai: 0.55,
+				offset: 1.35,
+			},
+			zoom: {
+				stand: { x: 0.9, y: 0.65, z: 2.1 },
+				doel: { x: 0, y: 0.35, z: 0 },
+				draai: -0.5,
+				offset: 0.85,
+			},
+		},
+		hemel: { lucht: 0xdfe8ff, grond: 0x3a3a3a, sterkte: 1.1 },
+		key: { kleur: 0xffffff, sterkte: 2.2, stand: { x: 3, y: 4, z: 3 } },
+		rand: { kleur: 0xfff0d8, sterkte: 0.8, stand: { x: -2, y: 2.5, z: -3 } },
+	};
+
+	const blik = new URLSearchParams(location.search).has('zoom')
+		? CONFIG.camera.zoom
+		: CONFIG.camera.overzicht;
+
+	const renderer = new WebGLRenderer({ antialias: true });
+	renderer.setSize(innerWidth, innerHeight);
+	renderer.toneMapping = ACESFilmicToneMapping;
+	document.body.appendChild(renderer.domElement);
+
+	const scene = new Scene();
+	scene.background = new Color(CONFIG.achtergrond);
+	const camera = new PerspectiveCamera(
+		CONFIG.camera.kijkhoek,
+		innerWidth / innerHeight,
+		CONFIG.camera.nabij,
+		CONFIG.camera.ver,
+	);
+	camera.position.set(blik.stand.x, blik.stand.y, blik.stand.z);
+	camera.lookAt(blik.doel.x, blik.doel.y, blik.doel.z);
+
+	scene.add(
+		new HemisphereLight(
+			CONFIG.hemel.lucht,
+			CONFIG.hemel.grond,
+			CONFIG.hemel.sterkte,
+		),
+	);
+	const key = new DirectionalLight(CONFIG.key.kleur, CONFIG.key.sterkte);
+	key.position.set(CONFIG.key.stand.x, CONFIG.key.stand.y, CONFIG.key.stand.z);
+	scene.add(key);
+	const rand = new DirectionalLight(CONFIG.rand.kleur, CONFIG.rand.sterkte);
+	rand.position.set(
+		CONFIG.rand.stand.x,
+		CONFIG.rand.stand.y,
+		CONFIG.rand.stand.z,
+	);
+	scene.add(rand);
+
+	const grond = new Mesh(
+		new PlaneGeometry(CONFIG.grond.maat, CONFIG.grond.maat),
+		new MeshStandardMaterial({
+			color: CONFIG.grond.kleur,
+			roughness: CONFIG.grond.ruwheid,
+		}),
+	);
+	grond.rotation.x = -Math.PI / 2;
+	scene.add(grond);
+
+	const loader = new GLTFLoader();
+	loader.setMeshoptDecoder(MeshoptDecoder);
+
+	async function zet(url, x) {
+		const gltf = await loader.loadAsync(url);
+		gltf.scene.position.x = x;
+		gltf.scene.rotation.y = blik.draai;
+		scene.add(gltf.scene);
+	}
+
+	try {
+		await zet('/orig.glb', -blik.offset);
+		await zet('/comp.glb', blik.offset);
+		renderer.render(scene, camera);
+		globalThis.__klaar = true;
+	} catch (fout) {
+		document.querySelector('#err').textContent = String(fout?.stack ?? fout);
+		globalThis.__klaar = 'fout';
+	}
+</script>

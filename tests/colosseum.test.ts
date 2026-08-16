@@ -24,7 +24,7 @@ const RING_BOXES = 24;
 const HEART = 1;
 
 stubDocument();
-const THREE = await import('three');
+const { Raycaster, Vector3 } = await import('three');
 const { CityColosseum } = await import('#/scene/city/CityColosseum');
 const { COLOSSEUM_TRANSPORT_STOPS, ColosseumTransport } = await import('#/scene/city/ColosseumTransport');
 
@@ -104,8 +104,8 @@ describe('the northern gate', () => {
  */
 describe('the column to the sky is open', () => {
 	structure.group.updateMatrixWorld(true);
-	const up = new THREE.Vector3(0, 1, 0);
-	const ray = new THREE.Raycaster();
+	const up = new Vector3(0, 1, 0);
+	const ray = new Raycaster();
 	ray.near = 0;
 	ray.far = wallHeight + 5;
 
@@ -116,7 +116,7 @@ describe('the column to the sky is open', () => {
 		[CX, CZ + half(arenaRadiusZ)],
 		[CX, CZ - half(arenaRadiusZ)],
 	])('over the arena at (%d, %d)', (x, z) => {
-		ray.set(new THREE.Vector3(x, 1, z), up);
+		ray.set(new Vector3(x, 1, z), up);
 		const lid = ray.intersectObject(structure.group, true).find((hit) => hit.point.y < wallHeight - 0.01);
 		expect(
 			lid,
@@ -138,9 +138,9 @@ describe('the Colosseum Express taxis a passenger between its stops', () => {
 
 	test('boards, carries, refuses a moving exit, and releases at the destination', () => {
 		const transport = new ColosseumTransport();
-		const passenger = new THREE.Vector3(COLOSSEUM_TRANSPORT_STOPS.mall.x, CITY_GROUND_Y, COLOSSEUM_TRANSPORT_STOPS.mall.z);
-		const seat = new THREE.Vector3();
-		const exit = new THREE.Vector3();
+		const passenger = new Vector3(COLOSSEUM_TRANSPORT_STOPS.mall.x, CITY_GROUND_Y, COLOSSEUM_TRANSPORT_STOPS.mall.z);
+		const seat = new Vector3();
+		const exit = new Vector3();
 
 		expect(transport.currentStop).toBe('mall');
 		expect(transport.isBoardable(passenger)).toBeTrue();

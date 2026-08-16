@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material } from 'three';
+import { CapsuleGeometry, ConeGeometry, Group, Matrix4, Mesh, Object3D, SphereGeometry, Vector3 } from 'three';
 import { CON_BODY } from '#/data/conPlan';
 import { lit } from '#/render/material';
 
@@ -53,11 +54,11 @@ export type BodyPartId =
 
 export type FurChannel = 'fur' | 'belly' | 'cloth' | 'dark' | 'eye' | 'nose';
 
-export type Bone = {
+export interface Bone {
 	id: BodyPartId;
-	node: THREE.Object3D;
+	node: Object3D;
 	channel: FurChannel;
-};
+}
 
 /** Per-species head / tail / ear read so a fox is not a wolf with longer ears. */
 export type SpeciesLook = Readonly<{
@@ -172,23 +173,16 @@ export const SPECIES_LOOK: Readonly<Record<Species, SpeciesLook>> = {
  * Pose skeleton for matrix math. Never added to the scene.
  * Head bits parent under skull so one yaw moves the whole face.
  */
-export function makeSkeleton(): { root: THREE.Object3D; hips: THREE.Object3D; bones: readonly Bone[] } {
-	const root = new THREE.Object3D();
-	const hips = new THREE.Object3D();
+export function makeSkeleton(): { root: Object3D; hips: Object3D; bones: readonly Bone[] } {
+	const root = new Object3D();
+	const hips = new Object3D();
 	hips.name = 'hips';
 	hips.position.y = 0.92 * U;
 	root.add(hips);
 
 	const bones: Bone[] = [];
-	const add = (
-		id: BodyPartId,
-		parent: THREE.Object3D,
-		x: number,
-		y: number,
-		z: number,
-		channel: FurChannel = 'fur',
-	): THREE.Object3D => {
-		const node = new THREE.Object3D();
+	const add = (id: BodyPartId, parent: Object3D, x: number, y: number, z: number, channel: FurChannel = 'fur'): Object3D => {
+		const node = new Object3D();
 		node.name = id;
 		node.position.set(x * U, y * U, z * U);
 		parent.add(node);
@@ -227,141 +221,141 @@ export function makeSkeleton(): { root: THREE.Object3D; hips: THREE.Object3D; bo
 	return { root, hips, bones };
 }
 
-export function partGeometry(id: BodyPartId): THREE.BufferGeometry {
+export function partGeometry(id: BodyPartId): BufferGeometry {
 	switch (id) {
 		case 'pelvis':
-			return new THREE.SphereGeometry(0.26 * U, 10, 8);
+			return new SphereGeometry(0.26 * U, 10, 8);
 		case 'waist':
-			return new THREE.SphereGeometry(0.17 * U, 8, 6);
+			return new SphereGeometry(0.17 * U, 8, 6);
 		case 'chest':
-			return new THREE.SphereGeometry(0.24 * U, 10, 8);
+			return new SphereGeometry(0.24 * U, 10, 8);
 		case 'belly':
-			return new THREE.SphereGeometry(0.14 * U, 8, 6);
+			return new SphereGeometry(0.14 * U, 8, 6);
 		case 'top':
-			return new THREE.SphereGeometry(0.2 * U, 8, 6);
+			return new SphereGeometry(0.2 * U, 8, 6);
 		case 'thighL':
 		case 'thighR':
-			return new THREE.CapsuleGeometry(0.14 * U, 0.34 * U, 4, 8);
+			return new CapsuleGeometry(0.14 * U, 0.34 * U, 4, 8);
 		case 'shinL':
 		case 'shinR':
-			return new THREE.CapsuleGeometry(0.095 * U, 0.32 * U, 4, 8);
+			return new CapsuleGeometry(0.095 * U, 0.32 * U, 4, 8);
 		case 'footL':
 		case 'footR':
-			return new THREE.SphereGeometry(0.11 * U, 8, 6);
+			return new SphereGeometry(0.11 * U, 8, 6);
 		case 'armL':
 		case 'armR':
-			return new THREE.CapsuleGeometry(0.075 * U, 0.4 * U, 4, 8);
+			return new CapsuleGeometry(0.075 * U, 0.4 * U, 4, 8);
 		case 'handL':
 		case 'handR':
-			return new THREE.SphereGeometry(0.09 * U, 8, 6);
+			return new SphereGeometry(0.09 * U, 8, 6);
 		case 'skull':
-			return new THREE.SphereGeometry(0.2 * U, 12, 10);
+			return new SphereGeometry(0.2 * U, 12, 10);
 		case 'snout':
-			return new THREE.CapsuleGeometry(0.09 * U, 0.16 * U, 4, 8);
+			return new CapsuleGeometry(0.09 * U, 0.16 * U, 4, 8);
 		case 'nose':
-			return new THREE.SphereGeometry(0.045 * U, 8, 6);
+			return new SphereGeometry(0.045 * U, 8, 6);
 		case 'eyeL':
 		case 'eyeR':
-			return new THREE.SphereGeometry(0.038 * U, 8, 6);
+			return new SphereGeometry(0.038 * U, 8, 6);
 		case 'earL':
 		case 'earR':
-			return new THREE.ConeGeometry(0.09 * U, 0.22 * U, 7);
+			return new ConeGeometry(0.09 * U, 0.22 * U, 7);
 		case 'tail':
-			return new THREE.CapsuleGeometry(0.075 * U, 0.55 * U, 4, 8);
+			return new CapsuleGeometry(0.075 * U, 0.55 * U, 4, 8);
 	}
 }
 
-export function partRestScale(id: BodyPartId): THREE.Vector3 {
+export function partRestScale(id: BodyPartId): Vector3 {
 	switch (id) {
 		case 'pelvis':
-			return new THREE.Vector3(1.45, 0.9, 1.25);
+			return new Vector3(1.45, 0.9, 1.25);
 		case 'waist':
-			return new THREE.Vector3(1.1, 1.15, 0.95);
+			return new Vector3(1.1, 1.15, 0.95);
 		case 'chest':
-			return new THREE.Vector3(1.55, 1.15, 1.2);
+			return new Vector3(1.55, 1.15, 1.2);
 		case 'belly':
-			return new THREE.Vector3(1.35, 1.5, 0.85);
+			return new Vector3(1.35, 1.5, 0.85);
 		case 'top':
-			return new THREE.Vector3(1.55, 0.65, 1.2);
+			return new Vector3(1.55, 0.65, 1.2);
 		case 'footL':
 		case 'footR':
-			return new THREE.Vector3(1.15, 0.55, 1.85);
+			return new Vector3(1.15, 0.55, 1.85);
 		case 'handL':
 		case 'handR':
-			return new THREE.Vector3(1.2, 0.85, 1.35);
+			return new Vector3(1.2, 0.85, 1.35);
 		case 'skull':
-			return new THREE.Vector3(1.15, 1.1, 1.2);
+			return new Vector3(1.15, 1.1, 1.2);
 		case 'snout':
-			return new THREE.Vector3(0.95, 0.85, 1.65);
+			return new Vector3(0.95, 0.85, 1.65);
 		case 'nose':
-			return new THREE.Vector3(1.1, 0.85, 1.3);
+			return new Vector3(1.1, 0.85, 1.3);
 		case 'eyeL':
 		case 'eyeR':
-			return new THREE.Vector3(1, 1.15, 0.7);
+			return new Vector3(1, 1.15, 0.7);
 		case 'earL':
 		case 'earR':
-			return new THREE.Vector3(1, 1.2, 0.7);
+			return new Vector3(1, 1.2, 0.7);
 		case 'tail':
-			return new THREE.Vector3(1.1, 1.1, 1.15);
+			return new Vector3(1.1, 1.1, 1.15);
 		default:
-			return new THREE.Vector3(1, 1, 1);
+			return new Vector3(1, 1, 1);
 	}
 }
 
-export function partRestOffset(id: BodyPartId): THREE.Vector3 {
+export function partRestOffset(id: BodyPartId): Vector3 {
 	switch (id) {
 		case 'thighL':
 		case 'thighR':
-			return new THREE.Vector3(0, -0.22 * U, 0);
+			return new Vector3(0, -0.22 * U, 0);
 		case 'shinL':
 		case 'shinR':
-			return new THREE.Vector3(0, -0.2 * U, 0.02 * U);
+			return new Vector3(0, -0.2 * U, 0.02 * U);
 		case 'armL':
 		case 'armR':
-			return new THREE.Vector3(0, -0.18 * U, 0);
+			return new Vector3(0, -0.18 * U, 0);
 		case 'snout':
-			return new THREE.Vector3(0, 0, 0.06 * U);
+			return new Vector3(0, 0, 0.06 * U);
 		case 'tail':
-			return new THREE.Vector3(0, 0, -0.12 * U);
+			return new Vector3(0, 0, -0.12 * U);
 		default:
-			return new THREE.Vector3(0, 0, 0);
+			return new Vector3(0, 0, 0);
 	}
 }
 
 /** Rest pose matrix for a part (shared), before species multiply. */
-export function partRestMatrix(id: BodyPartId): THREE.Matrix4 {
+export function partRestMatrix(id: BodyPartId): Matrix4 {
 	const s = partRestScale(id);
 	const o = partRestOffset(id);
-	const m = new THREE.Matrix4().makeTranslation(o.x, o.y, o.z).multiply(new THREE.Matrix4().makeScale(s.x, s.y, s.z));
-	if (id === 'tail') m.multiply(new THREE.Matrix4().makeRotationX(0.95));
-	if (id === 'armL') m.multiply(new THREE.Matrix4().makeRotationZ(-0.3));
-	if (id === 'armR') m.multiply(new THREE.Matrix4().makeRotationZ(0.3));
-	if (id === 'snout') m.multiply(new THREE.Matrix4().makeRotationX(1.15));
-	if (id === 'earL') m.multiply(new THREE.Matrix4().makeRotationZ(0.2));
-	if (id === 'earR') m.multiply(new THREE.Matrix4().makeRotationZ(-0.2));
+	const m = new Matrix4().makeTranslation(o.x, o.y, o.z).multiply(new Matrix4().makeScale(s.x, s.y, s.z));
+	if (id === 'tail') m.multiply(new Matrix4().makeRotationX(0.95));
+	if (id === 'armL') m.multiply(new Matrix4().makeRotationZ(-0.3));
+	if (id === 'armR') m.multiply(new Matrix4().makeRotationZ(0.3));
+	if (id === 'snout') m.multiply(new Matrix4().makeRotationX(1.15));
+	if (id === 'earL') m.multiply(new Matrix4().makeRotationZ(0.2));
+	if (id === 'earR') m.multiply(new Matrix4().makeRotationZ(-0.2));
 	return m;
 }
 
 /** Extra scale/offset for species identity on head & tail. */
-export function speciesPartScale(species: Species, id: BodyPartId): THREE.Vector3 {
+export function speciesPartScale(species: Species, id: BodyPartId): Vector3 {
 	const L = SPECIES_LOOK[species];
 	switch (id) {
 		case 'skull':
-			return new THREE.Vector3(L.skull, L.skull, L.skull);
+			return new Vector3(L.skull, L.skull, L.skull);
 		case 'snout':
-			return new THREE.Vector3(L.snoutW, L.snoutW * 0.9, L.snoutL);
+			return new Vector3(L.snoutW, L.snoutW * 0.9, L.snoutL);
 		case 'nose':
-			return new THREE.Vector3(L.nose, L.nose * 0.85, L.nose * 1.15);
+			return new Vector3(L.nose, L.nose * 0.85, L.nose * 1.15);
 		case 'earL':
 		case 'earR':
-			return new THREE.Vector3(L.earW, L.earH, L.earD);
+			return new Vector3(L.earW, L.earH, L.earD);
 		case 'tail':
-			return new THREE.Vector3(L.tailW, L.tailW, L.tailL);
+			return new Vector3(L.tailW, L.tailW, L.tailL);
 		case 'eyeL':
 		case 'eyeR':
-			return species === 'protogen' ? new THREE.Vector3(1.35, 0.7, 0.55) : new THREE.Vector3(1, 1, 1);
+			return species === 'protogen' ? new Vector3(1.35, 0.7, 0.55) : new Vector3(1, 1, 1);
 		default:
-			return new THREE.Vector3(1, 1, 1);
+			return new Vector3(1, 1, 1);
 	}
 }
 
@@ -386,9 +380,9 @@ export function channelColor(channel: FurChannel, fur: number, belly: number, cl
 	}
 }
 
-const litCache = new Map<number, THREE.Material>();
+const litCache = new Map<number, Material>();
 
-export function furMat(color: number, rough = 0.88): THREE.Material {
+export function furMat(color: number, rough = 0.88): Material {
 	const key = (color >>> 0) ^ (Math.round(rough * 50) << 24);
 	const hit = litCache.get(key);
 	if (hit) return hit;
@@ -412,8 +406,8 @@ export function buildHeroSuit(
 	cloth: number,
 	rand: () => number,
 	opts?: { male?: boolean },
-): THREE.Group {
-	const root = new THREE.Group();
+): Group {
+	const root = new Group();
 	const skin = furMat(fur);
 	const bellyM = furMat(belly);
 	const clothM = furMat(cloth);
@@ -422,12 +416,12 @@ export function buildHeroSuit(
 	const noseM = furMat(0x1a1014, 0.45);
 	const look = SPECIES_LOOK[species];
 
-	const hips = new THREE.Group();
+	const hips = new Group();
 	hips.name = 'hips';
 	hips.position.y = 0.92 * U;
 	root.add(hips);
 
-	const matOf = (ch: FurChannel): THREE.Material => {
+	const matOf = (ch: FurChannel): Material => {
 		switch (ch) {
 			case 'belly':
 				return bellyM;
@@ -444,9 +438,9 @@ export function buildHeroSuit(
 		}
 	};
 
-	const addPart = (id: BodyPartId, parent: THREE.Object3D, x: number, y: number, z: number, channel: FurChannel) => {
+	const addPart = (id: BodyPartId, parent: Object3D, x: number, y: number, z: number, channel: FurChannel) => {
 		const geo = partGeometry(id);
-		const mesh = new THREE.Mesh(geo, matOf(channel));
+		const mesh = new Mesh(geo, matOf(channel));
 		const s = partRestScale(id);
 		const o = partRestOffset(id);
 		const sp = speciesPartScale(species, id);
@@ -468,7 +462,7 @@ export function buildHeroSuit(
 	addPart('belly', hips, 0, 0.32, 0.14, 'belly');
 	addPart('top', hips, 0, 0.5, 0.02, 'cloth');
 
-	const head = new THREE.Group();
+	const head = new Group();
 	head.position.set(0, 0.98 * U, 0.02 * U);
 	hips.add(head);
 	addPart('skull', head, 0, 0, 0, 'fur');
@@ -480,13 +474,13 @@ export function buildHeroSuit(
 	addPart('earR', head, 0.13 * look.earSpread, 0.18, -0.04 + look.earZ, 'fur');
 
 	for (const sx of [-1, 1] as const) {
-		const leg = new THREE.Group();
+		const leg = new Group();
 		leg.position.set(sx * 0.15 * U, 0, 0);
 		hips.add(leg);
 		addPart(sx < 0 ? 'thighL' : 'thighR', leg, 0, 0, 0, 'fur');
 		addPart(sx < 0 ? 'shinL' : 'shinR', leg, 0, -0.34, 0.04, 'fur');
 		addPart(sx < 0 ? 'footL' : 'footR', leg, 0, -0.7, 0.14, 'dark');
-		const arm = new THREE.Group();
+		const arm = new Group();
 		arm.position.set(sx * 0.34 * U, 0.48 * U, 0);
 		hips.add(arm);
 		addPart(sx < 0 ? 'armL' : 'armR', arm, 0, 0, 0, 'fur');
@@ -495,12 +489,12 @@ export function buildHeroSuit(
 	addPart('tail', hips, 0, 0.08, -0.32, 'fur');
 
 	if (opts?.male) {
-		const shaft = new THREE.Mesh(new THREE.CapsuleGeometry(0.055 * U, 0.32 * U, 4, 8), furMat(0xf0b898, 0.55));
+		const shaft = new Mesh(new CapsuleGeometry(0.055 * U, 0.32 * U, 4, 8), furMat(0xf0b898, 0.55));
 		shaft.name = 'shaft';
 		shaft.position.set(0, -0.06 * U, 0.26 * U);
 		shaft.rotation.x = -1.15;
 		hips.add(shaft);
-		const balls = new THREE.Mesh(new THREE.SphereGeometry(0.07 * U, 8, 6), furMat(0xe8a878, 0.7));
+		const balls = new Mesh(new SphereGeometry(0.07 * U, 8, 6), furMat(0xe8a878, 0.7));
 		balls.scale.set(1.55, 0.95, 1.15);
 		balls.position.set(0, -0.15 * U, 0.16 * U);
 		hips.add(balls);

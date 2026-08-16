@@ -12,7 +12,11 @@ import { join, resolve } from 'node:path';
 const ROOT = resolve(import.meta.dir, '..');
 const DIRS = ['scripts', 'src', 'server', 'tests'];
 
-type SourceFile = { path: string; shebang: boolean; executable: boolean };
+interface SourceFile {
+	path: string;
+	shebang: boolean;
+	executable: boolean;
+}
 
 async function sourceFiles(): Promise<SourceFile[]> {
 	const out: SourceFile[] = [];

@@ -1,11 +1,12 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import { CylinderGeometry, DoubleSide, Group, Mesh, PlaneGeometry, SphereGeometry } from 'three';
 import { lit } from '#/render/material';
 
 /** Florida / California mall energy: palms everywhere. */
 export class PalmForest {
-	readonly group = new THREE.Group();
-	private materials: THREE.Material[] = [];
-	private sway: { leaves: THREE.Group; phase: number }[] = [];
+	readonly group = new Group();
+	private materials: Material[] = [];
+	private sway: { leaves: Group; phase: number }[] = [];
 
 	constructor() {
 		this.group.name = 'palms';
@@ -67,30 +68,24 @@ export class PalmForest {
 		}
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
 	private plant(x: number, y: number, z: number, scale: number, phase: number): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		g.position.set(x, y, z);
 		g.scale.setScalar(scale);
 		g.rotation.y = phase;
 
 		// Pot
-		const pot = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.55, 0.65, 0.55, 10),
-			this.track(lit({ color: 0xa08060, roughness: 0.85 })),
-		);
+		const pot = new Mesh(new CylinderGeometry(0.55, 0.65, 0.55, 10), this.track(lit({ color: 0xa08060, roughness: 0.85 })));
 		pot.position.y = 0.28;
 		pot.castShadow = true;
 		g.add(pot);
 
-		const dirt = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.48, 0.48, 0.08, 10),
-			this.track(lit({ color: 0x3d2914, roughness: 1 })),
-		);
+		const dirt = new Mesh(new CylinderGeometry(0.48, 0.48, 0.08, 10), this.track(lit({ color: 0x3d2914, roughness: 1 })));
 		dirt.position.y = 0.55;
 		g.add(dirt);
 
@@ -100,14 +95,14 @@ export class PalmForest {
 		const segs = 5;
 		for (let i = 0; i < segs; i++) {
 			const t = i / segs;
-			const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.1 - t * 0.03, 0.14 - t * 0.03, trunkH / segs, 6), trunkMat);
+			const seg = new Mesh(new CylinderGeometry(0.1 - t * 0.03, 0.14 - t * 0.03, trunkH / segs, 6), trunkMat);
 			seg.position.set(Math.sin(t * 0.8) * 0.08, 0.55 + (i + 0.5) * (trunkH / segs), 0);
 			seg.rotation.z = Math.sin(t) * 0.05;
 			g.add(seg);
 		}
 
 		// Crown leaves
-		const leaves = new THREE.Group();
+		const leaves = new Group();
 		leaves.position.y = 0.55 + trunkH;
 		const greens = [0x1b7a3d, 0x2d8a4e, 0x3d9b55, 0x228b22];
 		const leafCount = 8 + Math.floor(scale * 3);
@@ -117,11 +112,11 @@ export class PalmForest {
 				lit({
 					color: greens[i % greens.length],
 					roughness: 0.85,
-					side: THREE.DoubleSide,
+					side: DoubleSide,
 				}),
 			);
 			// elongated palm frond
-			const frond = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 1.8), leafMat);
+			const frond = new Mesh(new PlaneGeometry(0.35, 1.8), leafMat);
 			frond.position.set(Math.cos(a) * 0.15, 0.2, Math.sin(a) * 0.15);
 			frond.rotation.order = 'YXZ';
 			frond.rotation.y = a;
@@ -131,7 +126,7 @@ export class PalmForest {
 
 			// second layer shorter
 			if (i % 2 === 0) {
-				const frond2 = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 1.3), leafMat);
+				const frond2 = new Mesh(new PlaneGeometry(0.28, 1.3), leafMat);
 				frond2.position.set(Math.cos(a + 0.3) * 0.1, 0.35, Math.sin(a + 0.3) * 0.1);
 				frond2.rotation.order = 'YXZ';
 				frond2.rotation.y = a + 0.3;
@@ -143,7 +138,7 @@ export class PalmForest {
 		// coconut cluster
 		const cocoMat = this.track(lit({ color: 0x5c4033, roughness: 0.9 }));
 		for (let i = 0; i < 3; i++) {
-			const c = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), cocoMat);
+			const c = new Mesh(new SphereGeometry(0.1, 6, 6), cocoMat);
 			const a = (i / 3) * Math.PI * 2;
 			c.position.set(Math.cos(a) * 0.18, -0.05, Math.sin(a) * 0.18);
 			leaves.add(c);

@@ -18,7 +18,7 @@ function closesTab(e: KeyboardEvent): boolean {
 export function guardAccidentalClose(): void {
 	let armedAt = Number.NEGATIVE_INFINITY;
 
-	window.addEventListener(
+	globalThis.document.addEventListener(
 		'keydown',
 		(e) => {
 			if (closesTab(e)) armedAt = performance.now();
@@ -27,10 +27,8 @@ export function guardAccidentalClose(): void {
 		{ capture: true },
 	);
 
-	window.addEventListener('beforeunload', (e) => {
+	globalThis.addEventListener('beforeunload', (e: BeforeUnloadEvent) => {
 		if (performance.now() - armedAt > CLOSE_ARM_MS) return;
 		e.preventDefault();
-		// Safari en oudere Chrome kijken hier nog naar in plaats van naar preventDefault.
-		e.returnValue = '';
 	});
 }

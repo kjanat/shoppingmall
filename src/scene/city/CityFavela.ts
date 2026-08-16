@@ -1,4 +1,19 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Texture, Vector3 } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	Color,
+	CylinderGeometry,
+	DynamicDrawUsage,
+	Group,
+	InstancedBufferAttribute,
+	InstancedMesh,
+	Mesh,
+	MeshBasicMaterial,
+	Object3D,
+	PlaneGeometry,
+	SphereGeometry,
+} from 'three';
 import { lit } from '#/render/material';
 import { FAVELA_PLAN, favelaContourXs, favelaGroundY, favelaIsStreet, RIO_MOUNTAIN } from '#/scene/city/cityPlan';
 import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
@@ -105,7 +120,7 @@ const GANGS: readonly GangDef[] = [
 	},
 ] as const;
 
-type Gangster = {
+interface Gangster {
 	gang: number;
 	x: number;
 	z: number;
@@ -116,9 +131,9 @@ type Gangster = {
 	path: readonly { x: number; z: number }[];
 	mode: 'patrol' | 'idle' | 'lookout';
 	cooldown: number;
-};
+}
 
-type Twink = {
+interface Twink {
 	x: number;
 	z: number;
 	y: number;
@@ -133,7 +148,7 @@ type Twink = {
 	shorts: number;
 	slop: boolean;
 	name: string;
-};
+}
 
 const TWINK_NAMES = [
 	'Kai',
@@ -174,29 +189,29 @@ const SKIN_TONES = [0xf1c27d, 0xffdbac, 0xe0ac69, 0xc68642, 0xf5d0b0, 0xd4a574] 
  * Sloppenwijk: shacks, rival gangs, and twinks with bowls of mystery slop.
  */
 export class CityFavela {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly instanced: THREE.InstancedMesh[] = [];
-	private readonly unit = new THREE.BoxGeometry(1, 1, 1);
-	private readonly dummy = new THREE.Object3D();
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly instanced: InstancedMesh[] = [];
+	private readonly unit = new BoxGeometry(1, 1, 1);
+	private readonly dummy = new Object3D();
 	private readonly shacks: Shack[];
-	private windowMat: THREE.MeshBasicMaterial | null = null;
+	private windowMat: MeshBasicMaterial | null = null;
 	private readonly gangsters: Gangster[] = [];
 	private readonly twinks: Twink[] = [];
-	private bodyMesh: THREE.InstancedMesh | null = null;
-	private headMesh: THREE.InstancedMesh | null = null;
-	private legMesh: THREE.InstancedMesh | null = null;
-	private shirtMesh: THREE.InstancedMesh | null = null;
-	private twBody: THREE.InstancedMesh | null = null;
-	private twHead: THREE.InstancedMesh | null = null;
-	private twLeg: THREE.InstancedMesh | null = null;
-	private twCrop: THREE.InstancedMesh | null = null;
-	private twHair: THREE.InstancedMesh | null = null;
-	private twBowl: THREE.InstancedMesh | null = null;
-	private twSlop: THREE.InstancedMesh | null = null;
+	private bodyMesh: InstancedMesh | null = null;
+	private headMesh: InstancedMesh | null = null;
+	private legMesh: InstancedMesh | null = null;
+	private shirtMesh: InstancedMesh | null = null;
+	private twBody: InstancedMesh | null = null;
+	private twHead: InstancedMesh | null = null;
+	private twLeg: InstancedMesh | null = null;
+	private twCrop: InstancedMesh | null = null;
+	private twHair: InstancedMesh | null = null;
+	private twBowl: InstancedMesh | null = null;
+	private twSlop: InstancedMesh | null = null;
 	private promptHud: HTMLDivElement | null = null;
 	private readonly paid = new Set<string>();
 	private readonly greeted = new Set<string>();
@@ -218,7 +233,7 @@ export class CityFavela {
 		this.buildTwinks();
 	}
 
-	update(dt: number, t: number, viewer?: THREE.Vector3): void {
+	update(dt: number, t: number, viewer?: Vector3): void {
 		if (this.windowMat) {
 			const pulse = WINDOW_PULSE_BASE + WINDOW_PULSE_SPAN * Math.sin(t * 1.3);
 			this.windowMat.color.setRGB(1.2 * pulse, 0.85 * pulse, 0.35 * pulse);
@@ -230,15 +245,15 @@ export class CityFavela {
 		if (viewer) this.refreshPrompt(viewer);
 	}
 
-	inGangRange(viewer: THREE.Vector3): boolean {
+	inGangRange(viewer: Vector3): boolean {
 		return this.nearestGangster(viewer) !== null || this.nearestTwink(viewer) !== null;
 	}
 
-	promptAt(viewer: THREE.Vector3): string | null {
+	promptAt(viewer: Vector3): string | null {
 		const tw = this.nearestTwink(viewer);
 		const g = this.nearestGangster(viewer);
-		const dTw = tw ? Math.hypot(tw.x - viewer.x, tw.z - viewer.z) : Infinity;
-		const dG = g ? Math.hypot(g.x - viewer.x, g.z - viewer.z) : Infinity;
+		const dTw = tw ? Math.hypot(tw.x - viewer.x, tw.z - viewer.z) : Number.POSITIVE_INFINITY;
+		const dG = g ? Math.hypot(g.x - viewer.x, g.z - viewer.z) : Number.POSITIVE_INFINITY;
 		if (tw && dTw <= dG) return `E · hang with ${tw.name} (slop)`;
 		if (g) {
 			const def = at(GANGS, g.gang);
@@ -247,11 +262,11 @@ export class CityFavela {
 		return null;
 	}
 
-	tryInteract(viewer: THREE.Vector3): FavelaGangResult | null {
+	tryInteract(viewer: Vector3): FavelaGangResult | null {
 		const tw = this.nearestTwink(viewer);
 		const g = this.nearestGangster(viewer);
-		const dTw = tw ? Math.hypot(tw.x - viewer.x, tw.z - viewer.z) : Infinity;
-		const dG = g ? Math.hypot(g.x - viewer.x, g.z - viewer.z) : Infinity;
+		const dTw = tw ? Math.hypot(tw.x - viewer.x, tw.z - viewer.z) : Number.POSITIVE_INFINITY;
+		const dG = g ? Math.hypot(g.x - viewer.x, g.z - viewer.z) : Number.POSITIVE_INFINITY;
 		if (tw && dTw <= dG) return this.interactTwink(tw);
 		if (g) return this.interactGang(g);
 		return null;
@@ -344,13 +359,13 @@ export class CityFavela {
 			const top = favelaGroundY(midpoint(x0, x1), zc);
 			const w = Math.abs(x1 - x0) + 0.45;
 			const h = Math.max(0.5, top + 0.4);
-			const bulk = new THREE.Mesh(this.unit, fill);
+			const bulk = new Mesh(this.unit, fill);
 			bulk.scale.set(w, h, depth);
 			bulk.position.set(midpoint(x0, x1), half(h) - 0.25, zc);
 			bulk.receiveShadow = true;
 			bulk.castShadow = true;
 			this.group.add(bulk);
-			const deck = new THREE.Mesh(this.unit, dirt);
+			const deck = new Mesh(this.unit, dirt);
 			deck.scale.set(w + 0.2, 0.2, depth - 0.4);
 			deck.position.set(midpoint(x0, x1), top + 0.04, zc);
 			deck.receiveShadow = true;
@@ -364,7 +379,7 @@ export class CityFavela {
 		const rampAngle = Math.atan2(rise, run);
 		const spines = [zc - 12, zc, zc + 12];
 		for (const az of spines) {
-			const lane = new THREE.Mesh(this.unit, path);
+			const lane = new Mesh(this.unit, path);
 			lane.scale.set(rampLen, 0.12, alleyHalf * 2 - 0.2);
 			lane.position.set(midpoint(maxX, peakX), midpoint(yLow, yHigh) + 0.08, az);
 			lane.rotation.z = rampAngle;
@@ -381,7 +396,7 @@ export class CityFavela {
 			const segRise = y1 - y0;
 			const segLen = Math.hypot(segRun, segRise);
 			const az = i % 2 === 0 ? minZ + alleyHalf * 2.2 : maxZ - alleyHalf * 2.2;
-			const lane = new THREE.Mesh(this.unit, path);
+			const lane = new Mesh(this.unit, path);
 			lane.scale.set(segLen, 0.11, alleyHalf * 2 - 0.25);
 			lane.position.set(midpoint(x0, x1), midpoint(y0, y1) + 0.07, az);
 			lane.rotation.z = Math.atan2(segRise, segRun);
@@ -391,18 +406,18 @@ export class CityFavela {
 		// Contour streets (level N–S lanes).
 		for (const bandX of favelaContourXs()) {
 			const y = favelaGroundY(bandX, zc);
-			const street = new THREE.Mesh(this.unit, path);
+			const street = new Mesh(this.unit, path);
 			street.scale.set(streetHalf * 2, 0.12, depth - 1.2);
 			street.position.set(bandX, y + 0.07, zc);
 			street.receiveShadow = true;
 			this.group.add(street);
 		}
-		const peak = new THREE.Mesh(this.unit, path);
+		const peak = new Mesh(this.unit, path);
 		peak.scale.set(plazaR * 2, 0.18, plazaR * 2);
 		peak.position.set(RIO_MOUNTAIN.x, RIO_MOUNTAIN.rockH + 0.1, RIO_MOUNTAIN.z);
 		peak.receiveShadow = true;
 		this.group.add(peak);
-		const apron = new THREE.Mesh(this.unit, path);
+		const apron = new Mesh(this.unit, path);
 		apron.scale.set(8, 0.26, depth * 0.92);
 		apron.position.set(maxX + 3, 0.11, zc);
 		apron.receiveShadow = true;
@@ -414,16 +429,16 @@ export class CityFavela {
 		const roofMat = lit({ color: 0xffffff, roughness: 0.88, metalness: 0.15 });
 		this.materials.push(wallMat, roofMat);
 		const n = this.shacks.length;
-		const walls = new THREE.InstancedMesh(this.unit, wallMat, n);
-		const roofs = new THREE.InstancedMesh(this.unit, roofMat, n);
+		const walls = new InstancedMesh(this.unit, wallMat, n);
+		const roofs = new InstancedMesh(this.unit, roofMat, n);
 		walls.name = 'favela_walls';
 		roofs.name = 'favela_roofs';
 		walls.castShadow = true;
 		roofs.castShadow = true;
-		walls.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
-		roofs.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
-		const tint = new THREE.Color();
-		const roofTint = new THREE.Color();
+		walls.instanceColor = new InstancedBufferAttribute(new Float32Array(n * 3), 3);
+		roofs.instanceColor = new InstancedBufferAttribute(new Float32Array(n * 3), 3);
+		const tint = new Color();
+		const roofTint = new Color();
 
 		for (let i = 0; i < n; i++) {
 			const s = at(this.shacks, i);
@@ -455,11 +470,11 @@ export class CityFavela {
 	}
 
 	private buildWindows(): void {
-		const glow = new THREE.MeshBasicMaterial({ color: 0xffcc66, toneMapped: false });
+		const glow = new MeshBasicMaterial({ color: 0xffcc66, toneMapped: false });
 		this.materials.push(glow);
 		this.windowMat = glow;
 		const n = this.shacks.length;
-		const mesh = new THREE.InstancedMesh(this.unit, glow, n);
+		const mesh = new InstancedMesh(this.unit, glow, n);
 		mesh.name = 'favela_windows';
 		for (let i = 0; i < n; i++) {
 			const s = at(this.shacks, i);
@@ -500,7 +515,7 @@ export class CityFavela {
 			});
 		}
 		if (lines.length === 0) return;
-		const mesh = new THREE.InstancedMesh(this.unit, cloth, lines.length);
+		const mesh = new InstancedMesh(this.unit, cloth, lines.length);
 		for (let i = 0; i < lines.length; i++) {
 			const L = at(lines, i);
 			this.dummy.position.set(L.x, L.y, L.z);
@@ -519,9 +534,9 @@ export class CityFavela {
 		const flags = Math.min(40, lines.length * 2);
 		const flagMat = lit({ color: 0xffffff, roughness: 0.9 });
 		this.materials.push(flagMat);
-		const flagMesh = new THREE.InstancedMesh(this.unit, flagMat, flags);
-		flagMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(flags * 3), 3);
-		const c = new THREE.Color();
+		const flagMesh = new InstancedMesh(this.unit, flagMat, flags);
+		flagMesh.instanceColor = new InstancedBufferAttribute(new Float32Array(flags * 3), 3);
+		const c = new Color();
 		for (let i = 0; i < flags; i++) {
 			const L = at(lines, i % lines.length);
 			const along = (i % 5) / 5 - 0.4;
@@ -554,9 +569,9 @@ export class CityFavela {
 		fitText(ctx, 'FOLLOW THE STREETS UP', { x: 12, y: 58, w: 496, h: 32 }, { size: 18, maxLines: 1 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
-		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
 		this.materials.push(mat);
-		const geo = new THREE.PlaneGeometry(10, 1.9);
+		const geo = new PlaneGeometry(10, 1.9);
 		this.geometries.push(geo);
 		const sign = backToBackLabel(geo, mat);
 		sign.position.set(x, y, z);
@@ -581,9 +596,9 @@ export class CityFavela {
 			fitText(ctx, 'TURF', { x: 20, y: 54, w: 220, h: 28 }, { size: 16, maxLines: 1 });
 			const tex = labelTexture(canvas);
 			this.textures.push(tex);
-			const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
+			const mat = new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
 			this.materials.push(mat);
-			const geo = new THREE.PlaneGeometry(3.2, 1.2);
+			const geo = new PlaneGeometry(3.2, 1.2);
 			this.geometries.push(geo);
 			const tag = backToBackLabel(geo, mat);
 			tag.position.set(x, y, z);
@@ -593,7 +608,7 @@ export class CityFavela {
 			// Paint splash on ground
 			const splash = lit({ color: def.color, roughness: 0.95 });
 			this.materials.push(splash);
-			const blot = new THREE.Mesh(this.unit, splash);
+			const blot = new Mesh(this.unit, splash);
 			blot.scale.set(2.4, 0.06, 1.1);
 			blot.position.set(x, favelaGroundY(x, z) + 0.1, z);
 			this.group.add(blot);
@@ -608,20 +623,20 @@ export class CityFavela {
 		const shirtMat = lit({ color: 0xffffff, roughness: 0.85 });
 		this.materials.push(bodyMat, headMat, legMat, shirtMat);
 
-		const bodyGeo = new THREE.CapsuleGeometry(0.16, 0.45, 3, 6);
-		const headGeo = new THREE.SphereGeometry(0.14, 8, 6);
-		const legGeo = new THREE.CapsuleGeometry(0.07, 0.38, 3, 6);
-		const shirtGeo = new THREE.BoxGeometry(0.42, 0.38, 0.28);
+		const bodyGeo = new CapsuleGeometry(0.16, 0.45, 3, 6);
+		const headGeo = new SphereGeometry(0.14, 8, 6);
+		const legGeo = new CapsuleGeometry(0.07, 0.38, 3, 6);
+		const shirtGeo = new BoxGeometry(0.42, 0.38, 0.28);
 		this.geometries.push(bodyGeo, headGeo, legGeo, shirtGeo);
 
 		const n = GANG_TOTAL;
-		this.bodyMesh = new THREE.InstancedMesh(bodyGeo, bodyMat, n);
-		this.headMesh = new THREE.InstancedMesh(headGeo, headMat, n);
-		this.legMesh = new THREE.InstancedMesh(legGeo, legMat, n * 2);
-		this.shirtMesh = new THREE.InstancedMesh(shirtGeo, shirtMat, n);
+		this.bodyMesh = new InstancedMesh(bodyGeo, bodyMat, n);
+		this.headMesh = new InstancedMesh(headGeo, headMat, n);
+		this.legMesh = new InstancedMesh(legGeo, legMat, n * 2);
+		this.shirtMesh = new InstancedMesh(shirtGeo, shirtMat, n);
 		for (const mesh of [this.bodyMesh, this.headMesh, this.legMesh, this.shirtMesh]) {
-			mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array((mesh === this.legMesh ? n * 2 : n) * 3), 3);
-			mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+			mesh.instanceColor = new InstancedBufferAttribute(new Float32Array((mesh === this.legMesh ? n * 2 : n) * 3), 3);
+			mesh.instanceMatrix.setUsage(DynamicDrawUsage);
 			mesh.frustumCulled = false;
 			mesh.castShadow = true;
 			this.instanced.push(mesh);
@@ -651,15 +666,15 @@ export class CityFavela {
 					cooldown: 0,
 				});
 				// Skin / pants colors fixed per instance (shirt uses gang color each frame).
-				const skin = new THREE.Color(pickWith(skinTones, rand));
-				const pant = new THREE.Color(pickWith(pants, rand));
+				const skin = new Color(pickWith(skinTones, rand));
+				const pant = new Color(pickWith(pants, rand));
 				if (this.bodyMesh.instanceColor) this.bodyMesh.setColorAt(idx, skin);
 				if (this.headMesh.instanceColor) this.headMesh.setColorAt(idx, skin);
 				if (this.legMesh.instanceColor) {
 					this.legMesh.setColorAt(idx * 2, pant);
 					this.legMesh.setColorAt(idx * 2 + 1, pant);
 				}
-				if (this.shirtMesh.instanceColor) this.shirtMesh.setColorAt(idx, new THREE.Color(def.color));
+				if (this.shirtMesh.instanceColor) this.shirtMesh.setColorAt(idx, new Color(def.color));
 				idx++;
 			}
 		}
@@ -710,8 +725,8 @@ export class CityFavela {
 	}
 
 	private writeGangMatrices(t: number): void {
-		if (!this.bodyMesh || !this.headMesh || !this.legMesh || !this.shirtMesh) return;
-		const color = new THREE.Color();
+		if (!(this.bodyMesh && this.headMesh && this.legMesh && this.shirtMesh)) return;
+		const color = new Color();
 		for (let i = 0; i < this.gangsters.length; i++) {
 			const g = at(this.gangsters, i);
 			const def = at(GANGS, g.gang);
@@ -763,7 +778,7 @@ export class CityFavela {
 		this.shirtMesh.computeBoundingSphere();
 	}
 
-	private nearestGangster(viewer: THREE.Vector3): Gangster | null {
+	private nearestGangster(viewer: Vector3): Gangster | null {
 		let best: Gangster | null = null;
 		let bestD = INTERACT_R;
 		for (const g of this.gangsters) {
@@ -776,7 +791,7 @@ export class CityFavela {
 		return best;
 	}
 
-	private nearestTwink(viewer: THREE.Vector3): Twink | null {
+	private nearestTwink(viewer: Vector3): Twink | null {
 		let best: Twink | null = null;
 		let bestD = INTERACT_R;
 		for (const tw of this.twinks) {
@@ -797,21 +812,21 @@ export class CityFavela {
 		const counter = lit({ color: 0x3a2a1a, roughness: 0.95 });
 		const pot = lit({ color: 0x2a2a28, roughness: 0.7, metalness: 0.3 });
 		const slop = lit({ color: SLOP_COLOR, roughness: 0.98 });
-		const steam = new THREE.MeshBasicMaterial({ color: 0xccffaa, transparent: true, opacity: 0.35, toneMapped: false });
+		const steam = new MeshBasicMaterial({ color: 0xccffaa, transparent: true, opacity: 0.35, toneMapped: false });
 		this.materials.push(counter, pot, slop, steam);
-		const desk = new THREE.Mesh(this.unit, counter);
+		const desk = new Mesh(this.unit, counter);
 		desk.scale.set(3.2, 1.1, 1.6);
 		desk.position.set(x, y + 0.55, z);
 		this.group.add(desk);
-		const cauldron = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 0.7, 10), pot);
+		const cauldron = new Mesh(new CylinderGeometry(0.55, 0.65, 0.7, 10), pot);
 		this.geometries.push(cauldron.geometry);
 		cauldron.position.set(x, y + 1.45, z);
 		this.group.add(cauldron);
-		const goo = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.12, 10), slop);
+		const goo = new Mesh(new CylinderGeometry(0.48, 0.48, 0.12, 10), slop);
 		this.geometries.push(goo.geometry);
 		goo.position.set(x, y + 1.72, z);
 		this.group.add(goo);
-		const puff = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), steam);
+		const puff = new Mesh(new SphereGeometry(0.35, 8, 6), steam);
 		this.geometries.push(puff.geometry);
 		puff.position.set(x, y + 2.2, z);
 		this.group.add(puff);
@@ -825,9 +840,9 @@ export class CityFavela {
 		fitText(ctx, 'MYSTERY BEANS · TWINK SPECIAL', { x: 12, y: 46, w: 376, h: 24 }, { size: 14, maxLines: 1 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
-		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
 		this.materials.push(mat);
-		const geo = new THREE.PlaneGeometry(3.6, 0.75);
+		const geo = new PlaneGeometry(3.6, 0.75);
 		this.geometries.push(geo);
 		const sign = backToBackLabel(geo, mat);
 		sign.position.set(x, y + 2.6, z + 0.9);
@@ -846,27 +861,27 @@ export class CityFavela {
 		this.materials.push(bodyMat, headMat, legMat, cropMat, hairMat, bowlMat, slopMat);
 
 		// Leaner than gangsters.
-		const bodyGeo = new THREE.CapsuleGeometry(0.11, 0.42, 3, 6);
-		const headGeo = new THREE.SphereGeometry(0.12, 8, 6);
-		const legGeo = new THREE.CapsuleGeometry(0.055, 0.36, 3, 6);
-		const cropGeo = new THREE.BoxGeometry(0.34, 0.22, 0.22);
-		const hairGeo = new THREE.SphereGeometry(0.13, 8, 6);
-		const bowlGeo = new THREE.CylinderGeometry(0.12, 0.1, 0.08, 8);
-		const slopGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.04, 8);
+		const bodyGeo = new CapsuleGeometry(0.11, 0.42, 3, 6);
+		const headGeo = new SphereGeometry(0.12, 8, 6);
+		const legGeo = new CapsuleGeometry(0.055, 0.36, 3, 6);
+		const cropGeo = new BoxGeometry(0.34, 0.22, 0.22);
+		const hairGeo = new SphereGeometry(0.13, 8, 6);
+		const bowlGeo = new CylinderGeometry(0.12, 0.1, 0.08, 8);
+		const slopGeo = new CylinderGeometry(0.1, 0.1, 0.04, 8);
 		this.geometries.push(bodyGeo, headGeo, legGeo, cropGeo, hairGeo, bowlGeo, slopGeo);
 
 		const n = TWINK_COUNT;
-		this.twBody = new THREE.InstancedMesh(bodyGeo, bodyMat, n);
-		this.twHead = new THREE.InstancedMesh(headGeo, headMat, n);
-		this.twLeg = new THREE.InstancedMesh(legGeo, legMat, n * 2);
-		this.twCrop = new THREE.InstancedMesh(cropGeo, cropMat, n);
-		this.twHair = new THREE.InstancedMesh(hairGeo, hairMat, n);
-		this.twBowl = new THREE.InstancedMesh(bowlGeo, bowlMat, n);
-		this.twSlop = new THREE.InstancedMesh(slopGeo, slopMat, n);
+		this.twBody = new InstancedMesh(bodyGeo, bodyMat, n);
+		this.twHead = new InstancedMesh(headGeo, headMat, n);
+		this.twLeg = new InstancedMesh(legGeo, legMat, n * 2);
+		this.twCrop = new InstancedMesh(cropGeo, cropMat, n);
+		this.twHair = new InstancedMesh(hairGeo, hairMat, n);
+		this.twBowl = new InstancedMesh(bowlGeo, bowlMat, n);
+		this.twSlop = new InstancedMesh(slopGeo, slopMat, n);
 		for (const mesh of [this.twBody, this.twHead, this.twLeg, this.twCrop, this.twHair, this.twBowl, this.twSlop]) {
 			const count = mesh === this.twLeg ? n * 2 : n;
-			mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
-			mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+			mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(count * 3), 3);
+			mesh.instanceMatrix.setUsage(DynamicDrawUsage);
 			mesh.frustumCulled = false;
 			mesh.castShadow = true;
 			this.instanced.push(mesh);
@@ -900,10 +915,10 @@ export class CityFavela {
 				slop: holdSlop,
 				name: at(TWINK_NAMES, i % TWINK_NAMES.length),
 			});
-			const skin = new THREE.Color(this.twinks[i]?.skin ?? 0xffdbac);
-			const hair = new THREE.Color(this.twinks[i]?.hair ?? 0x1a1a1a);
-			const crop = new THREE.Color(this.twinks[i]?.crop ?? 0xffffff);
-			const shorts = new THREE.Color(this.twinks[i]?.shorts ?? 0x1e293b);
+			const skin = new Color(this.twinks[i]?.skin ?? 0xffdbac);
+			const hair = new Color(this.twinks[i]?.hair ?? 0x1a1a1a);
+			const crop = new Color(this.twinks[i]?.crop ?? 0xffffff);
+			const shorts = new Color(this.twinks[i]?.shorts ?? 0x1e293b);
 			if (this.twBody.instanceColor) this.twBody.setColorAt(i, skin);
 			if (this.twHead.instanceColor) this.twHead.setColorAt(i, skin);
 			if (this.twHair.instanceColor) this.twHair.setColorAt(i, hair);
@@ -912,8 +927,8 @@ export class CityFavela {
 				this.twLeg.setColorAt(i * 2, shorts);
 				this.twLeg.setColorAt(i * 2 + 1, shorts);
 			}
-			if (this.twBowl.instanceColor) this.twBowl.setColorAt(i, new THREE.Color(0x8a8070));
-			if (this.twSlop.instanceColor) this.twSlop.setColorAt(i, new THREE.Color(SLOP_COLOR));
+			if (this.twBowl.instanceColor) this.twBowl.setColorAt(i, new Color(0x8a8070));
+			if (this.twSlop.instanceColor) this.twSlop.setColorAt(i, new Color(SLOP_COLOR));
 		}
 		for (const mesh of [this.twBody, this.twHead, this.twLeg, this.twCrop, this.twHair, this.twBowl, this.twSlop]) {
 			if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -971,7 +986,7 @@ export class CityFavela {
 	}
 
 	private writeTwinkMatrices(t: number): void {
-		if (!this.twBody || !this.twHead || !this.twLeg || !this.twCrop || !this.twHair || !this.twBowl || !this.twSlop) return;
+		if (!(this.twBody && this.twHead && this.twLeg && this.twCrop && this.twHair && this.twBowl && this.twSlop)) return;
 		const s = TWINK_SCALE;
 		for (let i = 0; i < this.twinks.length; i++) {
 			const tw = at(this.twinks, i);
@@ -1052,7 +1067,7 @@ export class CityFavela {
 		}
 	}
 
-	private refreshPrompt(viewer: THREE.Vector3): void {
+	private refreshPrompt(viewer: Vector3): void {
 		const text = this.promptAt(viewer);
 		if (!text) {
 			if (this.promptHud) this.promptHud.style.display = 'none';

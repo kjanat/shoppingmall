@@ -35,7 +35,13 @@ const GRID = 1;
 const halfWidth = half(MALL_FOOTPRINT.width);
 const halfDepth = half(MALL_FOOTPRINT.depth);
 
-type Yank = { x: number; z: number; ground: number; distance: number; to: string };
+interface Yank {
+	x: number;
+	z: number;
+	ground: number;
+	distance: number;
+	to: string;
+}
 
 function clampedOutdoors(): { yanks: Yank[]; sampled: number; lowestGround: number } {
 	const yanks: Yank[] = [];

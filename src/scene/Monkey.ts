@@ -1,4 +1,17 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D, PerspectiveCamera } from 'three';
+import {
+	CapsuleGeometry,
+	CircleGeometry,
+	ConeGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	Vector3,
+} from 'three';
 import { levelAt } from '#/data/levels';
 import { PRAYER_ROOM_SPEC } from '#/data/world';
 import type { CollisionWorld } from '#/physics/Collision';
@@ -6,7 +19,7 @@ import { GRAVITY } from '#/player/constants';
 import type { LitMaterial } from '#/render/material';
 import { lit } from '#/render/material';
 import { ctx2d } from '#/util/dom';
-import { labelCanvas, labelTexture } from '#/util/label';
+import { labelCanvas, labelTexture, roundRect } from '#/util/label';
 import { clamp, clamp01, lerp, shortestAngle } from '#/util/math';
 import { at, jitter, pick } from '#/util/rand';
 
@@ -21,7 +34,7 @@ const SPLAT_LIFE = 9;
 const PLAYER_RANGE = 13;
 
 /** Gebedsruimte — default target when you're a coward. Aimed at torso height. */
-const PRAYER_POS = new THREE.Vector3(PRAYER_ROOM_SPEC.center.x, 1.35, PRAYER_ROOM_SPEC.center.z);
+const PRAYER_POS = new Vector3(PRAYER_ROOM_SPEC.center.x, 1.35, PRAYER_ROOM_SPEC.center.z);
 
 // ── dung textures ────────────────────────────────────────
 /** Ground splat blob: how squashed an ellipse is against its own radius. */
@@ -53,25 +66,28 @@ const FACE_YELLS = [
 	'STINKT HIER!!',
 ];
 
-type Poop = {
-	mesh: THREE.Object3D;
-	vel: THREE.Vector3;
+interface Poop {
+	mesh: Object3D;
+	vel: Vector3;
 	alive: boolean;
 	atPlayer: boolean;
 	atPrayer: boolean;
 	spin: number;
-};
+}
 
-type Splat = { mesh: THREE.Mesh; life: number };
+interface Splat {
+	mesh: Mesh;
+	life: number;
+}
 
-export type MonkeyHit = {
+export interface MonkeyHit {
 	what: 'player' | 'sim' | 'floor' | 'prayer';
 	x: number;
 	y: number;
 	z: number;
 	/** Shown on-screen when the player is hit */
 	yell?: string;
-};
+}
 
 /**
  * Atrium monkey. Sits in a palm, judges you, throws its own shit.
@@ -80,22 +96,22 @@ export type MonkeyHit = {
  * Poop is a real ballistic arc with a splat decal on landing.
  */
 export class Monkey {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	private world: CollisionWorld;
-	private camera: THREE.PerspectiveCamera;
+	private camera: PerspectiveCamera;
 
-	private body = new THREE.Group();
-	private head = new THREE.Group();
-	private armR = new THREE.Group();
-	private tail = new THREE.Group();
-	private faceSplat: THREE.Mesh | null = null;
-	private faceYell: THREE.Sprite | null = null;
+	private body = new Group();
+	private head = new Group();
+	private armR = new Group();
+	private tail = new Group();
+	private faceSplat: Mesh | null = null;
+	private faceYell: Sprite | null = null;
 	private faceFade = 0;
 	private yellFade = 0;
-	private faceTex: THREE.CanvasTexture | null = null;
-	private yellTex: THREE.CanvasTexture | null = null;
+	private faceTex: CanvasTexture | null = null;
+	private yellTex: CanvasTexture | null = null;
 
-	private materials: THREE.Material[] = [];
+	private materials: Material[] = [];
 	private poops: Poop[] = [];
 	private splats: Splat[] = [];
 	private poopMats: LitMaterial[] = [];
@@ -104,15 +120,15 @@ export class Monkey {
 	private cooldown = 4;
 	private windup = -1;
 	private t = 0;
-	private simPositions: THREE.Vector3[] = [];
+	private simPositions: Vector3[] = [];
 	private onHit: ((hit: MonkeyHit) => void) | null = null;
-	private pendingTarget = new THREE.Vector3();
+	private pendingTarget = new Vector3();
 	private pendingAtPlayer = false;
 	private pendingAtPrayer = false;
 	/** scratch — update() runs 60×/s, it must not allocate */
-	private tmp = new THREE.Vector3();
+	private tmp = new Vector3();
 
-	constructor(world: CollisionWorld, camera: THREE.PerspectiveCamera) {
+	constructor(world: CollisionWorld, camera: PerspectiveCamera) {
 		this.world = world;
 		this.camera = camera;
 		this.group.name = 'monkey';
@@ -152,7 +168,7 @@ export class Monkey {
 	}
 
 	/** App feeds shopper positions each frame so the monkey can pick a victim. */
-	setSimPositions(list: THREE.Vector3[]): void {
+	setSimPositions(list: Vector3[]): void {
 		this.simPositions = list;
 	}
 
@@ -222,7 +238,7 @@ export class Monkey {
 	}
 
 	/** Look-at target for head tracking */
-	private nearestVictim(): THREE.Vector3 | null {
+	private nearestVictim(): Vector3 | null {
 		const origin = this.group.position;
 		const player = this.camera.position;
 		const pd = origin.distanceTo(player);
@@ -252,7 +268,7 @@ export class Monkey {
 		}
 
 		// Maybe still hit a nearby sim, else prayer
-		let bestSim: THREE.Vector3 | null = null;
+		let bestSim: Vector3 | null = null;
 		let bestD = 16;
 		for (const s of this.simPositions) {
 			const d = origin.distanceTo(s);
@@ -277,8 +293,8 @@ export class Monkey {
 	}
 
 	/** Soft-serve style dung: stacked blobs, not a sad brown ball. */
-	private makePoopMesh(): THREE.Group {
-		const g = new THREE.Group();
+	private makePoopMesh(): Group {
+		const g = new Group();
 		const layers = [
 			{ y: 0.0, r: 0.13, s: 1.15 },
 			{ y: 0.09, r: 0.11, s: 1.05 },
@@ -287,7 +303,7 @@ export class Monkey {
 		];
 		layers.forEach((L, i) => {
 			const mat = at(this.poopMats, i);
-			const blob = new THREE.Mesh(new THREE.SphereGeometry(L.r, 10, 8), mat);
+			const blob = new Mesh(new SphereGeometry(L.r, 10, 8), mat);
 			blob.position.y = L.y;
 			blob.scale.set(L.s, 0.75 + Math.random() * 0.15, L.s * 0.95);
 			blob.rotation.y = Math.random() * Math.PI;
@@ -295,7 +311,7 @@ export class Monkey {
 			g.add(blob);
 		});
 		// Pointy tip curl
-		const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.08, 6), this.poopMats[0]);
+		const tip = new Mesh(new ConeGeometry(0.04, 0.08, 6), this.poopMats[0]);
 		tip.position.set(0.02, 0.3, 0);
 		tip.rotation.z = -0.4;
 		g.add(tip);
@@ -304,7 +320,7 @@ export class Monkey {
 	}
 
 	private throwPoop(): void {
-		const origin = this.group.position.clone().add(new THREE.Vector3(0, 0.35, 0.25));
+		const origin = this.group.position.clone().add(new Vector3(0, 0.35, 0.25));
 		const target = this.pendingTarget.clone();
 
 		// Solve the lob: v = Δ/T + ½gT
@@ -377,7 +393,7 @@ export class Monkey {
 		this.poops = this.poops.filter((p) => p.alive);
 	}
 
-	private land(p: Poop, what: MonkeyHit['what'], at: THREE.Vector3): void {
+	private land(p: Poop, what: MonkeyHit['what'], at: Vector3): void {
 		p.alive = false;
 		p.mesh.removeFromParent();
 		this.addSplat(at, what);
@@ -389,7 +405,7 @@ export class Monkey {
 		this.onHit?.({ what, x: at.x, y: at.y, z: at.z, yell });
 	}
 
-	private makeSplatTexture(): THREE.CanvasTexture {
+	private makeSplatTexture(): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(128, 128);
 		ctx.clearRect(0, 0, 128, 128);
 		// Irregular dung puddle — several overlapping blobs
@@ -426,12 +442,12 @@ export class Monkey {
 		return tex;
 	}
 
-	private addSplat(at: THREE.Vector3, what: MonkeyHit['what']): void {
+	private addSplat(at: Vector3, what: MonkeyHit['what']): void {
 		if (what === 'player') return;
 		const ground = this.world.groundHeightAt(at.x, at.z, at.y, 3);
 		const tex = this.makeSplatTexture();
 		const mat = this.track(
-			new THREE.MeshBasicMaterial({
+			new MeshBasicMaterial({
 				map: tex,
 				transparent: true,
 				opacity: 0.92,
@@ -439,7 +455,7 @@ export class Monkey {
 				toneMapped: false,
 			}),
 		);
-		const mesh = new THREE.Mesh(new THREE.CircleGeometry(0.42, 16), mat);
+		const mesh = new Mesh(new CircleGeometry(0.42, 16), mat);
 		mesh.rotation.x = -Math.PI / 2;
 		mesh.rotation.z = Math.random() * Math.PI;
 		mesh.scale.setScalar(0.85 + Math.random() * 0.7);
@@ -458,7 +474,7 @@ export class Monkey {
 	private tickSplats(dt: number): void {
 		for (const s of this.splats) {
 			s.life -= dt;
-			const mat = s.mesh.material as THREE.MeshBasicMaterial;
+			const mat = s.mesh.material as MeshBasicMaterial;
 			mat.opacity = clamp(s.life / 2.5, 0, 0.92);
 		}
 		const dead = this.splats.filter((s) => s.life <= 0);
@@ -473,7 +489,7 @@ export class Monkey {
 			this.paintFaceGoo(ctx, 256, 192);
 			this.faceTex = labelTexture(c);
 			const mat = this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					map: this.faceTex,
 					transparent: true,
 					opacity: 0,
@@ -482,7 +498,7 @@ export class Monkey {
 					toneMapped: false,
 				}),
 			);
-			this.faceSplat = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.4), mat);
+			this.faceSplat = new Mesh(new PlaneGeometry(0.55, 0.4), mat);
 			this.faceSplat.renderOrder = 999;
 			this.faceSplat.position.set(0.02, -0.04, -0.28);
 			this.camera.add(this.faceSplat);
@@ -496,9 +512,9 @@ export class Monkey {
 		if (!this.faceYell) {
 			const { canvas: c } = labelCanvas(512, 128);
 			this.yellTex = labelTexture(c);
-			this.faceYell = new THREE.Sprite(
+			this.faceYell = new Sprite(
 				this.track(
-					new THREE.SpriteMaterial({
+					new SpriteMaterial({
 						map: this.yellTex,
 						transparent: true,
 						depthTest: false,
@@ -517,10 +533,8 @@ export class Monkey {
 			const ctx = ctx2d(c);
 			ctx.clearRect(0, 0, 512, 128);
 			ctx.fillStyle = 'rgba(0,0,0,0.55)';
-			ctx.beginPath();
-			ctx.roundRect?.(40, 24, 432, 80, 16);
-			if (!ctx.roundRect) ctx.fillRect(40, 24, 432, 80);
-			else ctx.fill();
+			roundRect(ctx, { x: 40, y: 24, width: 432, height: 80, radius: 16 });
+			ctx.fill();
 			ctx.fillStyle = '#ffeb3b';
 			ctx.strokeStyle = '#b71c1c';
 			ctx.lineWidth = 4;
@@ -571,14 +585,14 @@ export class Monkey {
 		if (this.faceFade > 0) this.faceFade -= dt;
 		if (this.yellFade > 0) this.yellFade -= dt;
 		if (this.faceSplat) {
-			const mat = this.faceSplat.material as THREE.MeshBasicMaterial;
+			const mat = this.faceSplat.material as MeshBasicMaterial;
 			mat.opacity = clamp(this.faceFade * 0.45, 0, 0.95);
 			this.faceSplat.visible = mat.opacity > 0.02;
 			// Slight drip drift
 			this.faceSplat.position.y = -0.04 - (3.2 - Math.max(0, this.faceFade)) * 0.015;
 		}
 		if (this.faceYell) {
-			const mat = this.faceYell.material as THREE.SpriteMaterial;
+			const mat = this.faceYell.material as SpriteMaterial;
 			mat.opacity = clamp01(this.yellFade);
 			this.faceYell.visible = mat.opacity > 0.05;
 			this.faceYell.position.y = 0.12 + Math.sin(performance.now() * 0.01) * 0.02;
@@ -594,48 +608,48 @@ export class Monkey {
 		const skin = this.track(lit({ color: 0xc79a7a, roughness: 0.8 }));
 		const eye = this.track(lit({ color: 0x141414 }));
 
-		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.22, 4, 8), fur);
+		const torso = new Mesh(new CapsuleGeometry(0.19, 0.22, 4, 8), fur);
 		torso.position.y = 0.3;
 		torso.castShadow = true;
 		this.body.add(torso);
 
 		this.head.position.set(0, 0.62, 0);
 		this.body.add(this.head);
-		const skull = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), fur);
+		const skull = new Mesh(new SphereGeometry(0.16, 12, 10), fur);
 		skull.castShadow = true;
 		this.head.add(skull);
-		const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), skin);
+		const muzzle = new Mesh(new SphereGeometry(0.1, 10, 8), skin);
 		muzzle.scale.set(1, 0.8, 0.85);
 		muzzle.position.set(0, -0.04, 0.13);
 		this.head.add(muzzle);
 		for (const sx of [-1, 1]) {
-			const ear = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), skin);
+			const ear = new Mesh(new SphereGeometry(0.055, 8, 6), skin);
 			ear.position.set(sx * 0.155, 0.02, 0);
 			ear.scale.set(0.5, 1, 1);
 			this.head.add(ear);
-			const e = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), eye);
+			const e = new Mesh(new SphereGeometry(0.026, 8, 6), eye);
 			e.position.set(sx * 0.055, 0.035, 0.14);
 			this.head.add(e);
 		}
 
 		// Left arm rests, right arm throws
-		const armGeo = new THREE.CapsuleGeometry(0.045, 0.2, 4, 6);
-		const armL = new THREE.Mesh(armGeo, fur);
+		const armGeo = new CapsuleGeometry(0.045, 0.2, 4, 6);
+		const armL = new Mesh(armGeo, fur);
 		armL.position.set(-0.2, 0.36, 0);
 		armL.rotation.z = 0.5;
 		this.body.add(armL);
 
 		this.armR.position.set(0.2, 0.42, 0);
 		this.body.add(this.armR);
-		const upper = new THREE.Mesh(armGeo, fur);
+		const upper = new Mesh(armGeo, fur);
 		upper.position.y = -0.1;
 		this.armR.add(upper);
-		const fist = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), skin);
+		const fist = new Mesh(new SphereGeometry(0.06, 8, 6), skin);
 		fist.position.y = -0.22;
 		this.armR.add(fist);
 
 		for (const sx of [-1, 1]) {
-			const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.16, 4, 6), fur);
+			const leg = new Mesh(new CapsuleGeometry(0.05, 0.16, 4, 6), fur);
 			leg.position.set(sx * 0.1, 0.08, 0.04);
 			leg.rotation.x = -0.6;
 			this.body.add(leg);
@@ -644,9 +658,9 @@ export class Monkey {
 		// Tail: a few segments so the sway reads
 		this.tail.position.set(0, 0.22, -0.14);
 		this.body.add(this.tail);
-		let parent: THREE.Object3D = this.tail;
+		let parent: Object3D = this.tail;
 		for (let i = 0; i < 4; i++) {
-			const seg = new THREE.Mesh(new THREE.CapsuleGeometry(0.032 - i * 0.004, 0.14, 4, 6), fur);
+			const seg = new Mesh(new CapsuleGeometry(0.032 - i * 0.004, 0.14, 4, 6), fur);
 			seg.position.y = -0.1;
 			seg.rotation.x = 0.25;
 			parent.add(seg);
@@ -654,7 +668,7 @@ export class Monkey {
 		}
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

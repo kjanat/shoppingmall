@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle';
-import * as THREE from 'three';
+import type { MeshStandardMaterialParameters } from 'three';
+import { MeshLambertMaterial, MeshStandardMaterial } from 'three';
 import { shineOn } from '#/render/graphicsPrefs';
 
 /**
@@ -24,23 +25,23 @@ import { shineOn } from '#/render/graphicsPrefs';
 const SHINE = feature('FORCE_LAMBERT') ? false : shineOn();
 
 /** What a caller may ask for. A superset: the PBR fields are dropped without it. */
-export type LitParams = THREE.MeshStandardMaterialParameters;
+export type LitParams = MeshStandardMaterialParameters;
 
-export type LitMaterial = THREE.MeshStandardMaterial | THREE.MeshLambertMaterial;
+export type LitMaterial = MeshStandardMaterial | MeshLambertMaterial;
 
 /**
  * A lit surface. Use this instead of constructing a material class directly, so
  * one switch decides the shading model for the whole mall.
  */
 export function lit(params: LitParams): LitMaterial {
-	if (SHINE) return new THREE.MeshStandardMaterial(params);
+	if (SHINE) return new MeshStandardMaterial(params);
 	const { roughness, metalness, roughnessMap, metalnessMap, ...rest } = params;
 	// Named so the destructure reads as intent rather than as unused bindings.
 	void roughness;
 	void metalness;
 	void roughnessMap;
 	void metalnessMap;
-	return new THREE.MeshLambertMaterial(rest);
+	return new MeshLambertMaterial(rest);
 }
 
 /** True when surfaces carry specular highlights, for code that has to branch. */

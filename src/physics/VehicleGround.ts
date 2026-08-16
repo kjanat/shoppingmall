@@ -9,12 +9,12 @@ import { GRAVITY } from '#/player/constants';
  * huurauto's deden het nog steeds. Hier staat het één keer, met dezelfde `GRAVITY`
  * als de speler, zodat een rand afrijden een boog is en geen sprong in de montage.
  */
-export type VehicleGroundState = {
+export interface VehicleGroundState {
 	/** Hoogte van de wielen. */
 	y: number;
 	vy: number;
 	grounded: boolean;
-};
+}
 
 export type VehicleGroundOptions = Readonly<{
 	/**

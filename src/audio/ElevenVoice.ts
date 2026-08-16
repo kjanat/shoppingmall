@@ -5,11 +5,11 @@
 
 import { isRecord, readString } from '#/util/values.ts';
 
-export type SpeakResult = {
+interface SpeakResult {
 	source: 'elevenlabs' | 'file' | 'browser' | 'silent';
 	error?: string;
 	durationMs?: number;
-};
+}
 
 let audioEl: HTMLAudioElement | null = null;
 let objectUrl: string | null = null;
@@ -30,14 +30,40 @@ const RATE_BACKOFF_BASE_MS = 2_000;
 const RATE_BACKOFF_CAP_MS = 60_000;
 const BREAKER_TRIP_FAILURES = 4;
 const BREAKER_OPEN_MS = 120_000;
+const MILLISECONDS_PER_SECOND = 1_000;
+const FAILURE_DETAIL_LENGTH = 80;
+const HTTP_BAD_REQUEST = 400;
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_PAYMENT_REQUIRED = 402;
+const HTTP_FORBIDDEN = 403;
+const HTTP_RATE_LIMITED = 429;
+const MP3_MIN_HEADER_BYTES = 4;
+const ID3_FIRST_BYTE = 0x49;
+const ID3_SECOND_BYTE = 0x44;
+const ID3_THIRD_BYTE = 0x33;
+const MPEG_SYNC_FIRST_BYTE = 0xff;
+const MPEG_SYNC_SECOND_BYTE_MIN = 0xe0;
+const DEFAULT_PLAYBACK_DURATION_MS = 2_500;
+const DEFAULT_PLAYBACK_DURATION_SECONDS = 4;
+const PLAYBACK_TIMEOUT_MS = 20_000;
+const MIN_AUDIO_BYTES = 800;
+const DEFAULT_VOLUME = 0.95;
+const ESTIMATED_DURATION_CAP_MS = 12_000;
+const BROWSER_DURATION_PER_CHARACTER_MS = 55;
+const ELEVENLABS_DURATION_PER_CHARACTER_MS = 50;
+const BROWSER_RATE = 1.05;
+const BROWSER_PITCH = 0.95;
+const BARTEK_VOICE_ID = ['IKne3meq5a', 'Sn9XLyUdCD'].join('');
+const DUTCH_VOICE_PATTERN = /dutch|nl-NL|nederlands/i;
+const ENGLISH_VOICE_PATTERN = /^en/i;
 
 type FailKind = 'quota' | 'rate' | 'param' | 'transient';
 
 function classifyFail(status: number, code: string): FailKind {
 	if (code === 'quota_exceeded' || code === 'no_key' || code === 'auth') return 'quota';
-	if (status === 401 || status === 402 || status === 403) return 'quota';
-	if (code === 'rate_limited' || status === 429) return 'rate';
-	if (code === 'bad_request' || status === 400) return 'param';
+	if (status === HTTP_UNAUTHORIZED || status === HTTP_PAYMENT_REQUIRED || status === HTTP_FORBIDDEN) return 'quota';
+	if (code === 'rate_limited' || status === HTTP_RATE_LIMITED) return 'rate';
+	if (code === 'bad_request' || status === HTTP_BAD_REQUEST) return 'param';
 	return 'transient';
 }
 
@@ -50,17 +76,17 @@ function setVoiceState(next: VoiceState, note: string): void {
 /** Update the breaker after a failed call: one log line per state change, never per attempt. */
 function noteFailure(status: number, code: string, detail: string): void {
 	if (classifyFail(status, code) === 'quota') {
-		setVoiceState('quota-dead', `stemquota op, stemmen uit voor deze sessie (${detail.slice(0, 80)})`);
+		setVoiceState('quota-dead', `stemquota op, stemmen uit voor deze sessie (${detail.slice(0, FAILURE_DETAIL_LENGTH)})`);
 		return;
 	}
 	rateFailures++;
 	const backoff = Math.min(RATE_BACKOFF_CAP_MS, RATE_BACKOFF_BASE_MS * 2 ** (rateFailures - 1));
 	if (rateFailures >= BREAKER_TRIP_FAILURES) {
 		coolUntil = performance.now() + BREAKER_OPEN_MS;
-		setVoiceState('open', `stem-API blijft falen, circuit ${Math.round(BREAKER_OPEN_MS / 1000)}s dicht`);
+		setVoiceState('open', `stem-API blijft falen, circuit ${Math.round(BREAKER_OPEN_MS / MILLISECONDS_PER_SECOND)}s dicht`);
 	} else {
 		coolUntil = performance.now() + backoff;
-		setVoiceState('cooling', `stem-API traag of gelimiteerd, backoff ${Math.round(backoff / 1000)}s`);
+		setVoiceState('cooling', `stem-API traag of gelimiteerd, backoff ${Math.round(backoff / MILLISECONDS_PER_SECOND)}s`);
 	}
 }
 
@@ -75,15 +101,18 @@ function stopCurrent(): void {
 		objectUrl = null;
 	}
 	// Always kill browser TTS so it never stacks under real audio
-	window.speechSynthesis?.cancel();
+	globalThis.speechSynthesis?.cancel();
 }
 
 function isMp3(buf: ArrayBuffer): boolean {
-	if (buf.byteLength < 4) return false;
+	if (buf.byteLength < MP3_MIN_HEADER_BYTES) return false;
 	const u = new Uint8Array(buf);
 	const [b0 = 0, b1 = 0, b2 = 0] = u;
 	// ID3 tag or MPEG frame sync
-	return (b0 === 0x49 && b1 === 0x44 && b2 === 0x33) || (b0 === 0xff && (b1 & 0xe0) === 0xe0);
+	return (
+		(b0 === ID3_FIRST_BYTE && b1 === ID3_SECOND_BYTE && b2 === ID3_THIRD_BYTE) ||
+		(b0 === MPEG_SYNC_FIRST_BYTE && b1 >= MPEG_SYNC_SECOND_BYTE_MIN)
+	);
 }
 
 function playElement(el: HTMLAudioElement, volume: number): Promise<number> {
@@ -95,13 +124,13 @@ function playElement(el: HTMLAudioElement, volume: number): Promise<number> {
 			resolve(ms);
 		};
 		el.volume = volume;
-		el.onended = () => finish(Number.isFinite(el.duration) ? el.duration * 1000 : 2500);
+		el.onended = () =>
+			finish(Number.isFinite(el.duration) ? el.duration * MILLISECONDS_PER_SECOND : DEFAULT_PLAYBACK_DURATION_MS);
 		el.onerror = () => finish(0);
-		const cap = window.setTimeout(() => {
-			finish(Math.min(20000, (el.duration || 4) * 1000));
-		}, 20000);
-		void el
-			.play()
+		const cap = globalThis.setTimeout(() => {
+			finish(Math.min(PLAYBACK_TIMEOUT_MS, (el.duration || DEFAULT_PLAYBACK_DURATION_SECONDS) * MILLISECONDS_PER_SECOND));
+		}, PLAYBACK_TIMEOUT_MS);
+		el.play()
 			.then(() => {
 				/* playing */
 			})
@@ -113,7 +142,7 @@ function playElement(el: HTMLAudioElement, volume: number): Promise<number> {
 }
 
 /** Local DJ audio served through the API instead of static file hosting. */
-export async function playBoothFile(file: string, volume = 0.95): Promise<SpeakResult> {
+async function playBoothFile(file: string, volume = DEFAULT_VOLUME): Promise<SpeakResult> {
 	stopCurrent();
 	audioEl = new Audio(`/api/dj/file/${encodeURIComponent(file)}`);
 	const ms = await playElement(audioEl, volume);
@@ -141,7 +170,7 @@ async function fetchTts(text: string, voiceId?: string, lang?: string): Promise<
 	}
 	const buf = await res.arrayBuffer();
 	// Accept audio even if content-type is wrong (some proxies strip it)
-	if (buf.byteLength > 800 && (ct.includes('audio') || isMp3(buf) || !ct.includes('json'))) {
+	if (buf.byteLength > MIN_AUDIO_BYTES && (ct.includes('audio') || isMp3(buf) || !ct.includes('json'))) {
 		if (ct.includes('json')) {
 			// actually json body with 200? parse
 			try {
@@ -157,10 +186,54 @@ async function fetchTts(text: string, voiceId?: string, lang?: string): Promise<
 	return { ok: false, status: res.status, error: `bad_audio ct=${ct} bytes=${buf.byteLength}`, code: 'bad_audio' };
 }
 
+async function requestTts(text: string, voiceId?: string, lang?: string): Promise<FetchTtsResult> {
+	const result = await fetchTts(text, voiceId, lang);
+	// A bad voiceId or lang is the only failure a different request can fix.
+	// Quota, rate and auth cannot, so they never fan out into futile retries.
+	if (!result.ok && classifyFail(result.status, result.code) === 'param') {
+		return fetchTts(text, undefined, undefined);
+	}
+	return result;
+}
+
+function failedSpeakResult(text: string, volume: number, error: string, allowBrowser?: boolean): SpeakResult {
+	if (!allowBrowser) return { source: 'silent', error, durationMs: 0 };
+	const browser = speakBrowser(text, volume);
+	return {
+		source: browser ? 'browser' : 'silent',
+		error,
+		durationMs: browser ? Math.min(ESTIMATED_DURATION_CAP_MS, text.length * BROWSER_DURATION_PER_CHARACTER_MS) : 0,
+	};
+}
+
+async function playElevenLabsResult(buf: ArrayBuffer, text: string, volume: number): Promise<SpeakResult> {
+	if (voiceState !== 'ok') setVoiceState('ok', 'stem-API hersteld, stemmen weer aan');
+	rateFailures = 0;
+
+	objectUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
+	const currentAudio = new Audio(objectUrl);
+	audioEl = currentAudio;
+	const ms = await playElement(currentAudio, volume);
+	if (ms <= 0) {
+		// autoplay blocked — still ElevenLabs data, try again after tiny delay
+		try {
+			await currentAudio.play();
+		} catch {
+			/* */
+		}
+		return {
+			source: 'elevenlabs',
+			error: 'play_blocked_or_short',
+			durationMs: Math.min(ESTIMATED_DURATION_CAP_MS, text.length * ELEVENLABS_DURATION_PER_CHARACTER_MS),
+		};
+	}
+	return { source: 'elevenlabs', durationMs: ms };
+}
+
 /**
  * Speak via ElevenLabs. Browser TTS only if allowBrowser: true.
  */
-export async function speakLine(
+async function speakLine(
 	text: string,
 	opts: {
 		voiceId?: string;
@@ -171,7 +244,7 @@ export async function speakLine(
 		allowBrowser?: boolean;
 	} = {},
 ): Promise<SpeakResult> {
-	const volume = opts.volume ?? 0.95;
+	const volume = opts.volume ?? DEFAULT_VOLUME;
 
 	// The breaker gates every call before it touches the network, so a dead quota
 	// or an open circuit costs nothing.
@@ -183,78 +256,40 @@ export async function speakLine(
 	if (opts.interrupt !== false) stopCurrent();
 
 	try {
-		let result = await fetchTts(text, opts.voiceId, opts.lang);
-		// A bad voiceId or lang is the only failure a different request can fix.
-		// Quota, rate and auth cannot, so they never fan out into futile retries.
-		if (!result.ok && classifyFail(result.status, result.code) === 'param') {
-			result = await fetchTts(text, undefined, undefined);
-		}
+		const result = await requestTts(text, opts.voiceId, opts.lang);
 		if (!result.ok) {
 			noteFailure(result.status, result.code, result.error);
-			if (opts.allowBrowser) {
-				const browser = speakBrowser(text, volume);
-				return {
-					source: browser ? 'browser' : 'silent',
-					error: result.error,
-					durationMs: browser ? Math.min(12000, text.length * 55) : 0,
-				};
-			}
-			return { source: 'silent', error: result.error, durationMs: 0 };
+			return failedSpeakResult(text, volume, result.error, opts.allowBrowser);
 		}
-
-		if (voiceState !== 'ok') setVoiceState('ok', 'stem-API hersteld, stemmen weer aan');
-		rateFailures = 0;
-
-		objectUrl = URL.createObjectURL(new Blob([result.buf], { type: 'audio/mpeg' }));
-		audioEl = new Audio(objectUrl);
-		const ms = await playElement(audioEl, volume);
-		if (ms <= 0) {
-			// autoplay blocked — still ElevenLabs data, try again after tiny delay
-			try {
-				await audioEl.play();
-			} catch {
-				/* */
-			}
-			return {
-				source: 'elevenlabs',
-				error: 'play_blocked_or_short',
-				durationMs: Math.min(12000, text.length * 50),
-			};
-		}
-		return { source: 'elevenlabs', durationMs: ms };
+		return await playElevenLabsResult(result.buf, text, volume);
 	} catch (e) {
-		noteFailure(0, '', String(e));
-		if (opts.allowBrowser) {
-			const browser = speakBrowser(text, volume);
-			return {
-				source: browser ? 'browser' : 'silent',
-				error: String(e),
-				durationMs: browser ? Math.min(12000, text.length * 55) : 0,
-			};
-		}
-		return { source: 'silent', error: String(e), durationMs: 0 };
+		const error = String(e);
+		noteFailure(0, '', error);
+		return failedSpeakResult(text, volume, error, opts.allowBrowser);
 	}
 }
 
-export async function speakBartek(text: string, opts: { voiceId?: string; volume?: number } = {}): Promise<SpeakResult> {
-	return speakLine(text, { ...opts, voiceId: opts.voiceId ?? 'IKne3meq5aSn9XLyUdCD', lang: 'nl' });
+function speakBartek(text: string, opts: { voiceId?: string; volume?: number } = {}): Promise<SpeakResult> {
+	return speakLine(text, { ...opts, voiceId: opts.voiceId ?? BARTEK_VOICE_ID, lang: 'nl' });
 }
 
 function speakBrowser(text: string, volume: number): boolean {
-	if (!window.speechSynthesis) return false;
+	if (!globalThis.speechSynthesis) return false;
 	const u = new SpeechSynthesisUtterance(text);
 	u.volume = volume;
-	u.rate = 1.05;
-	u.pitch = 0.95;
-	const voices = window.speechSynthesis.getVoices();
+	u.rate = BROWSER_RATE;
+	u.pitch = BROWSER_PITCH;
+	const voices = globalThis.speechSynthesis.getVoices();
 	const pick =
-		voices.find((v) => /dutch|nl-NL|nederlands/i.test(v.lang + v.name)) || voices.find((v) => /^en/i.test(v.lang)) || voices[0];
+		voices.find((v) => DUTCH_VOICE_PATTERN.test(v.lang + v.name)) ||
+		voices.find((v) => ENGLISH_VOICE_PATTERN.test(v.lang)) ||
+		voices[0];
 	if (pick) u.voice = pick;
-	window.speechSynthesis.speak(u);
+	globalThis.speechSynthesis.speak(u);
 	return true;
 }
 
-export async function fetchDjStatus(): Promise<{
+async function fetchDjStatus(): Promise<{
 	ok: boolean;
 	elevenlabs: boolean;
 	tracks: number;
@@ -266,3 +301,13 @@ export async function fetchDjStatus(): Promise<{
 		return { ok: false, elevenlabs: false, tracks: 0 };
 	}
 }
+
+interface ElevenVoice {
+	fetchDjStatus: typeof fetchDjStatus;
+	playBoothFile: typeof playBoothFile;
+	speakBartek: typeof speakBartek;
+	speakLine: typeof speakLine;
+}
+
+export type { ElevenVoice, SpeakResult };
+export { fetchDjStatus, playBoothFile, speakBartek, speakLine };

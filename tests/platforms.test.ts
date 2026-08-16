@@ -13,7 +13,10 @@ test('the sweep step is finer than the body walking the deck', () => {
 	expect(STEP, 'a body-sized patch of deck could fall between two samples').toBeLessThan(2 * PLAYER_RADIUS);
 });
 
-type Sweep = { wrongFloor: { x: number; z: number; ground: number }[]; pushedOff: { x: number; z: number }[] };
+interface Sweep {
+	wrongFloor: { x: number; z: number; ground: number }[];
+	pushedOff: { x: number; z: number }[];
+}
 
 function sweep(index: number): Sweep {
 	const platform = world.platforms[index];

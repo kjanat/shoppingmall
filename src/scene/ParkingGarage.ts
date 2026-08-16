@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import { BoxGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, RepeatWrapping, Vector3 } from 'three';
 import { levelY } from '#/data/levels';
 import {
 	ELEVATOR_SPEC,
@@ -95,10 +96,10 @@ const CHEVRON_PAINT = {
  * Reachable via the glass elevator (Hans: “P1 / parkeergarage”).
  */
 export class ParkingGarage {
-	readonly group = new THREE.Group();
-	readonly pos = new THREE.Vector3(0, GARAGE_Y, 0);
-	private materials: THREE.Material[] = [];
-	private backMat: THREE.Material | null = null;
+	readonly group = new Group();
+	readonly pos = new Vector3(0, GARAGE_Y, 0);
+	private materials: Material[] = [];
+	private backMat: Material | null = null;
 	private pool: LightPool;
 	/** Werpt de garageschil schaduw? Grotendeels ondergronds, dus zon-effect is klein. */
 	private readonly shellCasts = shellShadowOn();
@@ -116,7 +117,7 @@ export class ParkingGarage {
 		this.buildLights();
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -160,7 +161,7 @@ export class ParkingGarage {
 	}
 
 	/** Ramp from P1 deck up to street level, heading west out of the mall */
-	private buildExitRamp(concrete: THREE.Material, dark: THREE.Material): void {
+	private buildExitRamp(concrete: Material, dark: Material): void {
 		const { start, end, width, thickness } = PARKING_EXIT_RAMP;
 		const localStartY = start.y - GARAGE_Y;
 		const localEndY = end.y - GARAGE_Y;
@@ -170,7 +171,7 @@ export class ParkingGarage {
 		const centerX = midpoint(start.x, end.x);
 		const surfaceCenterY = midpoint(localStartY, localEndY);
 		const slabNormalOffset = half(thickness);
-		const slab = new THREE.Mesh(new THREE.BoxGeometry(PARKING_EXIT_RAMP_LENGTH, thickness, width), concrete);
+		const slab = new Mesh(new BoxGeometry(PARKING_EXIT_RAMP_LENGTH, thickness, width), concrete);
 		slab.position.set(centerX + Math.sin(angle) * slabNormalOffset, surfaceCenterY - Math.cos(angle) * slabNormalOffset, 0);
 		slab.rotation.z = angle;
 		slab.castShadow = this.shellCasts;
@@ -181,7 +182,7 @@ export class ParkingGarage {
 		// zijn gedraaide hoeken op de mond uitkomen, en de kop dekt hem daar af.
 		const rail = PARKING_EXIT_RAIL;
 		for (const sign of [-1, 1] as const) {
-			const bar = new THREE.Mesh(new THREE.BoxGeometry(rail.length, rail.height, rail.thickness), dark);
+			const bar = new Mesh(new BoxGeometry(rail.length, rail.height, rail.thickness), dark);
 			bar.position.set(rail.centerX, rail.centerY - GARAGE_Y, sign * rail.offsetZ);
 			bar.rotation.z = rail.angle;
 			this.group.add(bar);
@@ -288,15 +289,15 @@ export class ParkingGarage {
 		const parkingSign = this.makeTextPlane('← PARKING', CITY_SIGN.width, CITY_SIGN.height, '#0d47a1', '#fff');
 		parkingSign.position
 			.copy(citySign.position)
-			.addScaledVector(new THREE.Vector3(0, 0, 1).applyEuler(citySign.rotation), -SIGN_BACK_GAP);
+			.addScaledVector(new Vector3(0, 0, 1).applyEuler(citySign.rotation), -SIGN_BACK_GAP);
 		parkingSign.rotation.set(citySign.rotation.x, citySign.rotation.y + Math.PI, citySign.rotation.z);
 		this.group.add(parkingSign);
 		const postTop = citySignY + half(CITY_SIGN.height);
 		const postBase = CITY_GROUND_Y - GARAGE_Y;
 		const postMat = this.track(lit({ color: 0x9aa2a8, roughness: 0.5, metalness: 0.6 }));
 		for (const sign of [-1, 1] as const) {
-			const post = new THREE.Mesh(
-				new THREE.CylinderGeometry(CITY_SIGN.post.radius, CITY_SIGN.post.radius, span(postBase, postTop), 8),
+			const post = new Mesh(
+				new CylinderGeometry(CITY_SIGN.post.radius, CITY_SIGN.post.radius, span(postBase, postTop), 8),
 				postMat,
 			);
 			post.position.set(
@@ -317,9 +318,9 @@ export class ParkingGarage {
 	 */
 	private buildExitChevrons(): void {
 		const vak = PARKING_EXIT_CHEVRONS;
-		const geometry = new THREE.PlaneGeometry(vak.length, vak.width);
+		const geometry = new PlaneGeometry(vak.length, vak.width);
 		geometry.rotateX(-Math.PI / 2);
-		const strip = new THREE.Mesh(geometry, this.track(this.chevronMaterial()));
+		const strip = new Mesh(geometry, this.track(this.chevronMaterial()));
 		strip.name = 'parking-exit-chevrons';
 		strip.position.set(vak.center.x, vak.center.y - GARAGE_Y, vak.center.z);
 		strip.rotation.z = vak.angle;
@@ -327,7 +328,7 @@ export class ParkingGarage {
 	}
 
 	/** Eén pijl per herhaling, geschilderd op ware grootte in meters en dan getegeld over de baan. */
-	private chevronMaterial(): THREE.MeshBasicMaterial {
+	private chevronMaterial(): MeshBasicMaterial {
 		const vak = PARKING_EXIT_CHEVRONS;
 		const pixels = CHEVRON_PAINT.pixelsPerMetre;
 		const tegel = vak.length / vak.count;
@@ -346,11 +347,11 @@ export class ParkingGarage {
 		ctx.lineTo(staart, vak.width - CHEVRON_PAINT.edge);
 		ctx.stroke();
 		const texture = labelTexture(canvas);
-		texture.wrapS = THREE.RepeatWrapping;
+		texture.wrapS = RepeatWrapping;
 		texture.repeat.set(vak.count, 1);
 		// Alleen alphaTest en niet transparent: zo blijft het vlak in de dekkende
 		// wachtrij, schrijft het diepte en hoeft er niets gesorteerd te worden.
-		return new THREE.MeshBasicMaterial({ map: texture, alphaTest: CHEVRON_PAINT.alphaTest, toneMapped: false });
+		return new MeshBasicMaterial({ map: texture, alphaTest: CHEVRON_PAINT.alphaTest, toneMapped: false });
 	}
 
 	/** Twee dunne stangen van de plaat boven een hangend bord naar de bovenkant ervan. */
@@ -358,10 +359,7 @@ export class ParkingGarage {
 		const ceiling = PARKING_DECK_SPEC.clearHeight;
 		const rodMat = this.track(lit({ color: 0x9aa2a8, roughness: 0.5, metalness: 0.6 }));
 		for (const sign of [-1, 1] as const) {
-			const rod = new THREE.Mesh(
-				new THREE.CylinderGeometry(SIGN_HANGER_RADIUS, SIGN_HANGER_RADIUS, span(topY, ceiling), 6),
-				rodMat,
-			);
+			const rod = new Mesh(new CylinderGeometry(SIGN_HANGER_RADIUS, SIGN_HANGER_RADIUS, span(topY, ceiling), 6), rodMat);
 			rod.position.set(x, midpoint(topY, ceiling), sign * spread);
 			this.group.add(rod);
 		}
@@ -377,7 +375,7 @@ export class ParkingGarage {
 		);
 		const { pillar, clearHeight } = PARKING_DECK_SPEC;
 		for (const { x, z } of parkingPillarCenters()) {
-			const p = new THREE.Mesh(new THREE.BoxGeometry(pillar.width, clearHeight, pillar.width), mat);
+			const p = new Mesh(new BoxGeometry(pillar.width, clearHeight, pillar.width), mat);
 			p.position.set(x, half(clearHeight), z);
 			p.castShadow = this.shellCasts;
 			this.group.add(p);
@@ -390,11 +388,11 @@ export class ParkingGarage {
 	 * dwars doorheen: zes vakken en drie pijlen verdwenen half in het beton.
 	 */
 	private buildBays(): void {
-		const line = this.track(new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
-		const yellow = this.track(new THREE.MeshBasicMaterial({ color: 0xffc107, toneMapped: false }));
+		const line = this.track(new MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+		const yellow = this.track(new MeshBasicMaterial({ color: 0xffc107, toneMapped: false }));
 		const { paintY, number } = PARKING_BAY_SPEC;
 		for (const patch of parkingPaintPatches()) {
-			const verf = new THREE.Mesh(new THREE.PlaneGeometry(patch.width, patch.depth), patch.kind === 'bay' ? line : yellow);
+			const verf = new Mesh(new PlaneGeometry(patch.width, patch.depth), patch.kind === 'bay' ? line : yellow);
 			verf.name = `parking-paint-${patch.id}`;
 			verf.rotation.x = -Math.PI / 2;
 			verf.position.set(patch.center.x, paintY, patch.center.z);
@@ -421,8 +419,8 @@ export class ParkingGarage {
 		});
 	}
 
-	private makeCar(color: number): THREE.Group {
-		const g = new THREE.Group();
+	private makeCar(color: number): Group {
+		const g = new Group();
 		const { body: bodySpec, cabin: cabinSpec, wheel } = PARKED_CAR_SPEC;
 		const bodyM = this.track(lit({ color, roughness: 0.45, metalness: 0.35 }));
 		const dark = this.track(lit({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
@@ -434,10 +432,10 @@ export class ParkingGarage {
 				roughness: 0.15,
 			}),
 		);
-		const body = new THREE.Mesh(new THREE.BoxGeometry(bodySpec.width, bodySpec.height, bodySpec.length), bodyM);
+		const body = new Mesh(new BoxGeometry(bodySpec.width, bodySpec.height, bodySpec.length), bodyM);
 		body.position.y = bodySpec.centerY;
 		g.add(body);
-		const cabin = new THREE.Mesh(new THREE.BoxGeometry(cabinSpec.width, cabinSpec.height, cabinSpec.length), glass);
+		const cabin = new Mesh(new BoxGeometry(cabinSpec.width, cabinSpec.height, cabinSpec.length), glass);
 		cabin.position.set(0, cabinSpec.centerY, cabinSpec.offsetZ);
 		g.add(cabin);
 		// wheels
@@ -447,7 +445,7 @@ export class ParkingGarage {
 			[-1, -1],
 			[1, -1],
 		] as const) {
-			const w = new THREE.Mesh(new THREE.CylinderGeometry(wheel.radius, wheel.radius, wheel.width, 10), dark);
+			const w = new Mesh(new CylinderGeometry(wheel.radius, wheel.radius, wheel.width, 10), dark);
 			w.rotation.z = Math.PI / 2;
 			w.position.set(sx * wheel.offsetX, wheel.radius, sz * wheel.offsetZ);
 			g.add(w);
@@ -457,14 +455,14 @@ export class ParkingGarage {
 
 	private buildBooth(): void {
 		const spec = PARKING_DECK_SPEC.booth;
-		const booth = new THREE.Group();
+		const booth = new Group();
 		booth.position.set(spec.center.x, 0, spec.center.z);
 		const wood = this.track(lit({ color: 0xffc107, roughness: 0.7 }));
-		const box = new THREE.Mesh(new THREE.BoxGeometry(spec.width, spec.height, spec.depth), wood);
+		const box = new Mesh(new BoxGeometry(spec.width, spec.height, spec.depth), wood);
 		box.position.y = half(spec.height);
 		booth.add(box);
-		const win = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.2, 0.8),
+		const win = new Mesh(
+			new PlaneGeometry(1.2, 0.8),
 			this.track(
 				lit({
 					color: 0x81d4fa,
@@ -512,12 +510,12 @@ export class ParkingGarage {
 	 * borden die met hun rug tegen een wand of een schacht zitten krijgen er geen: daar
 	 * kan niemand achter komen.
 	 */
-	private signBack(): THREE.Material {
+	private signBack(): Material {
 		this.backMat ??= this.track(lit({ color: SIGN_BACK_COLOR, roughness: 0.8 }));
 		return this.backMat;
 	}
 
-	private backSign(sign: THREE.Mesh): void {
+	private backSign(sign: Mesh): void {
 		addSignBack(this.group, sign, this.signBack(), SIGN_BACK_GAP);
 	}
 
@@ -529,10 +527,10 @@ export class ParkingGarage {
 				intensity: 2.2,
 				distance: 16,
 				decay: 2,
-				position: new THREE.Vector3(i * 8, GARAGE_Y + 4.0, 0),
+				position: new Vector3(i * 8, GARAGE_Y + 4.0, 0),
 			});
-			const fixture = new THREE.Mesh(
-				new THREE.BoxGeometry(3.5, 0.08, 0.25),
+			const fixture = new Mesh(
+				new BoxGeometry(3.5, 0.08, 0.25),
 				this.track(
 					lit({
 						color: 0xfffde7,
@@ -550,11 +548,11 @@ export class ParkingGarage {
 			intensity: 4,
 			distance: 12,
 			decay: 2,
-			position: new THREE.Vector3(ELEVATOR_SPEC.center.x, GARAGE_Y + 3.5, ELEVATOR_SPEC.center.z),
+			position: new Vector3(ELEVATOR_SPEC.center.x, GARAGE_Y + 3.5, ELEVATOR_SPEC.center.z),
 		});
 	}
 
-	private makeTextPlane(text: string, w: number, h: number, bg = '#1565c0', fg = '#ffffff'): THREE.Mesh {
+	private makeTextPlane(text: string, w: number, h: number, bg = '#1565c0', fg = '#ffffff'): Mesh {
 		const { canvas: c, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 512, 128);
@@ -564,9 +562,6 @@ export class ParkingGarage {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 256, 64);
 		const tex = labelTexture(c);
-		return new THREE.Mesh(
-			new THREE.PlaneGeometry(w, h),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		return new Mesh(new PlaneGeometry(w, h), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 	}
 }

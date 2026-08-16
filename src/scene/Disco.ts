@@ -1,4 +1,16 @@
-import * as THREE from 'three';
+import type { Fog, Material, Mesh, Scene } from 'three';
+import {
+	BoxGeometry,
+	CircleGeometry,
+	Color,
+	DoubleSide,
+	FogExp2,
+	Group,
+	IcosahedronGeometry,
+	MeshBasicMaterial,
+	Mesh as MeshClass,
+	Vector3,
+} from 'three';
 import { ShittyDiscoMusic } from '#/audio/ShittyDisco';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import type { LitMaterial } from '#/render/material';
@@ -10,22 +22,22 @@ import { at } from '#/util/rand';
  * Dance party: arcade neon comeback + disco balls + shitty funny music.
  */
 export class DiscoParty {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	active = false;
 	private lights: LightHandle[] = [];
-	private balls: THREE.Mesh[] = [];
-	private floorGlow: THREE.Mesh[] = [];
-	private neonStrips: THREE.Mesh[] = [];
-	private materials: THREE.Material[] = [];
+	private balls: Mesh[] = [];
+	private floorGlow: Mesh[] = [];
+	private neonStrips: Mesh[] = [];
+	private materials: Material[] = [];
 	private t = 0;
 	private music = new ShittyDiscoMusic();
-	private scene: THREE.Scene | null = null;
-	private savedBg: THREE.Color | null = null;
-	private savedFog: THREE.Fog | THREE.FogExp2 | null = null;
+	private scene: Scene | null = null;
+	private savedBg: Color | null = null;
+	private savedFog: Fog | FogExp2 | null = null;
 	private pool: LightPool;
 	private daylight: DaylightDimmer;
 	/** One colour reused for all thirteen lights: update() used to allocate 26 per frame. */
-	private tint = new THREE.Color();
+	private tint = new Color();
 
 	constructor(pool: LightPool, daylight: DaylightDimmer) {
 		this.pool = pool;
@@ -62,12 +74,12 @@ export class DiscoParty {
 					distance: 32,
 					decay: 1.5,
 					dimmable: false,
-					position: new THREE.Vector3(x, y, z),
+					position: new Vector3(x, y, z),
 				}),
 			);
 
-			const ball = new THREE.Mesh(
-				new THREE.IcosahedronGeometry(0.4, 1),
+			const ball = new MeshClass(
+				new IcosahedronGeometry(0.4, 1),
 				this.track(
 					// metalness 0.95 kills the diffuse, so the beat-driven emissive
 					// carries the whole look, which is what makes these read as mirror
@@ -85,15 +97,15 @@ export class DiscoParty {
 			this.group.add(ball);
 			this.balls.push(ball);
 
-			const glow = new THREE.Mesh(
-				new THREE.CircleGeometry(2.5, 24),
+			const glow = new MeshClass(
+				new CircleGeometry(2.5, 24),
 				this.track(
-					new THREE.MeshBasicMaterial({
+					new MeshBasicMaterial({
 						color: col,
 						transparent: true,
 						opacity: 0.18,
 						depthWrite: false,
-						side: THREE.DoubleSide,
+						side: DoubleSide,
 					}),
 				),
 			);
@@ -120,18 +132,18 @@ export class DiscoParty {
 					emissiveIntensity: 1.4,
 				}),
 			);
-			const strip = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+			const strip = new MeshClass(new BoxGeometry(sx, sy, sz), mat);
 			strip.position.set(x, y, z);
 			this.group.add(strip);
 			this.neonStrips.push(strip);
 		}
 	}
 
-	bindScene(scene: THREE.Scene): void {
+	bindScene(scene: Scene): void {
 		this.scene = scene;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -155,11 +167,11 @@ export class DiscoParty {
 			this.music.start();
 			if (this.scene) {
 				const bg = this.scene.background;
-				this.savedBg = bg instanceof THREE.Color ? bg.clone() : new THREE.Color(0xc8d4e4);
+				this.savedBg = bg instanceof Color ? bg.clone() : new Color(0xc8d4e4);
 				this.savedFog = this.scene.fog;
 				// Deep arcade night
-				this.scene.background = new THREE.Color(0x05030c);
-				this.scene.fog = new THREE.FogExp2(0x080510, 0.028);
+				this.scene.background = new Color(0x05030c);
+				this.scene.fog = new FogExp2(0x080510, 0.028);
 			}
 		} else {
 			this.music.stop();
@@ -192,8 +204,8 @@ export class DiscoParty {
 			mat.emissive.copy(c);
 			mat.emissiveIntensity = 0.35 + beat * 0.45;
 			const glow = at(this.floorGlow, i);
-			(glow.material as THREE.MeshBasicMaterial).color.copy(c);
-			(glow.material as THREE.MeshBasicMaterial).opacity = 0.1 + beat * 0.14;
+			(glow.material as MeshBasicMaterial).color.copy(c);
+			(glow.material as MeshBasicMaterial).opacity = 0.1 + beat * 0.14;
 		});
 		this.neonStrips.forEach((strip, i) => {
 			const m = strip.material as LitMaterial;

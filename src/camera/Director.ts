@@ -1,5 +1,6 @@
 import gsap from 'gsap';
-import * as THREE from 'three';
+import type { PerspectiveCamera } from 'three';
+import { CatmullRomCurve3, Vector3 } from 'three';
 import type { GraphNode } from '#/data/graph';
 import { levelAt, levelY } from '#/data/levels';
 import { EYE } from '#/player/constants';
@@ -13,8 +14,8 @@ export type DirectorMode = 'boot' | 'idle' | 'selected' | 'touring' | 'arrived';
  * Offset in X on purpose: dead centre puts the solid kiosk base 1.5 m in front
  * of your face, so step one of walking forward was walking into it.
  */
-export const HOME_POS = new THREE.Vector3(3.4, EYE, 13);
-export const HOME_TARGET = new THREE.Vector3(2.2, 1.5, 3);
+export const HOME_POS = new Vector3(3.4, EYE, 13);
+export const HOME_TARGET = new Vector3(2.2, 1.5, 3);
 
 /**
  * Cinematic camera: intro, store focus and the guided walk.
@@ -25,13 +26,13 @@ export const HOME_TARGET = new THREE.Vector3(2.2, 1.5, 3);
  */
 export class Director {
 	mode: DirectorMode = 'boot';
-	readonly target = new THREE.Vector3();
-	private camera: THREE.PerspectiveCamera;
+	readonly target = new Vector3();
+	private camera: PerspectiveCamera;
 	private tourTween: gsap.core.Tween | null = null;
 	private moveTween: gsap.core.Tween | null = null;
 	private onArrive: (() => void) | null = null;
 
-	constructor(camera: THREE.PerspectiveCamera) {
+	constructor(camera: PerspectiveCamera) {
 		this.camera = camera;
 		camera.position.copy(HOME_POS);
 		this.target.copy(HOME_TARGET);
@@ -62,11 +63,11 @@ export class Director {
 		this.animateCamera(HOME_POS, HOME_TARGET, 1.2, onDone);
 	}
 
-	focusStore(pos: THREE.Vector3, onDone?: () => void): void {
+	focusStore(pos: Vector3, onDone?: () => void): void {
 		this.killTour();
 		this.mode = 'selected';
 
-		const toCenter = new THREE.Vector3(-pos.x, 0, -pos.z);
+		const toCenter = new Vector3(-pos.x, 0, -pos.z);
 		if (toCenter.lengthSq() < 0.01) toCenter.set(0, 0, 1);
 		toCenter.normalize();
 		const stand = pos.clone().addScaledVector(toCenter, 6);
@@ -88,8 +89,8 @@ export class Director {
 			return;
 		}
 
-		const points = nodes.map((n) => new THREE.Vector3(n.x, n.y + EYE - 0.15, n.z));
-		const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.3);
+		const points = nodes.map((n) => new Vector3(n.x, n.y + EYE - 0.15, n.z));
+		const curve = new CatmullRomCurve3(points, false, 'catmullrom', 0.3);
 		const progress = { t: 0 };
 		const pathLen = curve.getLength();
 		const duration = clamp(pathLen * 0.22, 10, 28);
@@ -128,9 +129,9 @@ export class Director {
 
 				const lastId = nodes[nodes.length - 1]?.id;
 				if (lastId === 'spaceship') {
-					settle = end.clone().add(new THREE.Vector3(0.5, 0, 1.5));
+					settle = end.clone().add(new Vector3(0.5, 0, 1.5));
 					settle.y = levelY('v1') + EYE;
-					target = end.clone().add(new THREE.Vector3(0, 5, 0));
+					target = end.clone().add(new Vector3(0, 5, 0));
 				}
 
 				this.animateCamera(settle, target, 1.2, () => {
@@ -171,7 +172,7 @@ export class Director {
 		this.camera.lookAt(this.target);
 	}
 
-	private animateCamera(pos: THREE.Vector3, target: THREE.Vector3, duration: number, onComplete?: () => void): void {
+	private animateCamera(pos: Vector3, target: Vector3, duration: number, onComplete?: () => void): void {
 		this.moveTween?.kill();
 		const fromPos = this.camera.position.clone();
 		const fromTarget = this.target.clone();

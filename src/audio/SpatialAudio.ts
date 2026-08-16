@@ -12,7 +12,41 @@
 
 import { clamp01 } from '#/util/math';
 
-export type ListenerPose = {
+const DEFAULT_LISTENER_HEIGHT = 1.6;
+const MASTER_VOLUME = 0.9;
+const SOURCE_DEFAULTS = {
+	volume: 0.8,
+	refDistance: 2.5,
+	maxDistance: 28,
+	k: 0.045,
+};
+const LOOP_DEFAULTS = {
+	volume: 0.55,
+	refDistance: 2.5,
+	maxDistance: 22,
+	k: 0.05,
+};
+const ELEMENT_DEFAULTS = {
+	volume: 0.7,
+	refDistance: 3.5,
+	maxDistance: 55,
+	k: 0.012,
+};
+const MIN_PANNER_MAX_DISTANCE = 40;
+const PANNER_ROLLOFF = 0.35;
+const OMNIDIRECTIONAL_CONE_DEGREES = 360;
+const DISTANCE_TAIL_VOLUME = 0.06;
+const DISTANCE_TAIL_DECAY = 0.12;
+const DEFAULT_ANALYSER_FFT_SIZE = 256;
+const ANALYSER_SMOOTHING = 0.65;
+
+interface Position {
+	x: number;
+	y: number;
+	z: number;
+}
+
+interface ListenerPose extends Position {
 	x: number;
 	y: number;
 	z: number;
@@ -24,9 +58,9 @@ export type ListenerPose = {
 	ux: number;
 	uy: number;
 	uz: number;
-};
+}
 
-export type PlayAtOpts = {
+interface PlayAtOpts {
 	volume?: number;
 	/** meters where gain ≈ full for inverse model */
 	refDistance?: number;
@@ -38,14 +72,60 @@ export type PlayAtOpts = {
 	binaural?: boolean;
 	/** Cancel an in-flight fetch when the caller's playback slot expires. */
 	signal?: AbortSignal;
-};
+}
 
-export class SpatialAudio {
+interface AttenuationOpts {
+	volume: number;
+	maxDistance: number;
+	k: number;
+}
+
+interface PannerOpts extends AttenuationOpts {
+	refDistance: number;
+	binaural: boolean;
+}
+
+interface SpatialSource {
+	onEnded: (() => void) | null;
+	/** Buffer length in seconds (for loop position) */
+	readonly duration: number;
+	readonly looping: boolean;
+	getPlaybackTime: () => number;
+	createAnalyser: (fftSize?: number) => AnalyserNode;
+	setPanningModel: (model: PanningModelType) => void;
+	setPosition: (x: number, y: number, z: number) => void;
+	apply: (listener: ListenerPose) => void;
+	start: () => void;
+	stop: () => void;
+}
+
+interface SpatialLoop extends Position {
+	/** Connect synths here */
+	readonly input: GainNode;
+	attachStop: (stop: () => void) => void;
+	setPanningModel: (model: PanningModelType) => void;
+	setPosition: (x: number, y: number, z: number) => void;
+	apply: (listener: ListenerPose) => void;
+	stop: () => void;
+}
+
+interface SpatialElement {
+	readonly element: HTMLAudioElement;
+	readonly duration: number;
+	setPanningModel: (model: PanningModelType) => void;
+	setPosition: (x: number, y: number, z: number) => void;
+	setBaseVolume: (volume: number) => void;
+	getPlaybackTime: () => number;
+	createAnalyser: (fftSize?: number) => AnalyserNode;
+	apply: (listener: ListenerPose) => void;
+}
+
+class SpatialAudio {
 	private ctx: AudioContext | null = null;
 	private master: GainNode | null = null;
 	private listener: ListenerPose = {
 		x: 0,
-		y: 1.6,
+		y: DEFAULT_LISTENER_HEIGHT,
 		z: 0,
 		fx: 0,
 		fy: 0,
@@ -56,11 +136,11 @@ export class SpatialAudio {
 	};
 	private sources: SpatialSource[] = [];
 	private loops: SpatialLoop[] = [];
-	private elements: SpatialElement[] = [];
+	private readonly elements: SpatialElement[] = [];
 	/** HRTF when true; equalpower stereo when false */
 	binaural = true;
 	/** Master wet for spatial bus */
-	private masterVol = 0.9;
+	private readonly masterVol = MASTER_VOLUME;
 
 	ensure(): AudioContext {
 		if (!this.ctx) {
@@ -70,7 +150,7 @@ export class SpatialAudio {
 			this.master.connect(this.ctx.destination);
 			this.applyListenerToCtx();
 		}
-		if (this.ctx.state === 'suspended') void this.ctx.resume();
+		if (this.ctx.state === 'suspended') this.ctx.resume();
 		return this.ctx;
 	}
 
@@ -112,39 +192,23 @@ export class SpatialAudio {
 
 	private applyListenerToCtx(): void {
 		if (!this.ctx) return;
-		const L = this.ctx.listener;
+		const listener = this.ctx.listener;
 		const p = this.listener;
 		// Modern AudioParam path
-		if ('positionX' in L) {
-			const al = L as AudioListener & {
-				positionX: AudioParam;
-				positionY: AudioParam;
-				positionZ: AudioParam;
-				forwardX: AudioParam;
-				forwardY: AudioParam;
-				forwardZ: AudioParam;
-				upX: AudioParam;
-				upY: AudioParam;
-				upZ: AudioParam;
-			};
+		if ('positionX' in listener) {
 			const t = this.ctx.currentTime;
-			al.positionX.setValueAtTime(p.x, t);
-			al.positionY.setValueAtTime(p.y, t);
-			al.positionZ.setValueAtTime(p.z, t);
-			al.forwardX.setValueAtTime(p.fx, t);
-			al.forwardY.setValueAtTime(p.fy, t);
-			al.forwardZ.setValueAtTime(p.fz, t);
-			al.upX.setValueAtTime(p.ux, t);
-			al.upY.setValueAtTime(p.uy, t);
-			al.upZ.setValueAtTime(p.uz, t);
+			listener.positionX.setValueAtTime(p.x, t);
+			listener.positionY.setValueAtTime(p.y, t);
+			listener.positionZ.setValueAtTime(p.z, t);
+			listener.forwardX.setValueAtTime(p.fx, t);
+			listener.forwardY.setValueAtTime(p.fy, t);
+			listener.forwardZ.setValueAtTime(p.fz, t);
+			listener.upX.setValueAtTime(p.ux, t);
+			listener.upY.setValueAtTime(p.uy, t);
+			listener.upZ.setValueAtTime(p.uz, t);
 		} else {
 			// Safari legacy
-			const legacy = L as AudioListener & {
-				setPosition?: (x: number, y: number, z: number) => void;
-				setOrientation?: (fx: number, fy: number, fz: number, ux: number, uy: number, uz: number) => void;
-			};
-			legacy.setPosition?.(p.x, p.y, p.z);
-			legacy.setOrientation?.(p.fx, p.fy, p.fz, p.ux, p.uy, p.uz);
+			applyLegacyListenerPose(listener, p);
 		}
 	}
 
@@ -168,13 +232,19 @@ export class SpatialAudio {
 			buffer = urlOrBuffer;
 		}
 		const binaural = opts.binaural ?? this.binaural;
-		const src = new SpatialSource(ctx, this.bus, buffer, pos, {
-			volume: opts.volume ?? 0.8,
-			refDistance: opts.refDistance ?? 2.5,
-			maxDistance: opts.maxDistance ?? 28,
-			k: opts.k ?? 0.045,
-			loop: opts.loop ?? false,
-			binaural,
+		const src = createSpatialSource({
+			ctx,
+			master: this.bus,
+			buffer,
+			pos,
+			opts: {
+				volume: opts.volume ?? SOURCE_DEFAULTS.volume,
+				refDistance: opts.refDistance ?? SOURCE_DEFAULTS.refDistance,
+				maxDistance: opts.maxDistance ?? SOURCE_DEFAULTS.maxDistance,
+				k: opts.k ?? SOURCE_DEFAULTS.k,
+				loop: opts.loop ?? false,
+				binaural,
+			},
 		});
 		src.apply(this.listener);
 		src.start();
@@ -202,12 +272,17 @@ export class SpatialAudio {
 	): SpatialLoop {
 		const ctx = this.ensure();
 		const binaural = opts.binaural ?? this.binaural;
-		const loop = new SpatialLoop(ctx, this.bus, pos, {
-			volume: opts.volume ?? 0.55,
-			k: opts.k ?? 0.05,
-			maxDistance: opts.maxDistance ?? 22,
-			refDistance: opts.refDistance ?? 2.5,
-			binaural,
+		const loop = createSpatialLoop({
+			ctx,
+			master: this.bus,
+			pos,
+			opts: {
+				volume: opts.volume ?? LOOP_DEFAULTS.volume,
+				k: opts.k ?? LOOP_DEFAULTS.k,
+				maxDistance: opts.maxDistance ?? LOOP_DEFAULTS.maxDistance,
+				refDistance: opts.refDistance ?? LOOP_DEFAULTS.refDistance,
+				binaural,
+			},
 		});
 		const handle = factory(ctx, loop.input);
 		loop.attachStop(handle.stop);
@@ -238,12 +313,18 @@ export class SpatialAudio {
 			return existing;
 		}
 		const binaural = opts.binaural ?? this.binaural;
-		const se = new SpatialElement(ctx, this.bus, el, pos, {
-			volume: opts.volume ?? 0.7,
-			k: opts.k ?? 0.012,
-			maxDistance: opts.maxDistance ?? 55,
-			refDistance: opts.refDistance ?? 3.5,
-			binaural,
+		const se = createSpatialElement({
+			ctx,
+			master: this.bus,
+			element: el,
+			pos,
+			opts: {
+				volume: opts.volume ?? ELEMENT_DEFAULTS.volume,
+				k: opts.k ?? ELEMENT_DEFAULTS.k,
+				maxDistance: opts.maxDistance ?? ELEMENT_DEFAULTS.maxDistance,
+				refDistance: opts.refDistance ?? ELEMENT_DEFAULTS.refDistance,
+				binaural,
+			},
 		});
 		se.apply(this.listener);
 		this.elements.push(se);
@@ -262,15 +343,16 @@ export class SpatialAudio {
 	}
 }
 
-// ── shared panner wiring ──────────────────────────────────────────
+function applyLegacyListenerPose(listener: object, pose: ListenerPose): void {
+	if ('setPosition' in listener && typeof listener.setPosition === 'function') {
+		listener.setPosition(pose.x, pose.y, pose.z);
+	}
+	if ('setOrientation' in listener && typeof listener.setOrientation === 'function') {
+		listener.setOrientation(pose.fx, pose.fy, pose.fz, pose.ux, pose.uy, pose.uz);
+	}
+}
 
-type PannerOpts = {
-	volume: number;
-	refDistance: number;
-	maxDistance: number;
-	k: number;
-	binaural: boolean;
-};
+// ── shared panner wiring ──────────────────────────────────────────
 
 function makePanner(
 	ctx: AudioContext,
@@ -289,10 +371,10 @@ function makePanner(
 	// (mild inverse so the panner still has a distance cue)
 	panner.distanceModel = 'inverse';
 	panner.refDistance = opts.refDistance;
-	panner.maxDistance = Math.max(opts.maxDistance, 40);
-	panner.rolloffFactor = 0.35;
-	panner.coneInnerAngle = 360;
-	panner.coneOuterAngle = 360;
+	panner.maxDistance = Math.max(opts.maxDistance, MIN_PANNER_MAX_DISTANCE);
+	panner.rolloffFactor = PANNER_ROLLOFF;
+	panner.coneInnerAngle = OMNIDIRECTIONAL_CONE_DEGREES;
+	panner.coneOuterAngle = OMNIDIRECTIONAL_CONE_DEGREES;
 	panner.coneOuterGain = 1;
 	// Orientation of the source (omni)
 	if ('orientationX' in panner) {
@@ -309,7 +391,7 @@ function makePanner(
 			panner.positionY.setValueAtTime(y, t);
 			panner.positionZ.setValueAtTime(z, t);
 		} else {
-			(panner as PannerNode & { setPosition?: (x: number, y: number, z: number) => void }).setPosition?.(x, y, z);
+			applyLegacyPannerPosition(panner, { x, y, z });
 		}
 	};
 
@@ -323,291 +405,258 @@ function makePanner(
 	};
 }
 
-function quadraticGain(
-	volume: number,
-	k: number,
-	maxDistance: number,
-	L: ListenerPose,
-	pos: { x: number; y: number; z: number },
-): number {
-	const d = Math.hypot(L.x - pos.x, L.y - pos.y, L.z - pos.z);
-	if (d > maxDistance) {
+function applyLegacyPannerPosition(panner: object, pos: Position): void {
+	if ('setPosition' in panner && typeof panner.setPosition === 'function') {
+		panner.setPosition(pos.x, pos.y, pos.z);
+	}
+}
+
+function quadraticGain(opts: AttenuationOpts, listener: ListenerPose, pos: Position): number {
+	const d = Math.hypot(listener.x - pos.x, listener.y - pos.y, listener.z - pos.z);
+	if (d > opts.maxDistance) {
 		// Soft tail so music doesn't hard-cut at the edge (was silent mid-mall)
-		const over = d - maxDistance;
-		const tail = volume * 0.06 * Math.exp(-over * 0.12);
+		const over = d - opts.maxDistance;
+		const tail = opts.volume * DISTANCE_TAIL_VOLUME * Math.exp(-over * DISTANCE_TAIL_DECAY);
 		return clamp01(tail);
 	}
-	return clamp01(volume / (1 + k * d * d));
+	return clamp01(opts.volume / (1 + opts.k * d * d));
 }
 
 // ── buffer source ─────────────────────────────────────────────────
 
-export class SpatialSource {
-	onEnded: (() => void) | null = null;
-	private node: AudioBufferSourceNode;
-	private gain: GainNode;
-	private panner: PannerNode;
-	private setPos: (x: number, y: number, z: number) => void;
-	private setModel: (m: PanningModelType) => void;
-	private pos: { x: number; y: number; z: number };
-	private volume: number;
-	private k: number;
-	private maxDistance: number;
-	private stopped = false;
-	private ctx: AudioContext;
-	/** ctx.currentTime when start() was called */
-	private startedAt = -1;
-	/** Buffer length in seconds (for loop position) */
-	readonly duration: number;
-	readonly looping: boolean;
+interface SpatialSourceParams {
+	ctx: AudioContext;
+	master: GainNode;
+	buffer: AudioBuffer;
+	pos: Position;
+	opts: PannerOpts & { loop: boolean };
+}
 
-	constructor(
-		ctx: AudioContext,
-		master: GainNode,
-		buffer: AudioBuffer,
-		pos: { x: number; y: number; z: number },
-		opts: PannerOpts & { loop: boolean },
-	) {
-		this.ctx = ctx;
-		this.duration = buffer.duration;
-		this.looping = opts.loop;
-		this.pos = { ...pos };
-		this.volume = opts.volume;
-		this.k = opts.k;
-		this.maxDistance = opts.maxDistance;
-		this.node = ctx.createBufferSource();
-		this.node.buffer = buffer;
-		this.node.loop = opts.loop;
-		const chain = makePanner(ctx, opts);
-		this.gain = chain.gain;
-		this.panner = chain.panner;
-		this.setPos = chain.setPos;
-		this.setModel = chain.setPanningModel;
-		this.node.connect(this.gain);
-		this.panner.connect(master);
-		this.setPos(pos.x, pos.y, pos.z);
-		this.node.onended = () => {
-			if (!this.stopped) this.onEnded?.();
-		};
+interface SpatialSourceState {
+	ctx: AudioContext;
+	node: AudioBufferSourceNode;
+	chain: ReturnType<typeof makePanner>;
+	pos: Position;
+	opts: PannerOpts & { loop: boolean };
+	duration: number;
+	onEnded: (() => void) | null;
+	stopped: boolean;
+	startedAt: number;
+}
+
+function createSpatialSource(params: SpatialSourceParams): SpatialSource {
+	const { ctx, master, buffer, opts } = params;
+	const state: SpatialSourceState = {
+		ctx,
+		node: ctx.createBufferSource(),
+		chain: makePanner(ctx, opts),
+		pos: { ...params.pos },
+		opts,
+		duration: buffer.duration,
+		onEnded: null,
+		stopped: false,
+		startedAt: -1,
+	};
+	state.node.buffer = buffer;
+	state.node.loop = opts.loop;
+	state.node.connect(state.chain.gain);
+	state.chain.panner.connect(master);
+	state.chain.setPos(state.pos.x, state.pos.y, state.pos.z);
+	state.node.onended = () => {
+		if (!state.stopped) state.onEnded?.();
+	};
+	return makeSpatialSourceHandle(state);
+}
+
+function makeSpatialSourceHandle(state: SpatialSourceState): SpatialSource {
+	return {
+		get onEnded() {
+			return state.onEnded;
+		},
+		set onEnded(handler) {
+			state.onEnded = handler;
+		},
+		duration: state.duration,
+		looping: state.opts.loop,
+		/**
+		 * Seconds into the buffer (loops if looping). -1 if not started.
+		 * Use this to lock animation to the track.
+		 */
+		getPlaybackTime() {
+			return spatialSourcePlaybackTime(state);
+		},
+		/** Tap a silent analyser on this source for beat energy (bass) */
+		createAnalyser(fftSize = DEFAULT_ANALYSER_FFT_SIZE) {
+			// Raw pre-panner: gain → analyser (parallel) + panner
+			return makeAnalyser(state.ctx, state.chain.gain, fftSize);
+		},
+		setPanningModel(model) {
+			state.chain.setPanningModel(model);
+		},
+		setPosition(x, y, z) {
+			state.pos.x = x;
+			state.pos.y = y;
+			state.pos.z = z;
+			state.chain.setPos(x, y, z);
+		},
+		apply(listener) {
+			state.chain.gain.gain.value = quadraticGain(state.opts, listener, state.pos);
+			state.chain.setPos(state.pos.x, state.pos.y, state.pos.z);
+		},
+		start() {
+			state.startedAt = state.ctx.currentTime;
+			state.node.start();
+		},
+		stop() {
+			stopSpatialSource(state);
+		},
+	};
+}
+
+function spatialSourcePlaybackTime(state: SpatialSourceState): number {
+	if (state.startedAt < 0 || state.stopped) return -1;
+	const elapsed = state.ctx.currentTime - state.startedAt;
+	if (state.duration <= 0) return elapsed;
+	if (state.opts.loop) {
+		const time = elapsed % state.duration;
+		return time < 0 ? time + state.duration : time;
 	}
+	return Math.min(elapsed, state.duration);
+}
 
-	/**
-	 * Seconds into the buffer (loops if looping). -1 if not started.
-	 * Use this to lock animation to the track.
-	 */
-	getPlaybackTime(): number {
-		if (this.startedAt < 0 || this.stopped) return -1;
-		const elapsed = this.ctx.currentTime - this.startedAt;
-		if (this.duration <= 0) return elapsed;
-		if (this.looping) {
-			const t = elapsed % this.duration;
-			return t < 0 ? t + this.duration : t;
-		}
-		return Math.min(elapsed, this.duration);
+function stopSpatialSource(state: SpatialSourceState): void {
+	state.stopped = true;
+	try {
+		state.node.stop();
+	} catch {
+		/* */
 	}
-
-	/** Tap a silent analyser on this source for beat energy (bass) */
-	createAnalyser(fftSize = 256): AnalyserNode {
-		const a = this.ctx.createAnalyser();
-		a.fftSize = fftSize;
-		a.smoothingTimeConstant = 0.65;
-		// Tap after gain so volume/distance already applied — or pre-panner for raw?
-		// Raw pre-panner: gain → analyser (parallel) + panner
-		this.gain.connect(a);
-		return a;
-	}
-
-	setPanningModel(m: PanningModelType): void {
-		this.setModel(m);
-	}
-
-	setPosition(x: number, y: number, z: number): void {
-		this.pos.x = x;
-		this.pos.y = y;
-		this.pos.z = z;
-		this.setPos(x, y, z);
-	}
-
-	apply(L: ListenerPose): void {
-		this.gain.gain.value = quadraticGain(this.volume, this.k, this.maxDistance, L, this.pos);
-		this.setPos(this.pos.x, this.pos.y, this.pos.z);
-	}
-
-	start(): void {
-		this.startedAt = this.ctx.currentTime;
-		this.node.start();
-	}
-
-	stop(): void {
-		this.stopped = true;
-		try {
-			this.node.stop();
-		} catch {
-			/* */
-		}
-		try {
-			this.panner.disconnect();
-			this.gain.disconnect();
-		} catch {
-			/* */
-		}
+	try {
+		state.chain.panner.disconnect();
+		state.chain.gain.disconnect();
+	} catch {
+		/* */
 	}
 }
 
 // ── procedural loop ───────────────────────────────────────────────
 
-export class SpatialLoop {
-	x: number;
-	y: number;
-	z: number;
-	/** Connect synths here */
-	readonly input: GainNode;
-	private gain: GainNode;
-	private panner: PannerNode;
-	private setPos: (x: number, y: number, z: number) => void;
-	private setModel: (m: PanningModelType) => void;
-	private volume: number;
-	private k: number;
-	private maxDistance: number;
-	private stopInner: (() => void) | null = null;
-	private stopped = false;
+interface SpatialLoopParams {
+	ctx: AudioContext;
+	master: GainNode;
+	pos: Position;
+	opts: PannerOpts;
+}
 
-	constructor(ctx: AudioContext, master: GainNode, pos: { x: number; y: number; z: number }, opts: PannerOpts) {
-		this.x = pos.x;
-		this.y = pos.y;
-		this.z = pos.z;
-		this.volume = opts.volume;
-		this.k = opts.k;
-		this.maxDistance = opts.maxDistance;
-		const chain = makePanner(ctx, opts);
-		this.gain = chain.gain;
-		this.panner = chain.panner;
-		this.setPos = chain.setPos;
-		this.setModel = chain.setPanningModel;
+function createSpatialLoop({ ctx, master, pos, opts }: SpatialLoopParams): SpatialLoop {
+	const chain = makePanner(ctx, opts);
+	let stopInner: (() => void) | null = null;
+	let stopped = false;
+	const loop: SpatialLoop = {
+		x: pos.x,
+		y: pos.y,
+		z: pos.z,
 		// input → gain (volume) is the panner's gain node
-		this.input = this.gain;
-		this.panner.connect(master);
-		this.setPos(pos.x, pos.y, pos.z);
-	}
-
-	attachStop(fn: () => void): void {
-		this.stopInner = fn;
-	}
-
-	setPanningModel(m: PanningModelType): void {
-		this.setModel(m);
-	}
-
-	setPosition(x: number, y: number, z: number): void {
-		this.x = x;
-		this.y = y;
-		this.z = z;
-		this.setPos(x, y, z);
-	}
-
-	apply(L: ListenerPose): void {
-		this.gain.gain.value = quadraticGain(this.volume, this.k, this.maxDistance, L, { x: this.x, y: this.y, z: this.z });
-		this.setPos(this.x, this.y, this.z);
-	}
-
-	stop(): void {
-		if (this.stopped) return;
-		this.stopped = true;
-		this.stopInner?.();
-		try {
-			this.panner.disconnect();
-			this.gain.disconnect();
-		} catch {
-			/* */
-		}
-	}
+		input: chain.gain,
+		attachStop(stop) {
+			stopInner = stop;
+		},
+		setPanningModel(model) {
+			chain.setPanningModel(model);
+		},
+		setPosition(x, y, z) {
+			loop.x = x;
+			loop.y = y;
+			loop.z = z;
+			chain.setPos(x, y, z);
+		},
+		apply(listener) {
+			chain.gain.gain.value = quadraticGain(opts, listener, loop);
+			chain.setPos(loop.x, loop.y, loop.z);
+		},
+		stop() {
+			if (stopped) return;
+			stopped = true;
+			stopInner?.();
+			try {
+				chain.panner.disconnect();
+				chain.gain.disconnect();
+			} catch {
+				/* */
+			}
+		},
+	};
+	chain.panner.connect(master);
+	chain.setPos(pos.x, pos.y, pos.z);
+	return loop;
 }
 
 // ── HTMLMediaElement (DJ) ─────────────────────────────────────────
 
-export class SpatialElement {
-	readonly element: HTMLAudioElement;
-	private media: MediaElementAudioSourceNode;
-	private gain: GainNode;
-	private panner: PannerNode;
-	private setPos: (x: number, y: number, z: number) => void;
-	private setModel: (m: PanningModelType) => void;
-	private pos: { x: number; y: number; z: number };
-	private volume: number;
-	private k: number;
-	private maxDistance: number;
-	/** When true, HTMLAudioElement.volume is forced to 1 and we own level */
-	private owned = true;
-	private ctx: AudioContext;
+interface SpatialElementParams {
+	ctx: AudioContext;
+	master: GainNode;
+	element: HTMLAudioElement;
+	pos: Position;
+	opts: PannerOpts;
+}
 
-	constructor(
-		ctx: AudioContext,
-		master: GainNode,
-		el: HTMLAudioElement,
-		pos: { x: number; y: number; z: number },
-		opts: PannerOpts,
-	) {
-		this.ctx = ctx;
-		this.element = el;
-		this.pos = { ...pos };
-		this.volume = opts.volume;
-		this.k = opts.k;
-		this.maxDistance = opts.maxDistance;
-		// Element must be silent at the OS path — we take the audio graph
-		el.volume = 1;
-		this.media = ctx.createMediaElementSource(el);
-		const chain = makePanner(ctx, opts);
-		this.gain = chain.gain;
-		this.panner = chain.panner;
-		this.setPos = chain.setPos;
-		this.setModel = chain.setPanningModel;
-		this.media.connect(this.gain);
-		this.panner.connect(master);
-		this.setPos(pos.x, pos.y, pos.z);
-	}
+function createSpatialElement({ ctx, master, element, pos: initialPos, opts }: SpatialElementParams): SpatialElement {
+	const pos = { ...initialPos };
+	// Element must be silent at the OS path — we take the audio graph
+	element.volume = 1;
+	const media = ctx.createMediaElementSource(element);
+	const chain = makePanner(ctx, opts);
+	const state = { media, volume: opts.volume };
+	state.media.connect(chain.gain);
+	chain.panner.connect(master);
+	chain.setPos(pos.x, pos.y, pos.z);
 
-	setPanningModel(m: PanningModelType): void {
-		this.setModel(m);
-	}
+	return {
+		element,
+		get duration() {
+			const duration = element.duration;
+			return Number.isFinite(duration) && duration > 0 ? duration : 0;
+		},
+		setPanningModel(model) {
+			chain.setPanningModel(model);
+		},
+		setPosition(x, y, z) {
+			pos.x = x;
+			pos.y = y;
+			pos.z = z;
+			chain.setPos(x, y, z);
+		},
+		/** Base volume (booth fader); distance applied in apply() */
+		setBaseVolume(volume) {
+			state.volume = clamp01(volume);
+		},
+		/** Seconds into the media element (for beat-sync) */
+		getPlaybackTime() {
+			const time = element.currentTime;
+			return Number.isFinite(time) ? time : 0;
+		},
+		/** Frequency analyser tap (bass / kick) */
+		createAnalyser(fftSize = DEFAULT_ANALYSER_FFT_SIZE) {
+			return makeAnalyser(ctx, chain.gain, fftSize);
+		},
+		apply(listener) {
+			chain.gain.gain.value = quadraticGain({ ...opts, volume: state.volume }, listener, pos);
+			chain.setPos(pos.x, pos.y, pos.z);
+		},
+	};
+}
 
-	setPosition(x: number, y: number, z: number): void {
-		this.pos.x = x;
-		this.pos.y = y;
-		this.pos.z = z;
-		this.setPos(x, y, z);
-	}
-
-	/** Base volume (booth fader); distance applied in apply() */
-	setBaseVolume(v: number): void {
-		this.volume = clamp01(v);
-	}
-
-	/** Seconds into the media element (for beat-sync) */
-	getPlaybackTime(): number {
-		const t = this.element.currentTime;
-		return Number.isFinite(t) ? t : 0;
-	}
-
-	get duration(): number {
-		const d = this.element.duration;
-		return Number.isFinite(d) && d > 0 ? d : 0;
-	}
-
-	/** Frequency analyser tap (bass / kick) */
-	createAnalyser(fftSize = 256): AnalyserNode {
-		const a = this.ctx.createAnalyser();
-		a.fftSize = fftSize;
-		a.smoothingTimeConstant = 0.65;
-		this.gain.connect(a);
-		return a;
-	}
-
-	apply(L: ListenerPose): void {
-		if (!this.owned) return;
-		this.gain.gain.value = quadraticGain(this.volume, this.k, this.maxDistance, L, this.pos);
-		this.setPos(this.pos.x, this.pos.y, this.pos.z);
-	}
+function makeAnalyser(ctx: AudioContext, gain: GainNode, fftSize: number): AnalyserNode {
+	const analyser = ctx.createAnalyser();
+	analyser.fftSize = fftSize;
+	analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
+	gain.connect(analyser);
+	return analyser;
 }
 
 /** Shared singleton for the mall */
-export const spatial = new SpatialAudio();
+const spatial = new SpatialAudio();
+
+export type { ListenerPose, PlayAtOpts, SpatialElement, SpatialLoop, SpatialSource };
+export { SpatialAudio, spatial };

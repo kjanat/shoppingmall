@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, CanvasTexture, Material, Texture } from 'three';
+import { BoxGeometry, Color, Group, InstancedMesh, Mesh, Object3D, PlaneGeometry } from 'three';
 import { CARDINAL_OUTWARD } from '#/data/spatial';
 import type { FacadeReliefKind, FacadeReliefPiece } from '#/data/world';
 import { FACADE_SIGN_SPEC, MALL_FACADE_RELIEF, MALL_FACADE_SIGNS } from '#/data/world';
@@ -40,16 +41,16 @@ const LETTER_RULE_INSET = 8;
 const LETTER_RULE_WIDTH = 4;
 
 export class MallFacade {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly instanced: THREE.InstancedMesh[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly instanced: InstancedMesh[] = [];
 
 	/** Gedeelde eenheidskubus: elk stuk gevelwerk is deze doos, geschaald. */
-	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
-	private readonly dummy = new THREE.Object3D();
+	private readonly unitBox = new BoxGeometry(1, 1, 1);
+	private readonly dummy = new Object3D();
 
 	constructor() {
 		this.group.name = 'mall_facade';
@@ -66,7 +67,7 @@ export class MallFacade {
 		this.group.clear();
 	}
 
-	private track<T extends THREE.Material>(material: T): T {
+	private track<T extends Material>(material: T): T {
 		this.materials.push(material);
 		return material;
 	}
@@ -75,11 +76,11 @@ export class MallFacade {
 	private buildRelief(): void {
 		const pieces: readonly FacadeReliefPiece[] = [...MALL_FACADE_RELIEF, ...MALL_FACADE_SIGNS];
 		const stone = this.track(lit({ color: 0xffffff, roughness: 0.9, metalness: 0.02 }));
-		const mesh = new THREE.InstancedMesh(this.unitBox, stone, pieces.length);
+		const mesh = new InstancedMesh(this.unitBox, stone, pieces.length);
 		mesh.name = 'facade_relief';
 		mesh.castShadow = shellShadowOn();
 		mesh.receiveShadow = true;
-		const tint = new THREE.Color();
+		const tint = new Color();
 		pieces.forEach((piece, index) => {
 			this.dummy.position.set(
 				midpoint(piece.minX, piece.maxX),
@@ -112,12 +113,12 @@ export class MallFacade {
 		for (const board of MALL_FACADE_SIGNS) {
 			const outward = CARDINAL_OUTWARD[board.side];
 			const width = outward.x === 0 ? span(board.minX, board.maxX) : span(board.minZ, board.maxZ);
-			const geometry = new THREE.PlaneGeometry(
+			const geometry = new PlaneGeometry(
 				width - FACADE_SIGN_SPEC.inset * 2,
 				span(board.minY, board.maxY) - FACADE_SIGN_SPEC.inset * 2,
 			);
 			this.geometries.push(geometry);
-			const plane = new THREE.Mesh(geometry, letters);
+			const plane = new Mesh(geometry, letters);
 			plane.position.set(
 				midpoint(board.minX, board.maxX) + outward.x * (half(span(board.minX, board.maxX)) + LETTER_LIFT),
 				midpoint(board.minY, board.maxY),
@@ -132,7 +133,7 @@ export class MallFacade {
 	 * De wordmark op een doorzichtig doek, met een dunne lijst eromheen. Het bord
 	 * eronder is de donkere kast; wat hier gloeit zijn alleen de letters.
 	 */
-	private letterTexture(): THREE.CanvasTexture {
+	private letterTexture(): CanvasTexture {
 		const { canvas, ctx, w, h } = labelCanvas(LETTER_CANVAS.width, LETTER_CANVAS.height);
 		const glow = ctx.createLinearGradient(0, 0, w, 0);
 		glow.addColorStop(0, '#f7c873');

@@ -1,6 +1,11 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material } from 'three';
+import { CanvasTexture, Group, LinearFilter, LinearMipmapLinearFilter, Mesh, SRGBColorSpace } from 'three';
 import { half } from '#/util/math';
 import { ctx2d } from './dom';
+
+const RE_SPACES = /\s+/;
+const DEFAULT_LINE_HEIGHT = 1.15;
+const DEFAULT_MIN_FONT_SIZE = 8;
 
 /**
  * Canvas text that stays sharp and stays inside its box.
@@ -20,7 +25,7 @@ const SUPERSAMPLE = 3;
  */
 let maxAnisotropy = 1;
 
-export function setLabelAnisotropy(n: number): void {
+function setLabelAnisotropy(n: number): void {
 	maxAnisotropy = Math.max(1, n);
 }
 
@@ -33,7 +38,7 @@ export function setLabelAnisotropy(n: number): void {
  * a paint routine that reads the size off the canvas would draw at triple
  * scale into a third of the box.
  */
-export function labelCanvas(
+function labelCanvas(
 	w: number,
 	h: number,
 ): {
@@ -51,16 +56,16 @@ export function labelCanvas(
 }
 
 /** Clear a labelCanvas back to transparent, in design units. */
-export function clearLabel(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+function clearLabel(ctx: CanvasRenderingContext2D, w: number, h: number): void {
 	ctx.clearRect(0, 0, w, h);
 }
 
-export function labelTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
-	const tex = new THREE.CanvasTexture(canvas);
-	tex.colorSpace = THREE.SRGBColorSpace;
+function labelTexture(canvas: HTMLCanvasElement): CanvasTexture {
+	const tex = new CanvasTexture(canvas);
+	tex.colorSpace = SRGBColorSpace;
 	tex.anisotropy = maxAnisotropy;
-	tex.minFilter = THREE.LinearMipmapLinearFilter;
-	tex.magFilter = THREE.LinearFilter;
+	tex.minFilter = LinearMipmapLinearFilter;
+	tex.magFilter = LinearFilter;
 	tex.generateMipmaps = true;
 	return tex;
 }
@@ -73,10 +78,10 @@ export function labelTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
  * ging staan. Twee enkelzijdige vlakken delen hier één geometrie en één materiaal, en
  * de achterste staat een halve slag om, dus beide kanten lezen van links naar rechts.
  */
-export function backToBackLabel(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.Group {
-	const group = new THREE.Group();
-	const front = new THREE.Mesh(geometry, material);
-	const back = new THREE.Mesh(geometry, material);
+function backToBackLabel(geometry: BufferGeometry, material: Material): Group {
+	const group = new Group();
+	const front = new Mesh(geometry, material);
+	const back = new Mesh(geometry, material);
 	back.rotation.y = Math.PI;
 	group.add(front, back);
 	return group;
@@ -95,7 +100,7 @@ const TAIL_TIP_UP = 2;
  * to fill and stroke. The caller sets its own colours, so the tail matches the
  * bubble it hangs from.
  */
-export function speechTail(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+function speechTail(ctx: CanvasRenderingContext2D, w: number, h: number): void {
 	ctx.beginPath();
 	ctx.moveTo(w * TAIL_LEFT, h - TAIL_BASE_UP);
 	ctx.lineTo(w * TAIL_TIP, h - TAIL_TIP_UP);
@@ -112,19 +117,29 @@ export function speechTail(ctx: CanvasRenderingContext2D, w: number, h: number):
  * sites that call the native `ctx.roundRect` behind a feature test add a
  * subpath instead, and are a different helper's job.
  */
-export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+interface RoundedRect {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	radius: number;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, rect: RoundedRect): void {
+	const { x, y, width, height, radius } = rect;
 	ctx.beginPath();
-	ctx.moveTo(x + r, y);
-	ctx.arcTo(x + w, y, x + w, y + h, r);
-	ctx.arcTo(x + w, y + h, x, y + h, r);
-	ctx.arcTo(x, y + h, x, y, r);
-	ctx.arcTo(x, y, x + w, y, r);
+	ctx.moveTo(x + radius, y);
+	ctx.arcTo(x + width, y, x + width, y + height, radius);
+	ctx.arcTo(x + width, y + height, x, y + height, radius);
+	ctx.arcTo(x, y + height, x, y, radius);
+	ctx.arcTo(x, y, x + width, y, radius);
 	ctx.closePath();
 }
 
-export type FitOptions = {
+interface FitOptions {
 	/** Family stack only. The weight is separate: CSS wants it before the size. */
 	font?: string;
+	/** CSS weight string, e.g. 400 or 700. */
 	weight?: string;
 	/** Starting size in design pixels; shrinks from here. */
 	size?: number;
@@ -134,7 +149,7 @@ export type FitOptions = {
 	maxLines?: number;
 	/** Line spacing as a multiple of the font size. */
 	lineHeight?: number;
-};
+}
 
 /**
  * Draw `text` centred in the box, wrapped and shrunk until it fits.
@@ -144,7 +159,7 @@ export type FitOptions = {
  * step the size down and try again. Returns the size it settled on so callers
  * can line other things up with it.
  */
-export function fitText(
+function fitText(
 	ctx: CanvasRenderingContext2D,
 	text: string,
 	box: { x: number; y: number; w: number; h: number },
@@ -155,10 +170,10 @@ export function fitText(
 	const family = opts.font ?? 'system-ui, sans-serif';
 	const weight = opts.weight ?? '700';
 	const maxLines = opts.maxLines ?? 2;
-	const lineHeight = opts.lineHeight ?? 1.15;
-	const minSize = opts.minSize ?? 8;
+	const lineHeight = opts.lineHeight ?? DEFAULT_LINE_HEIGHT;
+	const minSize = opts.minSize ?? DEFAULT_MIN_FONT_SIZE;
 
-	const words = text.split(/\s+/).filter(Boolean);
+	const words = text.split(RE_SPACES).filter(Boolean);
 	let size = opts.size ?? box.h;
 
 	let lines: string[] = [];
@@ -200,3 +215,6 @@ function wrap(ctx: CanvasRenderingContext2D, words: string[], maxW: number, maxL
 	if (line) lines.push(line);
 	return lines;
 }
+
+export type { FitOptions };
+export { backToBackLabel, clearLabel, fitText, labelCanvas, labelTexture, roundRect, setLabelAnisotropy, speechTail };

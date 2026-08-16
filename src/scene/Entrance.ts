@@ -1,4 +1,15 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import {
+	BoxGeometry,
+	CircleGeometry,
+	CylinderGeometry,
+	DoubleSide,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	Vector3,
+} from 'three';
 import { levelY } from '#/data/levels';
 import {
 	ENTRANCE_CANOPY_BAY_ZS,
@@ -81,10 +92,10 @@ const LAMP_COLOR = 0xfff1d0;
 const PAVING_COLOR = 0x9aa0a6;
 
 export class Entrance {
-	readonly group = new THREE.Group();
-	private materials: THREE.Material[] = [];
+	readonly group = new Group();
+	private materials: Material[] = [];
 	/** De twee bladen, elk met zijn eigen schuifrichting. */
-	private leaves: { root: THREE.Group; closedZ: number; direction: -1 | 1 }[] = [];
+	private leaves: { root: Group; closedZ: number; direction: -1 | 1 }[] = [];
 	/** 0 = dicht, 1 = open. Loopt in `doorSeconds` van de ene stand naar de andere. */
 	private opening = 0;
 
@@ -104,14 +115,14 @@ export class Entrance {
 			intensity: HALL_LIGHT.intensity,
 			distance: HALL_LIGHT.distance,
 			decay: HALL_LIGHT.decay,
-			position: new THREE.Vector3(ENTRANCE_PORTAL.innerX + HALL_LIGHT.inset, V0 + HALL_LIGHT.height, ENTRANCE_PORTAL.centerZ),
+			position: new Vector3(ENTRANCE_PORTAL.innerX + HALL_LIGHT.inset, V0 + HALL_LIGHT.height, ENTRANCE_PORTAL.centerZ),
 		});
 		pool.register({
 			color: 0xffe9c4,
 			intensity: CANOPY_LIGHT.intensity,
 			distance: CANOPY_LIGHT.distance,
 			decay: CANOPY_LIGHT.decay,
-			position: new THREE.Vector3(
+			position: new Vector3(
 				midpoint(ENTRANCE_PORTAL.canopyX, ENTRANCE_PORTAL.outerX),
 				ENTRANCE_SPEC.canopy.topY - ENTRANCE_SPEC.canopy.thickness - CANOPY_LIGHT.drop,
 				ENTRANCE_CANOPY_WASH_Z,
@@ -123,7 +134,7 @@ export class Entrance {
 	 * Schuift de bladen. `subject` is de speler; staat hij in de aanwezigheidszone
 	 * van het mechanisme, dan gaan ze open, en anders weer dicht.
 	 */
-	update(dt: number, subject: THREE.Vector3): void {
+	update(dt: number, subject: Vector3): void {
 		const { trigger } = ENTRANCE_PORTAL;
 		const inside =
 			subject.x > trigger.minX &&
@@ -143,17 +154,17 @@ export class Entrance {
 		for (const m of this.materials) m.dispose();
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
-	private glassMat(opacity: number): THREE.Material {
+	private glassMat(opacity: number): Material {
 		return this.track(lit({ color: GLASS_COLOR, transparent: true, opacity, roughness: 0.08, metalness: 0.2 }));
 	}
 
-	private box(material: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number): THREE.Mesh {
-		const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+	private box(material: Material, w: number, h: number, d: number, x: number, y: number, z: number): Mesh {
+		const mesh = new Mesh(new BoxGeometry(w, h, d), material);
 		mesh.position.set(x, y, z);
 		this.group.add(mesh);
 		return mesh;
@@ -297,25 +308,22 @@ export class Entrance {
 		const bronze = this.track(lit({ color: BRONZE, metalness: 0.85, roughness: 0.3 }));
 
 		for (const direction of [-1, 1] as const) {
-			const root = new THREE.Group();
+			const root = new Group();
 			const closedZ = ENTRANCE_PORTAL.centerZ + direction * half(leafDepth);
 			root.position.set(ENTRANCE_PORTAL.glassX, V0, closedZ);
 			this.group.add(root);
 
-			const pane = new THREE.Mesh(new THREE.BoxGeometry(doorThickness, doorLeafHeight - FRAME.plinthHeight, leafDepth), glass);
+			const pane = new Mesh(new BoxGeometry(doorThickness, doorLeafHeight - FRAME.plinthHeight, leafDepth), glass);
 			pane.position.y = midpoint(FRAME.plinthHeight, doorLeafHeight);
 			root.add(pane);
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(doorThickness + LEAF.railBite, FRAME.plinthHeight, leafDepth), bronze);
+			const rail = new Mesh(new BoxGeometry(doorThickness + LEAF.railBite, FRAME.plinthHeight, leafDepth), bronze);
 			rail.position.y = half(FRAME.plinthHeight);
 			root.add(rail);
-			const head = new THREE.Mesh(new THREE.BoxGeometry(doorThickness + LEAF.railBite, LEAF.headDepth, leafDepth), bronze);
+			const head = new Mesh(new BoxGeometry(doorThickness + LEAF.railBite, LEAF.headDepth, leafDepth), bronze);
 			head.position.y = doorLeafHeight;
 			root.add(head);
 			// Greep aan de sluitende kant, zodat je ziet welke kant welke is.
-			const handle = new THREE.Mesh(
-				new THREE.CylinderGeometry(LEAF.handleRadius, LEAF.handleRadius, half(doorLeafHeight), 8),
-				bronze,
-			);
+			const handle = new Mesh(new CylinderGeometry(LEAF.handleRadius, LEAF.handleRadius, half(doorLeafHeight), 8), bronze);
 			handle.position.set(
 				-doorThickness,
 				doorLeafHeight * LEAF.handleHeightRatio,
@@ -357,9 +365,9 @@ export class Entrance {
 		}
 		// Eén spot per vak tússen twee ribben, en onder de ribben in plaats van ertussenin:
 		// op een eigen steek liepen ze de ribben in en bleef er van elke spot een streepje over.
-		const lampMat = this.track(new THREE.MeshBasicMaterial({ color: LAMP_COLOR, toneMapped: false }));
+		const lampMat = this.track(new MeshBasicMaterial({ color: LAMP_COLOR, toneMapped: false }));
 		for (const z of ENTRANCE_CANOPY_BAY_ZS) {
-			const lamp = new THREE.Mesh(new THREE.CircleGeometry(spot.radius, 12), lampMat);
+			const lamp = new Mesh(new CircleGeometry(spot.radius, 12), lampMat);
 			lamp.rotation.x = Math.PI / 2;
 			lamp.position.set(centerX - projection * spot.shift, ribY - half(rib.height) - spot.drop, z);
 			this.group.add(lamp);
@@ -368,14 +376,11 @@ export class Entrance {
 		const height = canopy.topY - canopy.thickness;
 		const collarRadius = column.radius * CANOPY_TRIM.collarScale;
 		for (const sign of [-1, 1] as const) {
-			const post = new THREE.Mesh(
-				new THREE.CylinderGeometry(column.radius, column.radius * CANOPY_TRIM.columnFlare, height, 14),
-				shell,
-			);
+			const post = new Mesh(new CylinderGeometry(column.radius, column.radius * CANOPY_TRIM.columnFlare, height, 14), shell);
 			post.position.set(ENTRANCE_PORTAL.columnX, V0 + half(height), ENTRANCE_PORTAL.centerZ + sign * column.offsetZ);
 			post.castShadow = true;
 			this.group.add(post);
-			const collar = new THREE.Mesh(new THREE.CylinderGeometry(collarRadius, collarRadius, CANOPY_TRIM.collarHeight, 14), bronze);
+			const collar = new Mesh(new CylinderGeometry(collarRadius, collarRadius, CANOPY_TRIM.collarHeight, 14), bronze);
 			collar.position.set(
 				ENTRANCE_PORTAL.columnX,
 				V0 + half(CANOPY_TRIM.collarHeight),
@@ -395,9 +400,9 @@ export class Entrance {
 		grad.addColorStop(1, '#f7c873');
 		ctx.fillStyle = grad;
 		fitText(ctx, 'MALL SIM · PRAIRIE LAKES', { x: 0, y: 0, w, h }, { maxLines: 1, size: h, weight: '800' });
-		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(lettering.width, lettering.height),
-			this.track(new THREE.MeshBasicMaterial({ map: labelTexture(canvas), transparent: true, toneMapped: false })),
+		const sign = new Mesh(
+			new PlaneGeometry(lettering.width, lettering.height),
+			this.track(new MeshBasicMaterial({ map: labelTexture(canvas), transparent: true, toneMapped: false })),
 		);
 		sign.position.set(ENTRANCE_PORTAL.outerX - lettering.standoff, V0 + lettering.centerY, ENTRANCE_PORTAL.centerZ);
 		sign.rotation.y = -Math.PI / 2;
@@ -405,7 +410,7 @@ export class Entrance {
 
 		const plate = labelCanvas(512, 192);
 		plate.ctx.fillStyle = '#0f172a';
-		roundRect(plate.ctx, 6, 6, plate.w - 12, plate.h - 12, 18);
+		roundRect(plate.ctx, { x: 6, y: 6, width: plate.w - 12, height: plate.h - 12, radius: 18 });
 		plate.ctx.fill();
 		plate.ctx.strokeStyle = '#f7c873';
 		plate.ctx.lineWidth = 4;
@@ -414,9 +419,9 @@ export class Entrance {
 		fitText(plate.ctx, 'HOOFDINGANG', { x: 20, y: 24, w: plate.w - 40, h: 82 }, { maxLines: 1, weight: '800' });
 		plate.ctx.fillStyle = '#cbd5e1';
 		fitText(plate.ctx, 'AUTOMATISCHE DEUREN · WELKOM', { x: 20, y: 112, w: plate.w - 40, h: 52 }, { maxLines: 1, weight: '600' });
-		const board = new THREE.Mesh(
-			new THREE.PlaneGeometry(SIGN.board.width, SIGN.board.height),
-			this.track(new THREE.MeshBasicMaterial({ map: labelTexture(plate.canvas), transparent: true, toneMapped: false })),
+		const board = new Mesh(
+			new PlaneGeometry(SIGN.board.width, SIGN.board.height),
+			this.track(new MeshBasicMaterial({ map: labelTexture(plate.canvas), transparent: true, toneMapped: false })),
 		);
 		board.position.set(
 			ENTRANCE_PORTAL.innerX + SIGN.boardInset,
@@ -435,15 +440,15 @@ export class Entrance {
 	private buildFlags(): void {
 		const { flag: spec } = ENTRANCE_SPEC;
 		const steel = this.track(lit({ color: 0xd7dbe0, metalness: 0.7, roughness: 0.35 }));
-		const cloth = this.track(lit({ color: 0xe30613, roughness: 0.85, side: THREE.DoubleSide }));
+		const cloth = this.track(lit({ color: 0xe30613, roughness: 0.85, side: DoubleSide }));
 		for (const sign of [-1, 1] as const) {
 			const x = ENTRANCE_PORTAL.flagX;
 			const z = ENTRANCE_PORTAL.centerZ + sign * ENTRANCE_PORTAL.flagOffsetZ;
-			const mast = new THREE.Mesh(new THREE.CylinderGeometry(spec.radius, spec.radius * spec.baseFlare, spec.height, 10), steel);
+			const mast = new Mesh(new CylinderGeometry(spec.radius, spec.radius * spec.baseFlare, spec.height, 10), steel);
 			mast.position.set(x, V0 + half(spec.height), z);
 			this.group.add(mast);
 			// Het doek waait van het gebouw af; naar de luifel toe zou het er dwars doorheen hangen.
-			const banner = new THREE.Mesh(new THREE.PlaneGeometry(spec.cloth.width, spec.cloth.height), cloth);
+			const banner = new Mesh(new PlaneGeometry(spec.cloth.width, spec.cloth.height), cloth);
 			banner.position.set(x - half(spec.cloth.width), V0 + spec.height - spec.cloth.drop, z);
 			this.group.add(banner);
 		}

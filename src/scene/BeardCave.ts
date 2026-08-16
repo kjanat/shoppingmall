@@ -1,4 +1,18 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import {
+	BoxGeometry,
+	ConeGeometry,
+	CylinderGeometry,
+	DodecahedronGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	OctahedronGeometry,
+	PlaneGeometry,
+	SphereGeometry,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import { levelY } from '#/data/levels';
 import { BEARD_CAVE_LOOT_CENTER, BEARD_CAVE_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
@@ -22,13 +36,13 @@ const CHAIN_Y_SPREAD = 0.5;
  * (Pirate loot vibes, not a stereotype.) Thief path ends here after a heist.
  */
 export class BeardCave {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	/** World center of the cave mouth (path target) */
-	readonly entrance = new THREE.Vector3(BEARD_CAVE_SPEC.entrance.x, levelY('v0'), BEARD_CAVE_SPEC.entrance.z);
+	readonly entrance = new Vector3(BEARD_CAVE_SPEC.entrance.x, levelY('v0'), BEARD_CAVE_SPEC.entrance.z);
 	/** Deep pile of loot (for confetti / glow) */
-	readonly lootCenter = new THREE.Vector3(BEARD_CAVE_LOOT_CENTER.x, BEARD_CAVE_LOOT_CENTER.y, BEARD_CAVE_LOOT_CENTER.z);
-	private materials: THREE.Material[] = [];
-	private lootGroup = new THREE.Group();
+	readonly lootCenter = new Vector3(BEARD_CAVE_LOOT_CENTER.x, BEARD_CAVE_LOOT_CENTER.y, BEARD_CAVE_LOOT_CENTER.z);
+	private materials: Material[] = [];
+	private lootGroup = new Group();
 	private pulseT = 0;
 	private glowMats: LitMaterial[] = [];
 	private pool: LightPool;
@@ -100,7 +114,7 @@ export class BeardCave {
 		}
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -130,21 +144,21 @@ export class BeardCave {
 		const { interiorOffsetX, floor: floorSpec, backWall, ceiling, sideWall, pillar } = BEARD_CAVE_SPEC;
 
 		// Floor slab inside cave
-		const floor = new THREE.Mesh(new THREE.BoxGeometry(floorSpec.width, floorSpec.height, floorSpec.depth), floorMat);
+		const floor = new Mesh(new BoxGeometry(floorSpec.width, floorSpec.height, floorSpec.depth), floorMat);
 		floor.position.set(interiorOffsetX, floorSpec.centerY, 0);
 		this.group.add(floor);
 
 		// Back wall + ceiling blob
-		const back = new THREE.Mesh(new THREE.BoxGeometry(backWall.width, backWall.height, backWall.depth), rockDark);
+		const back = new Mesh(new BoxGeometry(backWall.width, backWall.height, backWall.depth), rockDark);
 		back.position.set(backWall.offsetX, backWall.centerY, 0);
 		this.group.add(back);
 
-		const ceil = new THREE.Mesh(new THREE.BoxGeometry(ceiling.width, ceiling.height, ceiling.depth), rock);
+		const ceil = new Mesh(new BoxGeometry(ceiling.width, ceiling.height, ceiling.depth), rock);
 		ceil.position.set(interiorOffsetX, ceiling.centerY, 0);
 		this.group.add(ceil);
 
 		// Side walls (rough)
-		const nWall = new THREE.Mesh(new THREE.BoxGeometry(sideWall.width, sideWall.height, sideWall.depth), rock);
+		const nWall = new Mesh(new BoxGeometry(sideWall.width, sideWall.height, sideWall.depth), rock);
 		nWall.position.set(interiorOffsetX, sideWall.centerY, -sideWall.offsetZ);
 		this.group.add(nWall);
 		const sWall = nWall.clone();
@@ -152,15 +166,15 @@ export class BeardCave {
 		this.group.add(sWall);
 
 		// Mouth pillars + arch (opening toward mall = +X in local)
-		const pillarGeo = new THREE.CylinderGeometry(pillar.topRadius, pillar.bottomRadius, pillar.height, 8);
-		const pL = new THREE.Mesh(pillarGeo, rock);
+		const pillarGeo = new CylinderGeometry(pillar.topRadius, pillar.bottomRadius, pillar.height, 8);
+		const pL = new Mesh(pillarGeo, rock);
 		pL.position.set(pillar.offsetX, pillar.centerY, -pillar.offsetZ);
-		const pR = new THREE.Mesh(pillarGeo, rock);
+		const pR = new Mesh(pillarGeo, rock);
 		pR.position.set(pillar.offsetX, pillar.centerY, pillar.offsetZ);
 		this.group.add(pL, pR);
 
 		const { arch: archSpec } = BEARD_CAVE_SPEC;
-		const arch = new THREE.Mesh(new THREE.TorusGeometry(archSpec.radius, archSpec.tube, 8, 16, Math.PI), rock);
+		const arch = new Mesh(new TorusGeometry(archSpec.radius, archSpec.tube, 8, 16, Math.PI), rock);
 		arch.rotation.z = Math.PI / 2;
 		arch.rotation.y = Math.PI / 2;
 		arch.position.set(pillar.offsetX, archSpec.centerY, 0);
@@ -173,7 +187,7 @@ export class BeardCave {
 			[-0.3, 0.4, -2.0, 0.42],
 			[-0.2, 0.32, 2.05, 0.5],
 		] as const) {
-			const b = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rock);
+			const b = new Mesh(new DodecahedronGeometry(s, 0), rock);
 			b.position.set(x, y, z);
 			b.rotation.set(Math.random(), Math.random(), Math.random());
 			this.group.add(b);
@@ -186,7 +200,7 @@ export class BeardCave {
 			distance: 8,
 			decay: 2,
 			follow: this.group,
-			offset: new THREE.Vector3(BEARD_CAVE_SPEC.loot.offsetX, 1.4, 0),
+			offset: new Vector3(BEARD_CAVE_SPEC.loot.offsetX, 1.4, 0),
 		});
 	}
 
@@ -250,26 +264,26 @@ export class BeardCave {
 		const wood = this.track(lit({ color: 0x5d4037, roughness: 0.9 }));
 
 		// Treasure chest
-		const chest = new THREE.Group();
+		const chest = new Group();
 		chest.position.set(-1.35, 0.22, 0.15);
-		const base = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.55, 0.75), wood);
+		const base = new Mesh(new BoxGeometry(1.15, 0.55, 0.75), wood);
 		base.position.y = 0.28;
 		chest.add(base);
-		const lid = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.12, 0.78), wood);
+		const lid = new Mesh(new BoxGeometry(1.18, 0.12, 0.78), wood);
 		lid.position.set(0, 0.62, -0.12);
 		lid.rotation.x = -0.55;
 		chest.add(lid);
-		const band = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.8), goldSoft);
+		const band = new Mesh(new BoxGeometry(1.2, 0.08, 0.8), goldSoft);
 		band.position.y = 0.4;
 		chest.add(band);
-		const lock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.08), gold);
+		const lock = new Mesh(new BoxGeometry(0.14, 0.16, 0.08), gold);
 		lock.position.set(0, 0.48, 0.38);
 		chest.add(lock);
 		this.lootGroup.add(chest);
 
 		// Overflowing coin pile on chest
 		for (let i = 0; i < 28; i++) {
-			const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.03, 10), i % 3 === 0 ? goldSoft : gold);
+			const coin = new Mesh(new CylinderGeometry(0.08, 0.08, 0.03, 10), i % 3 === 0 ? goldSoft : gold);
 			const a = Math.random() * Math.PI * 2;
 			const r = Math.random() * 0.38;
 			coin.position.set(-1.35 + Math.cos(a) * r, 0.72 + Math.random() * 0.35, 0.1 + Math.sin(a) * r * 0.7);
@@ -280,8 +294,8 @@ export class BeardCave {
 
 		// Big floor gold mound (local, deeper in cave)
 		for (let i = 0; i < 55; i++) {
-			const coin = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.07 + Math.random() * 0.04, 0.07, 0.025, 8),
+			const coin = new Mesh(
+				new CylinderGeometry(0.07 + Math.random() * 0.04, 0.07, 0.025, 8),
 				Math.random() > 0.5 ? gold : goldSoft,
 			);
 			const a = Math.random() * Math.PI * 2;
@@ -302,16 +316,16 @@ export class BeardCave {
 			[-1.9, 1.0],
 			[-0.7, -1.2],
 		] as const) {
-			const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.07, 0.22, 8), gold);
+			const cup = new Mesh(new CylinderGeometry(0.1, 0.07, 0.22, 8), gold);
 			cup.position.set(x, 0.28, z);
 			this.lootGroup.add(cup);
-			const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.12, 6), goldSoft);
+			const stem = new Mesh(new CylinderGeometry(0.03, 0.05, 0.12, 6), goldSoft);
 			stem.position.set(x, 0.12, z);
 			this.lootGroup.add(stem);
 		}
 
 		// Gem clusters
-		const gems: { mat: THREE.Material; x: number; y: number; z: number }[] = [
+		const gems: { mat: Material; x: number; y: number; z: number }[] = [
 			{ mat: ruby, x: -1.0, y: 0.35, z: -1.4 },
 			{ mat: emerald, x: -2.0, y: 0.32, z: -0.4 },
 			{ mat: sapphire, x: -0.9, y: 0.38, z: 1.35 },
@@ -319,7 +333,7 @@ export class BeardCave {
 			{ mat: emerald, x: -1.1, y: 0.9, z: -0.15 },
 		];
 		for (const g of gems) {
-			const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), g.mat);
+			const gem = new Mesh(new OctahedronGeometry(0.12, 0), g.mat);
 			gem.position.set(g.x, g.y, g.z);
 			gem.rotation.set(0.4, Math.random(), 0.2);
 			this.lootGroup.add(gem);
@@ -327,19 +341,19 @@ export class BeardCave {
 
 		// Gold chains (torus loops)
 		for (let i = 0; i < 6; i++) {
-			const chain = new THREE.Mesh(new THREE.TorusGeometry(0.14 + Math.random() * 0.06, 0.022, 6, 14), i % 2 ? gold : silver);
+			const chain = new Mesh(new TorusGeometry(0.14 + Math.random() * 0.06, 0.022, 6, 14), i % 2 ? gold : silver);
 			chain.position.set(-1.2 + jitter(1.2), CHAIN_Y + Math.random() * CHAIN_Y_SPREAD, jitter(2.2));
 			chain.rotation.set(Math.random(), Math.random(), Math.random());
 			this.lootGroup.add(chain);
 		}
 
 		// Crowns / tiara
-		const crown = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 6, 16), gold);
+		const crown = new Mesh(new TorusGeometry(0.22, 0.04, 6, 16), gold);
 		crown.position.set(-1.5, 0.95, -0.5);
 		crown.rotation.x = Math.PI / 2;
 		this.lootGroup.add(crown);
 		for (let i = 0; i < 5; i++) {
-			const spike = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 5), goldSoft);
+			const spike = new Mesh(new ConeGeometry(0.04, 0.14, 5), goldSoft);
 			const a = (i / 5) * Math.PI * 2;
 			spike.position.set(-1.5 + Math.cos(a) * 0.2, 1.05, -0.5 + Math.sin(a) * 0.2);
 			this.lootGroup.add(spike);
@@ -347,7 +361,7 @@ export class BeardCave {
 
 		// Stacked ingots
 		for (let i = 0; i < 8; i++) {
-			const bar = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 0.14), goldSoft);
+			const bar = new Mesh(new BoxGeometry(0.32, 0.08, 0.14), goldSoft);
 			bar.position.set(-0.4 + (i % 3) * 0.12, 0.2 + Math.floor(i / 3) * 0.09, -1.55 + (i % 2) * 0.08);
 			bar.rotation.y = jitter(0.3);
 			this.lootGroup.add(bar);
@@ -355,8 +369,8 @@ export class BeardCave {
 
 		// Pearl string (small spheres)
 		for (let i = 0; i < 12; i++) {
-			const pearl = new THREE.Mesh(
-				new THREE.SphereGeometry(0.045, 8, 8),
+			const pearl = new Mesh(
+				new SphereGeometry(0.045, 8, 8),
 				this.track(
 					lit({
 						color: 0xfff8e7,
@@ -388,11 +402,11 @@ export class BeardCave {
 		);
 		this.glowMats.push(flameMat);
 
-		const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.9, 6), iron);
+		const stick = new Mesh(new CylinderGeometry(0.04, 0.05, 0.9, 6), iron);
 		stick.position.set(0.2, 1.35, -1.85);
 		stick.rotation.z = 0.25;
 		this.group.add(stick);
-		const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 6), flameMat);
+		const flame = new Mesh(new ConeGeometry(0.12, 0.35, 6), flameMat);
 		flame.position.set(0.35, 1.9, -1.85);
 		this.group.add(flame);
 
@@ -402,7 +416,7 @@ export class BeardCave {
 			distance: 6,
 			decay: 2,
 			follow: this.group,
-			offset: new THREE.Vector3(0.35, 1.95, -1.85),
+			offset: new Vector3(0.35, 1.95, -1.85),
 		});
 	}
 
@@ -423,19 +437,19 @@ export class BeardCave {
 				ctx.fillText(line, 256, 70 + i * 52);
 			});
 			const tex = labelTexture(c);
-			return this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+			return this.track(new MeshBasicMaterial({ map: tex, toneMapped: false }));
 		};
 
-		const doorSign = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.8, 0.9),
+		const doorSign = new Mesh(
+			new PlaneGeometry(1.8, 0.9),
 			makePlate(["BEARD-MAN'S CAVE", 'JUWELEN · GOUD', 'baard-dief only 💀'], 512, 256, '#1a1208', '#ffd700'),
 		);
 		doorSign.position.set(0.75, 2.55, 0);
 		doorSign.rotation.y = Math.PI / 2;
 		this.group.add(doorSign);
 
-		const lootSign = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.4, 0.55),
+		const lootSign = new Mesh(
+			new PlaneGeometry(1.4, 0.55),
 			makePlate(['★ LOOT HOARD ★', 'niet aanraken (toch wel)'], 512, 256, '#3e2723', '#ffe082'),
 		);
 		lootSign.position.set(-2.0, 1.9, 0);

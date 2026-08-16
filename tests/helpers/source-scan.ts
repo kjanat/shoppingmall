@@ -16,16 +16,26 @@ import { join, resolve } from 'node:path';
 
 export const ROOT = resolve(import.meta.dir, '..', '..');
 
-export type Hit = { index: number; message: string };
-export type Exemption = { path: string; fragment: string; reason: string };
-export type ExemptFile = { path: string; reason: string };
+export interface Hit {
+	index: number;
+	message: string;
+}
+export interface Exemption {
+	path: string;
+	fragment: string;
+	reason: string;
+}
+export interface ExemptFile {
+	path: string;
+	reason: string;
+}
 
-export type Grep = {
+export interface Grep {
 	files: readonly string[];
 	exemptFiles: readonly ExemptFile[];
 	exemptions: readonly Exemption[];
 	hits: (code: string, path: string) => Hit[];
-};
+}
 
 /** Every .ts file under `dir`, as a path from the repo root. */
 export async function filesIn(dir: string): Promise<string[]> {

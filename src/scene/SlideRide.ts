@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import { CatmullRomCurve3, Vector3 } from 'three';
 import type { Bounds3, InteractionEmitter, SpatialVolume, Vec3 } from '#/data/spatial';
 import { geometryBounds } from '#/data/spatial';
 import { ROOF_SLIDE_ENTITY } from '#/data/world';
@@ -31,7 +31,7 @@ function flowSpeed(emitter: InteractionEmitter): number {
  * `roof-slide` aanwijzen, en de vaart is de lengte van hun stroming.
  */
 export class SlideRide {
-	readonly curve: THREE.CatmullRomCurve3;
+	readonly curve: CatmullRomCurve3;
 	/** m/s langs de bocht. */
 	readonly speed: number;
 	/** Booglengte van de hele bocht. */
@@ -57,9 +57,9 @@ export class SlideRide {
 
 		this.entry = geometryBounds(entry.geometry);
 		this.speed = flowSpeed(first.emitter);
-		this.curve = new THREE.CatmullRomCurve3([
-			new THREE.Vector3(first.ramp.start.x, first.ramp.start.y, first.ramp.start.z),
-			...flows.map(({ ramp }) => new THREE.Vector3(ramp.end.x, ramp.end.y, ramp.end.z)),
+		this.curve = new CatmullRomCurve3([
+			new Vector3(first.ramp.start.x, first.ramp.start.y, first.ramp.start.z),
+			...flows.map(({ ramp }) => new Vector3(ramp.end.x, ramp.end.y, ramp.end.z)),
 		]);
 		this.length = this.curve.getLength();
 	}
@@ -77,19 +77,19 @@ export class SlideRide {
 	}
 
 	/** Het punt op de bocht na zoveel meter glijden. */
-	pointAt(distance: number, out: THREE.Vector3): THREE.Vector3 {
+	pointAt(distance: number, out: Vector3): Vector3 {
 		return this.curve.getPointAt(clamp01(distance / this.length), out);
 	}
 
 	/** Ooghoogte op diezelfde plek. */
-	seatAt(distance: number, out: THREE.Vector3): THREE.Vector3 {
+	seatAt(distance: number, out: Vector3): Vector3 {
 		this.pointAt(distance, out);
 		out.y += SEAT_EYE;
 		return out;
 	}
 
 	/** Waar de glijder naar kijkt: een stuk verder de bocht in. */
-	aheadOf(distance: number, out: THREE.Vector3): THREE.Vector3 {
+	aheadOf(distance: number, out: Vector3): Vector3 {
 		return this.pointAt(distance + LOOK_AHEAD, out);
 	}
 }

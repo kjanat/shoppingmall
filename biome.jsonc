@@ -25,18 +25,37 @@
 				"noUndeclaredVariables": "off"
 			},
 			"complexity": {
+				"noImplicitCoercions": "off",
 				"useLiteralKeys": "off"
 			},
 			"style": {
+				"noExcessiveLinesPerFile": {
+					"level": "warn",
+					"options": { "maxLines": 65535, "skipBlankLines": true }
+				},
+				"useConsistentTypeDefinitions": {
+					"level": "warn",
+					"fix": "safe"
+				},
 				"noContinue": "off",
 				"noIncrementDecrement": "off",
 				"noTernary": "off",
+				"noNestedTernary": "off",
 				"useBlockStatements": "off",
 				"useDestructuring": "off",
-				"useNumericSeparators": "off"
+				"useNumericSeparators": "off",
+				"useGlobalThis": "error"
+			},
+			"suspicious": { "noConsole": "off" },
+			"security": {
+				"noSecrets": {
+					"options": { "entropyThreshold": 80 },
+					"level": "warn"
+				}
 			}
 		},
 		"domains": {
+			"drizzle": "recommended",
 			"project": "recommended",
 			"test": "recommended",
 			"types": "recommended"
@@ -55,6 +74,17 @@
 		{
 			"includes": ["*.config.ts"],
 			"linter": { "rules": { "style": { "noDefaultExport": "off" } } }
+		},
+		{
+			"includes": ["server/db/client.ts"],
+			"linter": { "rules": { "performance": { "noNamespaceImport": "off" } } }
+		},
+		{
+			"includes": ["tests/**/*.test.ts"],
+			"linter": {
+				"rules": { "preset": "recommended" },
+				"domains": { "test": "all" }
+			}
 		}
 	]
 }

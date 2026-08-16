@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Material, Object3D } from 'three';
+import { BoxGeometry, Mesh, PlaneGeometry, Vector3 } from 'three';
 
 export type Position3 = Readonly<{ x: number; y: number; z: number }>;
 export type Rotation3 = Readonly<{ x: number; y: number; z: number }>;
@@ -11,7 +12,7 @@ export type MeshPlacement = Readonly<{
 	receiveShadow?: boolean;
 }>;
 
-function place(mesh: THREE.Mesh, parent: THREE.Object3D, placement: MeshPlacement): THREE.Mesh {
+function place(mesh: Mesh, parent: Object3D, placement: MeshPlacement): Mesh {
 	const { position, rotation, name, castShadow = false, receiveShadow = false } = placement;
 	mesh.position.set(position.x, position.y, position.z);
 	if (rotation) mesh.rotation.set(rotation.x, rotation.y, rotation.z);
@@ -23,11 +24,11 @@ function place(mesh: THREE.Mesh, parent: THREE.Object3D, placement: MeshPlacemen
 }
 
 export function addBoxMesh(
-	parent: THREE.Object3D,
-	material: THREE.Material,
+	parent: Object3D,
+	material: Material,
 	spec: MeshPlacement & Readonly<{ width: number; height: number; depth: number }>,
-): THREE.Mesh {
-	return place(new THREE.Mesh(new THREE.BoxGeometry(spec.width, spec.height, spec.depth), material), parent, spec);
+): Mesh {
+	return place(new Mesh(new BoxGeometry(spec.width, spec.height, spec.depth), material), parent, spec);
 }
 
 /**
@@ -39,9 +40,9 @@ export function addBoxMesh(
  * plaat. Het staat `gap` achter het bord, gemeten langs de kant waar het bord naar
  * kijkt, en deelt zijn geometrie en schaal.
  */
-export function addSignBack(parent: THREE.Object3D, sign: THREE.Mesh, material: THREE.Material, gap: number): THREE.Mesh {
-	const back = new THREE.Mesh(sign.geometry, material);
-	back.position.copy(sign.position).addScaledVector(new THREE.Vector3(0, 0, 1).applyEuler(sign.rotation), -gap);
+export function addSignBack(parent: Object3D, sign: Mesh, material: Material, gap: number): Mesh {
+	const back = new Mesh(sign.geometry, material);
+	back.position.copy(sign.position).addScaledVector(new Vector3(0, 0, 1).applyEuler(sign.rotation), -gap);
 	back.rotation.set(sign.rotation.x, sign.rotation.y + Math.PI, sign.rotation.z);
 	back.scale.copy(sign.scale);
 	parent.add(back);
@@ -49,9 +50,9 @@ export function addSignBack(parent: THREE.Object3D, sign: THREE.Mesh, material: 
 }
 
 export function addPlaneMesh(
-	parent: THREE.Object3D,
-	material: THREE.Material,
+	parent: Object3D,
+	material: Material,
 	spec: MeshPlacement & Readonly<{ width: number; height: number }>,
-): THREE.Mesh {
-	return place(new THREE.Mesh(new THREE.PlaneGeometry(spec.width, spec.height), material), parent, spec);
+): Mesh {
+	return place(new Mesh(new PlaneGeometry(spec.width, spec.height), material), parent, spec);
 }

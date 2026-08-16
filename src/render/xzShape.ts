@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Material, Object3D } from 'three';
+import { ExtrudeGeometry, Mesh, Path, Shape } from 'three';
 import type { PlanShape } from '#/data/spatial';
 import { half } from '#/util/math';
 
@@ -17,7 +18,7 @@ export type XZExtrusionSpec = Readonly<{
 	receiveShadow?: boolean;
 }>;
 
-function traceRectangle(path: THREE.Path | THREE.Shape, rectangle: RectangleXZ): void {
+function traceRectangle(path: Path | Shape, rectangle: RectangleXZ): void {
 	const { center, size } = rectangle;
 	const minX = center.x - half(size.width);
 	const maxX = center.x + half(size.width);
@@ -31,7 +32,7 @@ function traceRectangle(path: THREE.Path | THREE.Shape, rectangle: RectangleXZ):
 	path.closePath();
 }
 
-function tracePlan(path: THREE.Path | THREE.Shape, plan: PlanShape): void {
+function tracePlan(path: Path | Shape, plan: PlanShape): void {
 	if (plan.kind === 'rectangle') {
 		if (plan.yaw === 0) {
 			traceRectangle(path, { center: plan.center, size: { width: plan.width, depth: plan.depth } });
@@ -66,46 +67,46 @@ function tracePlan(path: THREE.Path | THREE.Shape, plan: PlanShape): void {
 	path.closePath();
 }
 
-export function xzRectangleShape(rectangle: RectangleXZ): THREE.Shape {
-	const shape = new THREE.Shape();
+export function xzRectangleShape(rectangle: RectangleXZ): Shape {
+	const shape = new Shape();
 	traceRectangle(shape, rectangle);
 	return shape;
 }
 
-export function addXZRectangleHole(shape: THREE.Shape, rectangle: RectangleXZ): void {
-	const hole = new THREE.Path();
+export function addXZRectangleHole(shape: Shape, rectangle: RectangleXZ): void {
+	const hole = new Path();
 	traceRectangle(hole, rectangle);
 	shape.holes.push(hole);
 }
 
-export function xzPlanShape(plan: PlanShape): THREE.Shape {
-	const shape = new THREE.Shape();
+export function xzPlanShape(plan: PlanShape): Shape {
+	const shape = new Shape();
 	tracePlan(shape, plan);
 	return shape;
 }
 
-export function addXZPlanHole(shape: THREE.Shape, plan: PlanShape): void {
-	const hole = new THREE.Path();
+export function addXZPlanHole(shape: Shape, plan: PlanShape): void {
+	const hole = new Path();
 	tracePlan(hole, plan);
 	shape.holes.push(hole);
 }
 
-export function extrudedXZGeometry(plan: PlanShape, holes: readonly PlanShape[], thickness: number): THREE.ExtrudeGeometry {
+export function extrudedXZGeometry(plan: PlanShape, holes: readonly PlanShape[], thickness: number): ExtrudeGeometry {
 	const shape = xzPlanShape(plan);
 	for (const hole of holes) addXZPlanHole(shape, hole);
-	const geometry = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+	const geometry = new ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
 	geometry.rotateX(-Math.PI / 2);
 	return geometry;
 }
 
 /** Builds a horizontal prism from its walkable top instead of exposing extrusion-axis bookkeeping. */
 export function addExtrudedXZMesh(
-	parent: THREE.Object3D,
-	material: THREE.Material,
+	parent: Object3D,
+	material: Material,
 	{ plan, holes = [], topY, thickness, name, castShadow = false, receiveShadow = false }: XZExtrusionSpec,
-): THREE.Mesh {
+): Mesh {
 	const geometry = extrudedXZGeometry(plan, holes, thickness);
-	const mesh = new THREE.Mesh(geometry, material);
+	const mesh = new Mesh(geometry, material);
 	mesh.position.y = topY - thickness;
 	if (name) mesh.name = name;
 	mesh.castShadow = castShadow;

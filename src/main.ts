@@ -4,7 +4,7 @@ import { guardAccidentalClose } from './app/closeGuard';
 const canvasRoot = document.querySelector<HTMLElement>('#canvas-root');
 const uiRoot = document.querySelector<HTMLElement>('#ui-root');
 
-if (!canvasRoot || !uiRoot) {
+if (!(canvasRoot && uiRoot)) {
 	throw new Error('Missing #canvas-root or #ui-root');
 }
 
@@ -33,7 +33,7 @@ const boot = async () => {
 
 guardAccidentalClose();
 
-if (new URLSearchParams(window.location.search).has('perf-probe')) {
+if (new URLSearchParams(globalThis.location.search).has('perf-probe')) {
 	void boot();
 } else {
 	// Commit the HTML-native loading screen before constructing the sizeable

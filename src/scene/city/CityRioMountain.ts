@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Texture } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3 } from 'three';
 import { lit } from '#/render/material';
 import { RIO_MOUNTAIN } from '#/scene/city/cityPlan';
 import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
@@ -30,14 +31,14 @@ const RIDGE_H_FRAC = 0.45;
 
 /** Montanha de Janeiro — rock bulk under Vila do Monte, Redeemer on the peak. */
 export class CityRioMountain {
-	readonly group = new THREE.Group();
-	readonly peak = new THREE.Vector3(RIO_MOUNTAIN.x, RIO_MOUNTAIN.rockH + RIO_MOUNTAIN.statueH, RIO_MOUNTAIN.z);
+	readonly group = new Group();
+	readonly peak = new Vector3(RIO_MOUNTAIN.x, RIO_MOUNTAIN.rockH + RIO_MOUNTAIN.statueH, RIO_MOUNTAIN.z);
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly unit = new THREE.BoxGeometry(1, 1, 1);
-	private glow: THREE.MeshBasicMaterial | null = null;
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly unit = new BoxGeometry(1, 1, 1);
+	private glow: MeshBasicMaterial | null = null;
 
 	constructor() {
 		this.group.name = 'city_rio_mountain';
@@ -60,8 +61,8 @@ export class CityRioMountain {
 		for (const t of this.textures) t.dispose();
 	}
 
-	private box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rotY = 0): THREE.Mesh {
-		const m = new THREE.Mesh(this.unit, mat);
+	private box(w: number, h: number, d: number, mat: Material, x: number, y: number, z: number, rotY = 0): Mesh {
+		const m = new Mesh(this.unit, mat);
 		m.scale.set(w, h, d);
 		m.position.set(x, y, z);
 		m.rotation.y = rotY;
@@ -103,7 +104,7 @@ export class CityRioMountain {
 
 	private buildStatue(): void {
 		const { x, z, rockH, statueH, armSpan } = RIO_MOUNTAIN;
-		const white = new THREE.MeshBasicMaterial({ color: 0xf4f0e8, toneMapped: false });
+		const white = new MeshBasicMaterial({ color: 0xf4f0e8, toneMapped: false });
 		const robe = lit({ color: 0xe8e4dc, roughness: 0.75 });
 		const yard = lit({ color: 0x5a4a38, roughness: 0.96 });
 		this.materials.push(white, robe, yard);
@@ -143,9 +144,9 @@ export class CityRioMountain {
 		fitText(ctx, RIO_MOUNTAIN.label, { x: 16, y: 12, w: 608, h: 72 }, { size: 42, maxLines: 1 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
-		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
 		this.materials.push(mat);
-		const geo = new THREE.PlaneGeometry(12, 1.8);
+		const geo = new PlaneGeometry(12, 1.8);
 		this.geometries.push(geo);
 		const sign = backToBackLabel(geo, mat);
 		sign.position.set(x + half(baseW) + 1.5, 2.8, z + half(baseD) * 0.25);

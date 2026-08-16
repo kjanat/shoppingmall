@@ -32,7 +32,7 @@ function isRideKind(value: string): value is RideKind {
  */
 export type PersistedRide = VehicleRide & { kind: RideKind };
 
-export type PersistedGame = {
+export interface PersistedGame {
 	v: typeof VERSION;
 	/** epoch ms */
 	savedAt: number;
@@ -57,7 +57,7 @@ export type PersistedGame = {
 	ride: PersistedRide | null;
 	/** Het laatst geparkeerde voertuig, zodat een HMR-herbouw het op die plek terugzet. */
 	parkedVehicle: PersistedRide | null;
-};
+}
 
 /**
  * De rit uit een opgeslagen sessie, of niets.

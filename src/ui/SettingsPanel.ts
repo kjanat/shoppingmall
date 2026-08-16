@@ -450,7 +450,8 @@ export class SettingsPanel {
 			this.commit();
 		});
 
-		window.addEventListener('keydown', (e) => {
+		globalThis.addEventListener('keydown', (e) => {
+			if (!(e instanceof KeyboardEvent)) return;
 			const el = e.target as HTMLElement | null;
 			if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
 			if (e.code === 'KeyO') this.toggle();

@@ -40,7 +40,12 @@ const RUN_UP = 2;
 /** One step onto a deck, past the parapet doorway. */
 const ONTO_DECK = 1;
 
-type Rect = { minX: number; maxX: number; minZ: number; maxZ: number };
+interface Rect {
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+}
 
 function overlaps(a: Rect, b: Rect): boolean {
 	return a.maxX > b.minX && a.minX < b.maxX && a.maxZ > b.minZ && a.minZ < b.maxZ;
@@ -204,7 +209,7 @@ describe('the garage spiral', () => {
 	});
 
 	test('can be climbed from the pavement to the landing on deck 2', () => {
-		if (!southSlab || !eastSlab || !topLanding) return;
+		if (!(southSlab && eastSlab && topLanding)) return;
 		const trip = followPolyline(
 			[
 				[southSlab.start.x - RUN_UP, southSlab.start.z],
@@ -246,12 +251,12 @@ describe.each(GARAGE_RAMP_LANDINGS.map((landing, index) => [landing.id, index] a
 	const deck = landing ? deckBeside(landing) : null;
 
 	test('has a doorway in the parapet of the deck beside it', () => {
-		if (!landing || !deck) return;
+		if (!(landing && deck)) return;
 		expect(deckDoorways(deck), `${id} lies against ${deck.id} with no doorway: only a jump gets you onto it`).not.toBeEmpty();
 	});
 
 	test('lets you step through onto that deck', () => {
-		if (!landing || !deck) return;
+		if (!(landing && deck)) return;
 		const wrong: string[] = [];
 		for (const doorway of deckDoorways(deck)) {
 			const z = midpoint(doorway.minZ, doorway.maxZ);

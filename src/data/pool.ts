@@ -9,7 +9,8 @@
  * bun-only). Hier woont het model; RoofIsland leest het en tekent erop.
  */
 
-import * as THREE from 'three';
+import type { Vector2 } from 'three';
+import { Shape } from 'three';
 import { levelY } from '#/data/levels';
 import type { Polygon2 } from '#/data/spatial';
 import { planBounds, pointInPlan } from '#/data/spatial';
@@ -23,8 +24,8 @@ export const POOL_CENTER = { x: -20, z: 2 } as const;
 export const POOL_ROT = 0.3;
 
 /** Nierboon — twee lobben, één taille. Anatomisch niet correct, wel gezellig. */
-function kidneyShape(): THREE.Shape {
-	const sh = new THREE.Shape();
+function kidneyShape(): Shape {
+	const sh = new Shape();
 	sh.moveTo(-6.5, -0.4);
 	sh.bezierCurveTo(-6.9, 1.8, -4.8, 3.6, -2.6, 3.6);
 	sh.bezierCurveTo(-0.8, 3.6, 0.4, 2.8, 2.2, 3.0);
@@ -42,7 +43,7 @@ function kidneyShape(): THREE.Shape {
  * de rand `kidney(1.15)`: dat schaalt om de vorm-oorsprong, en die ligt niet
  * in het bad, dus de rand schoof mee in plaats van gelijkmatig te verbreden.
  */
-export const POOL_OUTLINE: THREE.Vector2[] = kidneyShape().getPoints(96);
+export const POOL_OUTLINE: Vector2[] = kidneyShape().getPoints(96);
 
 /** Dezelfde waterlijn, maar in wereld-XZ. */
 export const POOL_POLYGON: ReadonlyArray<readonly [number, number]> = POOL_OUTLINE.map((p) => {
@@ -78,7 +79,7 @@ const POOL_BOUNDS = planBounds(POOL_PLAN);
 
 /** Kortste afstand tot de waterlijn: hoe verder naar binnen, hoe dieper. */
 export function rimDistance(x: number, z: number): number {
-	let best = Infinity;
+	let best = Number.POSITIVE_INFINITY;
 	for (let i = 0; i < POOL_POLYGON.length; i++) {
 		const a = at(POOL_POLYGON, i);
 		const b = at(POOL_POLYGON, i + 1);

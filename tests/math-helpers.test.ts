@@ -36,11 +36,6 @@ const EXEMPTIONS: Exemption[] = [
 		fragment: 'Math.min(lead.pathI, Math.max(0, lead.path.length - 1))',
 		reason: 'the inner max computes the upper bound, it does not clamp the value',
 	},
-	{
-		path: 'src/audio/DJPlayer.ts',
-		fragment: 'Math.min(seekTo, Math.max(0, this.audio.duration - 0.5))',
-		reason: 'the inner max floors the duration, the outer min bounds a different value',
-	},
 	{ path: 'src/scene/PoolPeople.ts', fragment: 'RECLINE / 2', reason: 'halves an angle; half() is about a measurement' },
 	{ path: 'src/scene/PrayerRoom.ts', fragment: '(phrase - 6) / 2', reason: 'scales a two-beat window to 0..1' },
 	{ path: 'src/scene/PrayerRoom.ts', fragment: '(phrase - 14) / 2', reason: 'the same window, second line' },

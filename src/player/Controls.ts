@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { PerspectiveCamera } from 'three';
+import { Euler, Vector3 } from 'three';
 import { ATRIUM_VOID, MALL_SHELL } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { levelAt } from '#/data/levels';
@@ -112,14 +113,14 @@ const FLIGHT_BANK = 0.004;
  * How you steer. `turnWithKeys` is the no-mouse mode: A/D (and ←/→) swing the
  * whole camera like a tank instead of side-stepping.
  */
-export type ControlSettings = {
+export interface ControlSettings {
 	turnWithKeys: boolean;
 	mouseLook: boolean;
 	/** 0 = left button, 2 = right button (left-handed mice) */
 	lookButton: 0 | 2;
 	sensitivity: number;
 	invertY: boolean;
-};
+}
 
 export const DEFAULT_SETTINGS: ControlSettings = {
 	turnWithKeys: false,
@@ -143,14 +144,14 @@ export class PlayerControls {
 	settings: ControlSettings = { ...DEFAULT_SETTINGS };
 	onLockChange: ((locked: boolean) => void) | null = null;
 
-	private cam: THREE.PerspectiveCamera;
+	private cam: PerspectiveCamera;
 	private dom: HTMLElement;
 	private world: CollisionWorld;
 
 	private keys = new Set<string>();
 	private yaw = 0;
 	private pitch = 0;
-	private vel = new THREE.Vector3();
+	private vel = new Vector3();
 	private vy = 0;
 	private grounded = true;
 	private feetY = 0;
@@ -190,20 +191,20 @@ export class PlayerControls {
 	private axisY = 0;
 	private jumpQueued = false;
 
-	constructor(camera: THREE.PerspectiveCamera, dom: HTMLElement, world: CollisionWorld) {
+	constructor(camera: PerspectiveCamera, dom: HTMLElement, world: CollisionWorld) {
 		this.cam = camera;
 		this.dom = dom;
 		this.world = world;
 		this.syncFromCamera();
 
-		window.addEventListener('keydown', this.onKeyDown);
-		window.addEventListener('keyup', this.onKeyUp);
-		window.addEventListener('blur', this.onBlur);
+		globalThis.addEventListener('keydown', this.onKeyDown);
+		globalThis.addEventListener('keyup', this.onKeyUp);
+		globalThis.addEventListener('blur', this.onBlur);
 		this.dom.addEventListener('pointerdown', this.onPointerDown);
 		this.dom.addEventListener('contextmenu', this.onContextMenu);
-		window.addEventListener('pointerup', this.onPointerUp);
-		window.addEventListener('pointercancel', this.onPointerUp);
-		window.addEventListener('pointermove', this.onPointerMove);
+		globalThis.addEventListener('pointerup', this.onPointerUp);
+		globalThis.addEventListener('pointercancel', this.onPointerUp);
+		globalThis.addEventListener('pointermove', this.onPointerMove);
 		document.addEventListener('pointerlockchange', this.onLockChangeEvent);
 	}
 
@@ -219,14 +220,14 @@ export class PlayerControls {
 	}
 
 	dispose(): void {
-		window.removeEventListener('keydown', this.onKeyDown);
-		window.removeEventListener('keyup', this.onKeyUp);
-		window.removeEventListener('blur', this.onBlur);
+		globalThis.removeEventListener('keydown', this.onKeyDown);
+		globalThis.removeEventListener('keyup', this.onKeyUp);
+		globalThis.removeEventListener('blur', this.onBlur);
 		this.dom.removeEventListener('pointerdown', this.onPointerDown);
 		this.dom.removeEventListener('contextmenu', this.onContextMenu);
-		window.removeEventListener('pointerup', this.onPointerUp);
-		window.removeEventListener('pointercancel', this.onPointerUp);
-		window.removeEventListener('pointermove', this.onPointerMove);
+		globalThis.removeEventListener('pointerup', this.onPointerUp);
+		globalThis.removeEventListener('pointercancel', this.onPointerUp);
+		globalThis.removeEventListener('pointermove', this.onPointerMove);
 		document.removeEventListener('pointerlockchange', this.onLockChangeEvent);
 	}
 
@@ -362,7 +363,7 @@ export class PlayerControls {
 
 	/** Adopt whatever the cinematic camera ended on. */
 	syncFromCamera(): void {
-		const e = new THREE.Euler().setFromQuaternion(this.cam.quaternion, 'YXZ');
+		const e = new Euler().setFromQuaternion(this.cam.quaternion, 'YXZ');
 		this.yaw = e.y;
 		this.pitch = clamp(e.x, -PITCH_MAX, PITCH_MAX);
 		this.feetY = this.world.groundHeightAt(this.cam.position.x, this.cam.position.z, this.cam.position.y - this.eyeHeight);
@@ -381,7 +382,7 @@ export class PlayerControls {
 	}
 
 	/** Turn to face a world point without moving (used on arrival). */
-	lookAtPoint(p: THREE.Vector3): void {
+	lookAtPoint(p: Vector3): void {
 		const dx = p.x - this.cam.position.x;
 		const dz = p.z - this.cam.position.z;
 		if (dx * dx + dz * dz > 1e-4) this.yaw = Math.atan2(-dx, -dz);
@@ -593,12 +594,7 @@ export class PlayerControls {
 		p.z = nextZ;
 
 		// ── Vertical: elevator ride OR ramps/gravity ─────────
-		if (this.elevFloorY !== null) {
-			// Glued to cabin — no groundHeightAt fight mid-shaft
-			this.feetY = this.elevFloorY;
-			this.vy = 0;
-			this.grounded = true;
-		} else {
+		if (this.elevFloorY === null) {
 			// Airborne gets a looser step so hopping on the escalator doesn't snap you
 			// onto the deck above.
 			const ground = this.world.groundHeightAt(p.x, p.z, this.feetY + airLift, this.grounded ? WALK_STEP : AIR_STEP);
@@ -630,6 +626,11 @@ export class PlayerControls {
 					this.grounded = true;
 				}
 			}
+		} else {
+			// Glued to cabin — no groundHeightAt fight mid-shaft
+			this.feetY = this.elevFloorY;
+			this.vy = 0;
+			this.grounded = true;
 		}
 
 		// ── Head bob / landing dip / strafe lean ─────────────

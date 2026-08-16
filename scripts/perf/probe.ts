@@ -30,13 +30,13 @@
 import { BATCH_KEY, isBatchMode, SHELL_SHADOW_KEY, ZONE_CULL_KEY } from '#/render/graphicsPrefs';
 
 /** One render target + viewport size, e.g. the main pass or the shadow map. */
-export type PassTiming = {
+export interface PassTiming {
 	pass: string;
 	msPerFrame: number;
 	drawsPerFrame: number;
-};
+}
 
-export type BatchOwnerTiming = {
+export interface BatchOwnerTiming {
 	name: string;
 	sources: number;
 	dynamicSources: number;
@@ -44,9 +44,9 @@ export type BatchOwnerTiming = {
 	triangles: number;
 	casters: number;
 	largestRadius: number;
-};
+}
 
-export type Sample = {
+export interface Sample {
 	frames: number;
 	/** Median wall time between frames. The number a player feels. */
 	wallMsMedian: number;
@@ -76,22 +76,22 @@ export type Sample = {
 	cpuBatchMsMean: number;
 	cpuSubmitMsMean: number;
 	trianglesPerFrame: number;
-};
+}
 
-export type RoutePose = {
+export interface RoutePose {
 	x: number;
 	y: number;
 	z: number;
 	lookX: number;
 	lookY: number;
 	lookZ: number;
-};
+}
 
 /**
  * Wat de zonecull van dit standpunt vond. Zonder deze telling is een cull die
  * niets doet niet te onderscheiden van een cull die alles al mocht tekenen.
  */
-export type ZoneCullTally = {
+export interface ZoneCullTally {
 	zone: string;
 	/** Stond de cull aan? Met hem uit telt niemand mee en zijn alle eigenaarsregels nul. */
 	enabled: boolean;
@@ -104,7 +104,7 @@ export type ZoneCullTally = {
 	keptInOwnZone: number;
 	keptThroughCone: number;
 	owners: ZoneOwnerTiming[];
-};
+}
 
 /**
  * Wat de cull op dit standpunt met één feature deed.
@@ -113,7 +113,7 @@ export type ZoneCullTally = {
  * schaduw werpt. Wat de cull wegneemt verdwijnt uit de scenepass én uit de
  * schaduwpass, dus `castersKept` is wat dit standpunt nog aan de zon aanbiedt.
  */
-export type ZoneOwnerTiming = {
+export interface ZoneOwnerTiming {
 	name: string;
 	items: number;
 	casters: number;
@@ -121,9 +121,9 @@ export type ZoneOwnerTiming = {
 	hidden: number;
 	castersKept: number;
 	castersHidden: number;
-};
+}
 
-export type Environment = {
+export interface Environment {
 	renderer: string;
 	vendor: string;
 	parallelShaderCompile: boolean;
@@ -158,10 +158,10 @@ export type Environment = {
 	 */
 	programInfoLogCalls: number;
 	shaderInfoLogCalls: number;
-};
+}
 
 /** Eén object onder een beeldpunt: wie het gebouwd heeft en waar het staat. */
-export type RayHit = {
+export interface RayHit {
 	owner: string;
 	name: string;
 	geometry: string;
@@ -170,9 +170,9 @@ export type RayHit = {
 	x: number;
 	y: number;
 	z: number;
-};
+}
 
-type ProbeApi = {
+interface ProbeApi {
 	ready: (timeoutMs: number) => Promise<number>;
 	settle: (quietMs: number, maxWaitMs: number) => Promise<number>;
 	sample: (durationMs: number) => Promise<Sample>;
@@ -182,7 +182,7 @@ type ProbeApi = {
 	waitFrames: (count: number) => Promise<void>;
 	raycast: (ndcX: number, ndcY: number, limit: number) => RayHit[];
 	environment: () => Environment;
-};
+}
 
 declare global {
 	// eslint-disable-next-line no-var
@@ -227,9 +227,19 @@ function installProbe(
 		// setting on in this profile.
 	}
 
-	type TimerExt = { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number };
-	type Segment = { query: WebGLQuery; pass: string; draws: number };
-	type Totals = { ms: number; draws: number };
+	interface TimerExt {
+		TIME_ELAPSED_EXT: number;
+		GPU_DISJOINT_EXT: number;
+	}
+	interface Segment {
+		query: WebGLQuery;
+		pass: string;
+		draws: number;
+	}
+	interface Totals {
+		ms: number;
+		draws: number;
+	}
 
 	const counters = {
 		links: 0,
@@ -289,7 +299,7 @@ function installProbe(
 
 	const closeSegment = (): void => {
 		const ctx = context();
-		if (!ctx || !timer || !active) return;
+		if (!(ctx && timer && active)) return;
 		ctx.endQuery(timer.TIME_ELAPSED_EXT);
 		pending.push(active);
 		active = null;
@@ -298,7 +308,7 @@ function installProbe(
 	const openSegment = (): void => {
 		if (!sampling) return;
 		const ctx = context();
-		if (!ctx || !timer || active) return;
+		if (!(ctx && timer) || active) return;
 		const query = ctx.createQuery();
 		if (!query) return;
 		ctx.beginQuery(timer.TIME_ELAPSED_EXT, query);
@@ -308,7 +318,7 @@ function installProbe(
 
 	const collect = (): void => {
 		const ctx = context();
-		if (!ctx || !timer) return;
+		if (!(ctx && timer)) return;
 		for (let i = pending.length - 1; i >= 0; i--) {
 			const seg = pending[i];
 			if (!seg) continue;
@@ -444,7 +454,7 @@ function installProbe(
 		Object.defineProperty(proto, name, {
 			configurable: true,
 			writable: true,
-			value: function (this: WebGL2RenderingContext, ...args: unknown[]): void {
+			value(this: WebGL2RenderingContext, ...args: unknown[]): void {
 				countUpload(args[args.length - 1]);
 				Reflect.apply(original, this, args);
 			},
@@ -542,7 +552,7 @@ function installProbe(
 	Object.defineProperty(proto, 'getExtension', {
 		configurable: true,
 		writable: true,
-		value: function (this: WebGL2RenderingContext, name: string): unknown {
+		value(this: WebGL2RenderingContext, name: string): unknown {
 			const extension = Reflect.apply(getExtension, this, [name]);
 			if (name.toLowerCase() === 'webgl_multi_draw') patchMultiDraw(extension);
 			return extension;

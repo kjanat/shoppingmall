@@ -46,7 +46,7 @@ const LEAN_SLACK = 0.02;
 const CRAWL_LEAN = 0.06;
 
 stubDocument();
-const THREE = await import('three');
+const { Vector3 } = await import('three');
 const [{ Barriers }, { DriveableCars }] = await Promise.all([import('#/scene/city/Barriers'), import('#/scene/DriveableCars')]);
 
 const SPOT = RIDEABLE_MOTORCYCLE_SPOTS[0];
@@ -94,7 +94,7 @@ function ride(): {
 } {
 	const city = new CollisionWorld();
 	const cars = new DriveableCars(city, new Barriers(city));
-	const slot = SPOT ? cars.nearestCar(new THREE.Vector3(SPOT.x, SPOT.y + 1, SPOT.z), 1) : null;
+	const slot = SPOT ? cars.nearestCar(new Vector3(SPOT.x, SPOT.y + 1, SPOT.z), 1) : null;
 	if (slot) cars.board(slot);
 	return { cars, slot };
 }
@@ -275,7 +275,7 @@ describe('after a rebuild', () => {
 
 		test('it stands on its parking spot again', () => {
 			if (!underway) return;
-			const found = afterRefresh.nearestCar(new THREE.Vector3(underway.x, underway.y + 1, underway.z), 1);
+			const found = afterRefresh.nearestCar(new Vector3(underway.x, underway.y + 1, underway.z), 1);
 			expect(found?.name, `${underway.id} is no longer on its parking spot`).toBe(underway.id);
 		});
 	});
@@ -306,7 +306,7 @@ describe('the motorcycles on the red carpet', () => {
 		if (!bike) throw new Error(`no motorcycle ${name}`);
 		const city = new CollisionWorld();
 		const cars = new DriveableCars(city, new Barriers(city));
-		const slot = cars.nearestCar(new THREE.Vector3(bike.x, bike.y + 1, bike.z), 1);
+		const slot = cars.nearestCar(new Vector3(bike.x, bike.y + 1, bike.z), 1);
 		const boarded = slot ? cars.board(slot) : false;
 
 		test('stands on the ground floor', () => {

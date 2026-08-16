@@ -1,4 +1,26 @@
-import * as THREE from 'three';
+import type { BufferGeometry, CanvasTexture, Material, Texture } from 'three';
+import {
+	BoxGeometry,
+	Color,
+	ConeGeometry,
+	CylinderGeometry,
+	DoubleSide,
+	ExtrudeGeometry,
+	Group,
+	InstancedMesh,
+	Mesh,
+	MeshBasicMaterial,
+	Object3D,
+	Path,
+	PlaneGeometry,
+	Shape,
+	ShapeGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TubeGeometry,
+	Vector2,
+} from 'three';
 import { levelY } from '#/data/levels';
 import {
 	inPool,
@@ -40,7 +62,7 @@ export { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_POLYGON, POOL_WATER_Y, poolFloo
 const RIM_W = 0.55;
 
 /** Oppervlak van een gesloten polygoon, teken weggelaten. */
-function polyArea(pts: readonly THREE.Vector2[]): number {
+function polyArea(pts: readonly Vector2[]): number {
 	let sum = 0;
 	for (let i = 0; i < pts.length; i++) {
 		const a = at(pts, i);
@@ -59,7 +81,7 @@ function polyArea(pts: readonly THREE.Vector2[]): number {
  * uitrekenen en de grootste nemen. Zat het fout, dan werd het gat groter dan de
  * omtrek en trianguleerde de rand tot een dichte plaat dwars over het water.
  */
-function offsetOutward(pts: readonly THREE.Vector2[], d: number): THREE.Vector2[] {
+function offsetOutward(pts: readonly Vector2[], d: number): Vector2[] {
 	const shift = (sign: number) =>
 		pts.map((_, i) => {
 			const prev = at(pts, i - 1);
@@ -68,7 +90,7 @@ function offsetOutward(pts: readonly THREE.Vector2[], d: number): THREE.Vector2[
 			const ty = next.y - prev.y;
 			const len = Math.hypot(tx, ty) || 1;
 			const p = at(pts, i);
-			return new THREE.Vector2(p.x + (sign * ty * d) / len, p.y - (sign * tx * d) / len);
+			return new Vector2(p.x + (sign * ty * d) / len, p.y - (sign * tx * d) / len);
 		});
 	const outward = shift(1);
 	return polyArea(outward) > polyArea(pts) ? outward : shift(-1);
@@ -81,7 +103,7 @@ function offsetOutward(pts: readonly THREE.Vector2[], d: number): THREE.Vector2[
  * De veiligheidsrailing is er omdat de verzekeraar het dak heeft gezien.
  */
 export class RoofIsland {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
 	/** Loopbaar dek voor de integrator */
 	readonly roofPad = { ...ROOF_ISLAND_PAD, y: DECK_Y };
@@ -90,16 +112,16 @@ export class RoofIsland {
 	/** De rit door de buis: de bocht die hier getekend wordt is dezelfde die je meeneemt. */
 	readonly ride = new SlideRide();
 
-	private materials: THREE.Material[] = [];
-	private geoms: THREE.BufferGeometry[] = [];
-	private textures: THREE.Texture[] = [];
-	private instanced: THREE.InstancedMesh[] = [];
+	private materials: Material[] = [];
+	private geoms: BufferGeometry[] = [];
+	private textures: Texture[] = [];
+	private instanced: InstancedMesh[] = [];
 
 	// Animatie-referenties (geen allocaties in update)
 	private waterMat!: LitMaterial;
-	private water!: THREE.Mesh;
+	private water!: Mesh;
 	private waterBaseY = 0;
-	private poolBall!: THREE.Mesh;
+	private poolBall!: Mesh;
 	private poolBallBaseY = 0;
 
 	constructor() {
@@ -136,17 +158,17 @@ export class RoofIsland {
 		this.group.clear();
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
-	private geo<T extends THREE.BufferGeometry>(g: T): T {
+	private geo<T extends BufferGeometry>(g: T): T {
 		this.geoms.push(g);
 		return g;
 	}
 
-	private label(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void, w = 256, h = 128): THREE.CanvasTexture {
+	private label(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void, w = 256, h = 128): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		draw(ctx, w, h);
 		const tex = labelTexture(c);
@@ -157,8 +179,8 @@ export class RoofIsland {
 	/** Zandlaag óp de dakplaat. Met zijn top op DECK_Y lag hij in het dak en flikkerde hij over 26×40 m. */
 	private buildDeck(): void {
 		const { minX, maxX, minZ, maxZ } = ROOF_ISLAND_PAD;
-		const deck = new THREE.Mesh(
-			this.geo(new THREE.BoxGeometry(span(minX, maxX), ROOF_ISLAND_DECK_THICKNESS, span(minZ, maxZ))),
+		const deck = new Mesh(
+			this.geo(new BoxGeometry(span(minX, maxX), ROOF_ISLAND_DECK_THICKNESS, span(minZ, maxZ))),
 			this.track(lit({ color: 0xe6cf9c, roughness: 0.95 })),
 		);
 		deck.position.set(midpoint(minX, maxX), DECK_Y + half(ROOF_ISLAND_DECK_THICKNESS), midpoint(minZ, maxZ));
@@ -167,15 +189,15 @@ export class RoofIsland {
 	}
 
 	/** Nierboon — twee lobben, één taille. Anatomisch niet correct, wel gezellig. */
-	private buildPoolShapes(): { inner: THREE.Shape; outer: THREE.Shape } {
-		const inner = new THREE.Shape(POOL_OUTLINE.map((p) => p.clone()));
-		const outer = new THREE.Shape(offsetOutward(POOL_OUTLINE, RIM_W));
-		outer.holes.push(new THREE.Path(POOL_OUTLINE.map((p) => p.clone())));
+	private buildPoolShapes(): { inner: Shape; outer: Shape } {
+		const inner = new Shape(POOL_OUTLINE.map((p) => p.clone()));
+		const outer = new Shape(offsetOutward(POOL_OUTLINE, RIM_W));
+		outer.holes.push(new Path(POOL_OUTLINE.map((p) => p.clone())));
 		return { inner, outer };
 	}
 
 	private buildPool(): void {
-		const pool = new THREE.Group();
+		const pool = new Group();
 		pool.name = 'pool';
 		pool.position.set(POOL_CENTER.x, DECK_Y, POOL_CENTER.z);
 		// Uit de constante: POOL_POLYGON rekent met dezelfde draai, en zodra die
@@ -185,8 +207,8 @@ export class RoofIsland {
 		const { inner, outer } = this.buildPoolShapes();
 
 		// Tegelrand — licht verhoogd, zodat niemand 'per ongeluk' erin rijdt
-		const rim = new THREE.Mesh(
-			this.geo(new THREE.ExtrudeGeometry(outer, { depth: 0.12, bevelEnabled: false })),
+		const rim = new Mesh(
+			this.geo(new ExtrudeGeometry(outer, { depth: 0.12, bevelEnabled: false })),
 			this.track(lit({ color: 0xf5f5f0, roughness: 0.6 })),
 		);
 		rim.rotation.x = -Math.PI / 2;
@@ -196,10 +218,7 @@ export class RoofIsland {
 		// Donkere bodem onder het transparante water: dieptesuggestie voor bijna niks.
 		// Blijft vlak op dekhoogte: hij dekt de dakplaat van de mall en de benen van
 		// de zwemmers af. De loopbare bak zit in poolFloorY.
-		const bottom = new THREE.Mesh(
-			this.geo(new THREE.ShapeGeometry(inner)),
-			this.track(lit({ color: 0x01579b, roughness: 0.85 })),
-		);
+		const bottom = new Mesh(this.geo(new ShapeGeometry(inner)), this.track(lit({ color: 0x01579b, roughness: 0.85 })));
 		bottom.rotation.x = -Math.PI / 2;
 		bottom.position.y = 0.02;
 		pool.add(bottom);
@@ -214,7 +233,7 @@ export class RoofIsland {
 				opacity: 0.8,
 			}),
 		);
-		this.water = new THREE.Mesh(this.geo(new THREE.ShapeGeometry(inner)), this.waterMat);
+		this.water = new Mesh(this.geo(new ShapeGeometry(inner)), this.waterMat);
 		this.water.rotation.x = -Math.PI / 2;
 		// Uit de constante, zodat de waterlijn van de fysica nooit van de mesh loskomt
 		this.waterBaseY = POOL_WATER_Y - DECK_Y;
@@ -226,7 +245,7 @@ export class RoofIsland {
 
 	/** Buisglijbaan: 4 m toren, krul, plons. De flessen staan klaar bij buildProps. */
 	private buildSlide(): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		g.name = 'slide';
 		const steel = this.track(lit({ color: 0x90a4ae, metalness: 0.6, roughness: 0.4 }));
 		const { center, size, thickness, standHeight } = SLIDE_PLATFORM;
@@ -234,19 +253,19 @@ export class RoofIsland {
 
 		// Torenpoten + platform
 		const { leg: legSpec, ladder, tube: tubeSpec } = SLIDE_TOWER_SPEC;
-		const legGeo = this.geo(new THREE.CylinderGeometry(legSpec.radius, legSpec.radius, standHeight, 8));
+		const legGeo = this.geo(new CylinderGeometry(legSpec.radius, legSpec.radius, standHeight, 8));
 		for (const [sx, sz] of [
 			[-1, -1],
 			[1, -1],
 			[-1, 1],
 			[1, 1],
 		] as const) {
-			const leg = new THREE.Mesh(legGeo, steel);
+			const leg = new Mesh(legGeo, steel);
 			leg.position.set(center.x + sx * legSpec.offset, DECK_Y + half(standHeight), center.z + sz * legSpec.offset);
 			g.add(leg);
 		}
-		const platform = new THREE.Mesh(
-			this.geo(new THREE.BoxGeometry(size, thickness, size)),
+		const platform = new Mesh(
+			this.geo(new BoxGeometry(size, thickness, size)),
 			this.track(lit({ color: 0x455a64, roughness: 0.7 })),
 		);
 		platform.position.set(center.x, DECK_Y + standHeight, center.z);
@@ -254,17 +273,17 @@ export class RoofIsland {
 
 		// Platform-railing: drie zijden dicht, de vierde is de glijbaan zelf
 		const railEdge = half(size) - railInset;
-		const railGeo = this.geo(new THREE.BoxGeometry(size, 0.06, 0.06));
+		const railGeo = this.geo(new BoxGeometry(size, 0.06, 0.06));
 		for (const [rx, rz, ry] of [
 			[center.x, center.z - railEdge, 0],
 			[center.x, center.z + railEdge, 0],
 			[center.x - railEdge, center.z, Math.PI / 2],
 		] as const) {
-			const rail = new THREE.Mesh(railGeo, steel);
+			const rail = new Mesh(railGeo, steel);
 			rail.position.set(rx, DECK_Y + standHeight + 0.7, rz);
 			rail.rotation.y = ry;
 			g.add(rail);
-			const railLow = new THREE.Mesh(railGeo, steel);
+			const railLow = new Mesh(railGeo, steel);
 			railLow.position.set(rx, DECK_Y + standHeight + 0.35, rz);
 			railLow.rotation.y = ry;
 			g.add(railLow);
@@ -272,39 +291,39 @@ export class RoofIsland {
 
 		// Ladder aan de zuidkant
 		const ladderZ = center.z - half(size) - 0.03;
-		const rungGeo = this.geo(new THREE.BoxGeometry(0.5, ladder.rungThickness, ladder.rungThickness));
+		const rungGeo = this.geo(new BoxGeometry(0.5, ladder.rungThickness, ladder.rungThickness));
 		for (let i = 0; i < ladder.rungs; i++) {
-			const rung = new THREE.Mesh(rungGeo, steel);
+			const rung = new Mesh(rungGeo, steel);
 			rung.position.set(center.x, DECK_Y + 0.5 + i * 0.48, ladderZ);
 			g.add(rung);
 		}
-		const ladderRailGeo = this.geo(new THREE.CylinderGeometry(0.035, 0.035, standHeight + 0.3, 6));
+		const ladderRailGeo = this.geo(new CylinderGeometry(0.035, 0.035, standHeight + 0.3, 6));
 		for (const dx of [-0.27, 0.27]) {
-			const lr = new THREE.Mesh(ladderRailGeo, steel);
+			const lr = new Mesh(ladderRailGeo, steel);
 			lr.position.set(center.x + dx, DECK_Y + 2.2, ladderZ);
 			g.add(lr);
 		}
 
 		// De buis: CatmullRom-krul van platform naar het diepe
 		const curve = this.ride.curve;
-		const tube = new THREE.Mesh(
-			this.geo(new THREE.TubeGeometry(curve, 48, tubeSpec.radius, 10, false)),
-			this.track(lit({ color: 0xffca28, roughness: 0.35, side: THREE.DoubleSide })),
+		const tube = new Mesh(
+			this.geo(new TubeGeometry(curve, 48, tubeSpec.radius, 10, false)),
+			this.track(lit({ color: 0xffca28, roughness: 0.35, side: DoubleSide })),
 		);
 		g.add(tube);
 
 		// Steunen onder de buis, anders keurt zelfs déze mall het af
-		const supGeoCache = new Map<number, THREE.CylinderGeometry>();
+		const supGeoCache = new Map<number, CylinderGeometry>();
 		for (const ct of [0.3, 0.55, 0.8]) {
 			const p = curve.getPoint(ct);
 			const h = Math.max(0.4, p.y - 0.55 - DECK_Y);
 			const key = Math.round(h * 10);
 			let sg = supGeoCache.get(key);
 			if (!sg) {
-				sg = this.geo(new THREE.CylinderGeometry(0.07, 0.07, h, 6));
+				sg = this.geo(new CylinderGeometry(0.07, 0.07, h, 6));
 				supGeoCache.set(key, sg);
 			}
-			const sup = new THREE.Mesh(sg, steel);
+			const sup = new Mesh(sg, steel);
 			sup.position.set(p.x, DECK_Y + half(h), p.z);
 			g.add(sup);
 		}
@@ -313,46 +332,46 @@ export class RoofIsland {
 	}
 
 	private buildTikiBar(): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		g.name = 'tiki_bar';
 		const { center, post, counter: counterSpec, thatch: thatchSpec, stool, sign: signSpec } = TIKI_BAR_SPEC;
 		const cx = center.x;
 		const cz = center.z;
 
 		const bamboo = this.track(lit({ color: 0x9a7b4f, roughness: 0.9 }));
-		const poleGeo = this.geo(new THREE.CylinderGeometry(post.radius, post.radius, post.height, 7));
+		const poleGeo = this.geo(new CylinderGeometry(post.radius, post.radius, post.height, 7));
 		for (const [sx, sz] of [
 			[-1, -1],
 			[1, -1],
 			[-1, 1],
 			[1, 1],
 		] as const) {
-			const pole = new THREE.Mesh(poleGeo, bamboo);
+			const pole = new Mesh(poleGeo, bamboo);
 			pole.position.set(cx + sx * post.offset, DECK_Y + post.centerY, cz + sz * post.offset);
 			g.add(pole);
 		}
 
 		// Bar zelf: één plank, oneindige dorst
-		const counter = new THREE.Mesh(
-			this.geo(new THREE.BoxGeometry(counterSpec.width, counterSpec.height, counterSpec.depth)),
+		const counter = new Mesh(
+			this.geo(new BoxGeometry(counterSpec.width, counterSpec.height, counterSpec.depth)),
 			this.track(lit({ color: 0x6d4c41, roughness: 0.8 })),
 		);
 		counter.position.set(cx + counterSpec.offsetX, DECK_Y + half(counterSpec.height), cz);
 		g.add(counter);
 
 		// Rieten kegeldakje
-		const thatch = new THREE.Mesh(
-			this.geo(new THREE.ConeGeometry(thatchSpec.radius, thatchSpec.height, 9)),
+		const thatch = new Mesh(
+			this.geo(new ConeGeometry(thatchSpec.radius, thatchSpec.height, 9)),
 			this.track(lit({ color: 0xb8935a, roughness: 1 })),
 		);
 		thatch.position.set(cx, DECK_Y + thatchSpec.centerY, cz);
 		g.add(thatch);
 
 		// Krukken (instanced — drie krukken is ook een rij)
-		const stoolGeo = this.geo(new THREE.CylinderGeometry(stool.topRadius, stool.bottomRadius, stool.height, 8));
+		const stoolGeo = this.geo(new CylinderGeometry(stool.topRadius, stool.bottomRadius, stool.height, 8));
 		const stoolMat = this.track(lit({ color: 0x8d6e63, roughness: 0.85 }));
-		const stools = new THREE.InstancedMesh(stoolGeo, stoolMat, stool.z.length);
-		const d = new THREE.Object3D();
+		const stools = new InstancedMesh(stoolGeo, stoolMat, stool.z.length);
+		const d = new Object3D();
 		stool.z.forEach((z, i) => {
 			d.position.set(cx + stool.offsetX, DECK_Y + stool.centerY, z);
 			d.rotation.set(0, 0, 0);
@@ -381,8 +400,8 @@ export class RoofIsland {
 			128,
 		);
 		const sign = backToBackLabel(
-			this.geo(new THREE.PlaneGeometry(signSpec.width, signSpec.height)),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
+			this.geo(new PlaneGeometry(signSpec.width, signSpec.height)),
+			this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 		sign.position.set(cx + signSpec.offsetX, DECK_Y + signSpec.centerY, cz);
 		sign.rotation.y = -Math.PI / 2;
@@ -395,13 +414,13 @@ export class RoofIsland {
 	private buildPalms(): void {
 		const spots = ROOF_PALM_SPOTS;
 		const { trunk } = ROOF_PALM_SPEC;
-		const d = new THREE.Object3D();
+		const d = new Object3D();
 
 		// Stammen (origin aan de voet)
-		const trunkGeo = this.geo(new THREE.CylinderGeometry(trunk.topRadius, trunk.bottomRadius, trunk.height, 7));
+		const trunkGeo = this.geo(new CylinderGeometry(trunk.topRadius, trunk.bottomRadius, trunk.height, 7));
 		trunkGeo.translate(0, half(trunk.height), 0);
 		const trunkMat = this.track(lit({ color: 0x8b6914, roughness: 0.9 }));
-		const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
+		const trunks = new InstancedMesh(trunkGeo, trunkMat, spots.length);
 		spots.forEach(({ x, z, scale: s }, i) => {
 			d.position.set(x, DECK_Y, z);
 			d.rotation.set(0, i * 1.3, 0);
@@ -413,13 +432,13 @@ export class RoofIsland {
 		this.group.add(trunks);
 
 		// Bladeren: 9 per palm, één InstancedMesh, groentint via instanceColor
-		const frondGeo = this.geo(new THREE.PlaneGeometry(0.42, 2.1));
+		const frondGeo = this.geo(new PlaneGeometry(0.42, 2.1));
 		frondGeo.translate(0, 1.05, 0);
-		const frondMat = this.track(lit({ color: 0xffffff, roughness: 0.85, side: THREE.DoubleSide }));
+		const frondMat = this.track(lit({ color: 0xffffff, roughness: 0.85, side: DoubleSide }));
 		const perPalm = 9;
-		const fronds = new THREE.InstancedMesh(frondGeo, frondMat, spots.length * perPalm);
+		const fronds = new InstancedMesh(frondGeo, frondMat, spots.length * perPalm);
 		const greens = [0x1b7a3d, 0x2d8a4e, 0x3d9b55, 0x228b22];
-		const col = new THREE.Color();
+		const col = new Color();
 		spots.forEach(({ x, z, scale: s }, i) => {
 			for (let j = 0; j < perPalm; j++) {
 				const a = (j / perPalm) * Math.PI * 2 + i * 0.7;
@@ -439,9 +458,9 @@ export class RoofIsland {
 		this.group.add(fronds);
 
 		// Kokosnoten: 2 per palm — genoeg voor de suggestie van gevaar
-		const cocoGeo = this.geo(new THREE.SphereGeometry(0.11, 6, 6));
+		const cocoGeo = this.geo(new SphereGeometry(0.11, 6, 6));
 		const cocoMat = this.track(lit({ color: 0x5c4033, roughness: 0.9 }));
-		const cocos = new THREE.InstancedMesh(cocoGeo, cocoMat, spots.length * 2);
+		const cocos = new InstancedMesh(cocoGeo, cocoMat, spots.length * 2);
 		spots.forEach(({ x, z, scale: s }, i) => {
 			for (let j = 0; j < 2; j++) {
 				const a = i * 2.1 + j * Math.PI;
@@ -459,11 +478,11 @@ export class RoofIsland {
 	private buildLoungers(): void {
 		const spots = ROOF_LOUNGER_SPOTS;
 		const { seat, back } = ROOF_LOUNGER_SPEC;
-		const d = new THREE.Object3D();
+		const d = new Object3D();
 		const plastic = this.track(lit({ color: 0xf1f8f4, roughness: 0.7 }));
 
-		const baseGeo = this.geo(new THREE.BoxGeometry(seat.width, seat.thickness, seat.depth));
-		const bases = new THREE.InstancedMesh(baseGeo, plastic, spots.length);
+		const baseGeo = this.geo(new BoxGeometry(seat.width, seat.thickness, seat.depth));
+		const bases = new InstancedMesh(baseGeo, plastic, spots.length);
 		spots.forEach(({ x, z, yaw }, i) => {
 			d.position.set(x, DECK_Y + seat.centerY, z);
 			d.rotation.set(0, yaw, 0);
@@ -474,8 +493,8 @@ export class RoofIsland {
 		this.group.add(bases);
 
 		// Rugleuning: aan het hoofdeinde, schuin omhoog (siësta-stand)
-		const backGeo = this.geo(new THREE.BoxGeometry(back.width, back.thickness, back.depth));
-		const backs = new THREE.InstancedMesh(backGeo, plastic, spots.length);
+		const backGeo = this.geo(new BoxGeometry(back.width, back.thickness, back.depth));
+		const backs = new InstancedMesh(backGeo, plastic, spots.length);
 		spots.forEach(({ x, z, yaw }, i) => {
 			d.position.set(x - back.offset * Math.sin(yaw), DECK_Y + back.centerY, z - back.offset * Math.cos(yaw));
 			d.rotation.set(0, 0, 0);
@@ -496,18 +515,18 @@ export class RoofIsland {
 			[-17, -6.8],
 			[-24, 9.5],
 		];
-		const d = new THREE.Object3D();
+		const d = new Object3D();
 
-		const poleGeo = this.geo(new THREE.CylinderGeometry(0.04, 0.04, 2.6, 6));
+		const poleGeo = this.geo(new CylinderGeometry(0.04, 0.04, 2.6, 6));
 		poleGeo.translate(0, 1.3, 0);
 		const poleMat = this.track(lit({ color: 0xcfd8dc, metalness: 0.5, roughness: 0.5 }));
-		const poles = new THREE.InstancedMesh(poleGeo, poleMat, spots.length);
+		const poles = new InstancedMesh(poleGeo, poleMat, spots.length);
 
-		const canopyGeo = this.geo(new THREE.ConeGeometry(1.5, 0.7, 8));
-		const canopyMat = this.track(lit({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide }));
-		const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, spots.length);
+		const canopyGeo = this.geo(new ConeGeometry(1.5, 0.7, 8));
+		const canopyMat = this.track(lit({ color: 0xffffff, roughness: 0.8, side: DoubleSide }));
+		const canopies = new InstancedMesh(canopyGeo, canopyMat, spots.length);
 		const colors = [0xff5252, 0x40c4ff, 0xffd740, 0xff4081];
-		const col = new THREE.Color();
+		const col = new Color();
 		spots.forEach(([x, z], i) => {
 			d.position.set(x, DECK_Y, z);
 			d.rotation.set(0, i * 0.8, 0);
@@ -531,13 +550,13 @@ export class RoofIsland {
 			[-21.5, 8.6, -0.7],
 			[-12.6, 3, 1.2],
 		];
-		const geoT = this.geo(new THREE.PlaneGeometry(0.62, 1.5));
+		const geoT = this.geo(new PlaneGeometry(0.62, 1.5));
 		geoT.rotateX(-Math.PI / 2);
-		const mat = this.track(lit({ color: 0xffffff, roughness: 0.95, side: THREE.DoubleSide }));
-		const towels = new THREE.InstancedMesh(geoT, mat, onLoungers.length + onDeck.length);
+		const mat = this.track(lit({ color: 0xffffff, roughness: 0.95, side: DoubleSide }));
+		const towels = new InstancedMesh(geoT, mat, onLoungers.length + onDeck.length);
 		const colors = [0xef5350, 0x26c6da, 0xffee58, 0xab47bc, 0x66bb6a, 0xff7043, 0x5c6bc0, 0xec407a];
-		const d = new THREE.Object3D();
-		const col = new THREE.Color();
+		const d = new Object3D();
+		const col = new Color();
 		let idx = 0;
 		for (const li of onLoungers) {
 			const { x, z, yaw } = at(loungers, li);
@@ -562,8 +581,8 @@ export class RoofIsland {
 
 	/** Flessen GLIJMIDDEL & BABY OIL bij de glijbaan, plus strandballen. */
 	private buildProps(): void {
-		const bottleGeo = this.geo(new THREE.CylinderGeometry(0.14, 0.14, 0.45, 10));
-		const capGeo = this.geo(new THREE.CylinderGeometry(0.06, 0.06, 0.09, 8));
+		const bottleGeo = this.geo(new CylinderGeometry(0.14, 0.14, 0.45, 10));
+		const capGeo = this.geo(new CylinderGeometry(0.06, 0.06, 0.09, 8));
 		const capMat = this.track(lit({ color: 0xd32f2f, roughness: 0.5 }));
 
 		const glijTex = this.label((ctx, w, h) => {
@@ -602,8 +621,8 @@ export class RoofIsland {
 		});
 		const babyMat = this.track(lit({ map: babyTex, roughness: 0.4 }));
 
-		const bottle = (mat: THREE.Material, x: number, y: number, z: number, tipped: boolean): void => {
-			const b = new THREE.Mesh(bottleGeo, mat);
+		const bottle = (mat: Material, x: number, y: number, z: number, tipped: boolean): void => {
+			const b = new Mesh(bottleGeo, mat);
 			b.position.set(x, y, z);
 			if (tipped) {
 				b.rotation.z = Math.PI / 2;
@@ -611,7 +630,7 @@ export class RoofIsland {
 			}
 			this.group.add(b);
 			if (!tipped) {
-				const cap = new THREE.Mesh(capGeo, capMat);
+				const cap = new Mesh(capGeo, capMat);
 				cap.position.set(x, y + 0.27, z);
 				this.group.add(cap);
 			}
@@ -630,11 +649,11 @@ export class RoofIsland {
 				ctx.fillRect(i * sw, 0, sw + 1, h);
 			});
 		});
-		const ballGeo = this.geo(new THREE.SphereGeometry(0.35, 12, 10));
+		const ballGeo = this.geo(new SphereGeometry(0.35, 12, 10));
 		const ballMat = this.track(lit({ map: ballTex, roughness: 0.6 }));
 
 		// Eén dobbert in het bad (geanimeerd), twee liggen te wachten op wind
-		this.poolBall = new THREE.Mesh(ballGeo, ballMat);
+		this.poolBall = new Mesh(ballGeo, ballMat);
 		this.poolBallBaseY = DECK_Y + 0.28;
 		this.poolBall.position.set(-19, this.poolBallBaseY, 0.5);
 		this.group.add(this.poolBall);
@@ -643,7 +662,7 @@ export class RoofIsland {
 			[-26.5, -13, 1],
 			[-10.2, 10.5, 0.8],
 		] as const) {
-			const ball = new THREE.Mesh(ballGeo, ballMat);
+			const ball = new Mesh(ballGeo, ballMat);
 			ball.position.set(x, DECK_Y + 0.35 * s, z);
 			ball.scale.setScalar(s);
 			ball.rotation.y = x * 2.3;
@@ -668,10 +687,10 @@ export class RoofIsland {
 			if (z > -entranceHalfDepth && z < entranceHalfDepth) continue; // entree
 			positions.push([maxX, z]);
 		}
-		const postGeo = this.geo(new THREE.CylinderGeometry(postRadius, postRadius, height, 6));
+		const postGeo = this.geo(new CylinderGeometry(postRadius, postRadius, height, 6));
 		postGeo.translate(0, half(height), 0);
-		const posts = new THREE.InstancedMesh(postGeo, metal, positions.length);
-		const d = new THREE.Object3D();
+		const posts = new InstancedMesh(postGeo, metal, positions.length);
+		const d = new Object3D();
 		positions.forEach(([x, z], i) => {
 			d.position.set(x, DECK_Y, z);
 			d.rotation.set(0, 0, 0);
@@ -684,7 +703,7 @@ export class RoofIsland {
 		// Bovenregel: vijf balken (oostkant in twee stukken vanwege de entree)
 		const railY = DECK_Y + height;
 		const bar = (w: number, dep: number, x: number, z: number): void => {
-			const m = new THREE.Mesh(this.geo(new THREE.BoxGeometry(w, barThickness, dep)), metal);
+			const m = new Mesh(this.geo(new BoxGeometry(w, barThickness, dep)), metal);
 			m.position.set(x, railY, z);
 			this.group.add(m);
 		};
@@ -715,7 +734,7 @@ export class RoofIsland {
 			128,
 		);
 		// depthTest AAN — zie de spook-signage-les van het helipad
-		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
+		const sp = new Sprite(this.track(new SpriteMaterial({ map: tex, transparent: true })));
 		sp.scale.set(7, 1.75, 1);
 		sp.position.set(-19, DECK_Y + 6.5, 0);
 		this.group.add(sp);

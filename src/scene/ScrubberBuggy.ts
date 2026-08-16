@@ -1,4 +1,17 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import { STANDING_PEDESTRIAN } from '#/data/character';
 import type { InteractionReceiver } from '#/data/spatial';
 import type { CollisionWorld } from '#/physics/Collision';
@@ -17,7 +30,7 @@ import { clamp, ease, half } from '#/util/math';
  * Genoeg om hem terug te zetten nadat de wereld opnieuw is opgebouwd; welk
  * voertuig het was staat erbuiten, want dat weet de aanroeper al.
  */
-export type VehicleRide = {
+export interface VehicleRide {
 	/** Welk exemplaar: de naam van de huurauto, leeg waar er maar één is. */
 	id: string;
 	x: number;
@@ -25,19 +38,19 @@ export type VehicleRide = {
 	z: number;
 	yaw: number;
 	speed: number;
-};
+}
 
 /** Arcade drive input from the player */
-export type DriveInput = {
+export interface DriveInput {
 	/** -1..1 forward (W/S) */
 	throttle: number;
 	/** -1..1 steer left/right (A/D or Q/E) */
 	steer: number;
 	/** Shift = turbo scrub */
 	boost: boolean;
-};
+}
 
-const PARK = new THREE.Vector3(10, 0, 14);
+const PARK = new Vector3(10, 0, 14);
 const RADIUS = 0.9;
 /**
  * Topsnelheid (m/s). Een echte meerij-schrobmachine haalt 6 tot 8 km/u; 4,5 m/s
@@ -72,8 +85,8 @@ const SEAT_BACK = 0.05;
  * parked for the player to hop in and race the mall corridors.
  */
 export class ScrubberBuggy {
-	readonly group = new THREE.Group();
-	readonly pos = new THREE.Vector3().copy(PARK);
+	readonly group = new Group();
+	readonly pos = new Vector3().copy(PARK);
 	readonly radius = RADIUS;
 	/** Waarmee dit ding meedoet aan gedragen worden (lift) en vervoerd worden (band). */
 	readonly receiver: InteractionReceiver = {
@@ -86,11 +99,11 @@ export class ScrubberBuggy {
 	ridden = false;
 	private world: CollisionWorld;
 	private pool: LightPool;
-	private mesh: THREE.Group;
-	private materials: THREE.Material[] = [];
-	private wheels: THREE.Object3D[] = [];
-	private brush!: THREE.Object3D;
-	private wetSign!: THREE.Group;
+	private mesh: Group;
+	private materials: Material[] = [];
+	private wheels: Object3D[] = [];
+	private brush!: Object3D;
+	private wetSign!: Group;
 	/**
 	 * Vooruit is camera-vooruit: −(sin, cos), zoals Controls rekent. Met
 	 * +(sin, cos) zat je naar de tank te kijken en reed W het beeld uit.
@@ -102,7 +115,7 @@ export class ScrubberBuggy {
 	/** Hoe schuin hij nu staat; loopt achter de gemeten helling aan zodat de voet van een helling geen knik is. */
 	private pitch = 0;
 	private parkPos = PARK.clone();
-	private label!: THREE.Sprite;
+	private label!: Sprite;
 	private readonly barriers: Barriers;
 
 	constructor(world: CollisionWorld, pool: LightPool, barriers: Barriers) {
@@ -118,7 +131,7 @@ export class ScrubberBuggy {
 		this.pos.copy(this.parkPos);
 	}
 
-	distanceTo(p: THREE.Vector3): number {
+	distanceTo(p: Vector3): number {
 		return Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
 	}
 
@@ -127,11 +140,11 @@ export class ScrubberBuggy {
 	 * helling zakt het naar achteren in plaats van kaarsrecht boven de wielen te
 	 * blijven zweven.
 	 */
-	getSeatPosition(): THREE.Vector3 {
+	getSeatPosition(): Vector3 {
 		const fx = -Math.sin(this.yaw);
 		const fz = -Math.cos(this.yaw);
 		const achter = SEAT_BACK + SEAT_HEIGHT * Math.sin(this.pitch);
-		return new THREE.Vector3(this.pos.x - fx * achter, this.pos.y + SEAT_HEIGHT * Math.cos(this.pitch), this.pos.z - fz * achter);
+		return new Vector3(this.pos.x - fx * achter, this.pos.y + SEAT_HEIGHT * Math.cos(this.pitch), this.pos.z - fz * achter);
 	}
 
 	get heading(): number {
@@ -190,14 +203,14 @@ export class ScrubberBuggy {
 	}
 
 	/** Park where you got out */
-	release(): THREE.Vector3 {
+	release(): Vector3 {
 		this.ridden = false;
 		this.speed = 0;
 		this.parkPos.set(this.pos.x, this.pos.y, this.pos.z);
 		// Step out to the left of the buggy
 		const leftX = -Math.cos(this.yaw);
 		const leftZ = Math.sin(this.yaw);
-		const exit = new THREE.Vector3(this.pos.x + leftX * 1.4, this.pos.y, this.pos.z + leftZ * 1.4);
+		const exit = new Vector3(this.pos.x + leftX * 1.4, this.pos.y, this.pos.z + leftZ * 1.4);
 		// Dezelfde vrijstelling als rijdend, anders trekt de voetafdrukklem een uitstappunt
 		// op straat de mall in. Zonder deze vlag zette uitstappen buiten je tegen de gevel.
 		const fixed = this.world.resolveCircle(
@@ -232,7 +245,7 @@ export class ScrubberBuggy {
 		this.floorOverride = y;
 	}
 
-	update(dt: number, input?: DriveInput): THREE.Vector3 | null {
+	update(dt: number, input?: DriveInput): Vector3 | null {
 		if (!this.ridden) {
 			if (this.floorOverride !== null) {
 				this.pos.y = this.floorOverride;
@@ -352,19 +365,19 @@ export class ScrubberBuggy {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 160, 32);
 		const tex = labelTexture(c);
-		const mat = this.label.material as THREE.SpriteMaterial;
+		const mat = this.label.material as SpriteMaterial;
 		mat.map?.dispose();
 		mat.map = tex;
 		mat.needsUpdate = true;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
-	private build(): THREE.Group {
-		const g = new THREE.Group();
+	private build(): Group {
+		const g = new Group();
 
 		const yellow = this.track(lit({ color: 0xffc107, roughness: 0.55, metalness: 0.2 }));
 		const blue = this.track(lit({ color: 0x0d47a1, roughness: 0.65 }));
@@ -381,63 +394,60 @@ export class ScrubberBuggy {
 		);
 
 		// Chassis — same proportions as Wei's scrubber
-		const body = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.38, 1.35), yellow);
+		const body = new Mesh(new BoxGeometry(0.95, 0.38, 1.35), yellow);
 		body.position.set(0, 0.42, 0);
 		g.add(body);
-		const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.1, 1.36), blue);
+		const stripe = new Mesh(new BoxGeometry(0.98, 0.1, 1.36), blue);
 		stripe.position.set(0, 0.55, 0);
 		g.add(stripe);
 
 		// Empty seat
-		const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.35), dark);
+		const seat = new Mesh(new BoxGeometry(0.4, 0.12, 0.35), dark);
 		seat.position.set(0, 0.72, -0.15);
 		g.add(seat);
-		const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.08), dark);
+		const backrest = new Mesh(new BoxGeometry(0.4, 0.35, 0.08), dark);
 		backrest.position.set(0, 0.95, -0.3);
 		g.add(backrest);
 		// "VACANT" cushion pip
-		const vacant = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), green);
+		const vacant = new Mesh(new SphereGeometry(0.05, 8, 8), green);
 		vacant.position.set(0, 0.82, -0.15);
 		g.add(vacant);
 
 		// Steering
-		const col = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.45, 6), grey);
+		const col = new Mesh(new CylinderGeometry(0.03, 0.03, 0.45, 6), grey);
 		col.position.set(0, 0.85, 0.35);
 		col.rotation.x = 0.35;
 		g.add(col);
-		const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 6, 14), rubber);
+		const wheel = new Mesh(new TorusGeometry(0.14, 0.03, 6, 14), rubber);
 		wheel.position.set(0, 1.05, 0.48);
 		wheel.rotation.x = Math.PI / 2.5;
 		g.add(wheel);
 
 		// Scrub deck + brush
-		const deck = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.4, 0.12, 16), grey);
+		const deck = new Mesh(new CylinderGeometry(0.38, 0.4, 0.12, 16), grey);
 		deck.position.set(0, 0.12, 0.55);
 		g.add(deck);
-		this.brush = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.34, 0.34, 0.06, 16),
-			this.track(lit({ color: 0x455a64, roughness: 0.85 })),
-		);
+		this.brush = new Mesh(new CylinderGeometry(0.34, 0.34, 0.06, 16), this.track(lit({ color: 0x455a64, roughness: 0.85 })));
 		this.brush.position.set(0, 0.06, 0.55);
 		g.add(this.brush);
 		for (let i = 0; i < 8; i++) {
 			const a = (i / 8) * Math.PI * 2;
-			const br = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.02, 0.04), this.track(lit({ color: 0x78909c, roughness: 0.9 })));
+			const br = new Mesh(new BoxGeometry(0.28, 0.02, 0.04), this.track(lit({ color: 0x78909c, roughness: 0.9 })));
 			br.position.set(Math.cos(a) * 0.05, 0.04, 0.55 + Math.sin(a) * 0.05);
 			br.rotation.y = a;
 			this.brush.add(br);
 		}
 
 		// Tank
-		const tank = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.4), blue);
+		const tank = new Mesh(new BoxGeometry(0.55, 0.45, 0.4), blue);
 		tank.position.set(0, 0.7, -0.55);
 		g.add(tank);
-		const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8), grey);
+		const cap = new Mesh(new CylinderGeometry(0.08, 0.08, 0.06, 8), grey);
 		cap.position.set(0, 0.96, -0.55);
 		g.add(cap);
 
 		// Wheels
-		const wgeo = new THREE.CylinderGeometry(0.14, 0.14, 0.1, 12);
+		const wgeo = new CylinderGeometry(0.14, 0.14, 0.1, 12);
 		const spots: [number, number, number][] = [
 			[-0.42, 0.14, 0.4],
 			[0.42, 0.14, 0.4],
@@ -445,7 +455,7 @@ export class ScrubberBuggy {
 			[0.42, 0.14, -0.45],
 		];
 		for (const [x, y, z] of spots) {
-			const w = new THREE.Mesh(wgeo, rubber);
+			const w = new Mesh(wgeo, rubber);
 			w.rotation.z = Math.PI / 2;
 			w.position.set(x, y, z);
 			g.add(w);
@@ -454,9 +464,9 @@ export class ScrubberBuggy {
 
 		// Side plates
 		const plate = this.makePlate('PLAYER RENTAL', '#0d47a1', '#ffeb3b', 256, 64);
-		const plateMesh = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.7, 0.18),
-			this.track(new THREE.MeshBasicMaterial({ map: plate, toneMapped: false })),
+		const plateMesh = new Mesh(
+			new PlaneGeometry(0.7, 0.18),
+			this.track(new MeshBasicMaterial({ map: plate, toneMapped: false })),
 		);
 		plateMesh.position.set(0.49, 0.55, 0.1);
 		plateMesh.rotation.y = Math.PI / 2;
@@ -468,10 +478,7 @@ export class ScrubberBuggy {
 
 		// Number racing stripe "88"
 		const num = this.makePlate('88', '#b71c1c', '#fff', 128, 128);
-		const numMesh = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.35, 0.35),
-			this.track(new THREE.MeshBasicMaterial({ map: num, toneMapped: false })),
-		);
+		const numMesh = new Mesh(new PlaneGeometry(0.35, 0.35), this.track(new MeshBasicMaterial({ map: num, toneMapped: false })));
 		numMesh.position.set(0, 0.75, 0.68);
 		g.add(numMesh);
 
@@ -482,12 +489,12 @@ export class ScrubberBuggy {
 		g.add(this.label);
 
 		// Wet floor sign
-		this.wetSign = new THREE.Group();
+		this.wetSign = new Group();
 		this.wetSign.position.set(0, 0.35, -1.05);
 		const wetTex = this.makePlate('⚠ WET FLOOR\n小心地滑', '#ffeb3b', '#111', 256, 160);
 		const wetBoard = backToBackLabel(
-			new THREE.PlaneGeometry(0.55, 0.45),
-			this.track(new THREE.MeshBasicMaterial({ map: wetTex, toneMapped: false })),
+			new PlaneGeometry(0.55, 0.45),
+			this.track(new MeshBasicMaterial({ map: wetTex, toneMapped: false })),
 		);
 		const wetL = wetBoard.clone();
 		wetL.position.set(0, 0.2, -0.08);
@@ -505,13 +512,13 @@ export class ScrubberBuggy {
 			distance: 8,
 			decay: 2,
 			follow: g,
-			offset: new THREE.Vector3(0, 1.3, -0.55),
+			offset: new Vector3(0, 1.3, -0.55),
 		});
 
 		return g;
 	}
 
-	private makePlate(text: string, bg: string, fg: string, w: number, h: number): THREE.CanvasTexture {
+	private makePlate(text: string, bg: string, fg: string, w: number, h: number): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
@@ -527,8 +534,8 @@ export class ScrubberBuggy {
 		return tex;
 	}
 
-	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
+	private makeSprite(text: string, bg: string, w: number, h: number): Sprite {
 		const tex = this.makePlate(text, bg, '#fff', w, h);
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		return new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }

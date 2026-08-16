@@ -25,6 +25,8 @@ const DIST_STATIC = resolve('dist/static');
  */
 const dev = env.NODE_ENV === 'development' || execArgv.includes('--hot');
 const notFound = () => new Response('not found', { status: 404 });
+const RE_CACHE = /\.(?:json|html?)$/i;
+const RE_BYTES = /^bytes=(\d*)-(\d*)$/;
 
 async function serveStatic(req: Request): Promise<Response> {
 	const path = decodeURIComponent(new URL(req.url).pathname);
@@ -38,12 +40,13 @@ async function serveStatic(req: Request): Promise<Response> {
 		'Accept-Ranges': 'bytes',
 		// Public files are stable media/images. JSON remains revalidated because
 		// playlist/status manifests can change without a filename change.
-		'Cache-Control': /\.(?:json|html?)$/i.test(path) ? 'no-cache' : 'public, max-age=86400, stale-while-revalidate=604800',
+		// biome-ignore lint/security/noSecrets: not a secret
+		'Cache-Control': RE_CACHE.test(path) ? 'no-cache' : 'public, max-age=86400, stale-while-revalidate=604800',
 	};
 
 	// <audio> seeks with range requests; a plain 200 stalls long tracks
 	const range = req.headers.get('range');
-	const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+	const m = range ? RE_BYTES.exec(range.trim()) : null;
 	if (m && (m[1] !== '' || m[2] !== '')) {
 		const size = file.size;
 		let start = m[1] === '' ? size - Number(m[2]) : Number(m[1]);
@@ -83,6 +86,7 @@ async function publicRoutes(): Promise<Record<string, (req: Request) => Promise<
 
 async function builtAssetRoutes(dir = DIST_STATIC, relative = ''): Promise<Record<string, (req: Request) => Promise<Response>>> {
 	const out: Record<string, (req: Request) => Promise<Response>> = {};
+	const nested: Promise<Record<string, (req: Request) => Promise<Response>>>[] = [];
 	let entries: Dirent[] = [];
 	try {
 		entries = await readdir(dir, { withFileTypes: true });
@@ -93,7 +97,7 @@ async function builtAssetRoutes(dir = DIST_STATIC, relative = ''): Promise<Recor
 		const rel = relative ? `${relative}/${entry.name}` : entry.name;
 		const full = join(dir, entry.name);
 		if (entry.isDirectory()) {
-			Object.assign(out, await builtAssetRoutes(full, rel));
+			nested.push(builtAssetRoutes(full, rel));
 			continue;
 		}
 		if (rel === 'index.html') continue;
@@ -106,6 +110,7 @@ async function builtAssetRoutes(dir = DIST_STATIC, relative = ''): Promise<Recor
 				},
 			});
 	}
+	for (const routes of await Promise.all(nested)) Object.assign(out, routes);
 	return out;
 }
 
@@ -116,6 +121,7 @@ async function serveAppShell(): Promise<Response> {
 }
 
 const server = serve({
+	// biome-ignore lint/style/noMagicNumbers: stfu
 	port: env['PORT'] ?? 5174,
 	hostname: '0.0.0.0',
 	idleTimeout: 60,
@@ -123,12 +129,12 @@ const server = serve({
 
 	routes: {
 		...(await publicRoutes()),
-		...(!dev ? await builtAssetRoutes() : {}),
-		'/api/*': (req, server) => {
+		...(dev ? {} : await builtAssetRoutes()),
+		'/api/*': (r, s) => {
 			// yt-dlp + ElevenLabs + OpenRouter run for minutes without writing a
 			// byte; the idle timer would drop the connection mid-request.
-			server.timeout(req, 0);
-			return handleApi(req, server.requestIP(req)?.address ?? 'unknown');
+			s.timeout(r, 0);
+			return handleApi(r, s.requestIP(r)?.address ?? 'unknown');
 		},
 		'/*': dev ? index : serveAppShell,
 	},

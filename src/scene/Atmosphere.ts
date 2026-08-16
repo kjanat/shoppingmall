@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Vector3 } from 'three';
+import { Group, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
 import type { CollisionWorld } from '#/physics/Collision';
 import { labelCanvas, labelTexture } from '#/util/label';
 import { half } from '#/util/math';
@@ -8,7 +9,7 @@ import { Americans } from './Americans';
  * Mall ambient: Americans + calm ads. No dust particles, no pulsing emissives.
  */
 export class Atmosphere {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	readonly americans: Americans;
 
 	constructor(world: CollisionWorld) {
@@ -17,7 +18,7 @@ export class Atmosphere {
 		this.createBillboards();
 	}
 
-	update(dt: number, playerPos?: THREE.Vector3): void {
+	update(dt: number, playerPos?: Vector3): void {
 		this.americans.update(dt, playerPos);
 	}
 
@@ -46,11 +47,11 @@ export class Atmosphere {
 			});
 			const tex = labelTexture(canvas);
 			// MeshBasic — no emissive pulse / bloom flicker
-			const mat = new THREE.MeshBasicMaterial({
+			const mat = new MeshBasicMaterial({
 				map: tex,
 				toneMapped: false,
 			});
-			const mesh = new THREE.Mesh(new THREE.PlaneGeometry(6, 3), mat);
+			const mesh = new Mesh(new PlaneGeometry(6, 3), mat);
 			mesh.position.set(ad.x, ad.y, ad.z);
 			mesh.lookAt(0, ad.y, 0);
 			this.group.add(mesh);

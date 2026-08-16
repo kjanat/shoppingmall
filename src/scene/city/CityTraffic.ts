@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Texture } from 'three';
+import { BoxGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, SphereGeometry } from 'three';
 import { MOTORCYCLE_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
 import type { Barriers } from '#/scene/city/Barriers';
@@ -124,7 +125,11 @@ const HIT_PUSH = 3;
 const HIT_LIFT = 5.5;
 
 /** Iets op de rijbaan waar de auto's rekening mee houden. Voeten, niet ogen. */
-export type RoadObstacle = { x: number; y: number; z: number };
+export interface RoadObstacle {
+	x: number;
+	y: number;
+	z: number;
+}
 
 /**
  * Boogafstand van een punt dat op deze strook staat, of null als het ernaast of
@@ -289,8 +294,8 @@ const SPUR_LEAVE_S = branchHook(CON_BRANCH_ROUTE[CON_BRANCH_ROUTE.length - 1], S
 /**
  * Eén auto. `branchS` / `spurS` is boogafstand op die aftakking, null op de ring.
  */
-type Car = {
-	mesh: THREE.Group;
+interface Car {
+	mesh: Group;
 	/** Zijn carrosserie op de weg: volgafstand en botsstraal. */
 	profile: TrafficProfile;
 	/** Index in RINGS: welke strook, en dus welke richting. */
@@ -308,14 +313,14 @@ type Car = {
 	v: number;
 	/** Kruissnelheid — ieder z'n eigen haast, 6..11 m/s. */
 	vmax: number;
-};
+}
 
 export class CityTraffic {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private materials: THREE.Material[] = [];
-	private geometries: THREE.BufferGeometry[] = [];
-	private textures: THREE.Texture[] = [];
+	private materials: Material[] = [];
+	private geometries: BufferGeometry[] = [];
+	private textures: Texture[] = [];
 
 	private readonly getPhase: () => string;
 	private getObstacle: (() => RoadObstacle | null) | null = null;
@@ -343,18 +348,18 @@ export class CityTraffic {
 		this.group.name = 'city_traffic';
 
 		// ── gedeelde onderdelen: één setje geometrie voor het hele wagenpark ──
-		const bodyGeo = new THREE.BoxGeometry(BODY_L, 0.75, BODY_W);
-		const cabinGeo = new THREE.BoxGeometry(2.1, 0.6, 1.6);
-		const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10);
+		const bodyGeo = new BoxGeometry(BODY_L, 0.75, BODY_W);
+		const cabinGeo = new BoxGeometry(2.1, 0.6, 1.6);
+		const wheelGeo = new CylinderGeometry(0.34, 0.34, 0.24, 10);
 		wheelGeo.rotateX(Math.PI / 2); // as opzij, zoals wielen dat graag hebben
-		const lampGeo = new THREE.SphereGeometry(0.09, 8, 6);
-		const signGeo = new THREE.PlaneGeometry(1.0, 0.34);
+		const lampGeo = new SphereGeometry(0.09, 8, 6);
+		const signGeo = new PlaneGeometry(1.0, 0.34);
 		signGeo.rotateY(Math.PI / 2); // bordje kijkt in de rijrichting
 		this.geometries.push(bodyGeo, cabinGeo, wheelGeo, lampGeo, signGeo);
 
 		const glassMat = this.track(lit({ color: 0x1d262d, roughness: 0.25, metalness: 0.5 }));
 		const wheelMat = this.track(lit({ color: 0x101114, roughness: 0.9 }));
-		const lampMat = this.track(new THREE.MeshBasicMaterial({ color: 0xfff3c4, toneMapped: false }));
+		const lampMat = this.track(new MeshBasicMaterial({ color: 0xfff3c4, toneMapped: false }));
 		const taxiMat = this.track(lit({ color: 0xf2b705, roughness: 0.45, metalness: 0.25 }));
 		const paint = [0xb0413e, 0x3e63a8, 0x4a4e57, 0xd8d3c8, 0x3f6f4f, 0x23262d, 0x9a7b4f].map((c) =>
 			this.track(lit({ color: c, roughness: 0.5, metalness: 0.3 })),
@@ -363,11 +368,11 @@ export class CityTraffic {
 
 		// ── de motoren: dezelfde machine als op P1, met de lengte langs x ──
 		const { body: riderBody, seat: riderSeat, wheel: riderWheel, bars: riderBars } = MOTORCYCLE_SPEC;
-		const riderBodyGeo = new THREE.BoxGeometry(riderBody.length, riderBody.height, riderBody.width);
-		const riderSeatGeo = new THREE.BoxGeometry(riderSeat.length, riderSeat.height, riderSeat.width);
-		const riderWheelGeo = new THREE.CylinderGeometry(riderWheel.radius, riderWheel.radius, riderWheel.width, 10);
+		const riderBodyGeo = new BoxGeometry(riderBody.length, riderBody.height, riderBody.width);
+		const riderSeatGeo = new BoxGeometry(riderSeat.length, riderSeat.height, riderSeat.width);
+		const riderWheelGeo = new CylinderGeometry(riderWheel.radius, riderWheel.radius, riderWheel.width, 10);
 		riderWheelGeo.rotateX(Math.PI / 2);
-		const riderBarGeo = new THREE.BoxGeometry(riderBars.thickness, riderBars.thickness, riderBars.width);
+		const riderBarGeo = new BoxGeometry(riderBars.thickness, riderBars.thickness, riderBars.width);
 		this.geometries.push(riderBodyGeo, riderSeatGeo, riderWheelGeo, riderBarGeo);
 		const riderPaint = [0x1d1f24, 0xa62828].map((c) => this.track(lit({ color: c, roughness: 0.4, metalness: 0.5 })));
 		const chromeMat = this.track(lit({ color: 0xb0bec5, roughness: 0.25, metalness: 0.8 }));
@@ -376,43 +381,43 @@ export class CityTraffic {
 		for (let i = 0; i < N; i++) {
 			const taxi = TAXI_SLOT.has(i);
 			const rider = RIDER_SLOT.has(i);
-			const car = new THREE.Group();
+			const car = new Group();
 
 			if (rider) {
-				const tank = new THREE.Mesh(riderBodyGeo, at(riderPaint, i));
+				const tank = new Mesh(riderBodyGeo, at(riderPaint, i));
 				tank.position.y = riderBody.centerY;
 				car.add(tank);
 
-				const saddle = new THREE.Mesh(riderSeatGeo, wheelMat);
+				const saddle = new Mesh(riderSeatGeo, wheelMat);
 				saddle.position.set(-riderSeat.offsetZ, riderSeat.centerY, 0);
 				car.add(saddle);
 
 				for (const side of [-1, 1]) {
-					const wheel = new THREE.Mesh(riderWheelGeo, wheelMat);
+					const wheel = new Mesh(riderWheelGeo, wheelMat);
 					wheel.rotation.z = Math.PI / 2;
 					wheel.position.set(side * riderWheel.offsetZ, riderWheel.radius, 0);
 					car.add(wheel);
 				}
 
-				const bar = new THREE.Mesh(riderBarGeo, chromeMat);
+				const bar = new Mesh(riderBarGeo, chromeMat);
 				bar.position.set(riderBars.offsetZ, riderBars.centerY, 0);
 				car.add(bar);
 
-				const lamp = new THREE.Mesh(lampGeo, lampMat);
+				const lamp = new Mesh(lampGeo, lampMat);
 				lamp.position.set(MOTORCYCLE_SPEC.headlight.offsetZ, MOTORCYCLE_SPEC.headlight.centerY, 0);
 				car.add(lamp);
 			} else {
-				const body = new THREE.Mesh(bodyGeo, taxi ? taxiMat : paint[i % paint.length]);
+				const body = new Mesh(bodyGeo, taxi ? taxiMat : paint[i % paint.length]);
 				body.position.y = 0.73;
 				car.add(body);
 
-				const cabin = new THREE.Mesh(cabinGeo, glassMat);
+				const cabin = new Mesh(cabinGeo, glassMat);
 				cabin.position.set(-0.3, 1.32, 0);
 				car.add(cabin);
 
 				for (const wx of [-1.4, 1.4]) {
 					for (const wz of [-0.95, 0.95]) {
-						const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+						const wheel = new Mesh(wheelGeo, wheelMat);
 						wheel.position.set(wx, 0.38, wz);
 						car.add(wheel);
 					}
@@ -420,7 +425,7 @@ export class CityTraffic {
 
 				// Koplampen: twee emissive dots, dag en nacht aan. Zuinig is anders.
 				for (const lz of [-0.6, 0.6]) {
-					const lamp = new THREE.Mesh(lampGeo, lampMat);
+					const lamp = new Mesh(lampGeo, lampMat);
 					lamp.position.set(2.12, 0.73, lz);
 					car.add(lamp);
 				}
@@ -748,7 +753,7 @@ export class CityTraffic {
 		car.mesh.rotation.set(0, edge.rotY, 0);
 	}
 
-	private makeTaxiSignMaterial(): THREE.MeshBasicMaterial {
+	private makeTaxiSignMaterial(): MeshBasicMaterial {
 		const { canvas: c, ctx } = labelCanvas(128, 44);
 		ctx.fillStyle = '#f7c500';
 		ctx.fillRect(0, 0, 128, 44);
@@ -762,10 +767,10 @@ export class CityTraffic {
 		ctx.fillText('TAXI', 64, 24);
 		const tex = labelTexture(c);
 		this.textures.push(tex);
-		return this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+		return this.track(new MeshBasicMaterial({ map: tex, toneMapped: false }));
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

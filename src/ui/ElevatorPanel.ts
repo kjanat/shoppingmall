@@ -70,7 +70,7 @@ export class ElevatorPanel {
 	/** The deck a button stands for, or null when the click missed one. */
 	private pickedLevel(e: Event): LevelId | null {
 		const el = (e.target as HTMLElement | null)?.closest?.('.elev-btn') as HTMLElement | null;
-		if (!el || !this.open) return null;
+		if (!(el && this.open)) return null;
 		const id = el.dataset['level'];
 		const found = LEVELS.find((l) => l.id === id);
 		if (!found || found.id === this.current) return null;

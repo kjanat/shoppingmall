@@ -1,4 +1,15 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material } from 'three';
+import {
+	BoxGeometry,
+	Color,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	Vector3,
+} from 'three';
 import type { StockItem, StockKind } from '#/data/inventory';
 import { getInventory } from '#/data/inventory';
 import { levelY } from '#/data/levels';
@@ -15,15 +26,15 @@ import { at } from '#/util/rand';
  * Never inside solid wall meshes.
  */
 export class StockDisplay {
-	readonly group = new THREE.Group();
-	readonly registers = new Map<string, THREE.Group>();
+	readonly group = new Group();
+	readonly registers = new Map<string, Group>();
 	/**
 	 * Sale lights next to `registers`, per store id. They used to live in
 	 * `reg.userData['saleLight']`, which forced flashSale into a cast back to
 	 * PointLight, exactly the kind of cast this project bans.
 	 */
 	private saleLights = new Map<string, LightHandle>();
-	private materials: THREE.Material[] = [];
+	private materials: Material[] = [];
 	private pool: LightPool;
 
 	constructor(pool: LightPool) {
@@ -46,7 +57,7 @@ export class StockDisplay {
 				light.intensity = 0.6;
 			}, 500);
 		}
-		const coins = reg.userData['coinMesh'] as THREE.Mesh | undefined;
+		const coins = reg.userData['coinMesh'] as Mesh | undefined;
 		if (coins) {
 			coins.visible = true;
 			setTimeout(() => {
@@ -55,13 +66,13 @@ export class StockDisplay {
 		}
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
 	private buildStoreStock(store: StoreDef, items: StockItem[], slogan: string): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		g.position.set(store.x, levelY(store.level), store.z);
 		g.rotation.y = store.rotation;
 		g.name = `stock_${store.id}`;
@@ -79,7 +90,7 @@ export class StockDisplay {
 		const unitW = w * 0.82;
 		for (let row = 0; row < 4; row++) {
 			const y = 0.5 + row * 0.72;
-			const board = new THREE.Mesh(new THREE.BoxGeometry(unitW, 0.08, 0.4), shelfMat);
+			const board = new Mesh(new BoxGeometry(unitW, 0.08, 0.4), shelfMat);
 			board.position.set(0, y, backShelfZ);
 			g.add(board);
 		}
@@ -103,12 +114,12 @@ export class StockDisplay {
 		for (let r = 0; r < islands; r++) {
 			const rx = -w * 0.28 + r * ((w * 0.56) / Math.max(1, islands - 1));
 			const rz = midZ;
-			const poleL = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.5, 8), chrome);
+			const poleL = new Mesh(new CylinderGeometry(0.035, 0.035, 1.5, 8), chrome);
 			const poleR = poleL.clone();
 			poleL.position.set(rx - 0.5, 0.85, rz);
 			poleR.position.set(rx + 0.5, 0.85, rz);
 			g.add(poleL, poleR);
-			const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.05, 8), chrome);
+			const rail = new Mesh(new CylinderGeometry(0.03, 0.03, 1.05, 8), chrome);
 			rail.rotation.z = Math.PI / 2;
 			rail.position.set(rx, 1.5, rz);
 			g.add(rail);
@@ -124,10 +135,10 @@ export class StockDisplay {
 		// Front tables — right at the entrance so you SEE stock from the corridor
 		for (let i = 0; i < 4; i++) {
 			const tx = -1.2 + i * 0.85;
-			const table = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 0.55), shelfMat);
+			const table = new Mesh(new BoxGeometry(0.7, 0.08, 0.55), shelfMat);
 			table.position.set(tx, 0.7, -0.85);
 			g.add(table);
-			const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.7, 0.07), chrome);
+			const leg = new Mesh(new BoxGeometry(0.07, 0.7, 0.07), chrome);
 			for (const [lx, lz] of [
 				[-0.25, -0.18],
 				[0.25, -0.18],
@@ -151,15 +162,15 @@ export class StockDisplay {
 		g.add(sloganMesh);
 
 		// Kassa on counter (same place as MallBuilder counter)
-		const reg = new THREE.Group();
+		const reg = new Group();
 		reg.position.set(0.7, 0.95, -roomDepth * 0.55);
-		const regBody = new THREE.Mesh(
-			new THREE.BoxGeometry(0.48, 0.28, 0.36),
+		const regBody = new Mesh(
+			new BoxGeometry(0.48, 0.28, 0.36),
 			this.track(lit({ color: 0x1a2332, metalness: 0.5, roughness: 0.4 })),
 		);
 		reg.add(regBody);
-		const screen = new THREE.Mesh(
-			new THREE.BoxGeometry(0.36, 0.24, 0.05),
+		const screen = new Mesh(
+			new BoxGeometry(0.36, 0.24, 0.05),
 			this.track(
 				lit({
 					color: 0x00ff88,
@@ -170,8 +181,8 @@ export class StockDisplay {
 		);
 		screen.position.set(0, 0.22, 0.05);
 		reg.add(screen);
-		const coin = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12),
+		const coin = new Mesh(
+			new CylinderGeometry(0.09, 0.09, 0.05, 12),
 			this.track(lit({ color: 0xffd700, metalness: 0.9, roughness: 0.25 })),
 		);
 		coin.position.set(-0.2, 0.18, 0.2);
@@ -193,7 +204,7 @@ export class StockDisplay {
 				decay: 2,
 				snap: true,
 				follow: reg,
-				offset: new THREE.Vector3(0, 0.4, 0.3),
+				offset: new Vector3(0, 0.4, 0.3),
 			}),
 		);
 
@@ -203,16 +214,16 @@ export class StockDisplay {
 			distance: 11,
 			decay: 1.8,
 			follow: g,
-			offset: new THREE.Vector3(0, 2.4, midZ),
+			offset: new Vector3(0, 2.4, midZ),
 		});
 
 		this.group.add(g);
 	}
 
-	private makeProduct(item: StockItem): THREE.Mesh {
+	private makeProduct(item: StockItem): Mesh {
 		const s = item.size ?? 1;
-		let col = new THREE.Color(item.color);
-		if (col.r + col.g + col.b < 0.3) col = new THREE.Color(0x444444);
+		let col = new Color(item.color);
+		if (col.r + col.g + col.b < 0.3) col = new Color(0x444444);
 		const mat = this.track(
 			lit({
 				color: col,
@@ -222,33 +233,33 @@ export class StockDisplay {
 				emissiveIntensity: 0.08,
 			}),
 		);
-		return new THREE.Mesh(this.geoFor(item.kind, s), mat);
+		return new Mesh(this.geoFor(item.kind, s), mat);
 	}
 
-	private geoFor(kind: StockKind, s: number): THREE.BufferGeometry {
+	private geoFor(kind: StockKind, s: number): BufferGeometry {
 		switch (kind) {
 			case 'bottle':
-				return new THREE.CylinderGeometry(0.07 * s, 0.08 * s, 0.32 * s, 8);
+				return new CylinderGeometry(0.07 * s, 0.08 * s, 0.32 * s, 8);
 			case 'can':
-				return new THREE.CylinderGeometry(0.09 * s, 0.09 * s, 0.18 * s, 10);
+				return new CylinderGeometry(0.09 * s, 0.09 * s, 0.18 * s, 10);
 			case 'bag':
-				return new THREE.BoxGeometry(0.18 * s, 0.22 * s, 0.09 * s);
+				return new BoxGeometry(0.18 * s, 0.22 * s, 0.09 * s);
 			case 'device':
-				return new THREE.BoxGeometry(0.24 * s, 0.16 * s, 0.05 * s);
+				return new BoxGeometry(0.24 * s, 0.16 * s, 0.05 * s);
 			case 'shoe':
-				return new THREE.BoxGeometry(0.2 * s, 0.09 * s, 0.12 * s);
+				return new BoxGeometry(0.2 * s, 0.09 * s, 0.12 * s);
 			case 'garment':
-				return new THREE.BoxGeometry(0.22 * s, 0.3 * s, 0.07 * s);
+				return new BoxGeometry(0.22 * s, 0.3 * s, 0.07 * s);
 			case 'sphere':
-				return new THREE.SphereGeometry(0.1 * s, 10, 10);
+				return new SphereGeometry(0.1 * s, 10, 10);
 			case 'book':
-				return new THREE.BoxGeometry(0.15 * s, 0.2 * s, 0.04 * s);
+				return new BoxGeometry(0.15 * s, 0.2 * s, 0.04 * s);
 			default:
-				return new THREE.BoxGeometry(0.18 * s, 0.18 * s, 0.14 * s);
+				return new BoxGeometry(0.18 * s, 0.18 * s, 0.14 * s);
 		}
 	}
 
-	private makeLabel(text: string, color: string, w: number, h: number): THREE.Mesh {
+	private makeLabel(text: string, color: string, w: number, h: number): Mesh {
 		const { canvas, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = '#111';
 		ctx.fillRect(0, 0, 512, 128);
@@ -258,9 +269,6 @@ export class StockDisplay {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text.slice(0, 32), 256, 64);
 		const tex = labelTexture(canvas);
-		return new THREE.Mesh(
-			new THREE.PlaneGeometry(w, h),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		return new Mesh(new PlaneGeometry(w, h), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 	}
 }

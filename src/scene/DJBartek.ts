@@ -1,4 +1,19 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	CircleGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import { levelAt } from '#/data/levels';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
@@ -15,24 +30,24 @@ const DECK_SPIN_AMP = 0.05;
  * Walk up, E to talk, request plaatjes.
  */
 export class DJBartek {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	/** Interaction radius center */
 	/** West trap-gat — next to stairs bottom (not crossing the escalator) */
-	readonly pos = new THREE.Vector3(-20.5, 0, 5);
+	readonly pos = new Vector3(-20.5, 0, 5);
 	readonly interactR = 4.2;
-	private materials: THREE.Material[] = [];
-	private bobParts: THREE.Object3D[] = [];
-	private decks: THREE.Group;
+	private materials: Material[] = [];
+	private bobParts: Object3D[] = [];
+	private decks: Group;
 	private glow: LightHandle;
-	private nameSprite: THREE.Sprite;
-	private speechSprite: THREE.Sprite;
-	private speechTex: THREE.CanvasTexture;
+	private nameSprite: Sprite;
+	private speechSprite: Sprite;
+	private speechTex: CanvasTexture;
 	private speechCtx: CanvasRenderingContext2D;
 	private speechLife = 0;
 	greetingDone = false;
 	/** drama beat timer (seconds) */
 	dramaCd = 8;
-	private groupies: THREE.Group[] = [];
+	private groupies: Group[] = [];
 
 	constructor(pool: LightPool) {
 		this.group.name = 'djBartek';
@@ -49,7 +64,7 @@ export class DJBartek {
 			intensity: 4,
 			distance: 10,
 			decay: 2,
-			position: new THREE.Vector3(this.pos.x, 2.2, this.pos.z + 0.4),
+			position: new Vector3(this.pos.x, 2.2, this.pos.z + 0.4),
 		});
 
 		this.nameSprite = this.makeNamePlate();
@@ -59,9 +74,9 @@ export class DJBartek {
 		const { canvas: sc, ctx: speechCtx } = labelCanvas(420, 110);
 		this.speechCtx = speechCtx;
 		this.speechTex = labelTexture(sc);
-		this.speechSprite = new THREE.Sprite(
+		this.speechSprite = new Sprite(
 			this.track(
-				new THREE.SpriteMaterial({
+				new SpriteMaterial({
 					map: this.speechTex,
 					transparent: true,
 					depthTest: true,
@@ -85,11 +100,11 @@ export class DJBartek {
 		const h = 110;
 		ctx.clearRect(0, 0, w, h);
 		ctx.fillStyle = 'rgba(255,255,255,0.96)';
-		roundRect(ctx, 6, 6, w - 12, h - 12, 16);
+		roundRect(ctx, { x: 6, y: 6, width: w - 12, height: h - 12, radius: 16 });
 		ctx.fill();
 		ctx.strokeStyle = '#ec4899';
 		ctx.lineWidth = 3;
-		roundRect(ctx, 6, 6, w - 12, h - 12, 16);
+		roundRect(ctx, { x: 6, y: 6, width: w - 12, height: h - 12, radius: 16 });
 		ctx.stroke();
 		ctx.fillStyle = '#0f172a';
 		ctx.font = '600 18px system-ui,sans-serif';
@@ -98,12 +113,12 @@ export class DJBartek {
 		fitText(ctx, text, { x: 18, y: 10, w: w - 36, h: h - 34 }, { size: 22 });
 		this.speechTex.needsUpdate = true;
 		this.speechSprite.visible = true;
-		(this.speechSprite.material as THREE.SpriteMaterial).visible = true;
+		(this.speechSprite.material as SpriteMaterial).visible = true;
 		this.speechLife = life;
 	}
 
 	/** Player close enough to open the booth UI */
-	inRange(worldPos: THREE.Vector3): boolean {
+	inRange(worldPos: Vector3): boolean {
 		const dx = worldPos.x - this.pos.x;
 		const dz = worldPos.z - this.pos.z;
 		return Math.hypot(dx, dz) < this.interactR && levelAt(worldPos.y) === 'v0';
@@ -135,13 +150,13 @@ export class DJBartek {
 			this.speechLife -= dt;
 			if (this.speechLife <= 0) {
 				this.speechSprite.visible = false;
-				(this.speechSprite.material as THREE.SpriteMaterial).visible = false;
+				(this.speechSprite.material as SpriteMaterial).visible = false;
 			}
 		}
 		this.dramaCd -= dt;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -154,36 +169,36 @@ export class DJBartek {
 			{ shirt: 0xffd700, hair: 0xd35400, x: 0.15, z: 2.1 },
 		];
 		looks.forEach((L, i) => {
-			const g = new THREE.Group();
+			const g = new Group();
 			const skin = this.track(lit({ color: 0xf5c9a8, roughness: 0.8 }));
 			const top = this.track(lit({ color: L.shirt, roughness: 0.55 }));
 			const legs = this.track(lit({ color: 0x1a1a2e, roughness: 0.7 }));
 			const hairM = this.track(lit({ color: L.hair, roughness: 0.85 }));
 
-			const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.55, 4, 6), legs);
+			const leg = new Mesh(new CapsuleGeometry(0.1, 0.55, 4, 6), legs);
 			leg.position.y = 0.5;
 			g.add(leg);
 			// hourglass-ish
-			const hips = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), top);
+			const hips = new Mesh(new SphereGeometry(0.16, 10, 8), top);
 			hips.scale.set(1.35, 0.55, 0.8);
 			hips.position.y = 0.95;
 			g.add(hips);
-			const waist = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), top);
+			const waist = new Mesh(new SphereGeometry(0.12, 10, 8), top);
 			waist.scale.set(0.75, 0.9, 0.65);
 			waist.position.y = 1.2;
 			g.add(waist);
-			const chest = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), top);
+			const chest = new Mesh(new SphereGeometry(0.16, 10, 8), top);
 			chest.scale.set(1.4, 0.95, 1.0);
 			chest.position.set(0, 1.48, 0.08);
 			g.add(chest);
-			const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), skin);
+			const head = new Mesh(new SphereGeometry(0.15, 12, 12), skin);
 			head.position.y = 1.85;
 			g.add(head);
-			const hair = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), hairM);
+			const hair = new Mesh(new SphereGeometry(0.17, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), hairM);
 			hair.position.set(0, 1.95, -0.02);
 			g.add(hair);
 			// phone / hand in air
-			const phone = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.02), this.track(lit({ color: 0x111111, metalness: 0.6 })));
+			const phone = new Mesh(new BoxGeometry(0.08, 0.14, 0.02), this.track(lit({ color: 0x111111, metalness: 0.6 })));
 			phone.position.set(0.28, 1.7, 0.15);
 			phone.rotation.z = -0.4;
 			g.add(phone);
@@ -197,10 +212,7 @@ export class DJBartek {
 			ctx.textAlign = 'center';
 			ctx.fillText('BARTEK ❤️', 64, 26);
 			const tex = labelTexture(c);
-			const fan = new THREE.Mesh(
-				new THREE.PlaneGeometry(0.55, 0.18),
-				this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-			);
+			const fan = new Mesh(new PlaneGeometry(0.55, 0.18), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 			fan.position.set(0, 2.2, 0.12);
 			g.add(fan);
 
@@ -214,35 +226,26 @@ export class DJBartek {
 
 	private buildBooth(): void {
 		// Stage platform at stair gap
-		const floor = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.18, 3.2), this.track(lit({ color: 0x1a1a2e, roughness: 0.7 })));
+		const floor = new Mesh(new BoxGeometry(4.2, 0.18, 3.2), this.track(lit({ color: 0x1a1a2e, roughness: 0.7 })));
 		floor.position.set(0, 0.09, 0);
 		this.group.add(floor);
 
 		// Neon strip
-		const neon = new THREE.Mesh(
-			new THREE.BoxGeometry(4.0, 0.06, 0.12),
-			this.track(new THREE.MeshBasicMaterial({ color: 0xff00aa })),
-		);
+		const neon = new Mesh(new BoxGeometry(4.0, 0.06, 0.12), this.track(new MeshBasicMaterial({ color: 0xff00aa })));
 		neon.position.set(0, 0.22, 1.5);
 		this.group.add(neon);
 
 		// DJ desk
-		const desk = new THREE.Mesh(
-			new THREE.BoxGeometry(2.4, 0.9, 0.7),
-			this.track(lit({ color: 0x111827, metalness: 0.4, roughness: 0.45 })),
-		);
+		const desk = new Mesh(new BoxGeometry(2.4, 0.9, 0.7), this.track(lit({ color: 0x111827, metalness: 0.4, roughness: 0.45 })));
 		desk.position.set(0, 0.55, 0.35);
 		this.group.add(desk);
 
 		// Speakers flanking — "gat voor de trap" energy
 		for (const sx of [-1.7, 1.7]) {
-			const sp = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.1, 0.45), this.track(lit({ color: 0x0f172a, roughness: 0.85 })));
+			const sp = new Mesh(new BoxGeometry(0.55, 1.1, 0.45), this.track(lit({ color: 0x0f172a, roughness: 0.85 })));
 			sp.position.set(sx, 0.7, -0.2);
 			this.group.add(sp);
-			const cone = new THREE.Mesh(
-				new THREE.CircleGeometry(0.18, 16),
-				this.track(new THREE.MeshBasicMaterial({ color: 0x22d3ee })),
-			);
+			const cone = new Mesh(new CircleGeometry(0.18, 16), this.track(new MeshBasicMaterial({ color: 0x22d3ee })));
 			cone.position.set(sx, 0.85, 0.04);
 			this.group.add(cone);
 		}
@@ -253,19 +256,16 @@ export class DJBartek {
 		this.group.add(banner);
 	}
 
-	private buildDecks(): THREE.Group {
-		const g = new THREE.Group();
+	private buildDecks(): Group {
+		const g = new Group();
 		g.position.set(0, 1.05, 0.35);
 		for (const dx of [-0.45, 0.45]) {
-			const deck = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.28, 0.28, 0.06, 24),
+			const deck = new Mesh(
+				new CylinderGeometry(0.28, 0.28, 0.06, 24),
 				this.track(lit({ color: 0x1e293b, metalness: 0.7, roughness: 0.3 })),
 			);
 			deck.position.set(dx, 0, 0);
-			const disc = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.22, 0.22, 0.02, 24),
-				this.track(new THREE.MeshBasicMaterial({ color: 0xa855f7 })),
-			);
+			const disc = new Mesh(new CylinderGeometry(0.22, 0.22, 0.02, 24), this.track(new MeshBasicMaterial({ color: 0xa855f7 })));
 			disc.position.set(dx, 0.04, 0);
 			disc.userData['baseY'] = 0.04;
 			disc.userData['phase'] = dx;
@@ -273,35 +273,32 @@ export class DJBartek {
 			g.add(deck, disc);
 		}
 		// Mixer
-		const mix = new THREE.Mesh(
-			new THREE.BoxGeometry(0.35, 0.08, 0.4),
-			this.track(lit({ color: 0x334155, metalness: 0.5, roughness: 0.4 })),
-		);
+		const mix = new Mesh(new BoxGeometry(0.35, 0.08, 0.4), this.track(lit({ color: 0x334155, metalness: 0.5, roughness: 0.4 })));
 		mix.position.set(0, 0.02, 0);
 		g.add(mix);
 		return g;
 	}
 
 	private buildBartek(): void {
-		const body = new THREE.Group();
+		const body = new Group();
 		body.position.set(0, 0, -0.15);
 
 		const skin = this.track(lit({ color: 0xe8b896, roughness: 0.85 }));
 		const shirt = this.track(lit({ color: 0x7c3aed, roughness: 0.7 }));
 		const pants = this.track(lit({ color: 0x1e1b4b, roughness: 0.9 }));
 
-		const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.55, 4, 8), pants);
+		const legs = new Mesh(new CapsuleGeometry(0.14, 0.55, 4, 8), pants);
 		legs.position.y = 0.55;
 		body.add(legs);
 
-		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.45, 4, 8), shirt);
+		const torso = new Mesh(new CapsuleGeometry(0.28, 0.45, 4, 8), shirt);
 		torso.position.y = 1.25;
 		torso.userData['baseY'] = 1.25;
 		torso.userData['phase'] = 0.3;
 		this.bobParts.push(torso);
 		body.add(torso);
 
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), skin);
+		const head = new Mesh(new SphereGeometry(0.22, 14, 14), skin);
 		head.position.y = 1.78;
 		head.userData['baseY'] = 1.78;
 		head.userData['phase'] = 1.1;
@@ -309,16 +306,16 @@ export class DJBartek {
 		body.add(head);
 
 		// Headphones
-		const band = new THREE.Mesh(
-			new THREE.TorusGeometry(0.2, 0.03, 8, 16, Math.PI),
+		const band = new Mesh(
+			new TorusGeometry(0.2, 0.03, 8, 16, Math.PI),
 			this.track(lit({ color: 0x111111, metalness: 0.6, roughness: 0.4 })),
 		);
 		band.rotation.z = Math.PI;
 		band.position.set(0, 1.92, 0);
 		body.add(band);
 		for (const sx of [-0.2, 0.2]) {
-			const cup = new THREE.Mesh(
-				new THREE.SphereGeometry(0.08, 10, 10),
+			const cup = new Mesh(
+				new SphereGeometry(0.08, 10, 10),
 				this.track(lit({ color: 0xec4899, metalness: 0.5, roughness: 0.4 })),
 			);
 			cup.position.set(sx, 1.78, 0);
@@ -326,36 +323,30 @@ export class DJBartek {
 		}
 
 		// Eyes
-		const eyeMat = this.track(new THREE.MeshBasicMaterial({ color: 0x111111 }));
-		const eL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
+		const eyeMat = this.track(new MeshBasicMaterial({ color: 0x111111 }));
+		const eL = new Mesh(new SphereGeometry(0.035, 8, 8), eyeMat);
 		const eR = eL.clone();
 		eL.position.set(-0.07, 1.82, 0.18);
 		eR.position.set(0.07, 1.82, 0.18);
 		body.add(eL, eR);
 
 		// Cap
-		const cap = new THREE.Mesh(
-			new THREE.SphereGeometry(0.24, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2),
-			this.track(lit({ color: 0x0f172a })),
-		);
+		const cap = new Mesh(new SphereGeometry(0.24, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2), this.track(lit({ color: 0x0f172a })));
 		cap.position.set(0, 1.9, 0);
 		body.add(cap);
-		const brim = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.2), this.track(lit({ color: 0x0f172a })));
+		const brim = new Mesh(new BoxGeometry(0.28, 0.03, 0.2), this.track(lit({ color: 0x0f172a })));
 		brim.position.set(0, 1.82, 0.18);
 		body.add(brim);
 
 		// Mic arm
-		const mic = new THREE.Mesh(
-			new THREE.SphereGeometry(0.05, 8, 8),
-			this.track(lit({ color: 0x94a3b8, metalness: 0.8, roughness: 0.3 })),
-		);
+		const mic = new Mesh(new SphereGeometry(0.05, 8, 8), this.track(lit({ color: 0x94a3b8, metalness: 0.8, roughness: 0.3 })));
 		mic.position.set(0.35, 1.55, 0.35);
 		body.add(mic);
 
 		this.group.add(body);
 	}
 
-	private makeNamePlate(): THREE.Sprite {
+	private makeNamePlate(): Sprite {
 		const { canvas: c, ctx } = labelCanvas(320, 96);
 		ctx.fillStyle = 'rgba(15,23,42,0.92)';
 		ctx.fillRect(0, 0, 320, 96);
@@ -367,13 +358,13 @@ export class DJBartek {
 		ctx.font = '15px system-ui,sans-serif';
 		ctx.fillText('groupies · E · mic · props', 160, 70);
 		const tex = labelTexture(c);
-		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
+		const sp = new Sprite(this.track(new SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
 		sp.scale.set(2.4, 0.72, 1);
 		sp.position.set(0, 2.9, 0.2);
 		return sp;
 	}
 
-	private makeCanvasPlane(lines: string[], w: number, h: number, bg: string, fg: string): THREE.Mesh {
+	private makeCanvasPlane(lines: string[], w: number, h: number, bg: string, fg: string): Mesh {
 		const { canvas: c, ctx } = labelCanvas(512, 256);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 512, 256);
@@ -385,10 +376,7 @@ export class DJBartek {
 			ctx.fillText(line, 256, 70 + i * 55);
 		});
 		const tex = labelTexture(c);
-		return new THREE.Mesh(
-			new THREE.PlaneGeometry(w, h),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		return new Mesh(new PlaneGeometry(w, h), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 	}
 }
 

@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import { ConeGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, SphereGeometry, Vector3 } from 'three';
 import { slabCeilingAbove } from '#/data/world';
 import type { LightHandle, LightPool } from '#/render/LightPool';
 import { lit } from '#/render/material';
@@ -42,15 +43,15 @@ export function saucerHoverY(floorY: number, x: number, z: number): number {
  * Triggered periodically and on demand from DJ Bartek's booth.
  */
 export class AlienProbe {
-	readonly group = new THREE.Group();
-	private materials: THREE.Material[] = [];
-	private saucer: THREE.Group;
-	private beam: THREE.Mesh;
-	private beamMat: THREE.MeshBasicMaterial;
+	readonly group = new Group();
+	private materials: Material[] = [];
+	private saucer: Group;
+	private beam: Mesh;
+	private beamMat: MeshBasicMaterial;
 	private active = false;
 	private t = 0;
 	private duration = 0;
-	private targetPos = new THREE.Vector3();
+	private targetPos = new Vector3();
 	private probeCd = 25;
 	private victims: { id: number; baseY: number }[] = [];
 	/** De vloer van de slachtoffers; de straal eindigt daar en niet een dek lager. */
@@ -69,15 +70,15 @@ export class AlienProbe {
 			distance: 18,
 			decay: 2,
 			follow: this.saucer,
-			offset: new THREE.Vector3(0, -0.5, 0),
+			offset: new Vector3(0, -0.5, 0),
 		});
 		this.group.add(this.saucer);
 		this.beamMat = this.track(
-			new THREE.MeshBasicMaterial({
+			new MeshBasicMaterial({
 				color: 0x69f0ae,
 				transparent: true,
 				opacity: 0.2,
-				side: THREE.DoubleSide,
+				side: DoubleSide,
 				depthWrite: false,
 			}),
 		);
@@ -173,15 +174,15 @@ export class AlienProbe {
 		this.victims = [];
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
-	private buildSaucer(): THREE.Group {
-		const g = new THREE.Group();
-		const disc = new THREE.Mesh(
-			new THREE.SphereGeometry(1.4, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+	private buildSaucer(): Group {
+		const g = new Group();
+		const disc = new Mesh(
+			new SphereGeometry(1.4, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
 			this.track(
 				lit({
 					color: 0xb0bec5,
@@ -194,8 +195,8 @@ export class AlienProbe {
 		);
 		disc.scale.set(1, 0.35, 1);
 		g.add(disc);
-		const dome = new THREE.Mesh(
-			new THREE.SphereGeometry(0.55, 16, 12),
+		const dome = new Mesh(
+			new SphereGeometry(0.55, 16, 12),
 			this.track(
 				lit({
 					color: 0x69f0ae,
@@ -211,8 +212,8 @@ export class AlienProbe {
 		return g;
 	}
 
-	private buildBeam(): THREE.Mesh {
-		const mesh = new THREE.Mesh(new THREE.ConeGeometry(1.8, BEAM_LENGTH, 24, 1, true), this.beamMat);
+	private buildBeam(): Mesh {
+		const mesh = new Mesh(new ConeGeometry(1.8, BEAM_LENGTH, 24, 1, true), this.beamMat);
 		mesh.rotation.x = Math.PI;
 		return mesh;
 	}

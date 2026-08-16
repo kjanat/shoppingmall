@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import { BoxGeometry, ConeGeometry, Group, Mesh, MeshBasicMaterial, SphereGeometry, Sprite, SpriteMaterial } from 'three';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { fitText, labelCanvas, labelTexture } from '#/util/label';
@@ -6,11 +7,11 @@ import { clamp, easeFactor, shortestAngle } from '#/util/math';
 import { pick } from '#/util/rand';
 import { tagLevelCulled } from '#/util/visibility';
 
-type Penguin = {
-	root: THREE.Group;
-	body: THREE.Object3D;
-	wingL: THREE.Object3D;
-	wingR: THREE.Object3D;
+interface Penguin {
+	root: Group;
+	body: Object3D;
+	wingL: Object3D;
+	wingR: Object3D;
 	/** wander target */
 	tx: number;
 	tz: number;
@@ -20,11 +21,11 @@ type Penguin = {
 	/** personal phase */
 	phase: number;
 	name: string;
-	speech: THREE.Sprite;
-	speechTex: THREE.CanvasTexture;
+	speech: Sprite;
+	speechTex: CanvasTexture;
 	speechCtx: CanvasRenderingContext2D;
 	speechLife: number;
-};
+}
 
 const NAMES = [
 	'Chilly',
@@ -53,10 +54,10 @@ const BODY_ROCK_AMP = 0.06;
  * atrium ring + food-court drift. Harmless, adorable, slightly lost.
  */
 export class Penguins {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	private world: CollisionWorld;
 	private birds: Penguin[] = [];
-	private materials: THREE.Material[] = [];
+	private materials: Material[] = [];
 	private chirpCd = 2;
 
 	constructor(world: CollisionWorld, count = 10) {
@@ -182,7 +183,7 @@ export class Penguins {
 	}
 
 	private spawn(i: number): Penguin {
-		const root = new THREE.Group();
+		const root = new Group();
 		const name = NAMES[i % NAMES.length] + (i >= NAMES.length ? ` ${i}` : '');
 
 		const black = this.track(lit({ color: 0x1a1a1a, roughness: 0.75 }));
@@ -190,40 +191,40 @@ export class Penguins {
 		const orange = this.track(lit({ color: 0xff8f00, roughness: 0.55 }));
 		const beakM = this.track(lit({ color: 0xff6f00, roughness: 0.5 }));
 
-		const body = new THREE.Group();
+		const body = new Group();
 		// Torso egg
-		const torso = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), black);
+		const torso = new Mesh(new SphereGeometry(0.22, 12, 10), black);
 		torso.scale.set(0.85, 1.15, 0.9);
 		torso.position.y = 0.38;
 		body.add(torso);
 		// White belly
-		const belly = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), white);
+		const belly = new Mesh(new SphereGeometry(0.16, 10, 8), white);
 		belly.scale.set(0.75, 1.0, 0.55);
 		belly.position.set(0, 0.36, 0.1);
 		body.add(belly);
 		// Head
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), black);
+		const head = new Mesh(new SphereGeometry(0.13, 10, 8), black);
 		head.position.y = 0.62;
 		body.add(head);
 		// Eyes
-		const eyeW = this.track(new THREE.MeshBasicMaterial({ color: 0xffffff }));
-		const eyeB = this.track(new THREE.MeshBasicMaterial({ color: 0x111111 }));
+		const eyeW = this.track(new MeshBasicMaterial({ color: 0xffffff }));
+		const eyeB = this.track(new MeshBasicMaterial({ color: 0x111111 }));
 		for (const sx of [-1, 1] as const) {
-			const ew = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), eyeW);
+			const ew = new Mesh(new SphereGeometry(0.035, 6, 6), eyeW);
 			ew.position.set(sx * 0.05, 0.64, 0.1);
 			body.add(ew);
-			const eb = new THREE.Mesh(new THREE.SphereGeometry(0.018, 5, 5), eyeB);
+			const eb = new Mesh(new SphereGeometry(0.018, 5, 5), eyeB);
 			eb.position.set(sx * 0.05, 0.64, 0.125);
 			body.add(eb);
 		}
 		// Beak
-		const beak = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.1, 6), beakM);
+		const beak = new Mesh(new ConeGeometry(0.035, 0.1, 6), beakM);
 		beak.rotation.x = Math.PI / 2;
 		beak.position.set(0, 0.58, 0.16);
 		body.add(beak);
 
 		// Wings
-		const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.14), black);
+		const wingL = new Mesh(new BoxGeometry(0.06, 0.28, 0.14), black);
 		wingL.position.set(-0.2, 0.4, 0);
 		wingL.rotation.z = 0.5;
 		const wingR = wingL.clone();
@@ -233,13 +234,13 @@ export class Penguins {
 
 		// Feet
 		for (const sx of [-1, 1] as const) {
-			const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.14), orange);
+			const foot = new Mesh(new BoxGeometry(0.1, 0.04, 0.14), orange);
 			foot.position.set(sx * 0.08, 0.04, 0.04);
 			body.add(foot);
 		}
 
 		// Tail stub
-		const tail = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), black);
+		const tail = new Mesh(new SphereGeometry(0.06, 6, 6), black);
 		tail.position.set(0, 0.28, -0.16);
 		body.add(tail);
 
@@ -255,8 +256,8 @@ export class Penguins {
 		// Speech
 		const { canvas: sc, ctx: speechCtx } = labelCanvas(200, 56);
 		const speechTex = labelTexture(sc);
-		const speech = new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		const speech = new Sprite(
+			new SpriteMaterial({
 				map: speechTex,
 				transparent: true,
 				depthTest: true,
@@ -266,7 +267,7 @@ export class Penguins {
 		speech.visible = false;
 		// Two owners of one flag, so they get one each: the cull pass drives the
 		// anchor, the chirp timer keeps driving the sprite.
-		const speechAnchor = new THREE.Group();
+		const speechAnchor = new Group();
 		speechAnchor.position.set(0, 1.15, 0);
 		speechAnchor.add(speech);
 		root.add(speechAnchor);
@@ -303,7 +304,7 @@ export class Penguins {
 		return pen;
 	}
 
-	private makePlate(text: string, bg: string): THREE.Sprite {
+	private makePlate(text: string, bg: string): Sprite {
 		const { canvas: c, ctx } = labelCanvas(256, 64);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 256, 64);
@@ -316,10 +317,10 @@ export class Penguins {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 128, 32);
 		const tex = labelTexture(c);
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		return new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

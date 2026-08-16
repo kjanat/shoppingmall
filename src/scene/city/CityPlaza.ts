@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, CanvasTexture, Material, Texture } from 'three';
+import { BoxGeometry, CylinderGeometry, Group, InstancedMesh, MeshBasicMaterial, Object3D, RepeatWrapping } from 'three';
 import { MALL_FOOTPRINT } from '#/data/layout';
 import type { PlanShape, Vec2 } from '#/data/spatial';
 import { rectanglePlan } from '#/data/spatial';
@@ -81,15 +82,15 @@ const PLAZA_KINDS: readonly PlazaKind[] = ['lantern', 'manhole', 'bench'];
 type Placed = Readonly<{ at: Vec2; yaw: number }>;
 
 export class CityPlaza {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly instanced: THREE.InstancedMesh[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly instanced: InstancedMesh[] = [];
 
-	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
-	private readonly dummy = new THREE.Object3D();
+	private readonly unitBox = new BoxGeometry(1, 1, 1);
+	private readonly dummy = new Object3D();
 	private readonly random = mulberry32(PLAZA_SEED);
 
 	constructor() {
@@ -108,7 +109,7 @@ export class CityPlaza {
 		this.group.clear();
 	}
 
-	private track<T extends THREE.Material>(material: T): T {
+	private track<T extends Material>(material: T): T {
 		this.materials.push(material);
 		return material;
 	}
@@ -158,8 +159,8 @@ export class CityPlaza {
 	 */
 	private buildPaving(): void {
 		const texture = this.pavingTexture();
-		texture.wrapS = THREE.RepeatWrapping;
-		texture.wrapT = THREE.RepeatWrapping;
+		texture.wrapS = RepeatWrapping;
+		texture.wrapT = RepeatWrapping;
 		texture.repeat.set(1 / PLAZA_PLAN.tile, 1 / PLAZA_PLAN.tile);
 		const paving = this.track(lit({ map: texture, roughness: 0.95 }));
 		const mesh = addExtrudedXZMesh(this.group, paving, {
@@ -173,7 +174,7 @@ export class CityPlaza {
 		this.geometries.push(mesh.geometry);
 	}
 
-	private pavingTexture(): THREE.CanvasTexture {
+	private pavingTexture(): CanvasTexture {
 		const size = PAVING.canvas;
 		const { canvas, ctx } = labelCanvas(size, size);
 		ctx.fillStyle = PAVING.base;
@@ -211,15 +212,15 @@ export class CityPlaza {
 
 	private buildLanterns(spots: readonly Placed[]): void {
 		if (spots.length === 0) return;
-		const poleGeometry = new THREE.CylinderGeometry(LANTERN.poleRadius, LANTERN.poleRadius, LANTERN.height, 8);
+		const poleGeometry = new CylinderGeometry(LANTERN.poleRadius, LANTERN.poleRadius, LANTERN.height, 8);
 		this.geometries.push(poleGeometry);
 		const steel = this.track(lit({ color: 0x39424a, roughness: 0.5, metalness: 0.6 }));
-		const glow = this.track(new THREE.MeshBasicMaterial({ color: 0xffe6b0, toneMapped: false }));
-		const poles = new THREE.InstancedMesh(poleGeometry, steel, spots.length);
+		const glow = this.track(new MeshBasicMaterial({ color: 0xffe6b0, toneMapped: false }));
+		const poles = new InstancedMesh(poleGeometry, steel, spots.length);
 		poles.name = 'plaza_lantern_poles';
-		const heads = new THREE.InstancedMesh(this.unitBox, steel, spots.length);
+		const heads = new InstancedMesh(this.unitBox, steel, spots.length);
 		heads.name = 'plaza_lantern_heads';
-		const lenses = new THREE.InstancedMesh(this.unitBox, glow, spots.length);
+		const lenses = new InstancedMesh(this.unitBox, glow, spots.length);
 		lenses.name = 'plaza_lantern_lenses';
 		spots.forEach((spot, index) => {
 			this.place(spot, { x: 0, y: half(LANTERN.height), z: 0 }, { x: 1, y: 1, z: 1 });
@@ -243,10 +244,10 @@ export class CityPlaza {
 
 	private buildManholes(spots: readonly Placed[]): void {
 		if (spots.length === 0) return;
-		const geometry = new THREE.CylinderGeometry(MANHOLE.radius, MANHOLE.radius, MANHOLE.rise, MANHOLE.segments);
+		const geometry = new CylinderGeometry(MANHOLE.radius, MANHOLE.radius, MANHOLE.rise, MANHOLE.segments);
 		this.geometries.push(geometry);
 		const iron = this.track(lit({ color: 0x4a4640, roughness: 0.85, metalness: 0.4 }));
-		const covers = new THREE.InstancedMesh(geometry, iron, spots.length);
+		const covers = new InstancedMesh(geometry, iron, spots.length);
 		covers.name = 'plaza_manholes';
 		spots.forEach((spot, index) => {
 			this.place(spot, { x: 0, y: half(MANHOLE.rise), z: 0 }, { x: 1, y: 1, z: 1 });
@@ -259,9 +260,9 @@ export class CityPlaza {
 		if (spots.length === 0) return;
 		const wood = this.track(lit({ color: 0x7a5638, roughness: 0.85 }));
 		const steel = this.track(lit({ color: 0x2f3438, roughness: 0.5, metalness: 0.5 }));
-		const planks = new THREE.InstancedMesh(this.unitBox, wood, spots.length * 2);
+		const planks = new InstancedMesh(this.unitBox, wood, spots.length * 2);
 		planks.name = 'plaza_bench_planks';
-		const legs = new THREE.InstancedMesh(this.unitBox, steel, spots.length * 2);
+		const legs = new InstancedMesh(this.unitBox, steel, spots.length * 2);
 		legs.name = 'plaza_bench_legs';
 		spots.forEach((spot, index) => {
 			this.place(spot, { x: 0, y: BENCH.seat.height, z: 0 }, { x: BENCH.width, y: BENCH.seat.thickness, z: BENCH.seat.depth });
@@ -298,7 +299,7 @@ export class CityPlaza {
 		this.dummy.updateMatrix();
 	}
 
-	private addInstanced(...meshes: readonly THREE.InstancedMesh[]): void {
+	private addInstanced(...meshes: readonly InstancedMesh[]): void {
 		for (const mesh of meshes) {
 			mesh.computeBoundingSphere();
 			this.instanced.push(mesh);

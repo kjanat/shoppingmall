@@ -63,12 +63,12 @@ export function stubDocument(): void {
 }
 
 /** What a session remembers in memory, with the four methods the storage boundary uses. */
-export type SessionStorage = {
+export interface SessionStorage {
 	getItem: (key: string) => string | null;
 	setItem: (key: string, value: string) => void;
 	removeItem: (key: string) => void;
 	clear: () => void;
-};
+}
 
 function memoryStorage(): SessionStorage {
 	const contents = new Map<string, string>();

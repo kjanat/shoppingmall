@@ -30,7 +30,13 @@ test('the grid is finer than the body it is looking for room for', () => {
 	expect(GRID, 'a standable spot could fall between two samples').toBeLessThan(2 * PLAYER_RADIUS);
 });
 
-type Tight = { count: number; free: number; x: number; z: number; standable: number };
+interface Tight {
+	count: number;
+	free: number;
+	x: number;
+	z: number;
+	standable: number;
+}
 
 function sweep(deck: number, outdoors: boolean): Tight {
 	const halfWidth = half(MALL_FOOTPRINT.width);

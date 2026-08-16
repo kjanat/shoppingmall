@@ -59,7 +59,7 @@ import { clamp, half, inverseLerpClamped, lerp, midpoint, span } from '#/util/ma
 
 export { ESCALATOR_SPEED } from '#/data/world';
 
-export type AABB = {
+export interface AABB {
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -87,9 +87,9 @@ export type AABB = {
 	disabled?: boolean;
 	/** What this box is, for queries that care about more than a body hitting it. */
 	tags?: readonly string[];
-};
+}
 
-type BoxOptions = {
+interface BoxOptions {
 	minY?: number;
 	maxY?: number;
 	label?: string;
@@ -97,7 +97,7 @@ type BoxOptions = {
 	outdoor?: boolean;
 	disabled?: boolean;
 	tags?: readonly string[];
-};
+}
 
 /**
  * Een doos die ook het zicht tegenhoudt.
@@ -195,17 +195,17 @@ export type RoomCollider = Readonly<{
 }>;
 
 /** A flat walkable rectangle in the city, above street level. */
-export type CitySurface = {
+export interface CitySurface {
 	minX: number;
 	maxX: number;
 	minZ: number;
 	maxZ: number;
 	y: number;
 	label: string;
-};
+}
 
 /** A walkable incline running along Z (escalator / stairs). */
-export type Ramp = {
+export interface Ramp {
 	minX: number;
 	maxX: number;
 	zBottom: number;
@@ -227,7 +227,7 @@ export type Ramp = {
 	carrySpeed?: number;
 	/** Dikte onder het loopvlak wanneer de ruimte onder deze vlucht open is. */
 	openUndersideThickness?: number;
-};
+}
 
 export type BodyClearance = Readonly<{ feetY: number; height: number }>;
 
@@ -236,7 +236,7 @@ export type BodyClearance = Readonly<{ feetY: number; height: number }>;
  * dezelfde plaat of hij nu dicht ligt of openstaat, en wat verandert is of er vloer
  * boven het gat hangt.
  */
-export type RoofPad = {
+export interface RoofPad {
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -244,13 +244,13 @@ export type RoofPad = {
 	y: number;
 	label?: string;
 	disabled?: boolean;
-};
+}
 
 /**
  * A low deck whose top face is the walkable surface. `nose` rounds off the maxZ end:
  * past `centerZ` the deck is that circle, so the box corners beyond it are not floor.
  */
-export type Platform = {
+export interface Platform {
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -258,7 +258,7 @@ export type Platform = {
 	y: number;
 	label: string;
 	nose?: { centerZ: number; radius: number };
-};
+}
 
 type PathRamp = Readonly<{
 	start: Readonly<{ x: number; y: number; z: number }>;
@@ -986,7 +986,7 @@ export class CollisionWorld {
 		if (forgiveEnds && dx * dx + dz * dz < SIGHT_MIN_RUN * SIGHT_MIN_RUN) return true;
 		for (const b of this.boxes) {
 			const tags = b.tags;
-			if (!tags || !occlusion.blockingTags.some((tag) => tags.includes(tag))) continue;
+			if (!(tags && occlusion.blockingTags.some((tag) => tags.includes(tag)))) continue;
 			if (b.minY !== undefined && maxY < b.minY) continue;
 			if (b.maxY !== undefined && minY > b.maxY) continue;
 			const ends = insideBox(b, from.x, from.y, from.z) || insideBox(b, to.x, to.y, to.z);
@@ -1361,7 +1361,7 @@ export class CollisionWorld {
 			this.segmentScratch,
 		);
 		let nearest: AABB | null = null;
-		let nearestDistance = Infinity;
+		let nearestDistance = Number.POSITIVE_INFINITY;
 		for (const box of this.segmentScratch) {
 			const grown = {
 				minX: box.minX - radius,
@@ -1482,7 +1482,7 @@ export class CollisionWorld {
 		// Bovengrens net als in groundHeightAt: boven het gat ligt op dakhoogte
 		// gewoon het glazen dak. Zonder die grens werd je daar weggeduwd, terwijl
 		// er een vloer onder je voeten zat.
-		if (!airborne && !city && y > 4 && y < ROOF_H - 0.5) {
+		if (!(airborne || city) && y > 4 && y < ROOF_H - 0.5) {
 			const inHole = Math.abs(px) < 8.2 && Math.abs(pz) < 6.2;
 			if (inHole) {
 				const toEdgeX = 8.4 - Math.abs(px);

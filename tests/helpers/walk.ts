@@ -25,7 +25,10 @@ const PROGRESS = 0.5;
 /** Past this the pedestrian is being steered around something rather than walking straight. */
 const SIDEWAYS = 0.05;
 
-export type Walk = { x: number; complaint: string | null };
+export interface Walk {
+	x: number;
+	complaint: string | null;
+}
 export type Walker = Readonly<{ world: CollisionWorld; posture: PedestrianPosture }>;
 
 export const UPRIGHT: Walker = { world, posture: 'standing' };
@@ -46,7 +49,7 @@ export function followPolyline(points: readonly Point[], startY: number): Trip {
 	for (let i = 1; i < points.length; i++) {
 		const from = points[i - 1];
 		const to = points[i];
-		if (!from || !to) continue;
+		if (!(from && to)) continue;
 		const steps = Math.max(1, Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) / WALK_PROBE_STEP));
 		for (let step = 1; step <= steps; step++) {
 			const t = step / steps;

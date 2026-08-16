@@ -1,4 +1,15 @@
-import * as THREE from 'three';
+import type { Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	Vector3,
+} from 'three';
 import { STANDING_PEDESTRIAN } from '#/data/character';
 import { level, levelAt } from '#/data/levels';
 import type { DriveableHandling, DriveableKind, DriveableSpot } from '#/data/world';
@@ -16,21 +27,21 @@ import { clamp, ease } from '#/util/math';
 import { GARAGE_Y } from './ParkingGarage';
 import type { DriveInput, VehicleRide } from './ScrubberBuggy';
 
-type CarSlot = {
-	mesh: THREE.Group;
+interface CarSlot {
+	mesh: Group;
 	/** world position of parked vehicle */
-	park: THREE.Vector3;
+	park: Vector3;
 	yaw: number;
 	color: number;
 	name: string;
 	/** currently the player vehicle */
 	active: boolean;
-	wheels: THREE.Object3D[];
-	label: THREE.Sprite;
+	wheels: Object3D[];
+	label: Sprite;
 	kind: DriveableKind;
 	/** Hoe hard hij trekt, remt, stuurt en hangt. Uit het wereldmodel, per soort. */
 	handling: DriveableHandling;
-};
+}
 
 /** Hoe snel de carrosserie de gemeten helling aanneemt. Direct is een schok bij elke naad. */
 const PITCH_EASE = 9;
@@ -44,23 +55,23 @@ const CEILING = 10;
  * with E, race the garage, take the west exit ramp into the outdoor city ring.
  */
 export class DriveableCars {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	ridden = false;
 	private world: CollisionWorld;
 	private readonly barriers: Barriers;
-	private materials: THREE.Material[] = [];
+	private materials: Material[] = [];
 	private cars: CarSlot[] = [];
 	private active: CarSlot | null = null;
 	private yaw = 0;
 	private speed = 0;
-	private pos = new THREE.Vector3();
+	private pos = new Vector3();
 	/** Hoogte, valsnelheid en of hij op de grond staat; `stepVehicleGround` schrijft erin. */
 	private readonly ground: VehicleGroundState = { y: GARAGE_Y, vy: 0, grounded: true };
 	/** Hoe schuin hij nu staat; loopt achter de gemeten helling aan, dus geen knik aan de voet van de helling. */
 	private pitch = 0;
 	/** Hoe ver de motor nu in de bocht hangt; loopt eased naar de balanshoek toe. De auto rolt niet via deze staat. */
 	private lean = 0;
-	private wheels: THREE.Object3D[] = [];
+	private wheels: Object3D[] = [];
 	/** Van het voertuig waar hij nu op zit; buiten een rit die van de auto. */
 	private handling: DriveableHandling = DRIVEABLE_HANDLING.car;
 
@@ -101,7 +112,7 @@ export class DriveableCars {
 	}
 
 	/** Nearest free car within range (world pos) */
-	nearestCar(player: THREE.Vector3, maxDist = 4.2): CarSlot | null {
+	nearestCar(player: Vector3, maxDist = 4.2): CarSlot | null {
 		if (this.ridden) return null;
 		let best: CarSlot | null = null;
 		let bestD = maxDist;
@@ -119,7 +130,7 @@ export class DriveableCars {
 		return best;
 	}
 
-	distanceToNearest(player: THREE.Vector3): number {
+	distanceToNearest(player: Vector3): number {
 		const c = this.nearestCar(player, 99);
 		if (!c) return 999;
 		return Math.hypot(player.x - c.park.x, player.z - c.park.z);
@@ -131,14 +142,14 @@ export class DriveableCars {
 	 * mesh-neus is lokaal +z, dus de carrosserie draait π ten opzichte van de
 	 * rij-yaw; board() en release() rekenen op die grens om.
 	 */
-	getSeatPosition(): THREE.Vector3 {
+	getSeatPosition(): Vector3 {
 		const fx = -Math.sin(this.yaw);
 		const fz = -Math.cos(this.yaw);
 		const { seatBack, seatHeight } = this.handling;
 		// De stoel staat in het voertuig, dus hij kantelt mee: de helling op zakt hij naar
 		// achteren in plaats van kaarsrecht boven het wegdek te blijven zweven.
 		const achter = seatBack + seatHeight * Math.sin(this.pitch);
-		return new THREE.Vector3(this.pos.x - fx * achter, this.pos.y + seatHeight * Math.cos(this.pitch), this.pos.z - fz * achter);
+		return new Vector3(this.pos.x - fx * achter, this.pos.y + seatHeight * Math.cos(this.pitch), this.pos.z - fz * achter);
 	}
 
 	board(car?: CarSlot): boolean {
@@ -166,7 +177,7 @@ export class DriveableCars {
 
 	/** Waar deze rit staat, of null als er niemand rijdt. Genoeg om hem terug te zetten. */
 	get ride(): VehicleRide | null {
-		if (!this.ridden || !this.active) return null;
+		if (!(this.ridden && this.active)) return null;
 		return { id: this.active.name, x: this.pos.x, y: this.pos.y, z: this.pos.z, yaw: this.yaw, speed: this.speed };
 	}
 
@@ -200,7 +211,7 @@ export class DriveableCars {
 	}
 
 	/** Exit car, park here; returns world feet spawn */
-	release(): THREE.Vector3 {
+	release(): Vector3 {
 		const c = this.active;
 		this.ridden = false;
 		this.speed = 0;
@@ -217,7 +228,7 @@ export class DriveableCars {
 		}
 		const leftX = -Math.cos(this.yaw);
 		const leftZ = Math.sin(this.yaw);
-		const exit = new THREE.Vector3(this.pos.x + leftX * 2.2, this.pos.y, this.pos.z + leftZ * 2.2);
+		const exit = new Vector3(this.pos.x + leftX * 2.2, this.pos.y, this.pos.z + leftZ * 2.2);
 		const gY = this.world.groundHeightAt(exit.x, exit.z, this.pos.y + 0.5, 3);
 		exit.y = gY;
 		// De klem hoort bij het voertuig en gaat met de rit weer aan, maar het uitstappunt
@@ -238,8 +249,8 @@ export class DriveableCars {
 	/**
 	 * Drive physics. Seat world pos when ridden.
 	 */
-	update(dt: number, input?: DriveInput): THREE.Vector3 | null {
-		if (!this.ridden || !this.active) return null;
+	update(dt: number, input?: DriveInput): Vector3 | null {
+		if (!(this.ridden && this.active)) return null;
 
 		const handling = this.handling;
 		const throttle = input?.throttle ?? 0;
@@ -254,10 +265,8 @@ export class DriveableCars {
 				(boost ? 1.2 : 1);
 			if (this.speed < want) this.speed = Math.min(want, this.speed + rate * dt);
 			else this.speed = Math.max(want, this.speed - rate * dt);
-		} else {
-			if (this.speed > 0) this.speed = Math.max(0, this.speed - handling.friction * dt);
-			else this.speed = Math.min(0, this.speed + handling.friction * dt);
-		}
+		} else if (this.speed > 0) this.speed = Math.max(0, this.speed - handling.friction * dt);
+		else this.speed = Math.min(0, this.speed + handling.friction * dt);
 
 		const yawBefore = this.yaw;
 		const steerAuth = clamp(Math.abs(this.speed) / 5, 0.25, 1);
@@ -330,10 +339,10 @@ export class DriveableCars {
 
 	private spawn(s: DriveableSpot): CarSlot {
 		const mesh = s.kind === 'motorcycle' ? motorcycleMesh(s.color, (m) => this.track(m)) : this.makeCar(s.color);
-		const park = new THREE.Vector3(s.x, s.y, s.z);
+		const park = new Vector3(s.x, s.y, s.z);
 		mesh.position.copy(park);
 		mesh.rotation.y = s.yaw;
-		const wheels: THREE.Object3D[] = [];
+		const wheels: Object3D[] = [];
 		mesh.traverse((o) => {
 			if (o.userData['isWheel']) wheels.push(o);
 		});
@@ -368,13 +377,13 @@ export class DriveableCars {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 160, 32);
 		const tex = labelTexture(canvas);
-		const mat = c.label.material as THREE.SpriteMaterial;
+		const mat = c.label.material as SpriteMaterial;
 		mat.map?.dispose();
 		mat.map = tex;
 		mat.needsUpdate = true;
 	}
 
-	private makeLabel(text: string, bg: string): THREE.Sprite {
+	private makeLabel(text: string, bg: string): Sprite {
 		const { canvas, ctx } = labelCanvas(320, 64);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
@@ -387,13 +396,13 @@ export class DriveableCars {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 160, 32);
 		const tex = labelTexture(canvas);
-		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		const sp = new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(2.4, 0.5, 1);
 		return sp;
 	}
 
-	private makeCar(color: number): THREE.Group {
-		const g = new THREE.Group();
+	private makeCar(color: number): Group {
+		const g = new Group();
 		const bodyM = this.track(lit({ color, roughness: 0.4, metalness: 0.4 }));
 		const dark = this.track(lit({ color: 0x111111, roughness: 0.7, metalness: 0.4 }));
 		const glass = this.track(
@@ -405,15 +414,15 @@ export class DriveableCars {
 			}),
 		);
 		const { body: bodySpec } = RENTAL_CAR_SPEC;
-		const body = new THREE.Mesh(new THREE.BoxGeometry(bodySpec.width, bodySpec.height, bodySpec.length), bodyM);
+		const body = new Mesh(new BoxGeometry(bodySpec.width, bodySpec.height, bodySpec.length), bodyM);
 		body.position.y = bodySpec.centerY;
 		g.add(body);
-		const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.45, 2.1), glass);
+		const cabin = new Mesh(new BoxGeometry(1.7, 0.45, 2.1), glass);
 		cabin.position.set(0, 0.95, -0.2);
 		g.add(cabin);
 		// Bumper stripe "RENTAL"
-		const stripe = new THREE.Mesh(
-			new THREE.BoxGeometry(1.7, 0.08, 0.05),
+		const stripe = new Mesh(
+			new BoxGeometry(1.7, 0.08, 0.05),
 			this.track(
 				lit({
 					color: 0xffc107,
@@ -425,9 +434,9 @@ export class DriveableCars {
 		stripe.position.set(0, 0.45, 2.1);
 		g.add(stripe);
 		// Headlights
-		const lampM = this.track(new THREE.MeshBasicMaterial({ color: 0xfff59d, toneMapped: false }));
+		const lampM = this.track(new MeshBasicMaterial({ color: 0xfff59d, toneMapped: false }));
 		for (const lz of [-0.55, 0.55]) {
-			const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), lampM);
+			const lamp = new Mesh(new SphereGeometry(0.1, 8, 6), lampM);
 			lamp.position.set(lz, 0.5, 2.05);
 			g.add(lamp);
 		}
@@ -438,7 +447,7 @@ export class DriveableCars {
 			[-0.9, -1.25],
 			[0.9, -1.25],
 		] as const) {
-			const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.24, 12), dark);
+			const w = new Mesh(new CylinderGeometry(0.32, 0.32, 0.24, 12), dark);
 			w.rotation.z = Math.PI / 2;
 			w.position.set(wx, 0.32, wz);
 			w.userData['isWheel'] = true;
@@ -447,7 +456,7 @@ export class DriveableCars {
 		return g;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

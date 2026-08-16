@@ -1,4 +1,18 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import { spatial } from '#/audio/SpatialAudio';
 import { levelAt } from '#/data/levels';
 import { LINE_OF_SIGHT } from '#/data/spatial';
@@ -28,22 +42,22 @@ const WEI_EYE_HEIGHT = 1.5;
  * Pre-baked ElevenLabs Chinese yells when you block the cart.
  */
 export class CleaningCart {
-	readonly group = new THREE.Group();
-	readonly pos = new THREE.Vector3();
+	readonly group = new Group();
+	readonly pos = new Vector3();
 	/** Solid hit radius for player / walls (scrubber chassis) */
 	readonly radius = 0.85;
-	private mesh: THREE.Group;
+	private mesh: Group;
 	private t = 0;
 	private i = 0;
-	private path: THREE.Vector3[] = [];
+	private path: Vector3[] = [];
 	private pathDir = 1;
 	private world: CollisionWorld;
-	private materials: THREE.Material[] = [];
-	private wheels: THREE.Object3D[] = [];
-	private brush!: THREE.Object3D;
-	private wetSign!: THREE.Group;
-	private speech!: THREE.Sprite;
-	private speechTex!: THREE.CanvasTexture;
+	private materials: Material[] = [];
+	private wheels: Object3D[] = [];
+	private brush!: Object3D;
+	private wetSign!: Group;
+	private speech!: Sprite;
+	private speechTex!: CanvasTexture;
 	private speechCtx!: CanvasRenderingContext2D;
 	private speechLife = 0;
 	private chatCd = 8;
@@ -58,8 +72,8 @@ export class CleaningCart {
 	private audioEl: HTMLAudioElement | null = null;
 	/** optional UI hook */
 	private onYell: ((label: string) => void) | null = null;
-	private tmpFwd = new THREE.Vector3();
-	private tmpTo = new THREE.Vector3();
+	private tmpFwd = new Vector3();
+	private tmpTo = new Vector3();
 
 	constructor(world: CollisionWorld) {
 		this.world = world;
@@ -84,7 +98,7 @@ export class CleaningCart {
 	/**
 	 * @param playerPos world position of player (camera)
 	 */
-	update(dt: number, playerPos?: THREE.Vector3): void {
+	update(dt: number, playerPos?: Vector3): void {
 		if (this.path.length < 2) return;
 
 		// Slow scrubbing pace
@@ -215,12 +229,12 @@ export class CleaningCart {
 		}
 	}
 
-	private distTo(player: THREE.Vector3): number {
+	private distTo(player: Vector3): number {
 		return Math.hypot(player.x - this.pos.x, player.z - this.pos.z);
 	}
 
 	/** Same floor + close enough that Wei cares */
-	private isPlayerInWay(player: THREE.Vector3): boolean {
+	private isPlayerInWay(player: Vector3): boolean {
 		// Camera sits ~1.6m; floor 0 is y < ~4
 		if (levelAt(player.y) !== 'v0') return false;
 		const dist = this.distTo(player);
@@ -238,7 +252,7 @@ export class CleaningCart {
 		return ahead > -0.35;
 	}
 
-	private async yellAtPlayer(playerPos: THREE.Vector3): Promise<void> {
+	private async yellAtPlayer(playerPos: Vector3): Promise<void> {
 		this.yellCd = 3.5 + Math.random() * 2.5;
 		this.speaking = true;
 		this.nearT = 0;
@@ -277,7 +291,7 @@ export class CleaningCart {
 			/* autoplay blocked until user gesture */
 		}
 
-		window.setTimeout(() => {
+		globalThis.setTimeout(() => {
 			this.speaking = false;
 		}, 2500);
 	}
@@ -307,43 +321,43 @@ export class CleaningCart {
 	private resetPath(keepPos = false): void {
 		const routes = [
 			[
-				new THREE.Vector3(-22, 0, 12),
-				new THREE.Vector3(-10, 0, 10),
-				new THREE.Vector3(0, 0, 8),
-				new THREE.Vector3(12, 0, 10),
-				new THREE.Vector3(22, 0, 6),
-				new THREE.Vector3(20, 0, -6),
-				new THREE.Vector3(6, 0, -10),
-				new THREE.Vector3(-8, 0, -8),
-				new THREE.Vector3(-20, 0, -4),
-				new THREE.Vector3(-24, 0, 6),
+				new Vector3(-22, 0, 12),
+				new Vector3(-10, 0, 10),
+				new Vector3(0, 0, 8),
+				new Vector3(12, 0, 10),
+				new Vector3(22, 0, 6),
+				new Vector3(20, 0, -6),
+				new Vector3(6, 0, -10),
+				new Vector3(-8, 0, -8),
+				new Vector3(-20, 0, -4),
+				new Vector3(-24, 0, 6),
 			],
 			[
-				new THREE.Vector3(-26, 0, 14),
-				new THREE.Vector3(-14, 0, 12),
-				new THREE.Vector3(-4, 0, 14),
-				new THREE.Vector3(8, 0, 12),
-				new THREE.Vector3(18, 0, 8),
-				new THREE.Vector3(14, 0, 0),
-				new THREE.Vector3(4, 0, -6),
-				new THREE.Vector3(-10, 0, 0),
-				new THREE.Vector3(-18, 0, 8),
+				new Vector3(-26, 0, 14),
+				new Vector3(-14, 0, 12),
+				new Vector3(-4, 0, 14),
+				new Vector3(8, 0, 12),
+				new Vector3(18, 0, 8),
+				new Vector3(14, 0, 0),
+				new Vector3(4, 0, -6),
+				new Vector3(-10, 0, 0),
+				new Vector3(-18, 0, 8),
 			],
 			[
-				new THREE.Vector3(-12, 0, 6),
-				new THREE.Vector3(0, 0, 4),
-				new THREE.Vector3(12, 0, 6),
-				new THREE.Vector3(16, 0, -4),
-				new THREE.Vector3(0, 0, -8),
-				new THREE.Vector3(-16, 0, -6),
-				new THREE.Vector3(-20, 0, 2),
+				new Vector3(-12, 0, 6),
+				new Vector3(0, 0, 4),
+				new Vector3(12, 0, 6),
+				new Vector3(16, 0, -4),
+				new Vector3(0, 0, -8),
+				new Vector3(-16, 0, -6),
+				new Vector3(-20, 0, 2),
 			],
 		];
 		const next = pick(routes);
 		if (keepPos && this.path.length) {
 			// Start new route from nearest waypoint
 			let best = 0;
-			let bestD = Infinity;
+			let bestD = Number.POSITIVE_INFINITY;
 			const p = this.mesh.position;
 			next.forEach((wp, i) => {
 				const d = p.distanceToSquared(wp);
@@ -362,13 +376,13 @@ export class CleaningCart {
 		this.t = 0;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
-	private build(): THREE.Group {
-		const g = new THREE.Group();
+	private build(): Group {
+		const g = new Group();
 
 		const yellow = this.track(lit({ color: 0xffc107, roughness: 0.55, metalness: 0.2 }));
 		const blue = this.track(lit({ color: 0x1565c0, roughness: 0.65 }));
@@ -380,61 +394,58 @@ export class CleaningCart {
 		const uni = this.track(lit({ color: 0x00695c, roughness: 0.75 }));
 
 		// ── Ride-on scrubber chassis ──
-		const body = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.38, 1.35), yellow);
+		const body = new Mesh(new BoxGeometry(0.95, 0.38, 1.35), yellow);
 		body.position.set(0, 0.42, 0);
 		g.add(body);
 		// Blue service stripe
-		const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.1, 1.36), blue);
+		const stripe = new Mesh(new BoxGeometry(0.98, 0.1, 1.36), blue);
 		stripe.position.set(0, 0.55, 0);
 		g.add(stripe);
 
 		// Seat
-		const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.35), dark);
+		const seat = new Mesh(new BoxGeometry(0.4, 0.12, 0.35), dark);
 		seat.position.set(0, 0.72, -0.15);
 		g.add(seat);
-		const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.08), dark);
+		const backrest = new Mesh(new BoxGeometry(0.4, 0.35, 0.08), dark);
 		backrest.position.set(0, 0.95, -0.3);
 		g.add(backrest);
 
 		// Steering column + wheel
-		const col = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.45, 6), grey);
+		const col = new Mesh(new CylinderGeometry(0.03, 0.03, 0.45, 6), grey);
 		col.position.set(0, 0.85, 0.35);
 		col.rotation.x = 0.35;
 		g.add(col);
-		const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 6, 14), rubber);
+		const wheel = new Mesh(new TorusGeometry(0.14, 0.03, 6, 14), rubber);
 		wheel.position.set(0, 1.05, 0.48);
 		wheel.rotation.x = Math.PI / 2.5;
 		g.add(wheel);
 
 		// Front scrub deck + spinning brush
-		const deck = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.4, 0.12, 16), grey);
+		const deck = new Mesh(new CylinderGeometry(0.38, 0.4, 0.12, 16), grey);
 		deck.position.set(0, 0.12, 0.55);
 		g.add(deck);
-		this.brush = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.34, 0.34, 0.06, 16),
-			this.track(lit({ color: 0x455a64, roughness: 0.85 })),
-		);
+		this.brush = new Mesh(new CylinderGeometry(0.34, 0.34, 0.06, 16), this.track(lit({ color: 0x455a64, roughness: 0.85 })));
 		this.brush.position.set(0, 0.06, 0.55);
 		g.add(this.brush);
 		// Brush bristle marks
 		for (let i = 0; i < 8; i++) {
 			const a = (i / 8) * Math.PI * 2;
-			const br = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.02, 0.04), this.track(lit({ color: 0x78909c, roughness: 0.9 })));
+			const br = new Mesh(new BoxGeometry(0.28, 0.02, 0.04), this.track(lit({ color: 0x78909c, roughness: 0.9 })));
 			br.position.set(Math.cos(a) * 0.05, 0.04, 0.55 + Math.sin(a) * 0.05);
 			br.rotation.y = a;
 			this.brush.add(br);
 		}
 
 		// Water tank behind
-		const tank = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.4), blue);
+		const tank = new Mesh(new BoxGeometry(0.55, 0.45, 0.4), blue);
 		tank.position.set(0, 0.7, -0.55);
 		g.add(tank);
-		const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8), grey);
+		const cap = new Mesh(new CylinderGeometry(0.08, 0.08, 0.06, 8), grey);
 		cap.position.set(0, 0.96, -0.55);
 		g.add(cap);
 
 		// Wheels (4)
-		const wgeo = new THREE.CylinderGeometry(0.14, 0.14, 0.1, 12);
+		const wgeo = new CylinderGeometry(0.14, 0.14, 0.1, 12);
 		const spots: [number, number, number][] = [
 			[-0.42, 0.14, 0.4],
 			[0.42, 0.14, 0.4],
@@ -442,7 +453,7 @@ export class CleaningCart {
 			[0.42, 0.14, -0.45],
 		];
 		for (const [x, y, z] of spots) {
-			const w = new THREE.Mesh(wgeo, rubber);
+			const w = new Mesh(wgeo, rubber);
 			w.rotation.z = Math.PI / 2;
 			w.position.set(x, y, z);
 			g.add(w);
@@ -451,9 +462,9 @@ export class CleaningCart {
 
 		// Side “SCHOONMAAK / 清洁” plate
 		const plate = this.makePlate('清洁 CLEANING', '#1565c0', '#ffeb3b', 256, 64);
-		const plateMesh = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.7, 0.18),
-			this.track(new THREE.MeshBasicMaterial({ map: plate, toneMapped: false })),
+		const plateMesh = new Mesh(
+			new PlaneGeometry(0.7, 0.18),
+			this.track(new MeshBasicMaterial({ map: plate, toneMapped: false })),
 		);
 		plateMesh.position.set(0.49, 0.55, 0.1);
 		plateMesh.rotation.y = Math.PI / 2;
@@ -464,10 +475,10 @@ export class CleaningCart {
 		g.add(plate2);
 
 		// ── Cleaner Wei Chen sitting ──
-		const person = new THREE.Group();
+		const person = new Group();
 		person.position.set(0, 0.72, -0.12);
 
-		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.28, 3, 6), uni);
+		const legL = new Mesh(new CapsuleGeometry(0.07, 0.28, 3, 6), uni);
 		const legR = legL.clone();
 		legL.position.set(-0.1, 0.15, 0.05);
 		legL.rotation.x = 1.1;
@@ -475,13 +486,13 @@ export class CleaningCart {
 		legR.rotation.x = 1.1;
 		person.add(legL, legR);
 
-		const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.35, 4, 8), uni);
+		const torso = new Mesh(new CapsuleGeometry(0.16, 0.35, 4, 8), uni);
 		torso.position.y = 0.55;
 		person.add(torso);
 
 		// Reflective vest stripes
-		const vest = new THREE.Mesh(
-			new THREE.BoxGeometry(0.34, 0.12, 0.28),
+		const vest = new Mesh(
+			new BoxGeometry(0.34, 0.12, 0.28),
 			this.track(
 				lit({
 					color: 0xffeb3b,
@@ -494,30 +505,30 @@ export class CleaningCart {
 		vest.position.set(0, 0.6, 0.02);
 		person.add(vest);
 
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), skin);
+		const head = new Mesh(new SphereGeometry(0.14, 12, 12), skin);
 		head.position.y = 0.95;
 		person.add(head);
 
 		// Short black hair
-		const hair = new THREE.Mesh(new THREE.SphereGeometry(0.145, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
+		const hair = new Mesh(new SphereGeometry(0.145, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
 		hair.position.set(0, 1.0, -0.01);
 		person.add(hair);
 
 		// Eyes
-		const eyeM = this.track(new THREE.MeshBasicMaterial({ color: 0x1a1a1a }));
-		const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), eyeM);
+		const eyeM = this.track(new MeshBasicMaterial({ color: 0x1a1a1a }));
+		const e1 = new Mesh(new SphereGeometry(0.022, 6, 6), eyeM);
 		const e2 = e1.clone();
 		e1.position.set(-0.045, 0.97, 0.12);
 		e2.position.set(0.045, 0.97, 0.12);
 		person.add(e1, e2);
 
 		// Optional face mask (common)
-		const mask = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.04), this.track(lit({ color: 0xeeeeee, roughness: 0.7 })));
+		const mask = new Mesh(new BoxGeometry(0.14, 0.07, 0.04), this.track(lit({ color: 0xeeeeee, roughness: 0.7 })));
 		mask.position.set(0, 0.9, 0.12);
 		person.add(mask);
 
 		// Arms on wheel
-		const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.28, 3, 5), skin);
+		const armL = new Mesh(new CapsuleGeometry(0.045, 0.28, 3, 5), skin);
 		armL.position.set(-0.2, 0.55, 0.25);
 		armL.rotation.x = -0.9;
 		armL.rotation.z = 0.3;
@@ -527,7 +538,7 @@ export class CleaningCart {
 		person.add(armL, armR);
 
 		// Hands on wheel
-		const handL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), skin);
+		const handL = new Mesh(new SphereGeometry(0.05, 6, 6), skin);
 		handL.position.set(-0.12, 0.95, 0.42);
 		const handR = handL.clone();
 		handR.position.x = 0.12;
@@ -546,8 +557,8 @@ export class CleaningCart {
 		const { canvas: sc, ctx: speechCtx } = labelCanvas(280, 72);
 		this.speechCtx = speechCtx;
 		this.speechTex = labelTexture(sc);
-		this.speech = new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		this.speech = new Sprite(
+			new SpriteMaterial({
 				map: this.speechTex,
 				transparent: true,
 				depthTest: true,
@@ -558,21 +569,21 @@ export class CleaningCart {
 		this.speech.visible = false;
 		// The bubble's own `visible` is the say/expire timer's, so the deck cull
 		// gets a holder to switch instead of fighting over the same flag.
-		const speechHolder = new THREE.Group();
+		const speechHolder = new Group();
 		speechHolder.add(this.speech);
 		g.add(speechHolder);
 		tagLevelCulled(speechHolder);
 
 		// Trailing wet-floor A-sign (hinged behind cart)
-		this.wetSign = new THREE.Group();
+		this.wetSign = new Group();
 		this.wetSign.position.set(0, 0.35, -1.05);
-		const signPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.15, 5), grey);
+		const signPole = new Mesh(new CylinderGeometry(0.02, 0.02, 0.15, 5), grey);
 		signPole.position.y = -0.1;
 		this.wetSign.add(signPole);
 		const wetTex = this.makePlate('⚠ WET FLOOR\n小心地滑', '#ffeb3b', '#111', 256, 160);
 		const wetBoard = backToBackLabel(
-			new THREE.PlaneGeometry(0.55, 0.45),
-			this.track(new THREE.MeshBasicMaterial({ map: wetTex, toneMapped: false })),
+			new PlaneGeometry(0.55, 0.45),
+			this.track(new MeshBasicMaterial({ map: wetTex, toneMapped: false })),
 		);
 		wetBoard.position.y = 0.2;
 		// tent shape: two planes
@@ -586,15 +597,12 @@ export class CleaningCart {
 		g.add(this.wetSign);
 
 		// Mop sticking out the side
-		const mopStick = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.015, 0.018, 1.1, 5),
-			this.track(lit({ color: 0x8d6e63, roughness: 0.9 })),
-		);
+		const mopStick = new Mesh(new CylinderGeometry(0.015, 0.018, 1.1, 5), this.track(lit({ color: 0x8d6e63, roughness: 0.9 })));
 		mopStick.position.set(0.55, 0.9, -0.2);
 		mopStick.rotation.z = 0.25;
 		mopStick.rotation.x = -0.3;
 		g.add(mopStick);
-		const mopHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), this.track(lit({ color: 0xeeeeee, roughness: 0.95 })));
+		const mopHead = new Mesh(new SphereGeometry(0.12, 8, 6), this.track(lit({ color: 0xeeeeee, roughness: 0.95 })));
 		mopHead.scale.set(1, 0.5, 1.2);
 		mopHead.position.set(0.7, 0.45, 0.15);
 		g.add(mopHead);
@@ -602,7 +610,7 @@ export class CleaningCart {
 		return g;
 	}
 
-	private makePlate(text: string, bg: string, fg: string, w: number, h: number): THREE.CanvasTexture {
+	private makePlate(text: string, bg: string, fg: string, w: number, h: number): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
@@ -623,7 +631,7 @@ export class CleaningCart {
 		return tex;
 	}
 
-	private makeSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
+	private makeSprite(text: string, bg: string, w: number, h: number): Sprite {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
@@ -633,6 +641,6 @@ export class CleaningCart {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, half(w), half(h));
 		const tex = labelTexture(c);
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		return new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }

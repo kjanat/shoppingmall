@@ -1,4 +1,29 @@
-import * as THREE from 'three';
+import type { BufferGeometry, CanvasTexture, Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	Color,
+	ConeGeometry,
+	CylinderGeometry,
+	DoubleSide,
+	DynamicDrawUsage,
+	Euler,
+	Group,
+	InstancedBufferAttribute,
+	InstancedMesh,
+	Matrix4,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	Quaternion,
+	RingGeometry,
+	Sphere,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	TorusGeometry,
+	Vector3,
+} from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SpatialSource } from '#/audio/SpatialAudio';
 import { spatial } from '#/audio/SpatialAudio';
@@ -14,14 +39,14 @@ import { tagLevelCulled } from '#/util/visibility';
 import MANIFEST from '$/public/voices/protest/manifest.json' with { type: 'json' };
 
 /** Prebaked multi-voice chants (public/voices/protest/) — different speaker each clip */
-export type ProtestClip = {
+export interface ProtestClip {
 	id: string;
 	file: string;
 	text: string;
 	label: string;
 	voice: string;
 	kind: 'crowd' | 'merkel';
-};
+}
 
 /**
  * The prebaked chants, straight from the manifest the generator writes next to
@@ -66,9 +91,9 @@ class ClipBag {
 	}
 }
 
-type Protester = {
+interface Protester {
 	/** Speech anchor. Merkel also keeps her bespoke visible model here. */
-	root: THREE.Group;
+	root: Group;
 	/** local pos relative to group (camp) */
 	x: number;
 	z: number;
@@ -90,20 +115,20 @@ type Protester = {
 	separationZ: number;
 	/** Null for Merkel, otherwise the shared-mesh instance index. */
 	instanceIndex: number | null;
-	sign?: THREE.Object3D;
-	speech: THREE.Sprite;
-	speechTex: THREE.CanvasTexture;
+	sign?: Object3D;
+	speech: Sprite;
+	speechTex: CanvasTexture;
 	speechCtx: CanvasRenderingContext2D;
 	speechLife: number;
-	fist?: THREE.Object3D;
-	flag?: THREE.Object3D;
+	fist?: Object3D;
+	flag?: Object3D;
 	isMerkel: boolean;
 	lineIdx: number;
 	/** Sticky voice identity: only play clips matching this voice key when possible */
 	voiceKey: string;
 	/** cooldown so one body doesn't spam audio */
 	voiceCd: number;
-};
+}
 
 const SIGN_LINES: [string, string][] = [
 	['LOVE', 'WINS'],
@@ -118,12 +143,12 @@ const SIGN_LINES: [string, string][] = [
 
 type FlagKind = 'progress' | 'rainbow' | 'trans' | 'bi' | 'lesbian' | 'nb' | 'pan' | 'intersex';
 
-type CrowdInstances = {
-	bodies: THREE.InstancedMesh;
-	faces: THREE.InstancedMesh;
-	sticks: THREE.InstancedMesh;
-	signs: THREE.InstancedMesh;
-};
+interface CrowdInstances {
+	bodies: InstancedMesh;
+	faces: InstancedMesh;
+	sticks: InstancedMesh;
+	signs: InstancedMesh;
+}
 
 type ChantState =
 	| { kind: 'locked' }
@@ -166,16 +191,16 @@ const FIST_PUNCH_ROT = 0.5;
  * thick elderly Angela Merkel. Swarm walks the floor like chanting zombies.
  */
 export class ProtestGroupies {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	/** East of atrium ground — clear of kiosk / north corridor */
-	readonly pos = new THREE.Vector3(8, 0, 4);
-	private materials: THREE.Material[] = [];
+	readonly pos = new Vector3(8, 0, 4);
+	private materials: Material[] = [];
 	private people: Protester[] = [];
-	private plantedFlags: THREE.Group[] = [];
+	private plantedFlags: Group[] = [];
 	private t = 0;
 	private audioStarted = false;
 	private stopAudio: (() => void) | null = null;
-	private readonly banner: THREE.Group;
+	private readonly banner: Group;
 	private merkelIdx = -1;
 	private world: CollisionWorld;
 	/** Live clip bank (manifest or hardcoded) */
@@ -198,13 +223,13 @@ export class ProtestGroupies {
 	private surgeTime = 0;
 	private surgeCd = 12 + Math.random() * 10;
 	private readonly separationGrid = new Map<number, number[]>();
-	private readonly rootMatrix = new THREE.Matrix4();
-	private readonly partMatrix = new THREE.Matrix4();
-	private readonly instanceMatrix = new THREE.Matrix4();
-	private readonly tempPosition = new THREE.Vector3();
-	private readonly tempScale = new THREE.Vector3();
-	private readonly tempRotation = new THREE.Euler();
-	private readonly tempQuaternion = new THREE.Quaternion();
+	private readonly rootMatrix = new Matrix4();
+	private readonly partMatrix = new Matrix4();
+	private readonly instanceMatrix = new Matrix4();
+	private readonly tempPosition = new Vector3();
+	private readonly tempScale = new Vector3();
+	private readonly tempRotation = new Euler();
+	private readonly tempQuaternion = new Quaternion();
 
 	constructor(world: CollisionWorld) {
 		this.world = world;
@@ -226,7 +251,7 @@ export class ProtestGroupies {
 			{ x: this.pos.x, y: 1.6, z: this.pos.z },
 			(ctx, dest) => {
 				let alive = true;
-				let timer: number | null = null;
+				let timer: ReturnType<typeof setTimeout> | null = null;
 				const phrase = () => {
 					if (!alive) return;
 					// [frequency, duration] so the two never drift apart
@@ -259,7 +284,7 @@ export class ProtestGroupies {
 						o.stop(t0 + dur + 0.02);
 						t0 += dur * 0.95;
 					}
-					timer = window.setTimeout(phrase, 5200 + Math.random() * 2200);
+					timer = globalThis.setTimeout(phrase, 5200 + Math.random() * 2200);
 				};
 				phrase();
 				return {
@@ -388,7 +413,7 @@ export class ProtestGroupies {
 		this.chantState = { kind: 'locked' };
 	}
 
-	update(dt: number, playerPos?: THREE.Vector3): void {
+	update(dt: number, playerPos?: Vector3): void {
 		this.t += dt;
 		this.tickSwarm(dt, playerPos);
 
@@ -401,7 +426,7 @@ export class ProtestGroupies {
 		for (let i = 0; i < this.plantedFlags.length; i++) {
 			const f = this.plantedFlags[i];
 			if (!f) continue;
-			const cloth = f.userData['cloth'] as THREE.Object3D | undefined;
+			const cloth = f.userData['cloth'] as Object3D | undefined;
 			if (cloth) {
 				cloth.rotation.y = Math.sin(this.t * 2.2 + i) * 0.25;
 				cloth.rotation.z = Math.sin(this.t * 1.7 + i * 0.8) * 0.08;
@@ -416,7 +441,7 @@ export class ProtestGroupies {
 	 * a stable place around it, then noise, separation and jumps disturb that
 	 * composition without dissolving it into unrelated wanderers.
 	 */
-	private tickSwarm(dt: number, playerPos?: THREE.Vector3): void {
+	private tickSwarm(dt: number, playerPos?: Vector3): void {
 		this.tickSwarmCenter(dt, playerPos);
 		this.rebuildSeparationGrid();
 		this.measureSeparation();
@@ -432,7 +457,7 @@ export class ProtestGroupies {
 		this.updateCrowdInstances();
 	}
 
-	private tickSwarmCenter(dt: number, playerPos?: THREE.Vector3): void {
+	private tickSwarmCenter(dt: number, playerPos?: Vector3): void {
 		this.swarmRetargetCd -= dt;
 		if (this.swarmRetargetCd <= 0) {
 			const angle = Math.random() * Math.PI * 2;
@@ -656,7 +681,7 @@ export class ProtestGroupies {
 	}
 
 	private writePart(
-		mesh: THREE.InstancedMesh,
+		mesh: InstancedMesh,
 		index: number,
 		x: number,
 		y: number,
@@ -682,14 +707,14 @@ export class ProtestGroupies {
 		this.stopAudio?.();
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
-	private buildBanner(): THREE.Group {
+	private buildBanner(): Group {
 		const pole = this.track(lit({ color: 0x5d4037, roughness: 0.8 }));
-		const pL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 2.6, 6), pole);
+		const pL = new Mesh(new CylinderGeometry(0.04, 0.05, 2.6, 6), pole);
 		pL.position.set(-1.6, 1.3, -1.8);
 		const pR = pL.clone();
 		pR.position.x = 1.6;
@@ -727,18 +752,18 @@ export class ProtestGroupies {
 		ctx.fillText('ANGELA + LGBTQIA+ PROTEST GROUPIES', 440, 128);
 		const tex = labelTexture(c);
 		const banner = backToBackLabel(
-			new THREE.PlaneGeometry(3.4, 0.85),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
+			new PlaneGeometry(3.4, 0.85),
+			this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 		banner.position.set(0, 2.35, -1.8);
 		this.group.add(banner);
 
-		const ring = new THREE.Mesh(
-			new THREE.RingGeometry(2.6, 2.75, 32),
+		const ring = new Mesh(
+			new RingGeometry(2.6, 2.75, 32),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					color: 0xffeb3b,
-					side: THREE.DoubleSide,
+					side: DoubleSide,
 					transparent: true,
 					opacity: 0.55,
 				}),
@@ -764,8 +789,8 @@ export class ProtestGroupies {
 		}
 	}
 
-	private makeFlagPole(kind: FlagKind, height = 1.6): THREE.Group {
-		const g = new THREE.Group();
+	private makeFlagPole(kind: FlagKind, height = 1.6): Group {
+		const g = new Group();
 		const poleMat = this.track(
 			lit({
 				color: 0xb0bec5,
@@ -773,11 +798,11 @@ export class ProtestGroupies {
 				roughness: 0.4,
 			}),
 		);
-		const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, height, 6), poleMat);
+		const pole = new Mesh(new CylinderGeometry(0.025, 0.03, height, 6), poleMat);
 		pole.position.y = half(height);
 		g.add(pole);
-		const ball = new THREE.Mesh(
-			new THREE.SphereGeometry(0.05, 8, 8),
+		const ball = new Mesh(
+			new SphereGeometry(0.05, 8, 8),
 			this.track(
 				lit({
 					color: 0xffd700,
@@ -790,12 +815,12 @@ export class ProtestGroupies {
 		g.add(ball);
 
 		const tex = this.makePrideFlagTex(kind);
-		const cloth = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.72, 0.48),
+		const cloth = new Mesh(
+			new PlaneGeometry(0.72, 0.48),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					map: tex,
-					side: THREE.DoubleSide,
+					side: DoubleSide,
 					toneMapped: false,
 				}),
 			),
@@ -807,20 +832,17 @@ export class ProtestGroupies {
 	}
 
 	/** Small handheld pride flag for groupies */
-	private makeHandFlag(kind: FlagKind): THREE.Group {
-		const g = new THREE.Group();
-		const stick = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.015, 0.018, 0.7, 5),
-			this.track(lit({ color: 0x8d6e63, roughness: 0.9 })),
-		);
+	private makeHandFlag(kind: FlagKind): Group {
+		const g = new Group();
+		const stick = new Mesh(new CylinderGeometry(0.015, 0.018, 0.7, 5), this.track(lit({ color: 0x8d6e63, roughness: 0.9 })));
 		stick.position.y = 0.35;
 		g.add(stick);
-		const cloth = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.38, 0.26),
+		const cloth = new Mesh(
+			new PlaneGeometry(0.38, 0.26),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					map: this.makePrideFlagTex(kind),
-					side: THREE.DoubleSide,
+					side: DoubleSide,
 					toneMapped: false,
 				}),
 			),
@@ -831,7 +853,7 @@ export class ProtestGroupies {
 		return g;
 	}
 
-	private makePrideFlagTex(kind: FlagKind): THREE.CanvasTexture {
+	private makePrideFlagTex(kind: FlagKind): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(256, 160);
 		this.paintPrideFlag(ctx, kind);
 		return labelTexture(c);
@@ -932,8 +954,8 @@ export class ProtestGroupies {
 	 * signature blonde bowl cut, pearls, "Wir schaffen das".
 	 */
 	private buildMerkel(): void {
-		const root = new THREE.Group();
-		const base = new THREE.Vector3(0, 0, 1.2); // floor — joins the zombie shuffle
+		const root = new Group();
+		const base = new Vector3(0, 0, 1.2); // floor — joins the zombie shuffle
 		root.position.copy(base);
 
 		// Soft older skin
@@ -951,65 +973,65 @@ export class ProtestGroupies {
 		);
 
 		// Short thick legs
-		const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.38, 4, 8), suitPants);
+		const legL = new Mesh(new CapsuleGeometry(0.16, 0.38, 4, 8), suitPants);
 		const legR = legL.clone();
 		legL.position.set(-0.16, 0.35, 0.02);
 		legR.position.set(0.16, 0.35, 0.02);
 		root.add(legL, legR);
 
 		// Wide hips / belly — "net zo oud en dik"
-		const hips = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 12), suitPants);
+		const hips = new Mesh(new SphereGeometry(0.42, 14, 12), suitPants);
 		hips.scale.set(1.25, 0.7, 0.95);
 		hips.position.set(0, 0.72, 0.05);
 		root.add(hips);
 
-		const belly = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 14), suit);
+		const belly = new Mesh(new SphereGeometry(0.48, 16, 14), suit);
 		belly.scale.set(1.2, 0.95, 1.05);
 		belly.position.set(0, 1.15, 0.12);
 		root.add(belly);
 
 		// Soft upper bulk
-		const chest = new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 12), suit);
+		const chest = new Mesh(new SphereGeometry(0.4, 14, 12), suit);
 		chest.scale.set(1.15, 0.75, 0.9);
 		chest.position.set(0, 1.55, 0.06);
 		root.add(chest);
 
 		// White blouse peek
-		const collar = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), blouse);
+		const collar = new Mesh(new SphereGeometry(0.18, 10, 8), blouse);
 		collar.scale.set(1.1, 0.55, 0.8);
 		collar.position.set(0, 1.72, 0.14);
 		root.add(collar);
 
 		// Head — slightly fuller, older
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), skin);
+		const head = new Mesh(new SphereGeometry(0.22, 14, 14), skin);
 		head.position.set(0, 2.05, 0.04);
 		root.add(head);
 
 		// Signature Merkel bowl cut (blonde, short, rounded)
-		const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hairM);
+		const bowl = new Mesh(new SphereGeometry(0.24, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hairM);
 		bowl.position.set(0, 2.12, -0.01);
 		root.add(bowl);
 		// Side volume
-		const sideL = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), hairM);
+		const sideL = new Mesh(new SphereGeometry(0.1, 8, 8), hairM);
 		sideL.scale.set(0.7, 1.1, 0.9);
 		sideL.position.set(-0.2, 2.02, 0.02);
 		const sideR = sideL.clone();
 		sideR.position.x = 0.2;
 		root.add(sideL, sideR);
 		// Fringe
-		const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 0.08), hairM);
+		const fringe = new Mesh(new BoxGeometry(0.32, 0.08, 0.08), hairM);
 		fringe.position.set(0, 2.12, 0.18);
 		root.add(fringe);
 
 		// Simple face
-		const eyeM = this.track(new THREE.MeshBasicMaterial({ color: 0x2c1810 }));
-		const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), eyeM);
+		const eyeM = this.track(new MeshBasicMaterial({ color: 0x2c1810 }));
+		const eyeL = new Mesh(new SphereGeometry(0.035, 8, 6), eyeM);
 		const eyeR = eyeL.clone();
 		eyeL.position.set(-0.07, 2.08, 0.2);
 		eyeR.position.set(0.07, 2.08, 0.2);
 		root.add(eyeL, eyeR);
 		// Soft smile
-		const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 4, 10, Math.PI), eyeM);
+		const mouth = new Mesh(new TorusGeometry(0.06, 0.012, 4, 10, Math.PI), eyeM);
 		mouth.position.set(0, 1.96, 0.2);
 		mouth.rotation.x = 0.3;
 		root.add(mouth);
@@ -1017,22 +1039,22 @@ export class ProtestGroupies {
 		// Pearl necklace
 		for (let i = 0; i < 9; i++) {
 			const a = -0.7 + (i / 8) * 1.4;
-			const bead = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), pearl);
+			const bead = new Mesh(new SphereGeometry(0.028, 8, 8), pearl);
 			bead.position.set(Math.sin(a) * 0.2, 1.78 + Math.cos(a) * 0.04, 0.22 + Math.cos(a) * 0.06);
 			root.add(bead);
 		}
 
 		// Right hand raised (Mutti wave / fist-ish)
-		const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.4, 4, 6), suit);
+		const arm = new Mesh(new CapsuleGeometry(0.08, 0.4, 4, 6), suit);
 		arm.position.set(0.45, 1.55, 0.1);
 		arm.rotation.z = -0.85;
 		root.add(arm);
-		const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), skin);
+		const hand = new Mesh(new SphereGeometry(0.09, 8, 8), skin);
 		hand.position.set(0.62, 1.82, 0.12);
 		root.add(hand);
 
 		// Left hand holds progress pride mini-flag
-		const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.38, 4, 6), suit);
+		const armL = new Mesh(new CapsuleGeometry(0.08, 0.38, 4, 6), suit);
 		armL.position.set(-0.42, 1.4, 0.15);
 		armL.rotation.z = 0.5;
 		armL.rotation.x = -0.4;
@@ -1043,15 +1065,12 @@ export class ProtestGroupies {
 		root.add(flag);
 
 		// Sign: WIR SCHAFFEN DAS
-		const stick = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.025, 0.03, 1.0, 5),
-			this.track(lit({ color: 0x8d6e63, roughness: 0.9 })),
-		);
+		const stick = new Mesh(new CylinderGeometry(0.025, 0.03, 1.0, 5), this.track(lit({ color: 0x8d6e63, roughness: 0.9 })));
 		stick.position.set(0.35, 1.55, 0.35);
 		root.add(stick);
 		const sign = backToBackLabel(
-			new THREE.PlaneGeometry(0.95, 0.55),
-			this.track(new THREE.MeshBasicMaterial({ map: this.makeSignTex(['WIR SCHAFFEN', 'DAS 🇩🇪'], 0), toneMapped: false })),
+			new PlaneGeometry(0.95, 0.55),
+			this.track(new MeshBasicMaterial({ map: this.makeSignTex(['WIR SCHAFFEN', 'DAS 🇩🇪'], 0), toneMapped: false })),
 		);
 		sign.position.set(0.35, 2.2, 0.35);
 		root.add(sign);
@@ -1066,8 +1085,8 @@ export class ProtestGroupies {
 		// Speech bubble
 		const { canvas: sc, ctx: speechCtx } = labelCanvas(360, 90);
 		const speechTex = labelTexture(sc);
-		const speech = new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		const speech = new Sprite(
+			new SpriteMaterial({
 				map: speechTex,
 				transparent: true,
 				depthTest: true,
@@ -1077,13 +1096,13 @@ export class ProtestGroupies {
 		speech.position.set(0, 2.75, 0);
 		speech.visible = false;
 		// The deck cull owns the holder's `visible`, so `speechLife` keeps owning the sprite's.
-		const speechHolder = new THREE.Group();
+		const speechHolder = new Group();
 		speechHolder.add(speech);
 		root.add(speechHolder);
 		tagLevelCulled(speechHolder);
 
 		// Abandoned crate at camp (Mutti left the stage)
-		const crate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.38, 0.75), this.track(lit({ color: 0x5d4037, roughness: 0.85 })));
+		const crate = new Mesh(new BoxGeometry(0.9, 0.38, 0.75), this.track(lit({ color: 0x5d4037, roughness: 0.85 })));
 		crate.position.set(0, 0.19, 0.4);
 		this.group.add(crate);
 
@@ -1131,10 +1150,10 @@ export class ProtestGroupies {
 		});
 	}
 
-	private makeDeFlagPole(): THREE.Group {
-		const g = new THREE.Group();
-		const pole = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.025, 0.03, 1.7, 6),
+	private makeDeFlagPole(): Group {
+		const g = new Group();
+		const pole = new Mesh(
+			new CylinderGeometry(0.025, 0.03, 1.7, 6),
 			this.track(
 				lit({
 					color: 0xb0bec5,
@@ -1153,12 +1172,12 @@ export class ProtestGroupies {
 		ctx.fillStyle = '#FFCE00';
 		ctx.fillRect(0, 107, 256, 53);
 		const tex = labelTexture(c);
-		const cloth = new THREE.Mesh(
-			new THREE.PlaneGeometry(0.7, 0.44),
+		const cloth = new Mesh(
+			new PlaneGeometry(0.7, 0.44),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					map: tex,
-					side: THREE.DoubleSide,
+					side: DoubleSide,
 					toneMapped: false,
 				}),
 			),
@@ -1170,8 +1189,8 @@ export class ProtestGroupies {
 	}
 
 	private buildMegaphoneStand(): void {
-		const mega = new THREE.Mesh(
-			new THREE.ConeGeometry(0.16, 0.38, 10),
+		const mega = new Mesh(
+			new ConeGeometry(0.16, 0.38, 10),
 			this.track(
 				lit({
 					color: 0xffeb3b,
@@ -1209,7 +1228,7 @@ export class ProtestGroupies {
 			'Eric',
 		];
 		const crowd = this.buildCrowdInstances(n);
-		const protestBlue = new THREE.Color(0x3a8fd6);
+		const protestBlue = new Color(0x3a8fd6);
 
 		for (let i = 0; i < n; i++) {
 			// A sunflower distribution fills an ellipse without a dense ring or
@@ -1219,7 +1238,7 @@ export class ProtestGroupies {
 			const preferredAngle = i * 2.399 + 0.2;
 			const bx = Math.sin(preferredAngle) * preferredRadius;
 			const bz = Math.cos(preferredAngle) * preferredRadius * 0.78;
-			const root = new THREE.Group();
+			const root = new Group();
 			root.position.set(bx, 0, bz);
 			crowd.bodies.setColorAt(i, protestBlue);
 			const signTiles = crowd.signs.geometry.getAttribute('instanceTile');
@@ -1227,8 +1246,8 @@ export class ProtestGroupies {
 
 			const { canvas: sc, ctx: speechCtx } = labelCanvas(320, 80);
 			const speechTex = labelTexture(sc);
-			const speech = new THREE.Sprite(
-				new THREE.SpriteMaterial({
+			const speech = new Sprite(
+				new SpriteMaterial({
 					map: speechTex,
 					transparent: true,
 					depthTest: true,
@@ -1238,7 +1257,7 @@ export class ProtestGroupies {
 			speech.position.set(0, 2.35, 0);
 			speech.visible = false;
 			// The deck cull owns the holder's `visible`, so `speechLife` keeps owning the sprite's.
-			const speechHolder = new THREE.Group();
+			const speechHolder = new Group();
 			speechHolder.add(speech);
 			root.add(speechHolder);
 			tagLevelCulled(speechHolder);
@@ -1290,33 +1309,33 @@ export class ProtestGroupies {
 		);
 		const faces = this.makeCrowdMesh(
 			this.makeCrowdFaceGeometry(),
-			this.track(new THREE.MeshBasicMaterial({ color: 0x1a1a1a })),
+			this.track(new MeshBasicMaterial({ color: 0x1a1a1a })),
 			count,
 			'protest faces',
 		);
 		faces.castShadow = false;
 		const sticks = this.makeCrowdMesh(
-			new THREE.CylinderGeometry(0.02, 0.02, 1.05, 5),
+			new CylinderGeometry(0.02, 0.02, 1.05, 5),
 			this.track(lit({ color: 0x5d4037, roughness: 0.9 })),
 			count,
 			'protest sign sticks',
 		);
 
-		const signGeometry = new THREE.PlaneGeometry(0.76, 0.52);
-		signGeometry.setAttribute('instanceTile', new THREE.InstancedBufferAttribute(new Float32Array(count), 1));
+		const signGeometry = new PlaneGeometry(0.76, 0.52);
+		signGeometry.setAttribute('instanceTile', new InstancedBufferAttribute(new Float32Array(count), 1));
 		const signs = this.makeCrowdMesh(signGeometry, this.makeAtlasMaterial(this.makeSignAtlas(), 4, 2), count, 'protest signs');
 		signs.castShadow = false;
 		return { bodies, faces, sticks, signs };
 	}
 
-	private makeCrowdBodyGeometry(): THREE.BufferGeometry {
-		const torso = new THREE.CylinderGeometry(0.28, 0.32, 0.75, 10);
+	private makeCrowdBodyGeometry(): BufferGeometry {
+		const torso = new CylinderGeometry(0.28, 0.32, 0.75, 10);
 		torso.translate(0, 0.72, 0);
-		const lowerBody = new THREE.SphereGeometry(0.32, 10, 7);
+		const lowerBody = new SphereGeometry(0.32, 10, 7);
 		lowerBody.translate(0, 0.36, 0);
-		const head = new THREE.SphereGeometry(0.26, 10, 7);
+		const head = new SphereGeometry(0.26, 10, 7);
 		head.translate(0, 1.28, 0);
-		const raisedArm = new THREE.CylinderGeometry(0.055, 0.055, 0.4, 6);
+		const raisedArm = new CylinderGeometry(0.055, 0.055, 0.4, 6);
 		raisedArm.rotateZ(-0.5);
 		raisedArm.translate(0.35, 0.95, 0.05);
 		const merged = mergeGeometries([torso, lowerBody, head, raisedArm]);
@@ -1324,41 +1343,36 @@ export class ProtestGroupies {
 		return merged;
 	}
 
-	private makeCrowdFaceGeometry(): THREE.BufferGeometry {
-		const leftEye = new THREE.SphereGeometry(0.038, 5, 4);
+	private makeCrowdFaceGeometry(): BufferGeometry {
+		const leftEye = new SphereGeometry(0.038, 5, 4);
 		leftEye.translate(-0.08, 1.32, 0.23);
-		const rightEye = new THREE.SphereGeometry(0.038, 5, 4);
+		const rightEye = new SphereGeometry(0.038, 5, 4);
 		rightEye.translate(0.08, 1.32, 0.23);
-		const mouth = new THREE.BoxGeometry(0.1, 0.028, 0.03);
+		const mouth = new BoxGeometry(0.1, 0.028, 0.03);
 		mouth.translate(0, 1.18, 0.24);
 		const merged = mergeGeometries([leftEye, rightEye, mouth]);
 		if (!merged) throw new Error('protester face geometry could not be merged');
 		return merged;
 	}
 
-	private makeCrowdMesh(
-		geometry: THREE.BufferGeometry,
-		material: THREE.Material,
-		count: number,
-		name: string,
-	): THREE.InstancedMesh {
-		const mesh = new THREE.InstancedMesh(geometry, material, count);
+	private makeCrowdMesh(geometry: BufferGeometry, material: Material, count: number, name: string): InstancedMesh {
+		const mesh = new InstancedMesh(geometry, material, count);
 		mesh.name = name;
-		mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		mesh.instanceMatrix.setUsage(DynamicDrawUsage);
 		mesh.castShadow = true;
 		mesh.receiveShadow = true;
 		// Instance motion does not invalidate Three's lazy bound. A fixed swarm
 		// sphere stays correct while avoiding one per-instance cull walk.
-		mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), SWARM_RADIUS + SWARM_WANDER_RADIUS + 8);
+		mesh.boundingSphere = new Sphere(new Vector3(0, 1, 0), SWARM_RADIUS + SWARM_WANDER_RADIUS + 8);
 		this.group.add(mesh);
 		return mesh;
 	}
 
-	private makeAtlasMaterial(map: THREE.CanvasTexture, columns: number, rows: number): THREE.MeshBasicMaterial {
+	private makeAtlasMaterial(map: CanvasTexture, columns: number, rows: number): MeshBasicMaterial {
 		const material = this.track(
-			new THREE.MeshBasicMaterial({
+			new MeshBasicMaterial({
 				map,
-				side: THREE.DoubleSide,
+				side: DoubleSide,
 				toneMapped: false,
 			}),
 		);
@@ -1379,7 +1393,7 @@ export class ProtestGroupies {
 		return material;
 	}
 
-	private makeSignAtlas(): THREE.CanvasTexture {
+	private makeSignAtlas(): CanvasTexture {
 		const { canvas, ctx } = labelCanvas(1024, 352);
 		for (let i = 0; i < SIGN_LINES.length; i++) {
 			ctx.save();
@@ -1390,7 +1404,7 @@ export class ProtestGroupies {
 		return labelTexture(canvas);
 	}
 
-	private makeSignTex(lines: [string, string], seed: number): THREE.CanvasTexture {
+	private makeSignTex(lines: [string, string], seed: number): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(256, 176);
 		this.paintSign(ctx, lines, seed);
 		return labelTexture(c);
@@ -1421,7 +1435,7 @@ export class ProtestGroupies {
 		});
 	}
 
-	private makeTextSprite(text: string, bg: string, w: number, h: number): THREE.Sprite {
+	private makeTextSprite(text: string, bg: string, w: number, h: number): Sprite {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg.startsWith('#') || bg.startsWith('rgb') ? bg : bg;
 		ctx.fillRect(0, 0, w, h);
@@ -1431,7 +1445,7 @@ export class ProtestGroupies {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, half(w), half(h));
 		const tex = labelTexture(c);
-		const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		const sp = new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 		sp.scale.set(0.85, 0.22, 1);
 		return sp;
 	}
@@ -1444,7 +1458,7 @@ export class ProtestGroupies {
 		ctx.fillStyle = merkel ? 'rgba(26,35,126,0.95)' : 'rgba(255,255,255,0.95)';
 		ctx.strokeStyle = merkel ? '#ffd700' : '#1565c0';
 		ctx.lineWidth = 4;
-		roundRect(ctx, 8, 6, w - 16, h - 20, 12);
+		roundRect(ctx, { x: 8, y: 6, width: w - 16, height: h - 20, radius: 12 });
 		ctx.fill();
 		ctx.stroke();
 		speechTail(ctx, w, h);

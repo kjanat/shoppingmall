@@ -1,4 +1,21 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import {
+	BoxGeometry,
+	BufferAttribute,
+	BufferGeometry,
+	CapsuleGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	Points,
+	PointsMaterial,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	Vector3,
+} from 'three';
 import { FOUNTAIN_SPEC } from '#/data/world';
 import { lit } from '#/render/material';
 import { labelCanvas, labelTexture } from '#/util/label';
@@ -13,14 +30,14 @@ const DROP_SIDE_SPEED = 0.5;
  * Architect-friendly: no floating nonsense, grounded on floor 0 atrium.
  */
 export class Amenities {
-	readonly group = new THREE.Group();
-	private fountainDrops: THREE.Points;
+	readonly group = new Group();
+	private fountainDrops: Points;
 	private fountainVel: Float32Array;
-	private aperolDrops: THREE.Points;
+	private aperolDrops: Points;
 	private aperolVel: Float32Array;
-	private monkey: THREE.Group;
-	private monkeyBase: THREE.Vector3;
-	private materials: THREE.Material[] = [];
+	private monkey: Group;
+	private monkeyBase: Vector3;
+	private materials: Material[] = [];
 
 	constructor() {
 		this.group.name = 'amenities';
@@ -51,22 +68,22 @@ export class Amenities {
 		this.monkey.rotation.y = Math.sin(t * 0.8) * 0.4;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
 	private buildFountain(): void {
 		const { center, basin: basinSpec } = FOUNTAIN_SPEC;
-		const base = new THREE.Mesh(
-			new THREE.CylinderGeometry(basinSpec.topRadius, basinSpec.bottomRadius, basinSpec.height, 24),
+		const base = new Mesh(
+			new CylinderGeometry(basinSpec.topRadius, basinSpec.bottomRadius, basinSpec.height, 24),
 			this.track(lit({ color: 0xb0bec5, metalness: 0.5, roughness: 0.4 })),
 		);
 		base.position.set(center.x, basinSpec.centerY, center.z);
 		this.group.add(base);
 
-		const basin = new THREE.Mesh(
-			new THREE.CylinderGeometry(2.0, 2.1, 0.5, 24),
+		const basin = new Mesh(
+			new CylinderGeometry(2.0, 2.1, 0.5, 24),
 			this.track(
 				lit({
 					color: 0x4fc3f7,
@@ -79,15 +96,15 @@ export class Amenities {
 		basin.position.set(0, 0.55, 0);
 		this.group.add(basin);
 
-		const pillar = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.25, 0.35, 1.4, 12),
+		const pillar = new Mesh(
+			new CylinderGeometry(0.25, 0.35, 1.4, 12),
 			this.track(lit({ color: 0x90a4ae, metalness: 0.6, roughness: 0.35 })),
 		);
 		pillar.position.set(0, 1.2, 0);
 		this.group.add(pillar);
 
-		const bowl = new THREE.Mesh(
-			new THREE.SphereGeometry(0.55, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+		const bowl = new Mesh(
+			new SphereGeometry(0.55, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2),
 			this.track(lit({ color: 0xcfd8dc, metalness: 0.5, roughness: 0.3 })),
 		);
 		bowl.position.set(0, 1.9, 0);
@@ -102,24 +119,24 @@ export class Amenities {
 		ctx.textAlign = 'center';
 		ctx.fillText('FONTEIN', 128, 40);
 		const tex = labelTexture(c);
-		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
+		const sp = new Sprite(this.track(new SpriteMaterial({ map: tex, transparent: true })));
 		sp.position.set(0, 3.2, 0);
 		sp.scale.set(2, 0.5, 1);
 		this.group.add(sp);
 	}
 
 	private buildAperolBar(): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		g.position.set(-14, 0, 10);
 
-		const counter = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.0, 1.2), this.track(lit({ color: 0x5d4037, roughness: 0.7 })));
+		const counter = new Mesh(new BoxGeometry(3.2, 1.0, 1.2), this.track(lit({ color: 0x5d4037, roughness: 0.7 })));
 		counter.position.y = 0.5;
 		g.add(counter);
 
 		// Aperol bottles (orange)
 		for (let i = 0; i < 4; i++) {
-			const bot = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.08, 0.1, 0.45, 8),
+			const bot = new Mesh(
+				new CylinderGeometry(0.08, 0.1, 0.45, 8),
 				this.track(lit({ color: 0xff6b35, roughness: 0.4, metalness: 0.2 })),
 			);
 			bot.position.set(-0.9 + i * 0.55, 1.25, 0);
@@ -127,8 +144,8 @@ export class Amenities {
 		}
 
 		// Spritz glass
-		const glass = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.12, 0.08, 0.35, 10),
+		const glass = new Mesh(
+			new CylinderGeometry(0.12, 0.08, 0.35, 10),
 			this.track(
 				lit({
 					color: 0xff8a50,
@@ -149,46 +166,43 @@ export class Amenities {
 		ctx.textAlign = 'center';
 		ctx.fillText('APEROL SPRITZ 🍊', 160, 48);
 		const tex = labelTexture(c);
-		const sign = new THREE.Mesh(
-			new THREE.PlaneGeometry(2.4, 0.6),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		const sign = new Mesh(new PlaneGeometry(2.4, 0.6), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 		sign.position.set(0, 2.0, 0.65);
 		g.add(sign);
 
 		this.group.add(g);
 	}
 
-	private buildMonkeyInTree(): { monkey: THREE.Group; base: THREE.Vector3 } {
+	private buildMonkeyInTree(): { monkey: Group; base: Vector3 } {
 		// Sit on a palm near atrium (Palms has trees around center)
 		// Monkey on palm NEXT to fountain, not in the water
-		const base = new THREE.Vector3(4.2, 3.5, 0);
-		const m = new THREE.Group();
+		const base = new Vector3(4.2, 3.5, 0);
+		const m = new Group();
 		m.position.copy(base);
 
 		const fur = this.track(lit({ color: 0x6d4c41, roughness: 0.9 }));
 		const face = this.track(lit({ color: 0xe0b090, roughness: 0.85 }));
-		const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), fur);
+		const body = new Mesh(new SphereGeometry(0.28, 10, 10), fur);
 		body.scale.set(1, 1.15, 0.9);
 		body.position.y = 0.15;
 		m.add(body);
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), face);
+		const head = new Mesh(new SphereGeometry(0.2, 10, 10), face);
 		head.position.set(0, 0.45, 0.08);
 		m.add(head);
 		// ears
-		const earL = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), fur);
+		const earL = new Mesh(new SphereGeometry(0.08, 6, 6), fur);
 		const earR = earL.clone();
 		earL.position.set(-0.16, 0.52, 0);
 		earR.position.set(0.16, 0.52, 0);
 		m.add(earL, earR);
 		// tail
-		const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.4, 3, 6), fur);
+		const tail = new Mesh(new CapsuleGeometry(0.04, 0.4, 3, 6), fur);
 		tail.position.set(-0.25, 0.1, -0.2);
 		tail.rotation.z = 0.8;
 		m.add(tail);
 		// eyes
-		const eyeMat = this.track(new THREE.MeshBasicMaterial({ color: 0x111111 }));
-		const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), eyeMat);
+		const eyeMat = this.track(new MeshBasicMaterial({ color: 0x111111 }));
+		const e1 = new Mesh(new SphereGeometry(0.035, 6, 6), eyeMat);
 		const e2 = e1.clone();
 		e1.position.set(-0.06, 0.48, 0.26);
 		e2.position.set(0.06, 0.48, 0.26);
@@ -202,7 +216,7 @@ export class Amenities {
 		ctx.textAlign = 'center';
 		ctx.fillText('🐵 aap', 64, 26);
 		const tex = labelTexture(c);
-		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
+		const sp = new Sprite(this.track(new SpriteMaterial({ map: tex, transparent: true })));
 		sp.scale.set(1.0, 0.32, 1);
 		sp.position.y = 0.85;
 		m.add(sp);
@@ -210,23 +224,23 @@ export class Amenities {
 		return { monkey: m, base };
 	}
 
-	private makeParticles(count: number, color: number, size: number): THREE.Points {
+	private makeParticles(count: number, color: number, size: number): Points {
 		const positions = new Float32Array(count * 3);
 		for (let i = 0; i < count; i++) {
 			positions[i * 3] = jitter(0.4);
 			positions[i * 3 + 1] = 1.5 + Math.random() * 1.5;
 			positions[i * 3 + 2] = jitter(0.4);
 		}
-		const geo = new THREE.BufferGeometry();
-		geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-		const mat = new THREE.PointsMaterial({
+		const geo = new BufferGeometry();
+		geo.setAttribute('position', new BufferAttribute(positions, 3));
+		const mat = new PointsMaterial({
 			color,
 			size,
 			transparent: true,
 			opacity: 0.75,
 			depthWrite: false,
 		});
-		return new THREE.Points(geo, mat);
+		return new Points(geo, mat);
 	}
 
 	private initVel(count: number, upMin: number, upMax: number): Float32Array {
@@ -239,7 +253,7 @@ export class Amenities {
 		return v;
 	}
 
-	private updateParticles(pts: THREE.Points, vel: Float32Array, dt: number, ox: number, resetY: number, maxY: number): void {
+	private updateParticles(pts: Points, vel: Float32Array, dt: number, ox: number, resetY: number, maxY: number): void {
 		const pos = pts.geometry.getAttribute('position');
 		const arr = pos.array as Float32Array;
 		for (let i = 0; i + 2 < arr.length; i += 3) {

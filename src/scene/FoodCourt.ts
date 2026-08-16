@@ -1,4 +1,17 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	Vector3,
+} from 'three';
 import { levelY } from '#/data/levels';
 import { FOOD_COURT_SPEC } from '#/data/world';
 import type { LightPool } from '#/render/LightPool';
@@ -12,10 +25,10 @@ import { half } from '#/util/math';
  * Perfect hangry American destination.
  */
 export class FoodCourt {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	/** V1 south balcony strip — between atrium void and south store wall */
-	readonly pos = new THREE.Vector3(FOOD_COURT_SPEC.center.x, levelY('v1'), FOOD_COURT_SPEC.center.z);
-	private materials: THREE.Material[] = [];
+	readonly pos = new Vector3(FOOD_COURT_SPEC.center.x, levelY('v1'), FOOD_COURT_SPEC.center.z);
+	private materials: Material[] = [];
 	private pool: LightPool;
 
 	constructor(pool: LightPool) {
@@ -29,7 +42,7 @@ export class FoodCourt {
 		this.buildLights();
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -38,8 +51,8 @@ export class FoodCourt {
 		// Checker tile plaza
 		// Compact balcony plaza (must not eat south store footprints at z=18)
 		const { plaza, stripe } = FOOD_COURT_SPEC;
-		const floor = new THREE.Mesh(
-			new THREE.BoxGeometry(plaza.width, plaza.thickness, plaza.depth),
+		const floor = new Mesh(
+			new BoxGeometry(plaza.width, plaza.thickness, plaza.depth),
 			this.track(
 				lit({
 					color: 0xe8dcc8,
@@ -53,9 +66,9 @@ export class FoodCourt {
 		this.group.add(floor);
 
 		// Yellow caution strip border
-		const strip = new THREE.Mesh(
-			new THREE.BoxGeometry(stripe.width, stripe.thickness, stripe.depth),
-			this.track(new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false })),
+		const strip = new Mesh(
+			new BoxGeometry(stripe.width, stripe.thickness, stripe.depth),
+			this.track(new MeshBasicMaterial({ color: 0xf5c518, toneMapped: false })),
 		);
 		strip.position.set(0, stripe.centerY, -stripe.offsetZ);
 		this.group.add(strip);
@@ -80,35 +93,32 @@ export class FoodCourt {
 		];
 
 		for (const [tx, tz] of spots) {
-			const g = new THREE.Group();
+			const g = new Group();
 			g.position.set(tx, 0, tz);
 
-			const top = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.06, 12), wood);
+			const top = new Mesh(new CylinderGeometry(0.55, 0.55, 0.06, 12), wood);
 			top.position.y = 0.78;
 			g.add(top);
-			const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.75, 8), metal);
+			const pole = new Mesh(new CylinderGeometry(0.05, 0.07, 0.75, 8), metal);
 			pole.position.y = 0.38;
 			g.add(pole);
 
 			// 3 stools
 			for (let i = 0; i < 3; i++) {
 				const a = (i / 3) * Math.PI * 2 + 0.4;
-				const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.08, 10), wood);
+				const stool = new Mesh(new CylinderGeometry(0.18, 0.16, 0.08, 10), wood);
 				stool.position.set(Math.cos(a) * 0.75, 0.48, Math.sin(a) * 0.75);
 				g.add(stool);
-				const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.45, 6), metal);
+				const leg = new Mesh(new CylinderGeometry(0.03, 0.03, 0.45, 6), metal);
 				leg.position.set(Math.cos(a) * 0.75, 0.22, Math.sin(a) * 0.75);
 				g.add(leg);
 			}
 
 			// greasy tray + burger blob
-			const tray = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.22), trayMat);
+			const tray = new Mesh(new BoxGeometry(0.28, 0.03, 0.22), trayMat);
 			tray.position.set(0.1, 0.84, 0.05);
 			g.add(tray);
-			const burger = new THREE.Mesh(
-				new THREE.CylinderGeometry(0.08, 0.09, 0.08, 10),
-				this.track(lit({ color: 0xc4783a, roughness: 0.7 })),
-			);
+			const burger = new Mesh(new CylinderGeometry(0.08, 0.09, 0.08, 10), this.track(lit({ color: 0xc4783a, roughness: 0.7 })));
 			burger.position.set(0.1, 0.9, 0.05);
 			g.add(burger);
 
@@ -174,12 +184,12 @@ export class FoodCourt {
 		];
 
 		for (const s of stalls) {
-			const g = new THREE.Group();
+			const g = new Group();
 			g.position.set(s.x, 0, s.z);
 			g.rotation.y = s.rot;
 
-			const counter = new THREE.Mesh(
-				new THREE.BoxGeometry(2.8, 1.0, 1.0),
+			const counter = new Mesh(
+				new BoxGeometry(2.8, 1.0, 1.0),
 				this.track(
 					lit({
 						color: s.color,
@@ -191,8 +201,8 @@ export class FoodCourt {
 			counter.position.y = 0.55;
 			g.add(counter);
 
-			const top = new THREE.Mesh(
-				new THREE.BoxGeometry(2.9, 0.08, 1.1),
+			const top = new Mesh(
+				new BoxGeometry(2.9, 0.08, 1.1),
 				this.track(
 					lit({
 						color: 0xeceff1,
@@ -205,7 +215,7 @@ export class FoodCourt {
 			g.add(top);
 
 			// Back wall / menu board
-			const back = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.6, 0.12), this.track(lit({ color: 0x212121, roughness: 0.8 })));
+			const back = new Mesh(new BoxGeometry(2.8, 1.6, 0.12), this.track(lit({ color: 0x212121, roughness: 0.8 })));
 			back.position.set(0, 1.9, -0.55);
 			g.add(back);
 
@@ -213,7 +223,7 @@ export class FoodCourt {
 			// vanaf de noordkant een rij zwevende planken
 			const postMat = this.track(lit({ color: 0x37474f, metalness: 0.6, roughness: 0.4 }));
 			for (const sx of [-1.32, 1.32]) {
-				const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.7, 8), postMat);
+				const post = new Mesh(new CylinderGeometry(0.05, 0.05, 2.7, 8), postMat);
 				post.position.set(sx, 1.35, -0.55);
 				g.add(post);
 			}
@@ -229,16 +239,16 @@ export class FoodCourt {
 				distance: 6,
 				decay: 2,
 				follow: g,
-				offset: new THREE.Vector3(0, 2.4, 0.2),
+				offset: new Vector3(0, 2.4, 0.2),
 			});
 
 			// Vendor blob
 			const skin = this.track(lit({ color: 0xe8b896, roughness: 0.85 }));
 			const uni = this.track(lit({ color: s.accent, roughness: 0.7 }));
-			const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.4, 4, 6), uni);
+			const body = new Mesh(new CapsuleGeometry(0.16, 0.4, 4, 6), uni);
 			body.position.set(0, 1.55, -0.15);
 			g.add(body);
-			const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), skin);
+			const head = new Mesh(new SphereGeometry(0.14, 10, 10), skin);
 			head.position.set(0, 1.95, -0.15);
 			g.add(head);
 
@@ -246,7 +256,7 @@ export class FoodCourt {
 		}
 	}
 
-	private makeSign(title: string, sub: string, bg: number, fg: number): THREE.Mesh {
+	private makeSign(title: string, sub: string, bg: number, fg: number): Mesh {
 		const { canvas: c, ctx } = labelCanvas(320, 100);
 		ctx.fillStyle = `#${bg.toString(16).padStart(6, '0')}`;
 		ctx.fillRect(0, 0, 320, 100);
@@ -257,10 +267,7 @@ export class FoodCourt {
 		ctx.font = '18px system-ui';
 		ctx.fillText(sub, 160, 72);
 		const tex = labelTexture(c);
-		return new THREE.Mesh(
-			new THREE.PlaneGeometry(2.4, 0.75),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-		);
+		return new Mesh(new PlaneGeometry(2.4, 0.75), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 	}
 
 	private buildSign(): void {
@@ -276,7 +283,7 @@ export class FoodCourt {
 		ctx.font = '22px system-ui';
 		ctx.fillText('hangry zone · open late · no diet zone', 256, 88);
 		const tex = labelTexture(c);
-		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
+		const sp = new Sprite(this.track(new SpriteMaterial({ map: tex, transparent: true, depthTest: true })));
 		sp.scale.set(5.5, 1.4, 1);
 		sp.position.set(0, 3.6, 0);
 		this.group.add(sp);
@@ -289,7 +296,7 @@ export class FoodCourt {
 			distance: 18,
 			decay: 1.6,
 			follow: this.group,
-			offset: new THREE.Vector3(0, 3.2, 0),
+			offset: new Vector3(0, 3.2, 0),
 		});
 	}
 }

@@ -1,4 +1,15 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Object3D, Texture } from 'three';
+import {
+	BoxGeometry,
+	ConeGeometry,
+	CylinderGeometry,
+	DoubleSide,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	RingGeometry,
+} from 'three';
 import type { CollisionWorld } from '#/physics/Collision';
 import { lit } from '#/render/material';
 import { COLOSSEUM_PLAN } from '#/scene/city/cityPlan';
@@ -16,24 +27,24 @@ export type GateState = 'closed' | 'opening' | 'open' | 'closing';
  * south Porta Triumphalis) are the only breaks in the shell.
  */
 export class CityColosseum {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
 
 	/** Ellipse squash: the z-radius is this much larger than the x-radius. */
 	private readonly aspect = COLOSSEUM_PLAN.radiusZ / COLOSSEUM_PLAN.radiusX;
 
 	// Subterranean cage gates that rise into the arena.
-	private northGateMesh: THREE.Mesh | null = null;
-	private southGateMesh: THREE.Mesh | null = null;
+	private northGateMesh: Mesh | null = null;
+	private southGateMesh: Mesh | null = null;
 	private northGateY = 0;
 	private southGateY = 0;
 	private gateState: GateState = 'closed';
 	private gateProgress = 0;
 
-	private flameMaterials: THREE.MeshBasicMaterial[] = [];
+	private flameMaterials: MeshBasicMaterial[] = [];
 
 	constructor(world?: CollisionWorld) {
 		this.group.name = 'city_colosseum';
@@ -81,13 +92,13 @@ export class CityColosseum {
 
 	// ── geometry helpers ────────────────────────────────────────────────────
 
-	private track<T extends THREE.BufferGeometry>(geo: T): T {
+	private track<T extends BufferGeometry>(geo: T): T {
 		this.geometries.push(geo);
 		return geo;
 	}
 
-	private addMesh(geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D = this.group): THREE.Mesh {
-		const m = new THREE.Mesh(this.track(geo), mat);
+	private addMesh(geo: BufferGeometry, mat: Material, parent: Object3D = this.group): Mesh {
+		const m = new Mesh(this.track(geo), mat);
 		m.castShadow = true;
 		m.receiveShadow = true;
 		parent.add(m);
@@ -104,12 +115,12 @@ export class CityColosseum {
 		rx: number,
 		yCenter: number,
 		height: number,
-		mat: THREE.Material,
+		mat: Material,
 		opts: { openEnded?: boolean; radialTop?: number } = {},
-	): THREE.Mesh {
+	): Mesh {
 		// Open by default: a ring wall is a band, and a capped cylinder would lay a
 		// solid disc across the whole ellipse — a lid over the arena at that height.
-		const geo = new THREE.CylinderGeometry(opts.radialTop ?? rx, rx, height, 56, 1, opts.openEnded ?? true);
+		const geo = new CylinderGeometry(opts.radialTop ?? rx, rx, height, 56, 1, opts.openEnded ?? true);
 		const ring = this.addMesh(geo, mat);
 		ring.scale.set(1, 1, this.aspect);
 		ring.position.set(COLOSSEUM_PLAN.x, yCenter, COLOSSEUM_PLAN.z);
@@ -117,17 +128,9 @@ export class CityColosseum {
 	}
 
 	/** A box whose long axis follows the ellipse tangent at angle `a`. */
-	private tangentBox(
-		a: number,
-		rx: number,
-		width: number,
-		height: number,
-		depth: number,
-		yCenter: number,
-		mat: THREE.Material,
-	): void {
+	private tangentBox(a: number, rx: number, width: number, height: number, depth: number, yCenter: number, mat: Material): void {
 		const [x, z] = this.onEllipse(a, rx);
-		const geo = new THREE.BoxGeometry(width, height, depth);
+		const geo = new BoxGeometry(width, height, depth);
 		const box = this.addMesh(geo, mat);
 		box.position.set(x, yCenter, z);
 		box.rotation.y = -a;
@@ -151,18 +154,18 @@ export class CityColosseum {
 		const ironMat = lit({ color: 0x1e1e1e, roughness: 0.5, metalness: 0.8 });
 		this.materials.push(stoneMat, woodMat, ironMat);
 
-		const floorGeo = new THREE.BoxGeometry(arenaRadiusX * 1.8, 0.5, arenaRadiusZ * 1.8);
+		const floorGeo = new BoxGeometry(arenaRadiusX * 1.8, 0.5, arenaRadiusZ * 1.8);
 		const floor = this.addMesh(floorGeo, stoneMat);
 		floor.position.set(cx, -hypogeumDepth, cz);
 
 		for (let i = -2; i <= 2; i += 2) {
 			const offsetZ = i * 5;
-			const wallGeo = new THREE.BoxGeometry(arenaRadiusX * 1.6, hypogeumDepth, 1.2);
+			const wallGeo = new BoxGeometry(arenaRadiusX * 1.6, hypogeumDepth, 1.2);
 			const wall = this.addMesh(wallGeo, stoneMat);
 			wall.position.set(cx, -half(hypogeumDepth), cz + offsetZ);
 
 			for (let dx = -12; dx <= 12; dx += 8) {
-				const cageGeo = new THREE.BoxGeometry(0.15, hypogeumDepth, 3.2);
+				const cageGeo = new BoxGeometry(0.15, hypogeumDepth, 3.2);
 				const cage = this.addMesh(cageGeo, ironMat);
 				cage.position.set(cx + dx, -half(hypogeumDepth), cz + offsetZ + 2.4);
 			}
@@ -181,12 +184,12 @@ export class CityColosseum {
 		this.materials.push(sandMat, woodMat, podiumMat, podiumCapMat);
 
 		// Flat sand floor sitting on the trapdoor deck over the hypogeum.
-		const arenaFloorGeo = new THREE.CylinderGeometry(arenaRadiusX, arenaRadiusX, 0.4, 48);
+		const arenaFloorGeo = new CylinderGeometry(arenaRadiusX, arenaRadiusX, 0.4, 48);
 		const arenaFloor = this.addMesh(arenaFloorGeo, sandMat);
 		arenaFloor.scale.set(1, 1, this.aspect);
 		arenaFloor.position.set(cx, 0.1, cz);
 
-		const timberGeo = new THREE.BoxGeometry(9.0, 0.2, 17.0);
+		const timberGeo = new BoxGeometry(9.0, 0.2, 17.0);
 		const timber = this.addMesh(timberGeo, woodMat);
 		timber.position.set(cx, 0.12, cz);
 
@@ -209,8 +212,8 @@ export class CityColosseum {
 	private readonly caveaTopY = COLOSSEUM_PLAN.wallHeight - 2;
 
 	/** A flat elliptical annulus (a seating tread) lying in the xz-plane at height y. */
-	private tread(innerRx: number, outerRx: number, y: number, mat: THREE.Material): void {
-		const geo = new THREE.RingGeometry(innerRx, outerRx, 56, 1);
+	private tread(innerRx: number, outerRx: number, y: number, mat: Material): void {
+		const geo = new RingGeometry(innerRx, outerRx, 56, 1);
 		const ring = this.addMesh(geo, mat);
 		ring.rotation.x = -half(Math.PI);
 		ring.scale.set(1, this.aspect, 1);
@@ -222,11 +225,11 @@ export class CityColosseum {
 
 		// The seating faces inward, so every surface is DoubleSide: a solid ring would
 		// only show the renderer its outer face and read as a blank wall from the sand.
-		const lightRow = lit({ color: 0xe7dcc0, roughness: 0.6, side: THREE.DoubleSide });
-		const darkRow = lit({ color: 0x877663, roughness: 0.85, side: THREE.DoubleSide });
-		const treadMat = lit({ color: 0xcabfa2, roughness: 0.8, side: THREE.DoubleSide });
-		const aisleMat = lit({ color: 0x554a38, roughness: 0.9, side: THREE.DoubleSide });
-		const crownMat = lit({ color: 0xe4d9c2, roughness: 0.7, side: THREE.DoubleSide });
+		const lightRow = lit({ color: 0xe7dcc0, roughness: 0.6, side: DoubleSide });
+		const darkRow = lit({ color: 0x877663, roughness: 0.85, side: DoubleSide });
+		const treadMat = lit({ color: 0xcabfa2, roughness: 0.8, side: DoubleSide });
+		const aisleMat = lit({ color: 0x554a38, roughness: 0.9, side: DoubleSide });
+		const crownMat = lit({ color: 0xe4d9c2, roughness: 0.7, side: DoubleSide });
 		this.materials.push(lightRow, darkRow, treadMat, aisleMat, crownMat);
 
 		// The whole inner face is seating: thin risers and treads climbing from the
@@ -259,7 +262,7 @@ export class CityColosseum {
 			for (let k = 0; k < rows; k++) {
 				const t = k / rows;
 				const [x, z] = this.onEllipse(a, rowRx(t) - 0.1);
-				const stepGeo = new THREE.BoxGeometry(2.6, 0.4, 1.5);
+				const stepGeo = new BoxGeometry(2.6, 0.4, 1.5);
 				const step = this.addMesh(stepGeo, aisleMat);
 				step.position.set(x, rowY(t) + 0.12, z);
 				step.rotation.y = -a;
@@ -339,9 +342,9 @@ export class CityColosseum {
 	}
 
 	/** A semicircular arch frame standing over one bay opening, facing outward. */
-	private buildArch(a: number, rx: number, openingHalf: number, springY: number, mat: THREE.Material): void {
-		const geo = new THREE.RingGeometry(openingHalf, openingHalf + 0.7, 14, 1, 0, Math.PI);
-		const arch = new THREE.Mesh(this.track(geo), mat);
+	private buildArch(a: number, rx: number, openingHalf: number, springY: number, mat: Material): void {
+		const geo = new RingGeometry(openingHalf, openingHalf + 0.7, 14, 1, 0, Math.PI);
+		const arch = new Mesh(this.track(geo), mat);
 		arch.castShadow = true;
 		arch.receiveShadow = true;
 		const [x, z] = this.onEllipse(a, rx + 0.1);
@@ -363,41 +366,41 @@ export class CityColosseum {
 		const boxZ = cz - arenaRadiusZ + 0.6;
 		const boxY = 3.4;
 
-		const floorGeo = new THREE.BoxGeometry(11.0, 0.7, 5.0);
+		const floorGeo = new BoxGeometry(11.0, 0.7, 5.0);
 		const floor = this.addMesh(floorGeo, marbleMat);
 		floor.position.set(cx, boxY, boxZ);
 
 		for (const side of [-4.5, -1.5, 1.5, 4.5]) {
-			const colGeo = new THREE.CylinderGeometry(0.32, 0.38, 3.6, 12);
+			const colGeo = new CylinderGeometry(0.32, 0.38, 3.6, 12);
 			const col = this.addMesh(colGeo, marbleMat);
 			col.position.set(cx + side, boxY + 2.1, boxZ + 1.8);
 
-			const capGeo = new THREE.BoxGeometry(0.7, 0.45, 0.7);
+			const capGeo = new BoxGeometry(0.7, 0.45, 0.7);
 			const cap = this.addMesh(capGeo, goldMat);
 			cap.position.set(cx + side, boxY + 3.9, boxZ + 1.8);
 		}
 
-		const roofGeo = new THREE.BoxGeometry(11.5, 0.7, 5.4);
+		const roofGeo = new BoxGeometry(11.5, 0.7, 5.4);
 		const roof = this.addMesh(roofGeo, imperialRedMat);
 		roof.position.set(cx, boxY + 4.2, boxZ);
 
-		const backGeo = new THREE.BoxGeometry(11.2, 1.8, 0.15);
+		const backGeo = new BoxGeometry(11.2, 1.8, 0.15);
 		const back = this.addMesh(backGeo, imperialRedMat);
 		back.position.set(cx, boxY + 3.1, boxZ - 2.2);
 
-		const seatGeo = new THREE.BoxGeometry(1.6, 0.65, 1.4);
+		const seatGeo = new BoxGeometry(1.6, 0.65, 1.4);
 		const seat = this.addMesh(seatGeo, goldMat);
 		seat.position.set(cx, boxY + 0.65, boxZ - 0.4);
 
-		const backrestGeo = new THREE.BoxGeometry(1.6, 1.8, 0.28);
+		const backrestGeo = new BoxGeometry(1.6, 1.8, 0.28);
 		const backrest = this.addMesh(backrestGeo, goldMat);
 		backrest.position.set(cx, boxY + 1.5, boxZ - 1.0);
 
-		const cushionGeo = new THREE.BoxGeometry(1.4, 0.22, 1.2);
+		const cushionGeo = new BoxGeometry(1.4, 0.22, 1.2);
 		const cushion = this.addMesh(cushionGeo, imperialRedMat);
 		cushion.position.set(cx, boxY + 0.75, boxZ - 0.4);
 
-		const eagleGeo = new THREE.BoxGeometry(1.5, 1.0, 0.35);
+		const eagleGeo = new BoxGeometry(1.5, 1.0, 0.35);
 		const eagle = this.addMesh(eagleGeo, goldMat);
 		eagle.position.set(cx, boxY + 5.0, boxZ + 2.0);
 	}
@@ -414,11 +417,11 @@ export class CityColosseum {
 		for (const dir of [-1, 1]) {
 			const gz = cz + dir * (arenaRadiusZ + 0.4);
 
-			const archGeo = new THREE.BoxGeometry(6.5, 5.5, 1.6);
+			const archGeo = new BoxGeometry(6.5, 5.5, 1.6);
 			const arch = this.addMesh(archGeo, archMat);
 			arch.position.set(cx, 2.75, gz);
 
-			const gateGeo = new THREE.BoxGeometry(5.2, 4.2, 0.2);
+			const gateGeo = new BoxGeometry(5.2, 4.2, 0.2);
 			const gate = this.addMesh(gateGeo, ironMat);
 			gate.position.set(cx, 2.1, gz);
 			if (dir < 0) {
@@ -436,7 +439,7 @@ export class CityColosseum {
 	private buildTorches(): void {
 		const { arenaRadiusX } = COLOSSEUM_PLAN;
 
-		const flameBasicMat = new THREE.MeshBasicMaterial({ color: 0xff7700, toneMapped: false });
+		const flameBasicMat = new MeshBasicMaterial({ color: 0xff7700, toneMapped: false });
 		this.materials.push(flameBasicMat);
 		this.flameMaterials.push(flameBasicMat);
 
@@ -445,7 +448,7 @@ export class CityColosseum {
 			const a = (i / torchCount) * Math.PI * 2;
 			if (this.nearGate(a)) continue;
 			const [tx, tz] = this.onEllipse(a, arenaRadiusX + 1.4);
-			const flameGeo = new THREE.ConeGeometry(0.38, 1.1, 6);
+			const flameGeo = new ConeGeometry(0.38, 1.1, 6);
 			const flame = this.addMesh(flameGeo, flameBasicMat);
 			flame.position.set(tx, 3.7, tz);
 		}
@@ -469,10 +472,10 @@ export class CityColosseum {
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
 
-		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
 		this.materials.push(mat);
 
-		const geo = this.track(new THREE.PlaneGeometry(18, 3.0));
+		const geo = this.track(new PlaneGeometry(18, 3.0));
 		const sign = backToBackLabel(geo, mat);
 		sign.position.set(cx, COLOSSEUM_PLAN.wallHeight + 2.5, cz + arenaRadiusZ + 6.5);
 		this.group.add(sign);

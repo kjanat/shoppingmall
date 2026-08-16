@@ -17,20 +17,26 @@
  * en vervalt de kegel, wat óók klopt en wat de vorige versie niet deed: die gaf
  * dan de hele camerakegel terug en cullde daarmee vanaf de stoep helemaal niets.
  */
-import * as THREE from 'three';
+import type { Camera, Sphere } from 'three';
+import { Box3, Frustum, Matrix4, Vector3 } from 'three';
 import type { ZoneId } from '#/data/zones';
 import { isOpenToSky, portalsFrom, SKY_ZONES_MASK, visibleZonesMask, ZONES, zoneBit, zoneVolume } from '#/data/zones';
 
 /** Achter dit clip-w ligt een hoekpunt op of achter het beeldvlak en telt het niet mee. */
 const MIN_CLIP_W = 1e-4;
 
-type Cone = {
+interface Cone {
 	/** De zones aan de andere kant van dit portaal. */
 	zones: number;
-	frustum: THREE.Frustum;
-};
+	frustum: Frustum;
+}
 
-type Rect = { minX: number; maxX: number; minY: number; maxY: number };
+interface Rect {
+	minX: number;
+	maxX: number;
+	minY: number;
+	maxY: number;
+}
 
 const CORNERS: readonly (readonly [keyof Rect3, keyof Rect3, keyof Rect3])[] = [
 	['minX', 'minY', 'minZ'],
@@ -55,7 +61,7 @@ const EDGES: readonly (readonly [number, number])[] = (() => {
 		for (let b = a + 1; b < CORNERS.length; b++) {
 			const first = CORNERS[a];
 			const second = CORNERS[b];
-			if (!first || !second) continue;
+			if (!(first && second)) continue;
 			let different = 0;
 			for (let axis = 0; axis < 3; axis++) {
 				if (first[axis] !== second[axis]) different++;
@@ -66,10 +72,21 @@ const EDGES: readonly (readonly [number, number])[] = (() => {
 	return pairs;
 })();
 
-type Rect3 = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
+interface Rect3 {
+	minX: number;
+	maxX: number;
+	minY: number;
+	maxY: number;
+	minZ: number;
+	maxZ: number;
+}
 
 /** Eén hoekpunt in klipruimte. `w` onder `MIN_CLIP_W` ligt op of achter het beeldvlak. */
-type ClipPoint = { x: number; y: number; w: number };
+interface ClipPoint {
+	x: number;
+	y: number;
+	w: number;
+}
 
 const CLIP_POINTS: ClipPoint[] = CORNERS.map(() => ({ x: 0, y: 0, w: 0 }));
 
@@ -84,7 +101,7 @@ const CLIP_POINTS: ClipPoint[] = CORNERS.map(() => ({ x: 0, y: 0, w: 0 }));
  * tekent. Wat de cull wegneemt verdwijnt uit allebei, dus `castersKept` is wat een
  * standpunt nog aan de zon aanbiedt.
  */
-export type ZoneOwnerTally = {
+export interface ZoneOwnerTally {
 	name: string;
 	items: number;
 	casters: number;
@@ -92,9 +109,9 @@ export type ZoneOwnerTally = {
 	hidden: number;
 	castersKept: number;
 	castersHidden: number;
-};
+}
 
-export type ZoneCullStats = {
+export interface ZoneCullStats {
 	zone: ZoneId;
 	visibleZones: number;
 	cones: number;
@@ -108,17 +125,14 @@ export type ZoneCullStats = {
 	keptInOwnZone: number;
 	keptThroughCone: number;
 	owners: readonly ZoneOwnerTally[];
-};
+}
 
 /** De doos van elke begrensde zone, één keer omgezet naar het type dat three test. */
-const ZONE_BOXES: ReadonlyMap<ZoneId, THREE.Box3> = new Map(
+const ZONE_BOXES: ReadonlyMap<ZoneId, Box3> = new Map(
 	ZONES.flatMap((zone) => {
 		const volume = zoneVolume(zone);
 		if (volume === null) return [];
-		const box = new THREE.Box3(
-			new THREE.Vector3(volume.minX, volume.minY, volume.minZ),
-			new THREE.Vector3(volume.maxX, volume.maxY, volume.maxZ),
-		);
+		const box = new Box3(new Vector3(volume.minX, volume.minY, volume.minZ), new Vector3(volume.maxX, volume.maxY, volume.maxZ));
 		return [[zone, box] as const];
 	}),
 );
@@ -136,8 +150,8 @@ export class ZoneCuller {
 		keptThroughCone: 0,
 		owners: this.ownerRows,
 	};
-	private readonly cameraFrustum = new THREE.Frustum();
-	private readonly viewProjection = new THREE.Matrix4();
+	private readonly cameraFrustum = new Frustum();
+	private readonly viewProjection = new Matrix4();
 	private readonly cones: Cone[] = [];
 	private coneCount = 0;
 	private ownBit = 0;
@@ -147,7 +161,7 @@ export class ZoneCuller {
 	 * Zet de kegels voor dit frame op. Roep hem aan nadat de camera zijn
 	 * wereldmatrix heeft: hij leest die matrix, hij zet hem niet.
 	 */
-	update(camera: THREE.Camera, zone: ZoneId): void {
+	update(camera: Camera, zone: ZoneId): void {
 		this.ownBit = zoneBit(zone);
 		this.visibleMask = visibleZonesMask(zone);
 		this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -258,7 +272,7 @@ export class ZoneCuller {
 	 * gewone frustumtest van three doet daar de rest. Al het andere moet door een
 	 * opening passen die op die zone uitkomt.
 	 */
-	accepts(zoneMask: number, sphere: THREE.Sphere | null): boolean {
+	accepts(zoneMask: number, sphere: Sphere | null): boolean {
 		this.stats.batches++;
 		if ((zoneMask & this.ownBit) !== 0) {
 			this.stats.keptInOwnZone++;
@@ -284,10 +298,10 @@ export class ZoneCuller {
 		return false;
 	}
 
-	private pushCone(zones: number): THREE.Frustum {
+	private pushCone(zones: number): Frustum {
 		let cone = this.cones[this.coneCount];
 		if (!cone) {
-			cone = { zones, frustum: new THREE.Frustum() };
+			cone = { zones, frustum: new Frustum() };
 			this.cones.push(cone);
 		}
 		cone.zones = zones;
@@ -331,7 +345,7 @@ export class ZoneCuller {
 		for (let i = 0; i < CORNERS.length; i++) {
 			const corner = CORNERS[i];
 			const point = CLIP_POINTS[i];
-			if (!corner || !point) continue;
+			if (!(corner && point)) continue;
 			const x = aperture[corner[0]];
 			const y = aperture[corner[1]];
 			const z = aperture[corner[2]];
@@ -356,10 +370,10 @@ export class ZoneCuller {
 		for (const [a, b] of EDGES) {
 			const first = CLIP_POINTS[a];
 			const second = CLIP_POINTS[b];
-			if (!first || !second) continue;
+			if (!(first && second)) continue;
 			const firstAhead = first.w > MIN_CLIP_W;
 			const secondAhead = second.w > MIN_CLIP_W;
-			if (!firstAhead && !secondAhead) continue;
+			if (!(firstAhead || secondAhead)) continue;
 			if (firstAhead) take(first.x, first.y, first.w);
 			if (secondAhead) take(second.x, second.y, second.w);
 			if (firstAhead === secondAhead) continue;
@@ -378,7 +392,7 @@ export class ZoneCuller {
 	 * `Frustum.setFromProjectionMatrix`, met de rand van het beeld vervangen door de
 	 * rand van de opening; voor- en achtervlak blijven die van de camera.
 	 */
-	private narrowedFrustum(rect: Rect, out: THREE.Frustum): void {
+	private narrowedFrustum(rect: Rect, out: Frustum): void {
 		const m = this.viewProjection.elements;
 		const row0 = [m[0] ?? 0, m[4] ?? 0, m[8] ?? 0, m[12] ?? 0] as const;
 		const row1 = [m[1] ?? 0, m[5] ?? 0, m[9] ?? 0, m[13] ?? 0] as const;

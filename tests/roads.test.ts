@@ -32,7 +32,12 @@ import { EPS, nr } from './helpers/world.ts';
  * against the traffic, and from above you cannot see it.
  */
 
-type Rect = { minX: number; maxX: number; minZ: number; maxZ: number };
+interface Rect {
+	minX: number;
+	maxX: number;
+	minZ: number;
+	maxZ: number;
+}
 
 /** Edges that only touch do not count as crossing. */
 function overlaps(a: Rect, b: Rect): boolean {
@@ -290,7 +295,7 @@ describe('the branch to the garage', () => {
 		});
 
 		test('it rejoins downstream', () => {
-			if (!first || !last || !out) return;
+			if (!(first && last && out)) return;
 			expect(
 				(last.x - first.x) * out.dx + (last.z - first.z) * out.dz,
 				'it rejoins upstream, against its own lane',

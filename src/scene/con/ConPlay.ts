@@ -1,4 +1,16 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material, Object3D, Texture } from 'three';
+import {
+	BoxGeometry,
+	ConeGeometry,
+	DoubleSide,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	RingGeometry,
+	SphereGeometry,
+	Vector3,
+} from 'three';
 import {
 	CON_DEALERS,
 	CON_FLOOR_Y,
@@ -36,14 +48,14 @@ type Spot = Readonly<{
 	run: (ctx: PlayCtx) => ConPlayResult;
 }>;
 
-type PlayCtx = {
+interface PlayCtx {
 	hasBadge: boolean;
 	grantBadge: () => void;
 	got: Set<string>;
 	mark: (id: string) => void;
 	done: number;
 	goal: number;
-};
+}
 
 const MERCH = [
 	{ name: 'badge pin', pts: 3 },
@@ -98,22 +110,22 @@ const PANELS = [
  * Everything you can actually do at the con with E.
  */
 export class ConPlay {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	private readonly spots: Spot[];
 	private readonly got = new Set<string>();
 	private hasBadge = false;
 	private dancing = false;
-	private danceHold = new THREE.Vector3();
+	private danceHold = new Vector3();
 	private danceAcc = 0;
 	private promptHud: HTMLDivElement | null = null;
 	private questHud: HTMLDivElement | null = null;
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
-	private readonly textures: THREE.Texture[] = [];
-	private readonly unit = new THREE.BoxGeometry(1, 1, 1);
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
+	private readonly textures: Texture[] = [];
+	private readonly unit = new BoxGeometry(1, 1, 1);
 	private readonly goal: number;
-	private readonly ring: THREE.Mesh;
-	private readonly arrow: THREE.Mesh;
+	private readonly ring: Mesh;
+	private readonly arrow: Mesh;
 	private readonly regX = CON_PORTAL.innerX + 3.5;
 
 	constructor() {
@@ -127,35 +139,35 @@ export class ConPlay {
 		this.buildMarkers();
 		this.buildQuestBoard();
 		this.buildPath();
-		const ringMat = new THREE.MeshBasicMaterial({
+		const ringMat = new MeshBasicMaterial({
 			color: 0x00ffcc,
 			toneMapped: false,
 			transparent: true,
 			opacity: 0.85,
-			side: THREE.DoubleSide,
+			side: DoubleSide,
 		});
-		const arrowMat = new THREE.MeshBasicMaterial({ color: 0xff66cc, toneMapped: false });
+		const arrowMat = new MeshBasicMaterial({ color: 0xff66cc, toneMapped: false });
 		this.materials.push(ringMat, arrowMat);
-		const ringGeo = new THREE.RingGeometry(0.55, 0.85, 24);
-		const arrowGeo = new THREE.ConeGeometry(0.35, 0.9, 6);
+		const ringGeo = new RingGeometry(0.55, 0.85, 24);
+		const arrowGeo = new ConeGeometry(0.35, 0.9, 6);
 		this.geometries.push(ringGeo, arrowGeo);
-		this.ring = new THREE.Mesh(ringGeo, ringMat);
+		this.ring = new Mesh(ringGeo, ringMat);
 		this.ring.rotation.x = -Math.PI / 2;
 		this.ring.position.y = CON_FLOOR_Y + 0.12;
 		this.ring.visible = false;
 		this.group.add(this.ring);
-		this.arrow = new THREE.Mesh(arrowGeo, arrowMat);
+		this.arrow = new Mesh(arrowGeo, arrowMat);
 		this.arrow.position.y = CON_FLOOR_Y + 2.6;
 		this.arrow.visible = false;
 		this.group.add(this.arrow);
 	}
 
-	onLot(viewer: THREE.Vector3): boolean {
+	onLot(viewer: Vector3): boolean {
 		return inRect2(CON_LOT, viewer.x, viewer.z);
 	}
 
 	/** Sticky objective for the main status bar. */
-	activityHint(viewer: THREE.Vector3): string | null {
+	activityHint(viewer: Vector3): string | null {
 		if (!this.onLot(viewer)) return null;
 		if (this.dancing) return '💃 Dancing · Esc leave · +score ticking';
 		const near = this.nearest(viewer);
@@ -171,7 +183,7 @@ export class ConPlay {
 		return `🐾 NEXT: ${next.label} · ${d} m that way · pink poles + cyan ring · E when close`;
 	}
 
-	update(dt: number, viewer: THREE.Vector3): ConPlayResult | null {
+	update(dt: number, viewer: Vector3): ConPlayResult | null {
 		this.refreshPrompt(viewer);
 		this.refreshQuestHud(viewer);
 		this.refreshNav(viewer, dt);
@@ -182,18 +194,18 @@ export class ConPlay {
 		return { status: '💃 Still dancing · Esc leave (+2)', scoreDelta: 2 };
 	}
 
-	promptAt(viewer: THREE.Vector3): string | null {
+	promptAt(viewer: Vector3): string | null {
 		if (this.dancing) return 'Esc · stop dancing';
 		const spot = this.nearest(viewer);
 		if (!spot) return null;
 		return `E · ${spot.label}  ·  con ${this.progress()}/${this.goal}`;
 	}
 
-	inRange(viewer: THREE.Vector3): boolean {
+	inRange(viewer: Vector3): boolean {
 		return this.dancing || this.nearest(viewer) !== null;
 	}
 
-	get joinAnchor(): THREE.Vector3 | null {
+	get joinAnchor(): Vector3 | null {
 		return this.dancing ? this.danceHold : null;
 	}
 
@@ -203,7 +215,7 @@ export class ConPlay {
 		return true;
 	}
 
-	tryUse(viewer: THREE.Vector3): ConPlayResult | null {
+	tryUse(viewer: Vector3): ConPlayResult | null {
 		if (this.dancing) return null;
 		const spot = this.nearest(viewer) ?? this.nearestLoose(viewer);
 		if (!spot) {
@@ -252,11 +264,11 @@ export class ConPlay {
 		return n;
 	}
 
-	private dist(viewer: THREE.Vector3, x: number, z: number): number {
+	private dist(viewer: Vector3, x: number, z: number): number {
 		return Math.hypot(x - viewer.x, z - viewer.z);
 	}
 
-	private nextObjective(viewer: THREE.Vector3): Spot | null {
+	private nextObjective(viewer: Vector3): Spot | null {
 		const order = ['badge', 'guide', 'photo', 'food-0', 'meet-greet', 'stage-dance', 'hotel', 'raffle'];
 		for (const id of order) {
 			const spot = this.spots.find((s) => s.id === id);
@@ -267,7 +279,7 @@ export class ConPlay {
 			return spot;
 		}
 		let best: Spot | null = null;
-		let bestD = Infinity;
+		let bestD = Number.POSITIVE_INFINITY;
 		for (const spot of this.spots) {
 			if (spot.id.startsWith('booth-') && Number(spot.id.slice(6)) % 8 !== 0) continue;
 			if (spot.once && this.got.has(spot.once)) continue;
@@ -282,7 +294,7 @@ export class ConPlay {
 		return best;
 	}
 
-	private refreshNav(viewer: THREE.Vector3, dt: number): void {
+	private refreshNav(viewer: Vector3, dt: number): void {
 		if (!this.onLot(viewer) || this.dancing) {
 			this.ring.visible = false;
 			this.arrow.visible = false;
@@ -307,7 +319,7 @@ export class ConPlay {
 		void viewer;
 	}
 
-	private refreshQuestHud(viewer: THREE.Vector3): void {
+	private refreshQuestHud(viewer: Vector3): void {
 		if (!this.onLot(viewer)) {
 			if (this.questHud) this.questHud.style.display = 'none';
 			return;
@@ -351,9 +363,9 @@ export class ConPlay {
 		};
 	}
 
-	private nearest(viewer: THREE.Vector3): Spot | null {
+	private nearest(viewer: Vector3): Spot | null {
 		let best: Spot | null = null;
-		let bestD = Infinity;
+		let bestD = Number.POSITIVE_INFINITY;
 		for (const spot of this.spots) {
 			const d = this.dist(viewer, spot.x, spot.z);
 			if (d <= spot.radius && d < bestD) {
@@ -365,7 +377,7 @@ export class ConPlay {
 	}
 
 	/** Slightly wider grab so E still does something near a pole. */
-	private nearestLoose(viewer: THREE.Vector3): Spot | null {
+	private nearestLoose(viewer: Vector3): Spot | null {
 		let best: Spot | null = null;
 		let bestD = 5.5;
 		for (const spot of this.spots) {
@@ -379,7 +391,7 @@ export class ConPlay {
 		return best;
 	}
 
-	private refreshPrompt(viewer: THREE.Vector3): void {
+	private refreshPrompt(viewer: Vector3): void {
 		const text = this.promptAt(viewer);
 		if (!text) {
 			if (this.promptHud) this.promptHud.style.display = 'none';
@@ -683,14 +695,14 @@ export class ConPlay {
 
 	private buildRegistration(): void {
 		const desk = lit({ color: 0x3a2060, roughness: 0.3 });
-		const neon = new THREE.MeshBasicMaterial({ color: 0x66ffcc, toneMapped: false });
+		const neon = new MeshBasicMaterial({ color: 0x66ffcc, toneMapped: false });
 		this.materials.push(desk, neon);
 		const x = CON_PORTAL.innerX + 3.5;
-		const counter = new THREE.Mesh(this.unit, desk);
+		const counter = new Mesh(this.unit, desk);
 		counter.scale.set(5.5, 1.1, 1.6);
 		counter.position.set(x, CON_FLOOR_Y + 0.55, 0);
 		this.group.add(counter);
-		const poleL = new THREE.Mesh(this.unit, desk);
+		const poleL = new Mesh(this.unit, desk);
 		poleL.scale.set(0.2, 2.2, 0.2);
 		poleL.position.set(x - 2.4, CON_FLOOR_Y + 1.1, -1.2);
 		this.group.add(poleL);
@@ -700,7 +712,7 @@ export class ConPlay {
 		const banner = this.tag('BADGES · E HERE', 3.2, 0.5);
 		banner.position.set(x, CON_FLOOR_Y + 2.35, 0);
 		this.group.add(banner);
-		const glow = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), neon);
+		const glow = new Mesh(new SphereGeometry(0.28, 10, 8), neon);
 		this.geometries.push(glow.geometry);
 		glow.position.set(x, CON_FLOOR_Y + 2.9, 0);
 		this.group.add(glow);
@@ -711,7 +723,7 @@ export class ConPlay {
 		this.materials.push(board);
 		const x = CON_PORTAL.innerX + 7.5;
 		const z = 5;
-		const mesh = new THREE.Mesh(this.unit, board);
+		const mesh = new Mesh(this.unit, board);
 		mesh.scale.set(0.18, 2.4, 3.2);
 		mesh.position.set(x, CON_FLOOR_Y + 1.4, z);
 		this.group.add(mesh);
@@ -722,7 +734,7 @@ export class ConPlay {
 	}
 
 	private buildPath(): void {
-		const mat = new THREE.MeshBasicMaterial({
+		const mat = new MeshBasicMaterial({
 			color: 0xff44aa,
 			toneMapped: false,
 			transparent: true,
@@ -735,11 +747,11 @@ export class ConPlay {
 		for (let i = 0; i < steps; i++) {
 			const t = (i + 0.5) / steps;
 			const x = x0 + (x1 - x0) * t;
-			const chev = new THREE.Mesh(this.unit, mat);
+			const chev = new Mesh(this.unit, mat);
 			chev.scale.set(1.4, 0.04, 0.7);
 			chev.position.set(x, CON_FLOOR_Y + 0.1, 0);
 			this.group.add(chev);
-			const tip = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.7, 3), mat);
+			const tip = new Mesh(new ConeGeometry(0.35, 0.7, 3), mat);
 			this.geometries.push(tip.geometry);
 			tip.rotation.x = Math.PI / 2;
 			tip.rotation.z = -Math.PI / 2;
@@ -754,7 +766,7 @@ export class ConPlay {
 
 	private buildMarkers(): void {
 		const pole = lit({ color: 0xff66cc, roughness: 0.5 });
-		const glow = new THREE.MeshBasicMaterial({ color: 0xff88dd, toneMapped: false });
+		const glow = new MeshBasicMaterial({ color: 0xff88dd, toneMapped: false });
 		this.materials.push(pole, glow);
 		const landmark = new Set([
 			'badge',
@@ -776,19 +788,21 @@ export class ConPlay {
 			const boothN = isBooth ? Number(spot.id.slice(6)) : -1;
 			if (isBooth && boothN % 6 !== 0) continue;
 			if (
-				!isBooth &&
-				!landmark.has(spot.id) &&
-				!spot.id.startsWith('panel-') &&
-				!spot.id.startsWith('food-') &&
-				!spot.id.startsWith('highfive')
+				!(
+					isBooth ||
+					landmark.has(spot.id) ||
+					spot.id.startsWith('panel-') ||
+					spot.id.startsWith('food-') ||
+					spot.id.startsWith('highfive')
+				)
 			) {
 				continue;
 			}
-			const p = new THREE.Mesh(this.unit, pole);
+			const p = new Mesh(this.unit, pole);
 			p.scale.set(0.14, 1.6, 0.14);
 			p.position.set(spot.x, CON_FLOOR_Y + 0.8, spot.z);
 			this.group.add(p);
-			const ball = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), glow);
+			const ball = new Mesh(new SphereGeometry(0.2, 8, 6), glow);
 			this.geometries.push(ball.geometry);
 			ball.position.set(spot.x, CON_FLOOR_Y + 1.75, spot.z);
 			this.group.add(ball);
@@ -802,7 +816,7 @@ export class ConPlay {
 		}
 	}
 
-	private tag(text: string, w = 2.4, h = 0.45): THREE.Object3D {
+	private tag(text: string, w = 2.4, h = 0.45): Object3D {
 		const pxW = Math.max(160, Math.round(w * 100));
 		const pxH = Math.max(48, Math.round(h * 100));
 		const { canvas, ctx } = labelCanvas(pxW, pxH);
@@ -812,9 +826,9 @@ export class ConPlay {
 		fitText(ctx, text, { x: 6, y: 4, w: pxW - 12, h: pxH - 8 }, { size: Math.min(28, pxH * 0.4), maxLines: 3 });
 		const tex = labelTexture(canvas);
 		this.textures.push(tex);
-		const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
 		this.materials.push(mat);
-		const geo = new THREE.PlaneGeometry(w, h);
+		const geo = new PlaneGeometry(w, h);
 		this.geometries.push(geo);
 		return backToBackLabel(geo, mat);
 	}

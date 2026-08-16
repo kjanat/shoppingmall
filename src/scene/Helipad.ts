@@ -1,4 +1,20 @@
-import * as THREE from 'three';
+import type { Material, Vector3 as Vector3Type } from 'three';
+import {
+	BoxGeometry,
+	ConeGeometry,
+	CylinderGeometry,
+	DoubleSide,
+	ExtrudeGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	PlaneGeometry,
+	RingGeometry,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	Vector3,
+} from 'three';
 import { levelY } from '#/data/levels';
 import {
 	HELIPAD_DECK_PLAN,
@@ -37,12 +53,12 @@ const PAD_SINK = 0.01;
  * Reachable on foot; "land" = stand on the H.
  */
 export class Helipad {
-	readonly group = new THREE.Group();
-	readonly padCenter = new THREE.Vector3(HELIPAD_PAD_SPEC.center.x, DECK_TOP, HELIPAD_PAD_SPEC.center.z);
-	private materials: THREE.Material[] = [];
+	readonly group = new Group();
+	readonly padCenter = new Vector3(HELIPAD_PAD_SPEC.center.x, DECK_TOP, HELIPAD_PAD_SPEC.center.z);
+	private materials: Material[] = [];
 	private pool: LightPool;
 	/** De scharniergroep staat op de noordrand van het gat; het blad hangt er in +z aan. */
-	private readonly hatchLeaf = new THREE.Group();
+	private readonly hatchLeaf = new Group();
 	private readonly hatchZone = mechanismTriggerBounds(HELIPAD_HATCH, HELIPAD_HATCH_GATE.id);
 	private readonly hatchFloor: RoofPad;
 	/** 0 = dicht over het trapgat, 1 = rechtop. */
@@ -67,7 +83,7 @@ export class Helipad {
 	 * de vloer daar gewoon het dek. De zone kijkt ook onder het dek, zodat wie de trap
 	 * op klimt niet tegen een dicht luik aan loopt.
 	 */
-	update(dt: number, subject: THREE.Vector3): void {
+	update(dt: number, subject: Vector3Type): void {
 		const zone = this.hatchZone;
 		const inside =
 			subject.x > zone.minX &&
@@ -88,8 +104,8 @@ export class Helipad {
 		const width = span(gate.minX, gate.maxX);
 		const thickness = span(gate.minY, gate.maxY);
 		const depth = span(gate.minZ, gate.maxZ);
-		const leaf = new THREE.Mesh(
-			new THREE.BoxGeometry(width, thickness, depth),
+		const leaf = new Mesh(
+			new BoxGeometry(width, thickness, depth),
 			this.track(lit({ color: 0x546e7a, metalness: 0.5, roughness: 0.45 })),
 		);
 		leaf.name = 'hatch-lid';
@@ -108,7 +124,7 @@ export class Helipad {
 		});
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
@@ -119,7 +135,7 @@ export class Helipad {
 		const { appearance } = stairs;
 		const { serviceEntrance } = appearance;
 		if (!serviceEntrance) throw new Error(`${stairs.id}: helipad-flight presentation is incomplete`);
-		const g = new THREE.Group();
+		const g = new Group();
 		g.name = stairs.id;
 		const x = stairs.x;
 		const z0 = stairs.zBottom;
@@ -141,8 +157,8 @@ export class Helipad {
 
 		// Service door facade on floor 1
 		const doorSpec = serviceEntrance.door;
-		const door = new THREE.Mesh(
-			new THREE.BoxGeometry(doorSpec.width, doorSpec.height, doorSpec.thickness),
+		const door = new Mesh(
+			new BoxGeometry(doorSpec.width, doorSpec.height, doorSpec.thickness),
 			this.track(lit({ color: 0x37474f, roughness: 0.7 })),
 		);
 		door.position.set(x + doorSpec.lateralOffset, y0 + doorSpec.verticalOffset, z0 + doorSpec.depthOffset);
@@ -158,9 +174,9 @@ export class Helipad {
 		ctx.font = '16px system-ui';
 		ctx.fillText('→ DAK / HELIPAD', 128, 68);
 		const tex = labelTexture(c);
-		const plate = new THREE.Mesh(
-			new THREE.PlaneGeometry(serviceEntrance.sign.width, serviceEntrance.sign.height),
-			this.track(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
+		const plate = new Mesh(
+			new PlaneGeometry(serviceEntrance.sign.width, serviceEntrance.sign.height),
+			this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })),
 		);
 		plate.position.set(
 			x + serviceEntrance.sign.lateralOffset,
@@ -175,8 +191,8 @@ export class Helipad {
 		for (let i = 0; i < steps; i++) {
 			const z = z0 + direction * (i + 0.5) * stepD;
 			const y = y0 + (i + 1) * stepH;
-			const step = new THREE.Mesh(
-				new THREE.BoxGeometry(
+			const step = new Mesh(
+				new BoxGeometry(
 					stairs.width - appearance.step.widthInset,
 					appearance.step.treadThickness,
 					stepD * appearance.step.treadDepthRatio,
@@ -185,8 +201,8 @@ export class Helipad {
 			);
 			step.position.set(x, y - half(appearance.step.treadThickness), z);
 			g.add(step);
-			const riser = new THREE.Mesh(
-				new THREE.BoxGeometry(
+			const riser = new Mesh(
+				new BoxGeometry(
 					stairs.width - appearance.step.widthInset,
 					stepH * appearance.step.riserHeightRatio,
 					appearance.step.riserThickness,
@@ -207,8 +223,8 @@ export class Helipad {
 			for (let i = 0; i < steps; i += railAppearance.postEverySteps) {
 				const z = z0 + direction * (i + 0.5) * stepD;
 				const y = y0 + (i + 1) * stepH + railAppearance.height;
-				const post = new THREE.Mesh(
-					new THREE.CylinderGeometry(railAppearance.postRadius, railAppearance.postRadius, railAppearance.height, 6),
+				const post = new Mesh(
+					new CylinderGeometry(railAppearance.postRadius, railAppearance.postRadius, railAppearance.height, 6),
 					railMaterial,
 				);
 				post.position.set(sx, y - railAppearance.postCenterDrop, z);
@@ -218,12 +234,8 @@ export class Helipad {
 				if (nextIndex === i) continue;
 				const nextZ = z0 + direction * (nextIndex + 0.5) * stepD;
 				const nextY = y0 + (nextIndex + 1) * stepH + railAppearance.height;
-				const segment = new THREE.Mesh(
-					new THREE.BoxGeometry(
-						railAppearance.segmentThickness,
-						railAppearance.segmentThickness,
-						Math.hypot(nextZ - z, nextY - y),
-					),
+				const segment = new Mesh(
+					new BoxGeometry(railAppearance.segmentThickness, railAppearance.segmentThickness, Math.hypot(nextZ - z, nextY - y)),
 					railMaterial,
 				);
 				segment.position.set(sx, midpoint(y, nextY), midpoint(z, nextZ));
@@ -257,12 +269,12 @@ export class Helipad {
 		// NB: rotateX(-π/2) spiegelt shape-y → wereld −z, dus snijden op −z.
 		const deckShape = xzPlanShape(HELIPAD_DECK_PLAN);
 		addXZPlanHole(deckShape, SECRET_STAIRS_OPENING_PLAN);
-		const deckGeo = new THREE.ExtrudeGeometry(deckShape, {
+		const deckGeo = new ExtrudeGeometry(deckShape, {
 			depth: HELIPAD_DECK_THICKNESS,
 			bevelEnabled: false,
 		});
 		deckGeo.rotateX(-Math.PI / 2);
-		const deck = new THREE.Mesh(
+		const deck = new Mesh(
 			deckGeo,
 			this.track(
 				lit({
@@ -280,7 +292,7 @@ export class Helipad {
 		// Low safety wall on outer edges (not over stairs hatch)
 		const wallM = this.track(lit({ color: 0x546e7a, metalness: 0.4, roughness: 0.5 }));
 		const wall = (w: number, d: number, x: number, z: number) => {
-			const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, d), wallM);
+			const m = new Mesh(new BoxGeometry(w, 1.1, d), wallM);
 			m.position.set(x, DECK_TOP + 0.5, z);
 			this.group.add(m);
 		};
@@ -290,8 +302,8 @@ export class Helipad {
 	}
 
 	private buildPad(): void {
-		const pad = new THREE.Mesh(
-			new THREE.CylinderGeometry(HELIPAD_PAD_SPEC.topRadius, HELIPAD_PAD_SPEC.bottomRadius, HELIPAD_PAD_SPEC.height, 40),
+		const pad = new Mesh(
+			new CylinderGeometry(HELIPAD_PAD_SPEC.topRadius, HELIPAD_PAD_SPEC.bottomRadius, HELIPAD_PAD_SPEC.height, 40),
 			this.track(
 				lit({
 					color: 0x1a1a1a,
@@ -307,12 +319,12 @@ export class Helipad {
 		this.group.add(pad);
 
 		// Yellow ring
-		const ring = new THREE.Mesh(
-			new THREE.RingGeometry(4.6, 5.1, 48),
+		const ring = new Mesh(
+			new RingGeometry(4.6, 5.1, 48),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					color: 0xf5c518,
-					side: THREE.DoubleSide,
+					side: DoubleSide,
 					toneMapped: false,
 				}),
 			),
@@ -323,10 +335,10 @@ export class Helipad {
 		this.group.add(ring);
 
 		// Big H
-		const hMat = this.track(new THREE.MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }));
-		const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 3.2), hMat);
-		const h2 = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 3.2), hMat);
-		const h3 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.06, 0.45), hMat);
+		const hMat = this.track(new MeshBasicMaterial({ color: 0xf5c518, toneMapped: false }));
+		const h1 = new Mesh(new BoxGeometry(0.45, 0.06, 3.2), hMat);
+		const h2 = new Mesh(new BoxGeometry(0.45, 0.06, 3.2), hMat);
+		const h3 = new Mesh(new BoxGeometry(2.0, 0.06, 0.45), hMat);
 		h1.name = 'helipad-h-west';
 		h2.name = 'helipad-h-east';
 		h3.name = 'helipad-h-bar';
@@ -336,18 +348,15 @@ export class Helipad {
 		this.group.add(h1, h2, h3);
 
 		// Windsock pole
-		const pole = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.05, 0.05, 3.2, 8),
-			this.track(lit({ color: 0x90a4ae, metalness: 0.7 })),
-		);
+		const pole = new Mesh(new CylinderGeometry(0.05, 0.05, 3.2, 8), this.track(lit({ color: 0x90a4ae, metalness: 0.7 })));
 		pole.position.set(this.padCenter.x + 6.5, DECK_TOP + 1.6, this.padCenter.z + 4);
 		this.group.add(pole);
-		const sock = new THREE.Mesh(
-			new THREE.ConeGeometry(0.35, 1.4, 8, 1, true),
+		const sock = new Mesh(
+			new ConeGeometry(0.35, 1.4, 8, 1, true),
 			this.track(
 				lit({
 					color: 0xff5722,
-					side: THREE.DoubleSide,
+					side: DoubleSide,
 					roughness: 0.8,
 				}),
 			),
@@ -359,10 +368,10 @@ export class Helipad {
 
 	private buildLights(): void {
 		// Perimeter landing lights
-		const lit = this.track(new THREE.MeshBasicMaterial({ color: 0x00e676, toneMapped: false }));
+		const lit = this.track(new MeshBasicMaterial({ color: 0x00e676, toneMapped: false }));
 		for (let i = 0; i < 8; i++) {
 			const a = (i / 8) * Math.PI * 2;
-			const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), lit);
+			const bulb = new Mesh(new SphereGeometry(0.12, 8, 8), lit);
 			bulb.position.set(this.padCenter.x + Math.cos(a) * 5.3, DECK_TOP + 0.2, this.padCenter.z + Math.sin(a) * 5.3);
 			this.group.add(bulb);
 		}
@@ -371,7 +380,7 @@ export class Helipad {
 			intensity: 14,
 			distance: 30,
 			decay: 1.8,
-			position: new THREE.Vector3(this.padCenter.x, DECK_TOP + 4, this.padCenter.z),
+			position: new Vector3(this.padCenter.x, DECK_TOP + 4, this.padCenter.z),
 		});
 	}
 
@@ -392,7 +401,7 @@ export class Helipad {
 		const tex = labelTexture(c);
 		// depthTest AAN: met false prikte het bord door de plafondplaat en hing
 		// het als spook-signage boven verdieping 1
-		const sp = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: tex, transparent: true })));
+		const sp = new Sprite(this.track(new SpriteMaterial({ map: tex, transparent: true })));
 		sp.scale.set(6, 1.5, 1);
 		sp.position.set(this.padCenter.x, DECK_TOP + 3.2, this.padCenter.z);
 		this.group.add(sp);
@@ -413,8 +422,8 @@ export class Helipad {
 		ctx2.fillText('gele streep · groene knop · E', 256, 115);
 		const tex2 = labelTexture(c2);
 		const liftSign = backToBackLabel(
-			new THREE.PlaneGeometry(5.5, 1.7),
-			this.track(new THREE.MeshBasicMaterial({ map: tex2, toneMapped: false })),
+			new PlaneGeometry(5.5, 1.7),
+			this.track(new MeshBasicMaterial({ map: tex2, toneMapped: false })),
 		);
 		// South edge of helipad deck → follow yellow path to green call knobs
 		liftSign.position.set(18, DECK_TOP + 2.2, 8.5);

@@ -1,4 +1,4 @@
-import type { Material, Texture, BufferGeometry, CanvasTexture } from 'three';
+import type { BufferGeometry, CanvasTexture, Material, Texture } from 'three';
 import {
 	BoxGeometry,
 	Color,

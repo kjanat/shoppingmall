@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { BufferGeometry, Material } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, SphereGeometry, Vector3 } from 'three';
 import { lit } from '#/render/material';
 import type { CityColosseum } from '#/scene/city/CityColosseum';
 import { COLOSSEUM_PLAN } from '#/scene/city/cityPlan';
@@ -11,20 +12,20 @@ export interface Gladiator {
 	id: string;
 	name: string;
 	role: GladiatorRole;
-	group: THREE.Group;
+	group: Group;
 	hp: number;
 	maxHp: number;
 	state: FighterState;
 	stateTime: number;
-	pos: THREE.Vector3;
-	targetPos: THREE.Vector3;
+	pos: Vector3;
+	targetPos: Vector3;
 	rotY: number;
 	targetRotY: number;
-	weaponMesh: THREE.Mesh;
-	shieldMesh: THREE.Mesh | null;
-	netMesh?: THREE.Mesh | null;
-	healthBarMesh: THREE.Mesh;
-	healthBarMat: THREE.MeshBasicMaterial;
+	weaponMesh: Mesh;
+	shieldMesh: Mesh | null;
+	netMesh?: Mesh | null;
+	healthBarMesh: Mesh;
+	healthBarMat: MeshBasicMaterial;
 }
 
 /**
@@ -34,16 +35,16 @@ export interface Gladiator {
  * health meters, and AI fight round loop.
  */
 export class ColosseumFighters {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 
-	private readonly materials: THREE.Material[] = [];
-	private readonly geometries: THREE.BufferGeometry[] = [];
+	private readonly materials: Material[] = [];
+	private readonly geometries: BufferGeometry[] = [];
 	private readonly gladiators: Gladiator[] = [];
-	private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
+	private readonly unitBox = new BoxGeometry(1, 1, 1);
 
 	// Hit effect spark and dust meshes
-	private readonly hitSparks: { mesh: THREE.Mesh; life: number }[] = [];
-	private sparkMat: THREE.MeshBasicMaterial;
+	private readonly hitSparks: { mesh: Mesh; life: number }[] = [];
+	private sparkMat: MeshBasicMaterial;
 
 	private roundTime = 0;
 	private roundState: 'fighting' | 'ended' = 'fighting';
@@ -53,7 +54,7 @@ export class ColosseumFighters {
 		this.group.name = 'colosseum_fighters';
 		this.geometries.push(this.unitBox);
 
-		this.sparkMat = new THREE.MeshBasicMaterial({ color: 0xffcc22, toneMapped: false });
+		this.sparkMat = new MeshBasicMaterial({ color: 0xffcc22, toneMapped: false });
 		this.materials.push(this.sparkMat);
 
 		this.spawnInitialFighters();
@@ -85,7 +86,7 @@ export class ColosseumFighters {
 
 		const f1 = this.gladiators[0];
 		const f2 = this.gladiators[1];
-		if (!f1 || !f2) return;
+		if (!(f1 && f2)) return;
 
 		if (this.roundState === 'fighting') {
 			this.updateFighterAI(f1, f2, dt, time);
@@ -103,10 +104,8 @@ export class ColosseumFighters {
 				f1.stateTime = 0;
 				f2.stateTime = 0;
 			}
-		} else if (this.roundState === 'ended') {
-			if (this.roundTime > 10.0) {
-				this.resetRound();
-			}
+		} else if (this.roundState === 'ended' && this.roundTime > 10.0) {
+			this.resetRound();
 		}
 	}
 
@@ -119,20 +118,14 @@ export class ColosseumFighters {
 		const { x: cx, z: cz, arenaRadiusZ } = COLOSSEUM_PLAN;
 
 		// Fighter 1: Secutor Gladiator (Maximus) from North Gate
-		const g1 = this.createGladiator(
-			'g1',
-			'MAXIMUS THE SECUTOR',
-			'secutor',
-			new THREE.Vector3(cx - 3, 0.1, cz - arenaRadiusZ + 5),
-			0,
-		);
+		const g1 = this.createGladiator('g1', 'MAXIMUS THE SECUTOR', 'secutor', new Vector3(cx - 3, 0.1, cz - arenaRadiusZ + 5), 0);
 
 		// Fighter 2: Retiarius Gladiator (Flavius) from South Gate
 		const g2 = this.createGladiator(
 			'g2',
 			'FLAVIUS THE RETIARIUS',
 			'retiarius',
-			new THREE.Vector3(cx + 3, 0.1, cz + arenaRadiusZ - 5),
+			new Vector3(cx + 3, 0.1, cz + arenaRadiusZ - 5),
 			Math.PI,
 		);
 
@@ -141,8 +134,8 @@ export class ColosseumFighters {
 		this.group.add(g2.group);
 	}
 
-	private createGladiator(id: string, name: string, role: GladiatorRole, startPos: THREE.Vector3, startRotY: number): Gladiator {
-		const gGroup = new THREE.Group();
+	private createGladiator(id: string, name: string, role: GladiatorRole, startPos: Vector3, startRotY: number): Gladiator {
+		const gGroup = new Group();
 		gGroup.position.copy(startPos);
 		gGroup.rotation.y = startRotY;
 
@@ -155,98 +148,98 @@ export class ColosseumFighters {
 		this.materials.push(skinMat, brassMat, tunicMat, steelMat, leatherMat);
 
 		// Muscular Torso & Belt
-		const torso = new THREE.Mesh(this.unitBox, skinMat);
+		const torso = new Mesh(this.unitBox, skinMat);
 		torso.scale.set(0.65, 0.85, 0.42);
 		torso.position.set(0, 1.15, 0);
 		torso.castShadow = true;
 		gGroup.add(torso);
 
 		// Subligaculum (Leather Tunic/Loincloth) & Balteus Belt
-		const tunic = new THREE.Mesh(this.unitBox, tunicMat);
+		const tunic = new Mesh(this.unitBox, tunicMat);
 		tunic.scale.set(0.68, 0.55, 0.45);
 		tunic.position.set(0, 0.75, 0);
 		gGroup.add(tunic);
 
-		const belt = new THREE.Mesh(this.unitBox, brassMat);
+		const belt = new Mesh(this.unitBox, brassMat);
 		belt.scale.set(0.7, 0.18, 0.47);
 		belt.position.set(0, 0.95, 0);
 		gGroup.add(belt);
 
 		// Armor: Lorica Segmentata or Galerus Shoulder Guard
 		if (role === 'secutor') {
-			const armor = new THREE.Mesh(this.unitBox, brassMat);
+			const armor = new Mesh(this.unitBox, brassMat);
 			armor.scale.set(0.7, 0.55, 0.46);
 			armor.position.set(0, 1.3, 0);
 			gGroup.add(armor);
 		} else {
 			// Retiarius Shoulder Guard (Galerus)
-			const galerus = new THREE.Mesh(this.unitBox, brassMat);
+			const galerus = new Mesh(this.unitBox, brassMat);
 			galerus.scale.set(0.35, 0.5, 0.35);
 			galerus.position.set(-0.38, 1.45, 0);
 			gGroup.add(galerus);
 		}
 
 		// Legs & Bronze Ocreae Greaves
-		const leftLeg = new THREE.Mesh(this.unitBox, skinMat);
+		const leftLeg = new Mesh(this.unitBox, skinMat);
 		leftLeg.scale.set(0.24, 0.7, 0.24);
 		leftLeg.position.set(-0.17, 0.35, 0);
 
-		const rightLeg = new THREE.Mesh(this.unitBox, skinMat);
+		const rightLeg = new Mesh(this.unitBox, skinMat);
 		rightLeg.scale.set(0.24, 0.7, 0.24);
 		rightLeg.position.set(0.17, 0.35, 0);
 
-		const leftGreave = new THREE.Mesh(this.unitBox, brassMat);
+		const leftGreave = new Mesh(this.unitBox, brassMat);
 		leftGreave.scale.set(0.26, 0.5, 0.26);
 		leftGreave.position.set(-0.17, 0.3, 0.02);
 
 		gGroup.add(leftLeg, rightLeg, leftGreave);
 
 		// Head + Plumed Galea Helmet
-		const head = new THREE.Mesh(this.unitBox, skinMat);
+		const head = new Mesh(this.unitBox, skinMat);
 		head.scale.set(0.32, 0.32, 0.32);
 		head.position.set(0, 1.7, 0);
 		gGroup.add(head);
 
-		const helmet = new THREE.Mesh(this.unitBox, brassMat);
+		const helmet = new Mesh(this.unitBox, brassMat);
 		helmet.scale.set(0.38, 0.35, 0.38);
 		helmet.position.set(0, 1.75, 0);
 		gGroup.add(helmet);
 
 		// Helmet Red Feather Plume Crest
-		const crest = new THREE.Mesh(this.unitBox, tunicMat);
+		const crest = new Mesh(this.unitBox, tunicMat);
 		crest.scale.set(0.08, 0.3, 0.5);
 		crest.position.set(0, 2.02, 0);
 		gGroup.add(crest);
 
 		// Weapon Mesh (Gladius or Trident)
-		let weaponMesh: THREE.Mesh;
-		let shieldMesh: THREE.Mesh | null = null;
-		let netMesh: THREE.Mesh | null = null;
+		let weaponMesh: Mesh;
+		let shieldMesh: Mesh | null = null;
+		let netMesh: Mesh | null = null;
 
 		if (role === 'retiarius') {
 			// Trident Spear
-			weaponMesh = new THREE.Mesh(this.unitBox, steelMat);
+			weaponMesh = new Mesh(this.unitBox, steelMat);
 			weaponMesh.scale.set(0.06, 2.2, 0.06);
 			weaponMesh.position.set(0.42, 1.2, 0.3);
 
 			// Retiarius Weighted Net
-			netMesh = new THREE.Mesh(this.unitBox, leatherMat);
+			netMesh = new Mesh(this.unitBox, leatherMat);
 			netMesh.scale.set(0.5, 0.5, 0.1);
 			netMesh.position.set(-0.42, 1.1, 0.2);
 			gGroup.add(netMesh);
 		} else {
 			// Gladius Shortsword
-			weaponMesh = new THREE.Mesh(this.unitBox, steelMat);
+			weaponMesh = new Mesh(this.unitBox, steelMat);
 			weaponMesh.scale.set(0.08, 1.0, 0.08);
 			weaponMesh.position.set(0.42, 1.2, 0.3);
 			weaponMesh.rotation.x = Math.PI / 4;
 
 			// Scutum Rectangular Shield with Brass Boss
-			shieldMesh = new THREE.Mesh(this.unitBox, tunicMat);
+			shieldMesh = new Mesh(this.unitBox, tunicMat);
 			shieldMesh.scale.set(0.6, 0.95, 0.1);
 			shieldMesh.position.set(-0.42, 1.15, 0.25);
 
-			const boss = new THREE.Mesh(this.unitBox, brassMat);
+			const boss = new Mesh(this.unitBox, brassMat);
 			boss.scale.set(0.2, 0.2, 0.15);
 			boss.position.set(-0.42, 1.15, 0.32);
 			gGroup.add(shieldMesh, boss);
@@ -254,15 +247,15 @@ export class ColosseumFighters {
 		gGroup.add(weaponMesh);
 
 		// Floating 3D Health Meter
-		const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
-		const hpFgMat = new THREE.MeshBasicMaterial({ color: 0x22cc44 });
+		const hpBgMat = new MeshBasicMaterial({ color: 0x222222 });
+		const hpFgMat = new MeshBasicMaterial({ color: 0x22cc44 });
 		this.materials.push(hpBgMat, hpFgMat);
 
-		const hpBg = new THREE.Mesh(this.unitBox, hpBgMat);
+		const hpBg = new Mesh(this.unitBox, hpBgMat);
 		hpBg.scale.set(1.2, 0.14, 0.05);
 		hpBg.position.set(0, 2.35, 0);
 
-		const hpFg = new THREE.Mesh(this.unitBox, hpFgMat);
+		const hpFg = new Mesh(this.unitBox, hpFgMat);
 		hpFg.scale.set(1.2, 0.16, 0.06);
 		hpFg.position.set(0, 2.35, 0.01);
 		gGroup.add(hpBg, hpFg);
@@ -305,7 +298,7 @@ export class ColosseumFighters {
 		if (self.state === 'entrance') {
 			// March from gates to arena center
 			const { x: cx, z: cz } = COLOSSEUM_PLAN;
-			const target = new THREE.Vector3(cx + (self.id === 'g1' ? -3 : 3), 0.1, cz + (self.id === 'g1' ? -6 : 6));
+			const target = new Vector3(cx + (self.id === 'g1' ? -3 : 3), 0.1, cz + (self.id === 'g1' ? -6 : 6));
 			self.pos.lerp(target, dt * 1.6);
 			self.group.position.copy(self.pos);
 
@@ -332,11 +325,9 @@ export class ColosseumFighters {
 				const dir = opp.pos.clone().sub(self.pos).normalize();
 				self.pos.addScaledVector(dir, dt * 2.4);
 				self.group.position.copy(self.pos);
-			} else {
-				if (Math.random() < 0.06) {
-					self.state = 'attack';
-					self.stateTime = 0;
-				}
+			} else if (Math.random() < 0.06) {
+				self.state = 'attack';
+				self.stateTime = 0;
 			}
 		} else if (self.state === 'attack') {
 			// Sword strike animation
@@ -350,12 +341,12 @@ export class ColosseumFighters {
 					if (opp.shieldMesh && Math.random() < 0.42) {
 						opp.state = 'block';
 						opp.stateTime = 0;
-						this.spawnSpark(opp.pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+						this.spawnSpark(opp.pos.clone().add(new Vector3(0, 1.2, 0)));
 					} else {
 						opp.hp = Math.max(0, opp.hp - 20);
 						opp.state = 'hit';
 						opp.stateTime = 0;
-						this.spawnSpark(opp.pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+						this.spawnSpark(opp.pos.clone().add(new Vector3(0, 1.2, 0)));
 					}
 				}
 				self.state = 'circling';
@@ -383,8 +374,8 @@ export class ColosseumFighters {
 		}
 	}
 
-	private spawnSpark(pos: THREE.Vector3): void {
-		const spark = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 6), this.sparkMat);
+	private spawnSpark(pos: Vector3): void {
+		const spark = new Mesh(new SphereGeometry(0.25, 6, 6), this.sparkMat);
 		spark.position.copy(pos);
 		this.group.add(spark);
 		this.hitSparks.push({ mesh: spark, life: 1.0 });
@@ -397,7 +388,7 @@ export class ColosseumFighters {
 
 		const f1 = this.gladiators[0];
 		const f2 = this.gladiators[1];
-		if (!f1 || !f2) return;
+		if (!(f1 && f2)) return;
 
 		const { x: cx, z: cz, arenaRadiusZ } = COLOSSEUM_PLAN;
 

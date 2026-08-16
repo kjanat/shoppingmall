@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Material, PerspectiveCamera } from 'three';
+import { BoxGeometry, CylinderGeometry, Euler, Group, Mesh, MeshBasicMaterial, SphereGeometry, Vector3 } from 'three';
 import { HELIPAD_PAD_SPEC } from '#/data/world';
 import { CollisionWorld } from '#/physics/Collision';
 import type { LitMaterial } from '#/render/material';
@@ -28,13 +29,13 @@ export type HelicopterRelease = 'parked-here' | 'returning-to-pad';
  * aanvliegen → landen → uitdraaien. Kijk vanaf het dak (secret stairs, V1 oost).
  */
 export class Helicopter {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	state: HeliState = 'parked';
-	private body = new THREE.Group();
-	private mainRotor = new THREE.Group();
-	private tailRotor!: THREE.Mesh;
-	private materials: THREE.Material[] = [];
-	private pad: THREE.Vector3;
+	private body = new Group();
+	private mainRotor = new Group();
+	private tailRotor!: Mesh;
+	private materials: Material[] = [];
+	private pad: Vector3;
 	private world: CollisionWorld;
 	private rotorSpeed = 0;
 	private stateT = 0;
@@ -42,9 +43,9 @@ export class Helicopter {
 	/** Alleen op zijn eigen pad hoort de helikopter bij de automatische dakscène. */
 	private resumesRounds = true;
 	/** wereld-positie tijdens de vlucht */
-	private pos = new THREE.Vector3();
+	private pos = new Vector3();
 
-	constructor(padCenter: THREE.Vector3, world = new CollisionWorld()) {
+	constructor(padCenter: Vector3, world = new CollisionWorld()) {
 		this.group.name = 'helicopter';
 		this.pad = padCenter.clone();
 		this.world = world;
@@ -58,7 +59,7 @@ export class Helicopter {
 	occupied = false;
 
 	/** Afstand speler → heli (voor instappen op het dak). */
-	distanceTo(p: THREE.Vector3): number {
+	distanceTo(p: Vector3): number {
 		return this.body.position.distanceTo(p);
 	}
 
@@ -75,8 +76,8 @@ export class Helicopter {
 	}
 
 	/** Cockpitpositie voor het instappen (camera gaat hierheen). */
-	getSeatPosition(): THREE.Vector3 {
-		return this.body.position.clone().add(new THREE.Vector3(0, 0.9, 0));
+	getSeatPosition(): Vector3 {
+		return this.body.position.clone().add(new Vector3(0, 0.9, 0));
 	}
 
 	/** Uitstappen laat een elders geparkeerde spelerheli staan; op het pad hervat de dakscène. */
@@ -92,15 +93,15 @@ export class Helicopter {
 		return returnsToPad ? 'returning-to-pad' : 'parked-here';
 	}
 
-	private prevCam = new THREE.Vector3();
+	private prevCam = new Vector3();
 	private prevYaw = 0;
 
 	/**
 	 * Tijdens jouw vlucht: cockpit om de camera heen (neus wijst lokaal +X),
 	 * met flight-sim-gedrag: neus duikt bij snelheid, banken in de bocht.
 	 */
-	followCamera(cam: THREE.PerspectiveCamera, dt: number): void {
-		const e = new THREE.Euler().setFromQuaternion(cam.quaternion, 'YXZ');
+	followCamera(cam: PerspectiveCamera, dt: number): void {
+		const e = new Euler().setFromQuaternion(cam.quaternion, 'YXZ');
 		const yaw = e.y + Math.PI / 2; // lokaal +X = kijkrichting
 		const safeDt = Math.max(dt, 1e-4);
 
@@ -250,39 +251,39 @@ export class Helicopter {
 		this.materials.push(glassMat);
 
 		// Romp
-		const fuselage = new THREE.Mesh(new THREE.SphereGeometry(1.05, 18, 14), hull);
+		const fuselage = new Mesh(new SphereGeometry(1.05, 18, 14), hull);
 		fuselage.scale.set(1.7, 0.95, 0.95);
 		fuselage.position.y = 1.25;
 		fuselage.castShadow = true;
 		this.body.add(fuselage);
 
 		// Cockpitglas
-		const glass = new THREE.Mesh(new THREE.SphereGeometry(0.82, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), glassMat);
+		const glass = new Mesh(new SphereGeometry(0.82, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), glassMat);
 		glass.rotation.z = -Math.PI / 2;
 		glass.position.set(1.05, 1.35, 0);
 		this.body.add(glass);
 
 		// Staartboom + vinnen
-		const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.3, 3.4, 10), hull);
+		const boom = new Mesh(new CylinderGeometry(0.16, 0.3, 3.4, 10), hull);
 		boom.rotation.z = Math.PI / 2;
 		boom.position.set(-2.6, 1.45, 0);
 		this.body.add(boom);
-		const fin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.0, 0.08), hull);
+		const fin = new Mesh(new BoxGeometry(0.5, 1.0, 0.08), hull);
 		fin.position.set(-4.2, 1.85, 0);
 		fin.rotation.z = -0.25;
 		this.body.add(fin);
-		const hstab = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.07, 1.3), dark);
+		const hstab = new Mesh(new BoxGeometry(0.4, 0.07, 1.3), dark);
 		hstab.position.set(-3.4, 1.6, 0);
 		this.body.add(hstab);
 
 		// Skids
 		for (const side of [-1, 1] as const) {
-			const skid = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 3.0, 8), dark);
+			const skid = new Mesh(new CylinderGeometry(0.055, 0.055, 3.0, 8), dark);
 			skid.rotation.z = Math.PI / 2;
 			skid.position.set(0.1, 0.12, side * 0.75);
 			this.body.add(skid);
 			for (const sx of [-0.8, 0.9]) {
-				const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.75, 6), dark);
+				const strut = new Mesh(new CylinderGeometry(0.045, 0.045, 0.75, 6), dark);
 				strut.position.set(sx, 0.5, side * 0.72);
 				strut.rotation.x = side * 0.25;
 				this.body.add(strut);
@@ -291,11 +292,11 @@ export class Helicopter {
 
 		// Hoofdrotor
 		this.mainRotor.position.set(0.1, 2.35, 0);
-		const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.35, 8), dark);
+		const hub = new Mesh(new CylinderGeometry(0.14, 0.18, 0.35, 8), dark);
 		this.mainRotor.add(hub);
-		const bladeGeo = new THREE.BoxGeometry(5.6, 0.05, 0.32);
+		const bladeGeo = new BoxGeometry(5.6, 0.05, 0.32);
 		for (const a of [0, Math.PI / 2]) {
-			const blade = new THREE.Mesh(bladeGeo, dark);
+			const blade = new Mesh(bladeGeo, dark);
 			blade.rotation.y = a;
 			blade.position.y = 0.12;
 			this.mainRotor.add(blade);
@@ -303,7 +304,7 @@ export class Helicopter {
 		this.body.add(this.mainRotor);
 
 		// Staartrotor
-		this.tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.15, 0.14), dark);
+		this.tailRotor = new Mesh(new BoxGeometry(0.05, 1.15, 0.14), dark);
 		this.tailRotor.position.set(-4.15, 1.5, 0.14);
 		this.body.add(this.tailRotor);
 
@@ -336,7 +337,7 @@ export class Helicopter {
 		ctx.fillText('MALL AIR · PRAIRIE LAKES', 256, 134);
 		const tex = labelTexture(c);
 		tex.anisotropy = 4;
-		const stickerMat = new THREE.MeshBasicMaterial({
+		const stickerMat = new MeshBasicMaterial({
 			map: tex,
 			transparent: true,
 			toneMapped: false,
@@ -344,9 +345,9 @@ export class Helicopter {
 		this.materials.push(stickerMat);
 
 		// Patch rond phi=π/2 kijkt +Z; radius 1.07 zweeft ~2 cm boven de huid
-		const patchGeo = new THREE.SphereGeometry(1.07, 16, 10, Math.PI / 2 - 0.42, 0.84, Math.PI / 2 - 0.3, 0.6);
+		const patchGeo = new SphereGeometry(1.07, 16, 10, Math.PI / 2 - 0.42, 0.84, Math.PI / 2 - 0.3, 0.6);
 		for (const side of [-1, 1] as const) {
-			const decal = new THREE.Mesh(patchGeo, stickerMat);
+			const decal = new Mesh(patchGeo, stickerMat);
 			// spiegelzijde: draai het segment naar −Z, tekst blijft leesbaar
 			if (side === -1) decal.rotation.y = Math.PI;
 			fuselage.add(decal);

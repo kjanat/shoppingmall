@@ -3,12 +3,12 @@ import type { PersonRow } from '#/scene/Americans';
 import { qs } from '#/util/dom';
 
 /** Non-shopper rows: dief, aap, DJ, catwalk-dame — the mall's fixed cast. */
-export type CastRow = {
+export interface CastRow {
 	icon: string;
 	name: string;
 	doing: string;
 	floor: string;
-};
+}
 
 function moodFace(u: number): string {
 	if (u >= 70) return '😡';
@@ -131,7 +131,8 @@ export class PeopleDashboard {
 		});
 
 		// B is handled in App (so we can refresh data on open). Esc closes here.
-		window.addEventListener('keydown', (e) => {
+		globalThis.addEventListener('keydown', (e) => {
+			if (!(e instanceof KeyboardEvent)) return;
 			const el = e.target as HTMLElement | null;
 			if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
 			if (e.code === 'Escape' && this.open) {

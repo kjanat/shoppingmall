@@ -13,13 +13,14 @@
  * winnen. Een laagmasker van nul haalt het object uit elke camera, de schaduwcamera
  * meegerekend, zonder dat de spelregels eromheen iets merken.
  */
-import * as THREE from 'three';
+import type { Object3D, Scene } from 'three';
+import { BatchedMesh, Box3, Line, Mesh, Points, Sphere, Sprite, Vector3 } from 'three';
 import { zoneMaskAround, zoneMaskOfBounds } from '#/data/zones';
 import { ownerName } from '#/render/sceneOwner';
 import type { ZoneCuller, ZoneOwnerTally } from '#/render/ZoneCuller';
 
-type Occupant = {
-	object: THREE.Object3D;
+interface Occupant {
+	object: Object3D;
 	/** Het laagmasker dat het object zelf koos; hersteld zodra het weer mag. */
 	layers: number;
 	radius: number;
@@ -27,15 +28,15 @@ type Occupant = {
 	zoneMask: number;
 	/** Zones die het object verklaart bovenop wat zijn doos raakt; zie `tagZoneSpan`. */
 	declared: number;
-	sphere: THREE.Sphere;
+	sphere: Sphere;
 	/** De feature die dit object bouwde, en zijn regel in de cull-telling. */
 	ownerName: string;
 	casts: boolean;
 	tally: ZoneOwnerTally | null;
-};
+}
 
 /** Zones die een object verklaart bovenop de zones die zijn eigen doos raakt. */
-const zoneSpans = new WeakMap<THREE.Object3D, number>();
+const zoneSpans = new WeakMap<Object3D, number>();
 
 /**
  * Verklaar dat dit object óók bij deze zones hoort, buiten de zones die zijn doos
@@ -47,38 +48,37 @@ const zoneSpans = new WeakMap<THREE.Object3D, number>();
  * terwijl de camera nog onder de V1-plaat de schacht in kijkt: geen enkele
  * V1→V0-portaalkegel dekt het dan, en het verdwijnt terwijl je er recht naar kijkt.
  */
-export function tagZoneSpan(object: THREE.Object3D, mask: number): void {
+export function tagZoneSpan(object: Object3D, mask: number): void {
 	zoneSpans.set(object, (zoneSpans.get(object) ?? 0) | mask);
 }
 
 /** De zones die dit object bovenop zijn doos verklaart; 0 als het niets verklaarde. */
-export function zoneSpanOf(object: THREE.Object3D): number {
+export function zoneSpanOf(object: Object3D): number {
 	return zoneSpans.get(object) ?? 0;
 }
 
 /** Wat één feature aan losse objecten in de scene heeft staan. */
-export type OccupantOwnerStats = { name: string; occupants: number; casters: number };
+export interface OccupantOwnerStats {
+	name: string;
+	occupants: number;
+	casters: number;
+}
 
-export type ZoneVisibilityStats = {
+export interface ZoneVisibilityStats {
 	occupants: number;
 	dynamic: number;
 	hidden: number;
 	owners: readonly OccupantOwnerStats[];
-};
+}
 
-const SCAN_BOX = new THREE.Box3();
-const SCAN_MIN = new THREE.Vector3();
-const SCAN_MAX = new THREE.Vector3();
-const WORLD_POSITION = new THREE.Vector3();
+const SCAN_BOX = new Box3();
+const SCAN_MIN = new Vector3();
+const SCAN_MAX = new Vector3();
+const WORLD_POSITION = new Vector3();
 
-function renderable(object: THREE.Object3D): boolean {
-	if (object instanceof THREE.BatchedMesh) return false;
-	return (
-		object instanceof THREE.Mesh ||
-		object instanceof THREE.Sprite ||
-		object instanceof THREE.Points ||
-		object instanceof THREE.Line
-	);
+function renderable(object: Object3D): boolean {
+	if (object instanceof BatchedMesh) return false;
+	return object instanceof Mesh || object instanceof Sprite || object instanceof Points || object instanceof Line;
 }
 
 /**
@@ -88,7 +88,7 @@ function renderable(object: THREE.Object3D): boolean {
  * verschuift dat midden per frame en de straal moet dan alsnog kloppen. Ruim is
  * hier goed, want te krap laat geometrie verdwijnen die er wel degelijk staat.
  */
-function occupantRadius(object: THREE.Object3D): number {
+function occupantRadius(object: Object3D): number {
 	SCAN_BOX.setFromObject(object, true);
 	if (SCAN_BOX.isEmpty()) return 0;
 	object.getWorldPosition(WORLD_POSITION);
@@ -127,8 +127,8 @@ export class ZoneVisibility {
 	 * nul en die bronnen tekenen dus toch al niets; ze horen hier niet nog eens
 	 * geteld te worden.
 	 */
-	constructor(scene: THREE.Scene, dynamicRoots: readonly THREE.Object3D[]) {
-		const dynamic = new WeakSet<THREE.Object3D>();
+	constructor(scene: Scene, dynamicRoots: readonly Object3D[]) {
+		const dynamic = new WeakSet<Object3D>();
 		for (const root of dynamicRoots) root.traverse((object) => dynamic.add(object));
 		const ownerIndex = new Map<string, OccupantOwnerStats>();
 		scene.traverse((object) => {
@@ -152,7 +152,7 @@ export class ZoneVisibility {
 				dynamic: dynamic.has(object),
 				zoneMask,
 				declared,
-				sphere: new THREE.Sphere(WORLD_POSITION.clone(), radius),
+				sphere: new Sphere(WORLD_POSITION.clone(), radius),
 				ownerName: name,
 				casts: object.castShadow,
 				tally: null,

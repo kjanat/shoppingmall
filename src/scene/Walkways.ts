@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type { Material } from 'three';
+import { BoxGeometry, Group, Mesh, RepeatWrapping } from 'three';
 import type { Bounds2 } from '#/data/spatial';
 import { planBounds, rectanglePlan } from '#/data/spatial';
 import type { LitMaterial } from '#/render/material';
@@ -24,9 +25,9 @@ const BELT_EDGE_MARGIN = 0.1;
  * Only two short belts, far from stairs/escalator/void.
  */
 export class MovingWalkways {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	private belts: Belt[] = [];
-	private materials: THREE.Material[] = [];
+	private materials: Material[] = [];
 
 	constructor() {
 		this.group.name = 'walkways';
@@ -56,13 +57,13 @@ export class MovingWalkways {
 		return null;
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}
 
 	private addBelt(opts: { x: number; y: number; z: number; length: number; rotY: number }): void {
-		const g = new THREE.Group();
+		const g = new Group();
 		g.position.set(opts.x, opts.y, opts.z);
 		g.rotation.y = opts.rotY;
 
@@ -81,7 +82,7 @@ export class MovingWalkways {
 		ctx.fillRect(60, 0, 4, 256);
 
 		const tex = labelTexture(canvas);
-		tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+		tex.wrapS = tex.wrapT = RepeatWrapping;
 		tex.repeat.set(1, len / 2);
 
 		const beltMat = this.track(
@@ -92,7 +93,7 @@ export class MovingWalkways {
 			}),
 		);
 
-		const belt = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, len), beltMat);
+		const belt = new Mesh(new BoxGeometry(w, 0.08, len), beltMat);
 		belt.position.y = 0.06;
 		g.add(belt);
 
@@ -104,7 +105,7 @@ export class MovingWalkways {
 			}),
 		);
 		for (const sx of [-half(w) - 0.06, half(w) + 0.06]) {
-			const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.85, len), frameMat);
+			const rail = new Mesh(new BoxGeometry(0.1, 0.85, len), frameMat);
 			rail.position.set(sx, 0.48, 0);
 			g.add(rail);
 		}

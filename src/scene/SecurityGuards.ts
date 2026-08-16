@@ -1,4 +1,17 @@
-import * as THREE from 'three';
+import type { CanvasTexture, Material, Object3D } from 'three';
+import {
+	BoxGeometry,
+	CapsuleGeometry,
+	CircleGeometry,
+	CylinderGeometry,
+	Group,
+	Mesh,
+	MeshBasicMaterial,
+	SphereGeometry,
+	Sprite,
+	SpriteMaterial,
+	Vector3,
+} from 'three';
 import { spatial } from '#/audio/SpatialAudio';
 import { level, levelAt } from '#/data/levels';
 import { LINE_OF_SIGHT, PROJECTILE_PATH } from '#/data/spatial';
@@ -22,13 +35,13 @@ export const BULLET_RADIUS = 0.06;
  */
 export const BULLET_SPEED = { min: 28, spread: 8 } as const;
 
-type Guard = {
-	root: THREE.Group;
+interface Guard {
+	root: Group;
 	name: string;
 	/** body yaw */
 	yaw: number;
 	state: GuardState;
-	patrol: THREE.Vector3[];
+	patrol: Vector3[];
 	patrolI: number;
 	/** lerp along patrol segment 0..1 */
 	segT: number;
@@ -39,31 +52,37 @@ type Guard = {
 	/** how long to stay in alert/firing */
 	stateT: number;
 	/** current aim point */
-	aim: THREE.Vector3;
-	speech: THREE.Sprite;
-	speechTex: THREE.CanvasTexture;
+	aim: Vector3;
+	speech: Sprite;
+	speechTex: CanvasTexture;
 	speechCtx: CanvasRenderingContext2D;
 	speechLife: number;
 	muzzle: LightHandle;
-	gun: THREE.Group;
+	gun: Group;
 	/** arm for recoil */
-	armR: THREE.Object3D;
+	armR: Object3D;
 	/** walk phase */
 	legPhase: number;
 	kills: number;
-};
+}
 
-type Bullet = {
-	mesh: THREE.Mesh;
+interface Bullet {
+	mesh: Mesh;
 	vx: number;
 	vy: number;
 	vz: number;
 	life: number;
 	/** who fired — for panic radius */
-	origin: THREE.Vector3;
-};
+	origin: Vector3;
+}
 
-type Threat = { x: number; y: number; z: number; kind: string; weight: number };
+interface Threat {
+	x: number;
+	y: number;
+	z: number;
+	kind: string;
+	weight: number;
+}
 
 /** Ooghoogte van een bewaker boven zijn voeten; vanaf daar kijkt hij, niet vanaf de vloer. */
 const EYE_HEIGHT = 1.62;
@@ -101,18 +120,18 @@ const NAMES = [
  * on shadows, croissants, and mildly interesting body language.
  */
 export class SecurityGuards {
-	readonly group = new THREE.Group();
+	readonly group = new Group();
 	private world: CollisionWorld;
 	private pool: LightPool;
 	private guards: Guard[] = [];
 	private bullets: Bullet[] = [];
-	private materials: THREE.Material[] = [];
+	private materials: Material[] = [];
 	private t = 0;
 	private onOpenFire: ((msg: string) => void) | null = null;
 	private onPlayerHit: ((dmg: number, guardName: string) => void) | null = null;
-	private onSimPanic: ((origin: THREE.Vector3, radius: number) => void) | null = null;
+	private onSimPanic: ((origin: Vector3, radius: number) => void) | null = null;
 	/** reusable */
-	private tmp = new THREE.Vector3();
+	private tmp = new Vector3();
 	private threats: Threat[] = [];
 
 	constructor(world: CollisionWorld, pool: LightPool) {
@@ -120,32 +139,12 @@ export class SecurityGuards {
 		this.pool = pool;
 		this.group.name = 'securityGuards';
 		// Four posts around the atrium ring — classic mall cop coverage
-		const routes: THREE.Vector3[][] = [
-			[
-				new THREE.Vector3(14, 0.15, 10),
-				new THREE.Vector3(22, 0.15, 4),
-				new THREE.Vector3(18, 0.15, -10),
-				new THREE.Vector3(10, 0.15, -6),
-			],
-			[
-				new THREE.Vector3(-14, 0.15, 10),
-				new THREE.Vector3(-22, 0.15, 2),
-				new THREE.Vector3(-18, 0.15, -10),
-				new THREE.Vector3(-8, 0.15, -4),
-			],
-			[
-				new THREE.Vector3(8, 0.15, -14),
-				new THREE.Vector3(-8, 0.15, -16),
-				new THREE.Vector3(-4, 0.15, 14),
-				new THREE.Vector3(6, 0.15, 16),
-			],
+		const routes: Vector3[][] = [
+			[new Vector3(14, 0.15, 10), new Vector3(22, 0.15, 4), new Vector3(18, 0.15, -10), new Vector3(10, 0.15, -6)],
+			[new Vector3(-14, 0.15, 10), new Vector3(-22, 0.15, 2), new Vector3(-18, 0.15, -10), new Vector3(-8, 0.15, -4)],
+			[new Vector3(8, 0.15, -14), new Vector3(-8, 0.15, -16), new Vector3(-4, 0.15, 14), new Vector3(6, 0.15, 16)],
 			// Floor 1 overwatch near Kruidvat / balcony
-			[
-				new THREE.Vector3(16, 6.15, 8),
-				new THREE.Vector3(20, 6.15, -4),
-				new THREE.Vector3(8, 6.15, -12),
-				new THREE.Vector3(4, 6.15, 10),
-			],
+			[new Vector3(16, 6.15, 8), new Vector3(20, 6.15, -4), new Vector3(8, 6.15, -12), new Vector3(4, 6.15, 10)],
 		];
 		routes.forEach((route, i) => {
 			this.guards.push(this.spawnGuard(NAMES[i] ?? `Officer ${i + 1}`, route));
@@ -161,7 +160,7 @@ export class SecurityGuards {
 	}
 
 	/** Called when a volley should panic sims (App wires Americans.panicFromGunfire) */
-	setSimPanicCallback(cb: (origin: THREE.Vector3, radius: number) => void): void {
+	setSimPanicCallback(cb: (origin: Vector3, radius: number) => void): void {
 		this.onSimPanic = cb;
 	}
 
@@ -178,7 +177,7 @@ export class SecurityGuards {
 	 * @param playerPos camera
 	 * @param extras optional dynamic threats (thief, monkey, protest center…)
 	 */
-	update(dt: number, playerPos: THREE.Vector3, extras: Threat[] = []): void {
+	update(dt: number, playerPos: Vector3, extras: Threat[] = []): void {
 		this.t += dt;
 		this.threats.length = 0;
 		// Player is always a potential "threat" if they breathe too hard
@@ -202,7 +201,7 @@ export class SecurityGuards {
 		this.tickBullets(dt, playerPos);
 	}
 
-	private tickGuard(g: Guard, dt: number, playerPos: THREE.Vector3): void {
+	private tickGuard(g: Guard, dt: number, playerPos: Vector3): void {
 		g.scanCd -= dt;
 		g.fireCd -= dt;
 		g.stateT -= dt;
@@ -282,7 +281,7 @@ export class SecurityGuards {
 		const py = g.root.position.y;
 		const pz = g.root.position.z;
 		let best: Threat | null = null;
-		let bestScore = Infinity;
+		let bestScore = Number.POSITIVE_INFINITY;
 		for (const t of this.threats) {
 			// Same-ish floor only
 			if (Math.abs(t.y - (py + 1.4)) > 3.5 && Math.abs(t.y - py) > 3.5) continue;
@@ -355,12 +354,12 @@ export class SecurityGuards {
 
 		const speed = BULLET_SPEED.min + Math.random() * BULLET_SPEED.spread;
 		const mat = this.track(
-			new THREE.MeshBasicMaterial({
+			new MeshBasicMaterial({
 				color: 0xffeb3b,
 				toneMapped: false,
 			}),
 		);
-		const mesh = new THREE.Mesh(new THREE.SphereGeometry(BULLET_RADIUS, 6, 6), mat);
+		const mesh = new Mesh(new SphereGeometry(BULLET_RADIUS, 6, 6), mat);
 		mesh.position.copy(origin);
 		this.group.add(mesh);
 		this.bullets.push({
@@ -373,10 +372,10 @@ export class SecurityGuards {
 		});
 
 		// Tracer streak (short-lived cylinder)
-		const streak = new THREE.Mesh(
-			new THREE.CylinderGeometry(0.02, 0.02, 0.45, 4),
+		const streak = new Mesh(
+			new CylinderGeometry(0.02, 0.02, 0.45, 4),
 			this.track(
-				new THREE.MeshBasicMaterial({
+				new MeshBasicMaterial({
 					color: 0xffc107,
 					toneMapped: false,
 					transparent: true,
@@ -385,17 +384,17 @@ export class SecurityGuards {
 			),
 		);
 		streak.position.copy(origin);
-		streak.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.tmp.clone().normalize());
+		streak.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), this.tmp.clone().normalize());
 		this.group.add(streak);
 		// reuse bullet life for streak cleanup via same list entry? separate quick kill:
-		window.setTimeout(() => {
+		globalThis.setTimeout(() => {
 			this.group.remove(streak);
-			(streak.material as THREE.Material).dispose();
+			(streak.material as Material).dispose();
 			streak.geometry.dispose();
 		}, 80);
 	}
 
-	private tickBullets(dt: number, playerPos: THREE.Vector3): void {
+	private tickBullets(dt: number, playerPos: Vector3): void {
 		for (let i = this.bullets.length - 1; i >= 0; i--) {
 			const b = this.bullets[i];
 			if (!b) continue;
@@ -417,7 +416,7 @@ export class SecurityGuards {
 			if (!this.world.hasLineOfSight(was, now, PROJECTILE_PATH) || this.world.crossesSlab(was, now, BULLET_RADIUS)) {
 				b.life = 0;
 				this.group.remove(b.mesh);
-				(b.mesh.material as THREE.Material).dispose();
+				(b.mesh.material as Material).dispose();
 				b.mesh.geometry.dispose();
 				this.bullets.splice(i, 1);
 				// Zonder deze sprong liep de treffercontrole hieronder door op de stand
@@ -441,7 +440,7 @@ export class SecurityGuards {
 
 			if (b.life <= 0) {
 				this.group.remove(b.mesh);
-				(b.mesh.material as THREE.Material).dispose();
+				(b.mesh.material as Material).dispose();
 				b.mesh.geometry.dispose();
 				this.bullets.splice(i, 1);
 			}
@@ -485,7 +484,7 @@ export class SecurityGuards {
 		ctx.fillStyle = 'rgba(20,20,20,0.94)';
 		ctx.strokeStyle = '#f5c518';
 		ctx.lineWidth = 5;
-		roundRect(ctx, 8, 4, w - 16, h - 16, 10);
+		roundRect(ctx, { x: 8, y: 4, width: w - 16, height: h - 16, radius: 10 });
 		ctx.fill();
 		ctx.stroke();
 		ctx.fillStyle = '#ff5252';
@@ -495,8 +494,8 @@ export class SecurityGuards {
 		g.speechLife = 2.0 + Math.random() * 0.8;
 	}
 
-	private spawnGuard(name: string, patrol: THREE.Vector3[]): Guard {
-		const root = new THREE.Group();
+	private spawnGuard(name: string, patrol: Vector3[]): Guard {
+		const root = new Group();
 		const start = at(patrol, 0).clone();
 		root.position.copy(start);
 
@@ -514,26 +513,26 @@ export class SecurityGuards {
 
 		// Boots
 		for (const sx of [-0.12, 0.12]) {
-			const boot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.22), black);
+			const boot = new Mesh(new BoxGeometry(0.12, 0.14, 0.22), black);
 			boot.position.set(sx, 0.08, 0.02);
 			root.add(boot);
 		}
 		// Legs
 		for (const sx of [-0.12, 0.12]) {
-			const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.4, 3, 6), navy);
+			const leg = new Mesh(new CapsuleGeometry(0.07, 0.4, 3, 6), navy);
 			leg.position.set(sx, 0.42, 0);
 			root.add(leg);
 		}
 		// Torso
-		const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 4, 8), navy);
+		const body = new Mesh(new CapsuleGeometry(0.22, 0.55, 4, 8), navy);
 		body.position.y = 1.05;
 		root.add(body);
 		// Tactical vest
-		const vestM = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.5, 0.28), vest);
+		const vestM = new Mesh(new BoxGeometry(0.48, 0.5, 0.28), vest);
 		vestM.position.y = 1.15;
 		root.add(vestM);
 		// Badge
-		const badge = new THREE.Mesh(new THREE.CircleGeometry(0.07, 8), gold);
+		const badge = new Mesh(new CircleGeometry(0.07, 8), gold);
 		badge.position.set(0.16, 1.25, 0.16);
 		root.add(badge);
 		// "SECURITY" plate. Clear of the torso capsule, which bulges out to
@@ -545,53 +544,53 @@ export class SecurityGuards {
 		root.add(plate);
 
 		// Head
-		const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), skin);
+		const head = new Mesh(new SphereGeometry(0.16, 12, 10), skin);
 		head.position.y = 1.62;
 		root.add(head);
 		// Sunglasses
-		const shades = new THREE.Mesh(
-			new THREE.BoxGeometry(0.22, 0.06, 0.04),
+		const shades = new Mesh(
+			new BoxGeometry(0.22, 0.06, 0.04),
 			this.track(lit({ color: 0x111111, metalness: 0.6, roughness: 0.2 })),
 		);
 		shades.position.set(0, 1.64, 0.14);
 		root.add(shades);
 		// Buzzcut / high-and-tight
-		const hair = new THREE.Mesh(
-			new THREE.SphereGeometry(0.165, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+		const hair = new Mesh(
+			new SphereGeometry(0.165, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
 			this.track(lit({ color: 0x3e2723, roughness: 0.9 })),
 		);
 		hair.position.set(0, 1.68, 0);
 		root.add(hair);
 		// Earpiece
-		const ear = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), black);
+		const ear = new Mesh(new SphereGeometry(0.03, 6, 6), black);
 		ear.position.set(0.16, 1.62, 0);
 		root.add(ear);
 
 		// Left arm (radio pose)
-		const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.35, 3, 6), navy);
+		const armL = new Mesh(new CapsuleGeometry(0.055, 0.35, 3, 6), navy);
 		armL.position.set(-0.32, 1.15, 0.05);
 		armL.rotation.z = 0.4;
 		armL.rotation.x = 0.5;
 		root.add(armL);
 		// Radio on shoulder
-		const radio = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.06), black);
+		const radio = new Mesh(new BoxGeometry(0.1, 0.14, 0.06), black);
 		radio.position.set(-0.28, 1.4, 0.05);
 		root.add(radio);
 
 		// Right arm + gun group
-		const armR = new THREE.Group();
+		const armR = new Group();
 		armR.position.set(0.3, 1.25, 0.08);
 		armR.rotation.x = -0.35;
-		const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.32, 3, 6), navy);
+		const upper = new Mesh(new CapsuleGeometry(0.055, 0.32, 3, 6), navy);
 		upper.position.set(0, -0.1, 0);
 		armR.add(upper);
-		const gun = new THREE.Group();
+		const gun = new Group();
 		gun.position.set(0.02, -0.35, 0.18);
 		// Pistol body
-		const slide = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.28), black);
+		const slide = new Mesh(new BoxGeometry(0.06, 0.1, 0.28), black);
 		slide.position.set(0, 0.04, 0.08);
 		gun.add(slide);
-		const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.08), black);
+		const grip = new Mesh(new BoxGeometry(0.05, 0.14, 0.08), black);
 		grip.position.set(0, -0.04, 0);
 		gun.add(grip);
 		// Follows the gun: that group walks, turns and recoils with the guard.
@@ -605,7 +604,7 @@ export class SecurityGuards {
 			decay: 2,
 			snap: true,
 			follow: gun,
-			offset: new THREE.Vector3(0, 0.05, 0.28),
+			offset: new Vector3(0, 0.05, 0.28),
 		});
 		armR.add(gun);
 		root.add(armR);
@@ -620,8 +619,8 @@ export class SecurityGuards {
 		// Speech bubble
 		const { canvas: sc, ctx: speechCtx } = labelCanvas(360, 80);
 		const speechTex = labelTexture(sc);
-		const speech = new THREE.Sprite(
-			new THREE.SpriteMaterial({
+		const speech = new Sprite(
+			new SpriteMaterial({
 				map: speechTex,
 				transparent: true,
 				depthTest: true,
@@ -631,7 +630,7 @@ export class SecurityGuards {
 		speech.position.set(0, 2.35, 0);
 		speech.visible = false;
 		// The deck cull owns the holder's `visible`, so `speechLife` keeps owning the sprite's.
-		const speechHolder = new THREE.Group();
+		const speechHolder = new Group();
 		speechHolder.add(speech);
 		root.add(speechHolder);
 		tagLevelCulled(speechHolder);
@@ -649,7 +648,7 @@ export class SecurityGuards {
 			scanCd: Math.random() * 1.5,
 			fireCd: 0,
 			stateT: 0,
-			aim: start.clone().add(new THREE.Vector3(0, 1.4, 1)),
+			aim: start.clone().add(new Vector3(0, 1.4, 1)),
 			speech,
 			speechTex,
 			speechCtx,
@@ -662,7 +661,7 @@ export class SecurityGuards {
 		};
 	}
 
-	private makePlate(text: string, bg: string, fg: string): THREE.Sprite {
+	private makePlate(text: string, bg: string, fg: string): Sprite {
 		const { canvas: c, ctx } = labelCanvas(320, 64);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 320, 64);
@@ -675,10 +674,10 @@ export class SecurityGuards {
 		ctx.textBaseline = 'middle';
 		ctx.fillText(text, 160, 32);
 		const tex = labelTexture(c);
-		return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+		return new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 
-	private track<T extends THREE.Material>(m: T): T {
+	private track<T extends Material>(m: T): T {
 		this.materials.push(m);
 		return m;
 	}

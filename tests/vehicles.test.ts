@@ -36,7 +36,7 @@ const CLIMB_SLACK = 0.35;
 const UNDERNEATH = 0.5;
 
 stubDocument();
-const THREE = await import('three');
+const { Scene } = await import('three');
 const [{ LightPool }, { Barriers }, { DriveableCars }, { ScrubberBuggy }, { GlassElevator }, { CleaningCart }] =
 	await Promise.all([
 		import('#/render/LightPool'),
@@ -198,7 +198,7 @@ describe('getting out where you got out', () => {
 	 */
 	test('out of the lift cabin you step onto the cabin floor', () => {
 		const deck = new CollisionWorld();
-		const buggy = new ScrubberBuggy(deck, new LightPool(new THREE.Scene()), new Barriers(deck));
+		const buggy = new ScrubberBuggy(deck, new LightPool(new Scene()), new Barriers(deck));
 		const cabin = levelY('v1');
 		buggy.board();
 		buggy.setFloorOverride(cabin);
@@ -218,9 +218,7 @@ describe('unsticking a body', () => {
 	// the test measures nothing.
 	const roomy = world.boxes.filter(
 		(box) =>
-			!box.disabled &&
-			!box.climbable &&
-			!box.outdoor &&
+			!(box.disabled || box.climbable || box.outdoor) &&
 			span(box.minX, box.maxX) >= radius * 2 &&
 			span(box.minZ, box.maxZ) >= radius * 2,
 	);
@@ -270,7 +268,7 @@ function driveCart(
 	frames: number,
 	throttle = 1,
 ): { maxY: number; end: { x: number; y: number; z: number } } {
-	const cart = new ScrubberBuggy(deck, new LightPool(new THREE.Scene()), new Barriers(deck));
+	const cart = new ScrubberBuggy(deck, new LightPool(new Scene()), new Barriers(deck));
 	cart.resume({ id: '', x: start.x, y: start.y, z: start.z, yaw: start.yaw, speed: 0 });
 	let maxY = start.y;
 	for (let frame = 0; frame < frames; frame++) {
@@ -337,7 +335,7 @@ describe('what the cart may climb', () => {
 
 	test('it drives through the assembled lift entrance', () => {
 		const liftDeck = new CollisionWorld();
-		const lift = new GlassElevator(new LightPool(new THREE.Scene()));
+		const lift = new GlassElevator(new LightPool(new Scene()));
 		for (const collider of lift.getColliders()) {
 			liftDeck.addBox(collider.minX, collider.maxX, collider.minZ, collider.maxZ, {
 				minY: collider.minY ?? -7.5,
@@ -361,7 +359,7 @@ describe('what the cart may climb', () => {
  */
 describe('climbable geometry against each kind of body', () => {
 	const deck = new CollisionWorld();
-	const lift = new GlassElevator(new LightPool(new THREE.Scene()));
+	const lift = new GlassElevator(new LightPool(new Scene()));
 	for (const collider of lift.getColliders()) {
 		deck.addBox(collider.minX, collider.maxX, collider.minZ, collider.maxZ, {
 			minY: collider.minY ?? -7.5,

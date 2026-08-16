@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { Vector3 as Vector3Type } from 'three';
 import { levelY } from '#/data/levels';
 import { THEATRE_PLAN } from '#/data/world';
 import { midpoint } from '#/util/math';
@@ -23,24 +24,24 @@ const FRAME = 1 / 60;
 const A_WHILE = 60;
 
 stubDocument();
-const THREE = await import('three');
+const { PerspectiveCamera, Scene, Vector3 } = await import('three');
 const { Helipad } = await import('#/scene/Helipad');
 const { LightPool } = await import('#/render/LightPool');
 const { Helicopter } = await import('#/scene/Helicopter');
 const { CollisionWorld } = await import('#/physics/Collision');
 
-function padCenter(): InstanceType<typeof THREE.Vector3> {
-	const helipad = new Helipad(new LightPool(new THREE.Scene()), new CollisionWorld());
+function padCenter(): Vector3Type {
+	const helipad = new Helipad(new LightPool(new Scene()), new CollisionWorld());
 	return helipad.padCenter;
 }
 
 /** Where the machine's hull sits; the seat is a fixed lift above it. */
-function bodyPosition(heli: InstanceType<typeof Helicopter>): InstanceType<typeof THREE.Vector3> {
-	return heli.getSeatPosition().sub(new THREE.Vector3(0, 0.9, 0));
+function bodyPosition(heli: InstanceType<typeof Helicopter>): Vector3Type {
+	return heli.getSeatPosition().sub(new Vector3(0, 0.9, 0));
 }
 
 function flyTo(heli: InstanceType<typeof Helicopter>, x: number, y: number, z: number): void {
-	const cam = new THREE.PerspectiveCamera();
+	const cam = new PerspectiveCamera();
 	heli.board();
 	// A handful of frames at the destination: `followCamera` puts the hull under the camera,
 	// and the extra frames settle the attitude the way a real approach would.

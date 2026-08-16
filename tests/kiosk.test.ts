@@ -62,7 +62,7 @@ describe('the kiosk places nothing on loose metres', () => {
  * is exactly the second list, and so the fault itself.
  */
 describe('every deck gets a tab on the big map', () => {
-	const DECK_IDS = new Set<string>(LEVELS.map((level) => level.id));
+	const DeckIds = new Set<string>(LEVELS.map((level) => level.id));
 
 	test('the tabs are built from the level registry', () => {
 		expect(SOURCE.includes('LEVELS_BOTTOM_UP'), 'the source of the map tabs is gone').toBeTrue();
@@ -83,7 +83,7 @@ describe('every deck gets a tab on the big map', () => {
 	test('the overlay keeps no deck list of its own', () => {
 		const lists = [...RAW_SOURCE.matchAll(/\[\s*'[a-z0-9_]+'(?:\s*,\s*'[a-z0-9_]+')*\s*\]/g)]
 			.map((match) => [...match[0].matchAll(/'([a-z0-9_]+)'/g)].map((member) => member[1]))
-			.filter((members) => members.every((member) => member !== undefined && DECK_IDS.has(member)))
+			.filter((members) => members.every((member) => member !== undefined && DeckIds.has(member)))
 			.map((members) => `KioskOverlay keeps its own deck list (${members.join(', ')})`);
 		expect(lists, lists.join('\n')).toBeEmpty();
 	});

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { Mesh as MeshType, Vector3 as Vector3Type } from 'three';
 import { STANDING_PEDESTRIAN } from '#/data/character';
 import { levelY } from '#/data/levels';
 import {
@@ -38,7 +39,7 @@ const RAY_INSET = 0.1;
 const RAYS_PER_AXIS = 5;
 
 stubDocument();
-const THREE = await import('three');
+const { Mesh, Raycaster, Scene, Vector3 } = await import('three');
 const [{ LightPool }, { Helipad }] = await Promise.all([import('#/render/LightPool'), import('#/scene/Helipad')]);
 
 const HOLE = SECRET_STAIRS_OPENING_BOUNDS;
@@ -50,7 +51,7 @@ const ZONE = mechanismTriggerBounds(HELIPAD_HATCH, HELIPAD_HATCH_GATE.id);
 /** A fresh roof with its own hatch, so each walk starts with the leaf closed. */
 function freshRoof(): { deck: CollisionWorld; hatch: InstanceType<typeof Helipad> } {
 	const deck = new CollisionWorld();
-	return { deck, hatch: new Helipad(new LightPool(new THREE.Scene()), deck) };
+	return { deck, hatch: new Helipad(new LightPool(new Scene()), deck) };
 }
 
 function deckIsClosed(deck: CollisionWorld): boolean {
@@ -90,8 +91,8 @@ describe('the hatch is declared as something that opens', () => {
 
 describe('the hatch answers to who is standing near it', () => {
 	const { deck, hatch } = freshRoof();
-	const walker = new THREE.Vector3();
-	const away = new THREE.Vector3(ZONE.maxX + RUN_UP, EYE, MID_Z);
+	const walker = new Vector3();
+	const away = new Vector3(ZONE.maxX + RUN_UP, EYE, MID_Z);
 	const waitFrames = Math.ceil(HELIPAD_HATCH_SPEC.openSeconds / FRAME) + 2;
 
 	test('with nobody near, the deck is closed over the stairwell', () => {
@@ -126,7 +127,7 @@ describe('the hatch answers to who is standing near it', () => {
 	});
 
 	test('somebody coming up the stairs opens it from below', () => {
-		const climber = new THREE.Vector3(MID_X, midpoint(ZONE.minY, ROOF), MID_Z);
+		const climber = new Vector3(MID_X, midpoint(ZONE.minY, ROOF), MID_Z);
 		for (let step = 0; step < waitFrames; step++) hatch.update(FRAME, climber);
 		expect(deckIsClosed(deck), 'coming up the stairs you meet a shut hatch: it only opens from above').toBeFalse();
 	});
@@ -139,14 +140,14 @@ describe('the hatch answers to who is standing near it', () => {
  */
 describe('nothing lies over the stairwell', () => {
 	const { deck, hatch } = freshRoof();
-	const away = new THREE.Vector3(ZONE.maxX + RUN_UP, EYE, MID_Z);
-	const meshes: InstanceType<typeof THREE.Mesh>[] = [];
+	const away = new Vector3(ZONE.maxX + RUN_UP, EYE, MID_Z);
+	const meshes: MeshType[] = [];
 	hatch.group.traverse((part) => {
-		if (part instanceof THREE.Mesh) meshes.push(part);
+		if (part instanceof Mesh) meshes.push(part);
 	});
-	const down = new THREE.Vector3(0, -1, 0);
-	const ray = new THREE.Raycaster(new THREE.Vector3(), down);
-	const from = new THREE.Vector3();
+	const down = new Vector3(0, -1, 0);
+	const ray = new Raycaster(new Vector3(), down);
+	const from = new Vector3();
 	const leafTop = HELIPAD_DECK_TOP_Y + HELIPAD_HATCH_SPEC.lidThickness;
 
 	function topmostAt(x: number, z: number): { y: number; what: string } | null {
@@ -181,7 +182,7 @@ describe('nothing lies over the stairwell', () => {
 	});
 
 	test('open, nothing is left over the hole', () => {
-		const climber = new THREE.Vector3(MID_X, midpoint(ZONE.minY, ROOF), MID_Z);
+		const climber = new Vector3(MID_X, midpoint(ZONE.minY, ROOF), MID_Z);
 		for (let step = 0; step < Math.ceil(HELIPAD_HATCH_SPEC.openSeconds / FRAME) + 2; step++) hatch.update(FRAME, climber);
 		expect(deckIsClosed(deck), 'the hatch did not open, so this measures the wrong state').toBeFalse();
 		const left = points
@@ -207,9 +208,9 @@ function walkFlightLoose(
 	collision: CollisionWorld,
 	flight: Walkable,
 	direction: 'up' | 'down',
-	driveHatch: ((eye: InstanceType<typeof THREE.Vector3>) => void) | null,
+	driveHatch: ((eye: Vector3Type) => void) | null,
 ): string | null {
-	const eye = new THREE.Vector3();
+	const eye = new Vector3();
 	const stride = WALK_SPEED * FRAME;
 	const heart = midpoint(flight.minX, flight.maxX);
 	const lowZ = flight.yBottom < flight.yTop ? flight.zBottom : flight.zTop;

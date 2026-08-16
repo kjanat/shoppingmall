@@ -28,7 +28,12 @@ function nr(value: number): string {
 	return Number(value.toFixed(3)).toString();
 }
 
-type Sample = { x: number; z: number; ground: number; sim: number };
+interface Sample {
+	x: number;
+	z: number;
+	ground: number;
+	sim: number;
+}
 
 function sampleDeck(): { pool: Sample[]; hole: Sample[]; disagreeing: Sample[] } {
 	const halfWidth = half(MALL_FOOTPRINT.width);
@@ -84,7 +89,10 @@ describe('at one eye height on the roof', () => {
  * grouped by the pair of answers rather than listed per column, because one cause covers
  * hundreds of columns and a list of coordinates hides that.
  */
-type Disagreement = { columns: number; sample: string };
+interface Disagreement {
+	columns: number;
+	sample: string;
+}
 
 /**
  * What the player is standing on there, so a failing row says which surface to go and look at.
