@@ -186,8 +186,10 @@ describe('the minimap', () => {
 
 		test('prints other names than it does in the mall', () => {
 			// If the same set came back everywhere it would be a picture and not a map.
-			expect(printed.toSorted().join(', '), 'the same names in both buildings').not.toBe(
-				labelsAt(0, 0, levelY('v0')).toSorted().join(', '),
+			expect(printed.toSorted((a, b) => a.localeCompare(b)).join(', '), 'the same names in both buildings').not.toBe(
+				labelsAt(0, 0, levelY('v0'))
+					.toSorted((a, b) => a.localeCompare(b))
+					.join(', '),
 			);
 		});
 	});

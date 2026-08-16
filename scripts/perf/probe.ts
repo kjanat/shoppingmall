@@ -393,14 +393,14 @@ function installProbe(
 	const collectCpuFrame = (): void => {
 		const frame = invokeControl('readCpuFrame');
 		if (typeof frame !== 'object' || frame === null) return;
-		for (const [key, target] of [
+		for (const [key, series] of [
 			['logicMs', cpuLogic],
 			['batchMs', cpuBatch],
 			['submitMs', cpuSubmit],
 			['triangles', triangles],
 		] as const) {
 			const value = Reflect.get(frame, key);
-			if (typeof value === 'number' && Number.isFinite(value)) target.push(value);
+			if (typeof value === 'number' && Number.isFinite(value)) series.push(value);
 		}
 	};
 
@@ -732,9 +732,9 @@ function installProbe(
 			}
 			if (pending.length > 0) {
 				const unresolved = pending.length;
-				const ctx = context();
-				if (ctx) {
-					for (const segment of pending) ctx.deleteQuery(segment.query);
+				const drainContext = context();
+				if (drainContext) {
+					for (const segment of pending) drainContext.deleteQuery(segment.query);
 				}
 				pending.length = 0;
 				throw new Error(
@@ -802,7 +802,7 @@ function installProbe(
 					const sources = Reflect.get(owner, 'sources');
 					const dynamicSources = Reflect.get(owner, 'dynamicSources');
 					const batches = Reflect.get(owner, 'batches');
-					const triangles = Reflect.get(owner, 'triangles');
+					const ownerTriangles = Reflect.get(owner, 'triangles');
 					const casters = Reflect.get(owner, 'casters');
 					const largestRadius = Reflect.get(owner, 'largestRadius');
 					if (
@@ -810,16 +810,16 @@ function installProbe(
 						typeof sources !== 'number' ||
 						typeof dynamicSources !== 'number' ||
 						typeof batches !== 'number' ||
-						typeof triangles !== 'number' ||
+						typeof ownerTriangles !== 'number' ||
 						typeof casters !== 'number' ||
 						typeof largestRadius !== 'number'
 					) {
 						continue;
 					}
-					batchOwners.push({ name, sources, dynamicSources, batches, triangles, casters, largestRadius });
+					batchOwners.push({ name, sources, dynamicSources, batches, triangles: ownerTriangles, casters, largestRadius });
 				}
 			}
-			const zoneCull = readZoneCull();
+			const zoneCullEnabled = readZoneCull();
 			if (ctx) {
 				const debugInfo = ctx.getExtension('WEBGL_debug_renderer_info');
 				if (debugInfo && 'UNMASKED_RENDERER_WEBGL' in debugInfo && 'UNMASKED_VENDOR_WEBGL' in debugInfo) {
@@ -843,7 +843,7 @@ function installProbe(
 				batchDrawCalls: Number(document.documentElement.dataset['batchDrawCalls'] ?? 0),
 				batchLargestRadius: Number(document.documentElement.dataset['batchLargestRadius'] ?? 0),
 				batchOwners,
-				zoneCull,
+				zoneCull: zoneCullEnabled,
 				warmupPrograms: Number(document.documentElement.dataset['warmupPrograms'] ?? 0),
 				programsLinked: counters.links,
 				shaderCount: counters.shaders,

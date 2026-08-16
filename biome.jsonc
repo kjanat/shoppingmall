@@ -46,7 +46,13 @@
 				"useNumericSeparators": "off",
 				"useGlobalThis": "error"
 			},
-			"suspicious": { "noConsole": "off" },
+			"suspicious": {
+				"noBitwiseOperators": {
+					"level": "on",
+					"options": { "allow": ["&", "|", "|=", "^", "^=", "~", "<<", ">>>"] }
+				},
+				"noConsole": "off"
+			},
 			"security": {
 				"noSecrets": {
 					"options": { "entropyThreshold": 80 },
@@ -72,7 +78,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["*.config.ts"],
+			"includes": ["*.config.ts", "globals.d.ts"],
 			"linter": { "rules": { "style": { "noDefaultExport": "off" } } }
 		},
 		{

@@ -1,11 +1,12 @@
-import * as z from 'zod';
+import type { output, RefinementCtx } from 'zod';
+import { array, custom, discriminatedUnion, int, literal, number, strictObject, string, enum as zenum } from 'zod';
 import { MALL_FOOTPRINT, WORLD_VIEW_DISTANCE } from '#/data/layout';
 import type { LevelId } from '#/data/levels';
 import { LEVELS, levelY } from '#/data/levels';
 import { half } from '#/util/math';
 
 /** Authoring policy. Values outside these ranges are almost certainly unit or placement mistakes. */
-export const CONNECTOR_LIMITS = {
+const CONNECTOR_LIMITS = {
 	coordinate: { min: -WORLD_VIEW_DISTANCE, max: WORLD_VIEW_DISTANCE },
 	width: { min: 0.8, max: 12 },
 	stepCount: { min: 2, max: 200 },
@@ -32,20 +33,16 @@ function isLevelId(value: unknown): value is LevelId {
 	return typeof value === 'string' && LEVELS.some((entry) => entry.id === value);
 }
 
-const LevelIdSchema = z.custom<LevelId>(isLevelId, { error: 'unknown level id' });
-const CoordinateSchema = z.number().min(CONNECTOR_LIMITS.coordinate.min).max(CONNECTOR_LIMITS.coordinate.max);
-const PositiveThicknessSchema = z
-	.number()
+const LevelIdSchema = custom<LevelId>(isLevelId, { error: 'unknown level id' });
+const CoordinateSchema = number().min(CONNECTOR_LIMITS.coordinate.min).max(CONNECTOR_LIMITS.coordinate.max);
+const PositiveThicknessSchema = number()
 	.min(CONNECTOR_LIMITS.componentThickness.min)
 	.max(CONNECTOR_LIMITS.componentThickness.max);
-const ComponentOffsetSchema = z.number().min(CONNECTOR_LIMITS.componentOffset.min).max(CONNECTOR_LIMITS.componentOffset.max);
-const ComponentLengthSchema = z.number().min(CONNECTOR_LIMITS.componentLength.min).max(CONNECTOR_LIMITS.componentLength.max);
-const RatioSchema = z.number().gt(CONNECTOR_LIMITS.ratio.exclusiveMin).max(CONNECTOR_LIMITS.ratio.max);
-const SignedComponentOffsetSchema = z
-	.number()
-	.min(-CONNECTOR_LIMITS.componentOffset.max)
-	.max(CONNECTOR_LIMITS.componentOffset.max);
-export const OpeningGuardSchema = z.strictObject({
+const ComponentOffsetSchema = number().min(CONNECTOR_LIMITS.componentOffset.min).max(CONNECTOR_LIMITS.componentOffset.max);
+const ComponentLengthSchema = number().min(CONNECTOR_LIMITS.componentLength.min).max(CONNECTOR_LIMITS.componentLength.max);
+const RatioSchema = number().gt(CONNECTOR_LIMITS.ratio.exclusiveMin).max(CONNECTOR_LIMITS.ratio.max);
+const SignedComponentOffsetSchema = number().min(-CONNECTOR_LIMITS.componentOffset.max).max(CONNECTOR_LIMITS.componentOffset.max);
+const OpeningGuardSchema = strictObject({
 	height: ComponentLengthSchema,
 	glassThickness: PositiveThicknessSchema,
 	slabOffset: ComponentOffsetSchema,
@@ -53,76 +50,76 @@ export const OpeningGuardSchema = z.strictObject({
 	railHeight: PositiveThicknessSchema,
 });
 
-const OpeningSchema = z.strictObject({
-	id: z.string().trim().min(CONNECTOR_LIMITS.identifierLength.min).max(CONNECTOR_LIMITS.identifierLength.max),
-	category: z.enum(['atrium', 'escalator', 'stairs', 'elevator']),
-	center: z.strictObject({ x: CoordinateSchema, z: CoordinateSchema }),
-	size: z.strictObject({
-		width: z.number().min(CONNECTOR_LIMITS.opening.width.min).max(CONNECTOR_LIMITS.opening.width.max),
-		depth: z.number().min(CONNECTOR_LIMITS.opening.depth.min).max(CONNECTOR_LIMITS.opening.depth.max),
+const OpeningSchema = strictObject({
+	id: string().trim().min(CONNECTOR_LIMITS.identifierLength.min).max(CONNECTOR_LIMITS.identifierLength.max),
+	category: zenum(['atrium', 'escalator', 'stairs', 'elevator']),
+	center: strictObject({ x: CoordinateSchema, z: CoordinateSchema }),
+	size: strictObject({
+		width: number().min(CONNECTOR_LIMITS.opening.width.min).max(CONNECTOR_LIMITS.opening.width.max),
+		depth: number().min(CONNECTOR_LIMITS.opening.depth.min).max(CONNECTOR_LIMITS.opening.depth.max),
 	}),
-	connects: z.array(LevelIdSchema).min(CONNECTOR_LIMITS.connectedLevels.min).max(CONNECTOR_LIMITS.connectedLevels.max),
+	connects: array(LevelIdSchema).min(CONNECTOR_LIMITS.connectedLevels.min).max(CONNECTOR_LIMITS.connectedLevels.max),
 });
 
-const CollisionSchema = z.strictObject({
+const CollisionSchema = strictObject({
 	minX: CoordinateSchema,
 	maxX: CoordinateSchema,
 	minZ: CoordinateSchema,
 	maxZ: CoordinateSchema,
 	openMinZ: CoordinateSchema,
 	openMaxZ: CoordinateSchema,
-	carrySpeed: z.number().min(CONNECTOR_LIMITS.carrySpeed.min).max(CONNECTOR_LIMITS.carrySpeed.max).optional(),
+	carrySpeed: number().min(CONNECTOR_LIMITS.carrySpeed.min).max(CONNECTOR_LIMITS.carrySpeed.max).optional(),
 });
 
 const BaseConnectorShape = {
-	id: z.string().trim().min(CONNECTOR_LIMITS.identifierLength.min).max(CONNECTOR_LIMITS.identifierLength.max),
-	label: z.string().trim().min(CONNECTOR_LIMITS.identifierLength.min).max(CONNECTOR_LIMITS.identifierLength.max),
+	id: string().trim().min(CONNECTOR_LIMITS.identifierLength.min).max(CONNECTOR_LIMITS.identifierLength.max),
+	label: string().trim().min(CONNECTOR_LIMITS.identifierLength.min).max(CONNECTOR_LIMITS.identifierLength.max),
 	from: LevelIdSchema,
 	to: LevelIdSchema,
 	x: CoordinateSchema,
 	zBottom: CoordinateSchema,
 	zTop: CoordinateSchema,
-	width: z.number().min(CONNECTOR_LIMITS.width.min).max(CONNECTOR_LIMITS.width.max),
-	steps: z.int().min(CONNECTOR_LIMITS.stepCount.min).max(CONNECTOR_LIMITS.stepCount.max),
-	apron: z.number().min(CONNECTOR_LIMITS.apron.min).max(CONNECTOR_LIMITS.apron.max),
+	width: number().min(CONNECTOR_LIMITS.width.min).max(CONNECTOR_LIMITS.width.max),
+	steps: int().min(CONNECTOR_LIMITS.stepCount.min).max(CONNECTOR_LIMITS.stepCount.max),
+	apron: number().min(CONNECTOR_LIMITS.apron.min).max(CONNECTOR_LIMITS.apron.max),
 	opening: OpeningSchema,
 	collision: CollisionSchema,
 };
 
-export const EscalatorAppearanceSchema = z.strictObject({
-	step: z.strictObject({
+const EscalatorAppearanceSchema = strictObject({
+	step: strictObject({
 		minimumSurfaceY: ComponentOffsetSchema,
 		treadThickness: PositiveThicknessSchema,
 		riserThickness: PositiveThicknessSchema,
 		riserHeightExtra: ComponentOffsetSchema,
 	}),
-	nose: z.strictObject({
+	nose: strictObject({
 		height: PositiveThicknessSchema,
 		edgeInset: ComponentOffsetSchema,
 		surfaceLift: ComponentOffsetSchema,
 		depth: PositiveThicknessSchema,
 	}),
-	skirt: z.strictObject({
+	skirt: strictObject({
 		panelThickness: PositiveThicknessSchema,
 		treadGap: ComponentOffsetSchema,
 	}),
-	balustrade: z.strictObject({
+	balustrade: strictObject({
 		glassBottom: ComponentOffsetSchema,
 		glassTop: ComponentOffsetSchema,
 		glassThickness: PositiveThicknessSchema,
 	}),
-	handrail: z.strictObject({
+	handrail: strictObject({
 		radius: PositiveThicknessSchema,
 		glassGap: ComponentOffsetSchema,
 		textureRepeatLength: PositiveThicknessSchema,
-		widthScale: z.number().min(CONNECTOR_LIMITS.handrailWidthScale.min).max(CONNECTOR_LIMITS.handrailWidthScale.max),
+		widthScale: number().min(CONNECTOR_LIMITS.handrailWidthScale.min).max(CONNECTOR_LIMITS.handrailWidthScale.max),
 	}),
-	structure: z.strictObject({
+	structure: strictObject({
 		trussDrop: ComponentOffsetSchema,
 		surfaceGap: PositiveThicknessSchema,
 		lightStripExtraThickness: PositiveThicknessSchema,
 	}),
-	landing: z.strictObject({
+	landing: strictObject({
 		lateralOverhang: ComponentOffsetSchema,
 		bottomThickness: PositiveThicknessSchema,
 		bottomDepthExtension: ComponentOffsetSchema,
@@ -131,13 +128,13 @@ export const EscalatorAppearanceSchema = z.strictObject({
 		combThickness: PositiveThicknessSchema,
 		combSurfaceLift: ComponentOffsetSchema,
 	}),
-	newel: z.strictObject({
+	newel: strictObject({
 		heightAboveGlassCenter: ComponentOffsetSchema,
 		thickness: PositiveThicknessSchema,
 		depth: ComponentLengthSchema,
 	}),
 	guard: OpeningGuardSchema,
-	sign: z.strictObject({
+	sign: strictObject({
 		gantryHeight: ComponentLengthSchema,
 		widthMargin: ComponentOffsetSchema,
 		postRadius: PositiveThicknessSchema,
@@ -145,9 +142,9 @@ export const EscalatorAppearanceSchema = z.strictObject({
 	}),
 });
 
-export const StairAppearanceSchema = z.strictObject({
+const StairAppearanceSchema = strictObject({
 	surfaceOffset: ComponentOffsetSchema,
-	step: z.strictObject({
+	step: strictObject({
 		widthInset: ComponentOffsetSchema,
 		treadThickness: PositiveThicknessSchema,
 		treadDepthRatio: RatioSchema,
@@ -155,87 +152,79 @@ export const StairAppearanceSchema = z.strictObject({
 		riserHeightRatio: RatioSchema,
 		riserDepthRatio: RatioSchema,
 	}),
-	landing: z
-		.strictObject({
-			widthExtra: ComponentOffsetSchema,
-			bottomDepth: ComponentLengthSchema,
-			bottomOffset: ComponentOffsetSchema,
-			topDepth: ComponentLengthSchema,
-			topOffset: ComponentOffsetSchema,
-		})
-		.optional(),
-	rail: z.strictObject({
+	landing: strictObject({
+		widthExtra: ComponentOffsetSchema,
+		bottomDepth: ComponentLengthSchema,
+		bottomOffset: ComponentOffsetSchema,
+		topDepth: ComponentLengthSchema,
+		topOffset: ComponentOffsetSchema,
+	}).optional(),
+	rail: strictObject({
 		sideOffsetFromEdge: SignedComponentOffsetSchema,
 		height: ComponentLengthSchema,
 		postCenterDrop: ComponentOffsetSchema,
 		postRadius: PositiveThicknessSchema,
-		postEverySteps: z.int().min(CONNECTOR_LIMITS.postInterval.min).max(CONNECTOR_LIMITS.postInterval.max),
+		postEverySteps: int().min(CONNECTOR_LIMITS.postInterval.min).max(CONNECTOR_LIMITS.postInterval.max),
 		segmentThickness: PositiveThicknessSchema,
 	}),
 	guard: OpeningGuardSchema,
-	stringer: z
-		.strictObject({
-			width: PositiveThicknessSchema,
-			heightExtra: ComponentOffsetSchema,
-			depthRatio: RatioSchema,
-		})
-		.optional(),
-	sign: z
-		.strictObject({
+	stringer: strictObject({
+		width: PositiveThicknessSchema,
+		heightExtra: ComponentOffsetSchema,
+		depthRatio: RatioSchema,
+	}).optional(),
+	sign: strictObject({
+		width: ComponentLengthSchema,
+		height: ComponentLengthSchema,
+		centerY: ComponentLengthSchema,
+		approachOffset: ComponentOffsetSchema,
+	}).optional(),
+	serviceEntrance: strictObject({
+		door: strictObject({
 			width: ComponentLengthSchema,
 			height: ComponentLengthSchema,
-			centerY: ComponentLengthSchema,
-			approachOffset: ComponentOffsetSchema,
-		})
-		.optional(),
-	serviceEntrance: z
-		.strictObject({
-			door: z.strictObject({
-				width: ComponentLengthSchema,
-				height: ComponentLengthSchema,
-				thickness: PositiveThicknessSchema,
-				lateralOffset: SignedComponentOffsetSchema,
-				verticalOffset: SignedComponentOffsetSchema,
-				depthOffset: SignedComponentOffsetSchema,
-			}),
-			sign: z.strictObject({
-				width: ComponentLengthSchema,
-				height: ComponentLengthSchema,
-				lateralOffset: SignedComponentOffsetSchema,
-				verticalOffset: SignedComponentOffsetSchema,
-				depthOffset: SignedComponentOffsetSchema,
-			}),
-		})
-		.optional(),
+			thickness: PositiveThicknessSchema,
+			lateralOffset: SignedComponentOffsetSchema,
+			verticalOffset: SignedComponentOffsetSchema,
+			depthOffset: SignedComponentOffsetSchema,
+		}),
+		sign: strictObject({
+			width: ComponentLengthSchema,
+			height: ComponentLengthSchema,
+			lateralOffset: SignedComponentOffsetSchema,
+			verticalOffset: SignedComponentOffsetSchema,
+			depthOffset: SignedComponentOffsetSchema,
+		}),
+	}).optional(),
 });
 
-const EscalatorObjectSchema = z.strictObject({
+const EscalatorObjectSchema = strictObject({
 	...BaseConnectorShape,
-	kind: z.literal('escalator'),
+	kind: literal('escalator'),
 	appearance: EscalatorAppearanceSchema,
-	constraints: z.strictObject({
-		inclineDegrees: z.strictObject({
-			min: z.number().min(CONNECTOR_LIMITS.inclineDegrees.min).max(CONNECTOR_LIMITS.inclineDegrees.max),
-			max: z.number().min(CONNECTOR_LIMITS.inclineDegrees.min).max(CONNECTOR_LIMITS.inclineDegrees.max),
+	constraints: strictObject({
+		inclineDegrees: strictObject({
+			min: number().min(CONNECTOR_LIMITS.inclineDegrees.min).max(CONNECTOR_LIMITS.inclineDegrees.max),
+			max: number().min(CONNECTOR_LIMITS.inclineDegrees.min).max(CONNECTOR_LIMITS.inclineDegrees.max),
 		}),
-		alignmentTolerance: z.number().min(CONNECTOR_LIMITS.alignmentTolerance.min).max(CONNECTOR_LIMITS.alignmentTolerance.max),
+		alignmentTolerance: number().min(CONNECTOR_LIMITS.alignmentTolerance.min).max(CONNECTOR_LIMITS.alignmentTolerance.max),
 	}),
 });
 
-const StairObjectSchema = z.strictObject({
+const StairObjectSchema = strictObject({
 	...BaseConnectorShape,
-	kind: z.literal('stairs'),
-	presentation: z.enum(['mall-flight', 'helipad-flight']),
+	kind: literal('stairs'),
+	presentation: zenum(['mall-flight', 'helipad-flight']),
 	appearance: StairAppearanceSchema,
 });
 
-export type OpeningDef = Readonly<z.output<typeof OpeningSchema>>;
-export type OpeningGuard = Readonly<z.output<typeof OpeningGuardSchema>>;
-export type EscalatorAppearance = Readonly<z.output<typeof EscalatorAppearanceSchema>>;
-export type StairAppearance = Readonly<z.output<typeof StairAppearanceSchema>>;
-export type EscalatorSpec = Readonly<z.output<typeof EscalatorObjectSchema>>;
-export type StairSpec = Readonly<z.output<typeof StairObjectSchema>>;
-export type VerticalConnector = EscalatorSpec | StairSpec;
+type OpeningDef = Readonly<output<typeof OpeningSchema>>;
+type OpeningGuard = Readonly<output<typeof OpeningGuardSchema>>;
+type EscalatorAppearance = Readonly<output<typeof EscalatorAppearanceSchema>>;
+type StairAppearance = Readonly<output<typeof StairAppearanceSchema>>;
+type EscalatorSpec = Readonly<output<typeof EscalatorObjectSchema>>;
+type StairSpec = Readonly<output<typeof StairObjectSchema>>;
+type VerticalConnector = EscalatorSpec | StairSpec;
 
 type ConnectorProblem = Readonly<{ message: string; path: (string | number)[] }>;
 
@@ -399,7 +388,7 @@ function stairProblems(spec: StairSpec): readonly ConnectorProblem[] {
 	return problems;
 }
 
-function addConnectorProblems(spec: VerticalConnector, context: z.RefinementCtx): void {
+function addConnectorProblems(spec: VerticalConnector, context: RefinementCtx): void {
 	const problems = [
 		...commonConnectorProblems(spec),
 		...(spec.kind === 'escalator' ? escalatorProblems(spec) : stairProblems(spec)),
@@ -407,14 +396,13 @@ function addConnectorProblems(spec: VerticalConnector, context: z.RefinementCtx)
 	for (const problem of problems) context.addIssue({ code: 'custom', message: problem.message, path: problem.path });
 }
 
-export const EscalatorSchema = EscalatorObjectSchema.superRefine((spec, context) => addConnectorProblems(spec, context));
-export const StairSchema = StairObjectSchema.superRefine((spec, context) => addConnectorProblems(spec, context));
-export const VerticalConnectorSchema = z
-	.discriminatedUnion('kind', [EscalatorObjectSchema, StairObjectSchema])
-	.superRefine((spec, context) => addConnectorProblems(spec, context));
+const EscalatorSchema = EscalatorObjectSchema.superRefine((spec, context) => addConnectorProblems(spec, context));
+const StairSchema = StairObjectSchema.superRefine((spec, context) => addConnectorProblems(spec, context));
+const VerticalConnectorSchema = discriminatedUnion('kind', [EscalatorObjectSchema, StairObjectSchema]).superRefine(
+	(spec, context) => addConnectorProblems(spec, context),
+);
 
-export const VerticalConnectorRegistrySchema = z
-	.array(VerticalConnectorSchema)
+const VerticalConnectorRegistrySchema = array(VerticalConnectorSchema)
 	.min(CONNECTOR_LIMITS.registrySize.min)
 	.max(CONNECTOR_LIMITS.registrySize.max)
 	.superRefine((connectors, context) => {
@@ -437,16 +425,31 @@ export const VerticalConnectorRegistrySchema = z
 	});
 
 /** Parses authored connector data once. Invalid world data aborts checks and builds immediately. */
-export function parseVerticalConnectorRegistry(input: unknown): readonly VerticalConnector[] {
+function parseVerticalConnectorRegistry(input: unknown): readonly VerticalConnector[] {
 	return VerticalConnectorRegistrySchema.parse(input);
 }
 
-export function assertValidVerticalConnectorRegistry(input: unknown): void {
+function assertValidVerticalConnectorRegistry(input: unknown): void {
 	VerticalConnectorRegistrySchema.parse(input);
 }
 
 /** Compatibility surface for focused tests; validation itself lives in EscalatorSchema. */
-export function validateEscalatorSpec(spec: unknown): readonly string[] {
+function validateEscalatorSpec(spec: unknown): readonly string[] {
 	const result = EscalatorSchema.safeParse(spec);
 	return result.success ? [] : result.error.issues.map((issue) => issue.message);
 }
+
+export type { EscalatorAppearance, EscalatorSpec, OpeningDef, OpeningGuard, StairAppearance, StairSpec, VerticalConnector };
+export {
+	assertValidVerticalConnectorRegistry,
+	CONNECTOR_LIMITS,
+	EscalatorAppearanceSchema,
+	EscalatorSchema,
+	OpeningGuardSchema,
+	parseVerticalConnectorRegistry,
+	StairAppearanceSchema,
+	StairSchema,
+	VerticalConnectorRegistrySchema,
+	VerticalConnectorSchema,
+	validateEscalatorSpec,
+};

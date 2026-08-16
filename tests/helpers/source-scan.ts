@@ -41,7 +41,7 @@ export interface Grep {
 export async function filesIn(dir: string): Promise<string[]> {
 	const out: string[] = [];
 	for await (const name of new Bun.Glob('**/*.ts').scan({ cwd: join(ROOT, dir) })) out.push(join(dir, name));
-	return out.sort();
+	return out.sort((a, b) => a.localeCompare(b));
 }
 
 export function read(path: string): Promise<string> {

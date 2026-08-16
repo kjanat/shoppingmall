@@ -340,7 +340,7 @@ describe('authoritative spatial world', () => {
 	test('an escalator rejects a slab intersecting a rider body or eye line anywhere along the flight', () => {
 		const spec = ESCALATORS[0];
 		assert.ok(spec);
-		const escalatorEntity = CONNECTOR_ENTITIES.find((entity) => entity.id === spec.id);
+		const escalatorEntity = CONNECTOR_ENTITIES.find((candidate) => candidate.id === spec.id);
 		assert.ok(escalatorEntity);
 		const clearance = escalatorEntity.volumes.find((volume) => volume.id === 'route-clearance');
 		assert.ok(clearance && clearance.geometry.kind === 'flight-clearance');
@@ -387,7 +387,7 @@ describe('authoritative spatial world', () => {
 		assert.deepEqual(
 			validateSpatialWorld([floor, wall, wrongClass])
 				.map((problem) => problem.code)
-				.toSorted(),
+				.toSorted((a, b) => a.localeCompare(b)),
 			['unsupported-placement', 'unused-penetration'],
 		);
 

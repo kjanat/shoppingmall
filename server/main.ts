@@ -40,7 +40,6 @@ async function serveStatic(req: Request): Promise<Response> {
 		'Accept-Ranges': 'bytes',
 		// Public files are stable media/images. JSON remains revalidated because
 		// playlist/status manifests can change without a filename change.
-		// biome-ignore lint/security/noSecrets: not a secret
 		'Cache-Control': RE_CACHE.test(path) ? 'no-cache' : 'public, max-age=86400, stale-while-revalidate=604800',
 	};
 

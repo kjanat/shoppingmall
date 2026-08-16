@@ -74,17 +74,17 @@ const [
 ]);
 
 /** Every real point light currently hanging in the scene graph. */
-function pointLights(scene: Scene): PointLight[] {
+function pointLights(sceneRoot: Scene): PointLight[] {
 	const gevonden: PointLight[] = [];
-	scene.traverse((o) => {
+	sceneRoot.traverse((o) => {
 		if (o instanceof PointLightClass) gevonden.push(o);
 	});
 	return gevonden;
 }
 
-function spots(scene: Scene): SpotLight[] {
+function spots(sceneRoot: Scene): SpotLight[] {
 	const gevonden: SpotLight[] = [];
-	scene.traverse((o) => {
+	sceneRoot.traverse((o) => {
 		if (o instanceof SpotLightClass) gevonden.push(o);
 	});
 	return gevonden;
@@ -92,7 +92,7 @@ function spots(scene: Scene): SpotLight[] {
 
 let scene: Scene;
 let pool: LightPool;
-let disco: { setActive(on: boolean): void };
+let disco: { setActive: (on: boolean) => void };
 let probe: { group: Object3D };
 
 /**
@@ -171,7 +171,12 @@ describe('the number of real point lights is fixed', () => {
  */
 describe('switching does not change the count', () => {
 	const states: { name: string; set: () => void }[] = [
-		{ name: 'at rest', set: () => {} },
+		{
+			name: 'at rest',
+			set: () => {
+				// Baseline state needs no transition.
+			},
+		},
 		{ name: 'disco on', set: () => disco.setActive(true) },
 		{
 			name: 'disco on + probe visible',

@@ -4,16 +4,16 @@ import type { LightPool } from '#/render/LightPool';
 
 /** Turns the daylight down for the disco and puts it back exactly as it was. */
 export interface DaylightDimmer {
-	dimDaylight(on: boolean): void;
+	dimDaylight: (on: boolean) => void;
 	/**
 	 * A real light owned elsewhere that must follow the dim. The old traverse
 	 * caught every light in the scene; this list is what replaces that reach.
 	 * Miss one and it blasts at full power through the "deep arcade night"
 	 * (the catwalk spot did exactly that).
 	 */
-	register(light: Light, factor: number): void;
+	register: (light: Light, factor: number) => void;
 	/** Scale the everywhere-light. Live, no rebuild: it is only an intensity. */
-	setFill(scale: number): void;
+	setFill: (scale: number) => void;
 }
 
 /**

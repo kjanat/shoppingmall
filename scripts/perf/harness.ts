@@ -137,7 +137,14 @@ export async function openGame(
 	zoneCull?: boolean,
 	shellShadow?: boolean,
 ): Promise<GameSession> {
-	const server: StaticServer = url ? { url, stop: async () => {} } : await serveGame();
+	const server: StaticServer = url
+		? {
+				url,
+				stop: async () => {
+					// A remote deployment owns its server lifecycle.
+				},
+			}
+		: await serveGame();
 	// A little taller than the viewport: Chrome's own chrome eats some of it, and
 	// a viewport override is applied afterwards anyway.
 	let browser: PerfBrowser;

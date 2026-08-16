@@ -316,10 +316,12 @@ describe('the zone graph around the auditorium', () => {
  * as long as no box fits in the union of two shells without fitting in one of them.
  */
 describe('the gap between the buildings', () => {
-	const pairs = ZONE_ENCLOSURES.flatMap((a, i) => ZONE_ENCLOSURES.slice(i + 1).map((b) => [a, b] as const));
+	const pairs = ZONE_ENCLOSURES.flatMap((enclosure, i) =>
+		ZONE_ENCLOSURES.slice(i + 1).map((otherEnclosure) => [enclosure, otherEnclosure] as const),
+	);
 
-	test.each(pairs.map(([a, b]) => `${a.id} and ${b.id}`))('%s', (name) => {
-		const pair = pairs.find(([a, b]) => `${a.id} and ${b.id}` === name);
+	test.each(pairs.map(([first, second]) => `${first.id} and ${second.id}`))('%s', (name) => {
+		const pair = pairs.find(([first, second]) => `${first.id} and ${second.id}` === name);
 		if (!pair) return;
 		const [a, b] = pair;
 		const gap = Math.max(

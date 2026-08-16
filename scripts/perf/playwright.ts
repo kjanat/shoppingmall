@@ -98,7 +98,9 @@ async function acquirePerfLock(): Promise<() => Promise<void>> {
 				if (released) return;
 				released = true;
 				await handle.close();
-				await unlink(LOCK_PATH).catch(() => {});
+				await unlink(LOCK_PATH).catch(() => {
+					// Another cleanup path may already have removed the lock.
+				});
 			};
 		} catch (error) {
 			if (!isRecord(error) || readString(error, 'code') !== 'EEXIST') throw error;
@@ -108,7 +110,9 @@ async function acquirePerfLock(): Promise<() => Promise<void>> {
 					`performance browser already active in process ${blue(owner)}; diagnose, bench and profile must run one at a time`,
 				);
 			}
-			await unlink(LOCK_PATH).catch(() => {});
+			await unlink(LOCK_PATH).catch(() => {
+				// A racing stale-lock cleanup may already have removed it.
+			});
 		}
 	}
 	throw new Error('could not acquire the performance browser lock');
@@ -203,7 +207,9 @@ export async function launchPerfBrowser(width: number, height: number, persisten
 			},
 		};
 	} catch (error) {
-		await context?.close().catch(() => {});
+		await context?.close().catch(() => {
+			// Preserve the launch error that triggered cleanup.
+		});
 		if (disposableProfile && profileDir) await rm(profileDir, { recursive: true, force: true });
 		await releaseLock();
 		throw error;

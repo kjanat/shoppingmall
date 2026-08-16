@@ -1187,13 +1187,13 @@ export class MallBuilder {
 		});
 
 		const crew = 5;
-		const span = Math.min(counterW * 0.88, 4.6);
+		const crewSpan = Math.min(counterW * 0.88, 4.6);
 		for (let i = 0; i < crew; i++) {
 			const t = i / (crew - 1);
-			const x = (t - 0.5) * span;
+			const crewX = (t - 0.5) * crewSpan;
 			const guy = this.makeShopkeeper(store, i);
 			// Behind counter, facing storefront (+Z)
-			guy.position.set(x, 0, -roomDepth * 0.68);
+			guy.position.set(crewX, 0, -roomDepth * 0.68);
 			g.add(guy);
 		}
 

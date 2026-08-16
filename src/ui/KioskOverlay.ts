@@ -457,7 +457,7 @@ function labelFont(weight: number, size: number): string {
  */
 export interface LabelMeasure {
 	font: string;
-	measureText(text: string): Readonly<{ width: number }>;
+	measureText: (text: string) => Readonly<{ width: number }>;
 }
 
 /**
@@ -694,15 +694,16 @@ function planLabels(
 	for (const feature of labels) {
 		const style = LAYER_STYLES[feature.layer];
 		if (style.labelColor === null) continue;
-		const containsFocus = focus !== null && feature.shapes.some((shape) => pointInPlan(shape, focus.x, focus.z));
+		const containsFocus =
+			focus !== null && feature.shapes.some((candidateShape) => pointInPlan(candidateShape, focus.x, focus.z));
 		const text = feature.glyph === '' ? feature.label : `${feature.glyph} ${feature.label}`;
 		const weight = feature.hero ? 700 : 600;
 		const box = projectBounds(feature.bounds, project);
-		const shape = projectBounds(feature.labelBounds, project);
-		const shapeAcross = span(shape.minX, shape.maxX);
-		const shapeAlong = span(shape.minY, shape.maxY);
+		const labelBounds = projectBounds(feature.labelBounds, project);
+		const shapeAcross = span(labelBounds.minX, labelBounds.maxX);
+		const shapeAlong = span(labelBounds.minY, labelBounds.maxY);
 		const anchor = containsFocus ? project(focus.x, focus.z) : project(feature.anchor.x, feature.anchor.z);
-		const oneLine = LABEL_SIZE_MAX * LABEL_LINE_HEIGHT;
+		const oneLineHeight = LABEL_SIZE_MAX * LABEL_LINE_HEIGHT;
 		// Wijk uit voordat je afkapt, en kap af voordat je opgeeft. De hele naam in de
 		// vorm, dan eronder of erboven, dan over het hele grondvlak, en pas als laatste
 		// een afgekapte regel in de vorm. Dat grondvlak staat er omdat op de
@@ -727,7 +728,7 @@ function planLabels(
 			{
 				point: { x: anchor.x, y: box.maxY + BELOW_LABEL_OFFSET },
 				across: outside,
-				along: oneLine,
+				along: oneLineHeight,
 				upright: false,
 				maxLines: 1,
 				cut: false,
@@ -735,7 +736,7 @@ function planLabels(
 			{
 				point: { x: anchor.x, y: box.minY - BELOW_LABEL_OFFSET },
 				across: outside,
-				along: oneLine,
+				along: oneLineHeight,
 				upright: false,
 				maxLines: 1,
 				cut: false,
@@ -773,7 +774,7 @@ function planLabels(
 			measured = true;
 			if (vertical) {
 				const ends = [point.y - half(label.width), point.y + half(label.width)];
-				if (ends.some((y) => (room({ x: point.x, y })?.width ?? 0) < label.height)) continue;
+				if (ends.some((endY) => (room({ x: point.x, y: endY })?.width ?? 0) < label.height)) continue;
 			}
 			const bounds = vertical ? labelBox(point, label.height, label.width) : labelBox(point, label.width, label.height);
 			if (placed.some((taken) => boxesOverlap(taken, bounds, gap))) continue;

@@ -368,10 +368,10 @@ export class Helipad {
 
 	private buildLights(): void {
 		// Perimeter landing lights
-		const lit = this.track(new MeshBasicMaterial({ color: 0x00e676, toneMapped: false }));
+		const landingLightMaterial = this.track(new MeshBasicMaterial({ color: 0x00e676, toneMapped: false }));
 		for (let i = 0; i < 8; i++) {
 			const a = (i / 8) * Math.PI * 2;
-			const bulb = new Mesh(new SphereGeometry(0.12, 8, 8), lit);
+			const bulb = new Mesh(new SphereGeometry(0.12, 8, 8), landingLightMaterial);
 			bulb.position.set(this.padCenter.x + Math.cos(a) * 5.3, DECK_TOP + 0.2, this.padCenter.z + Math.sin(a) * 5.3);
 			this.group.add(bulb);
 		}

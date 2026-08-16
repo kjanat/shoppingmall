@@ -112,8 +112,12 @@ export function stubAudio(): void {
 	};
 	(globalThis as unknown as { window: unknown }).window = {
 		setInterval: () => 0,
-		clearInterval: () => {},
+		clearInterval: () => {
+			// Stub timers never schedule work.
+		},
 		setTimeout: () => 0,
-		clearTimeout: () => {},
+		clearTimeout: () => {
+			// Stub timers never schedule work.
+		},
 	};
 }

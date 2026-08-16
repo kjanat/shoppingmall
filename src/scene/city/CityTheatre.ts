@@ -282,9 +282,9 @@ export class CityTheatre {
 
 	/** Lopend patroon: elke derde bol aan, kleur wisselt per tik. Geen allocatie. */
 	private applyChase(step: number): void {
-		const lit = step % 2 === 0 ? this.litA : this.litB;
+		const chaseColor = step % 2 === 0 ? this.litA : this.litB;
 		for (let i = 0; i < BULB_COUNT; i++) {
-			this.bulbs.setColorAt(i, (i + step) % 3 === 0 ? lit : this.dim);
+			this.bulbs.setColorAt(i, (i + step) % 3 === 0 ? chaseColor : this.dim);
 		}
 		if (this.bulbs.instanceColor) this.bulbs.instanceColor.needsUpdate = true;
 	}

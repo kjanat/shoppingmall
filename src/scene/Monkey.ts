@@ -393,16 +393,16 @@ export class Monkey {
 		this.poops = this.poops.filter((p) => p.alive);
 	}
 
-	private land(p: Poop, what: MonkeyHit['what'], at: Vector3): void {
+	private land(p: Poop, what: MonkeyHit['what'], impactPoint: Vector3): void {
 		p.alive = false;
 		p.mesh.removeFromParent();
-		this.addSplat(at, what);
+		this.addSplat(impactPoint, what);
 		let yell: string | undefined;
 		if (what === 'player') {
 			yell = pick(FACE_YELLS);
 			this.splatFace(yell);
 		}
-		this.onHit?.({ what, x: at.x, y: at.y, z: at.z, yell });
+		this.onHit?.({ what, x: impactPoint.x, y: impactPoint.y, z: impactPoint.z, yell });
 	}
 
 	private makeSplatTexture(): CanvasTexture {
@@ -442,9 +442,9 @@ export class Monkey {
 		return tex;
 	}
 
-	private addSplat(at: Vector3, what: MonkeyHit['what']): void {
+	private addSplat(impactPoint: Vector3, what: MonkeyHit['what']): void {
 		if (what === 'player') return;
-		const ground = this.world.groundHeightAt(at.x, at.z, at.y, 3);
+		const ground = this.world.groundHeightAt(impactPoint.x, impactPoint.z, impactPoint.y, 3);
 		const tex = this.makeSplatTexture();
 		const mat = this.track(
 			new MeshBasicMaterial({
@@ -461,7 +461,7 @@ export class Monkey {
 		mesh.scale.setScalar(0.85 + Math.random() * 0.7);
 		// Prayer hits leave a bigger insult
 		if (what === 'prayer') mesh.scale.multiplyScalar(1.35);
-		mesh.position.set(at.x, ground + 0.035, at.z);
+		mesh.position.set(impactPoint.x, ground + 0.035, impactPoint.z);
 		this.group.parent?.add(mesh);
 		this.splats.push({ mesh, life: SPLAT_LIFE + (what === 'prayer' ? 3 : 0) });
 

@@ -28,7 +28,7 @@ const EXEMPT_FILES: ExemptFile[] = [
 const EXEMPTIONS: Exemption[] = [
 	{
 		path: 'src/scene/MallBuilder.ts',
-		fragment: 'const x = (t - 0.5) * span',
+		fragment: 'const crewX = (t - 0.5) * crewSpan',
 		reason: 't walks the crew in equal steps from 0 to 1; nothing is drawn to scatter around zero',
 	},
 	{

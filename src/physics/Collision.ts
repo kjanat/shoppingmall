@@ -885,20 +885,20 @@ export class CollisionWorld {
 		}
 
 		// Het achterbordes bij de artiesteningang, op toneelhoogte, met een trap omlaag.
-		const bordes = BACKSTAGE_LANDING;
+		const backstageLanding = BACKSTAGE_LANDING;
 		this.citySurfaces.push({
-			minX: bordes.minX,
-			maxX: bordes.maxX,
-			minZ: bordes.minZ,
-			maxZ: bordes.maxZ,
-			y: bordes.y,
+			minX: backstageLanding.minX,
+			maxX: backstageLanding.maxX,
+			minZ: backstageLanding.minZ,
+			maxZ: backstageLanding.maxZ,
+			y: backstageLanding.y,
 			label: 'theatre_backstage_landing',
 		});
 		for (let i = 0; i < THEATRE_PLAN.backstage.landing.treads; i++) {
 			const { minZ, maxZ } = backstageLandingTreadZ(i);
 			this.citySurfaces.push({
-				minX: bordes.minX,
-				maxX: bordes.maxX,
+				minX: backstageLanding.minX,
+				maxX: backstageLanding.maxX,
 				minZ,
 				maxZ,
 				y: backstageLandingTreadY(i),

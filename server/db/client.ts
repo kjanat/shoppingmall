@@ -5,7 +5,7 @@ import * as schema from './schema.ts';
 
 const SCHEMA_VERSION = 1;
 
-export type DjLibraryDb = BunSQLiteDatabase<typeof schema>;
+type DjLibraryDb = BunSQLiteDatabase<typeof schema>;
 
 function applySchema(sqlite: Database): void {
 	// The compiled server has no migration directory beside it. Runtime DDL
@@ -42,7 +42,7 @@ function applySchema(sqlite: Database): void {
 	}
 }
 
-export function openDjLibraryDb(path: string): { db: DjLibraryDb; sqlite: Database } {
+function openDjLibraryDb(path: string): { db: DjLibraryDb; sqlite: Database } {
 	const sqlite = new Database(path, { create: true, readwrite: true, strict: true });
 	try {
 		sqlite.run('PRAGMA journal_mode = WAL');
@@ -54,3 +54,6 @@ export function openDjLibraryDb(path: string): { db: DjLibraryDb; sqlite: Databa
 		throw error;
 	}
 }
+
+export type { DjLibraryDb };
+export { openDjLibraryDb };

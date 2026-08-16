@@ -34,11 +34,11 @@ const EXEMPTIONS: Exemption[] = [
 	},
 ];
 
-const DOUBLE_SIDED = /\bTHREE\s*\.\s*DoubleSide\b/g;
+const DOUBLE_SIDED = /\b(?:THREE\s*\.\s*)?DoubleSide\b/g;
 /** `map: tex` and the shorthand `map,` are the same property. */
 const TEXTURE_PROPERTY = /\bmap\s*[:,}]/;
 const TEXTURE_ASSIGNMENT = /\b([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.map\s*=[^=]/g;
-const SIDE_ASSIGNMENT = /\b([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.side\s*=\s*THREE\s*\.\s*DoubleSide\b/g;
+const SIDE_ASSIGNMENT = /\b([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.side\s*=\s*(?:THREE\s*\.\s*)?DoubleSide\b/g;
 
 const MESSAGE = 'is a texture on a double-sided plane; from behind it reads mirrored. Put two planes back to back';
 

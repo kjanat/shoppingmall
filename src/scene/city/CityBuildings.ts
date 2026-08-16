@@ -241,7 +241,7 @@ export class CityBuildings {
 		const rows = 20;
 		const cw = 256 / cols;
 		const ch = 512 / rows;
-		const lit = ['#e8c98a', '#f4dfae', '#aac6dd', '#8ea6bf'];
+		const litWindowColors = ['#e8c98a', '#f4dfae', '#aac6dd', '#8ea6bf'];
 		const redCol = Math.floor(rand() * cols);
 		const redRow = 2 + Math.floor(rand() * (rows - 4));
 		for (let r = 0; r < rows; r++) {
@@ -249,7 +249,7 @@ export class CityBuildings {
 				if (col === redCol && r === redRow) {
 					ctx.fillStyle = '#87201d'; // dat éne raam. Niet naar kijken.
 				} else if (rand() < 0.3) {
-					ctx.fillStyle = pickWith(lit, rand);
+					ctx.fillStyle = pickWith(litWindowColors, rand);
 				} else {
 					ctx.fillStyle = '#181d2c'; // donker raam, nét lichter dan de gevel
 				}

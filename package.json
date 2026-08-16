@@ -18,7 +18,7 @@
 		"diagnose": "node scripts/perf/diagnose.ts",
 		"diagnose:headless": "MALL_PERF_SOFTWARE=1 node scripts/perf/diagnose.ts",
 		"favicon": "npx -y --package=vite-svg-to-ico@latest svg-to-ico generate public/favicon.svg --out-dir public",
-		"fmt": "run lint --fix; dprint fmt .",
+		"fmt": "run lint --fix 2>/dev/null; dprint fmt --fail-on-change",
 		"lint": "biome check",
 		"prepare": "run scripts/install-hooks.ts || true",
 		"profile": "node scripts/perf/profile.ts",
