@@ -21,7 +21,7 @@ import { isSoftwareHeadless, launchPerfBrowser } from './playwright.ts';
 import type { BatchOwnerTiming, Environment, PassTiming, RoutePose, Sample, ZoneCullTally, ZoneOwnerTiming } from './probe.ts';
 import { probeSource } from './probe.ts';
 
-export interface StaticServer {
+interface StaticServer {
 	url: string;
 	stop: () => Promise<void>;
 }
@@ -58,7 +58,7 @@ async function readStaticFile(path: string): Promise<Buffer | null> {
 	}
 }
 
-export async function serveGame(): Promise<StaticServer> {
+async function serveGame(): Promise<StaticServer> {
 	if (!existsSync(join(STATIC_DIR, 'index.html'))) {
 		throw new Error(`no build in ${STATIC_DIR} — run ${blue`bun run build`} first`);
 	}
@@ -108,7 +108,7 @@ export async function serveGame(): Promise<StaticServer> {
 	};
 }
 
-export interface GameSession {
+interface GameSession {
 	server: StaticServer;
 	/** Load the game and wait until it is genuinely running and settled. */
 	boot: (options?: { settleQuietMs?: number }) => Promise<{ readyMs: number; settleMs: number }>;
@@ -122,21 +122,31 @@ export interface GameSession {
 	close: () => Promise<void>;
 }
 
+interface OpenGameOptions {
+	width: number;
+	height: number;
+	freshProfile?: boolean;
+	url?: string;
+	batchOverride?: string;
+	zoneCull?: boolean;
+	shellShadow?: boolean;
+}
+
 /**
  * `url` points the run at a deployed site instead of the local build, which is
  * the only way to check that a fix actually shipped: the probe reports
  * `programInfoLogCalls`, and on a correct production build that is zero.
  * Frame timings stay local — the network decides load time, not frame time.
  */
-export async function openGame(
-	width: number,
-	height: number,
+async function openGame({
+	width,
+	height,
 	freshProfile = false,
-	url?: string,
-	batchOverride?: string,
-	zoneCull?: boolean,
-	shellShadow?: boolean,
-): Promise<GameSession> {
+	url,
+	batchOverride,
+	zoneCull,
+	shellShadow,
+}: OpenGameOptions): Promise<GameSession> {
 	const server: StaticServer = url
 		? {
 				url,
@@ -237,7 +247,7 @@ function parsePasses(value: unknown): PassTiming[] {
 	});
 }
 
-export function parseSample(value: unknown): Sample {
+function parseSample(value: unknown): Sample {
 	if (!isRecord(value)) throw new Error('probe returned no sample — is the probe installed?');
 	const sample: Sample = {
 		frames: readNumber(value, 'frames'),
@@ -312,7 +322,7 @@ function parseZoneCull(value: unknown): ZoneCullTally | null {
 	};
 }
 
-export function parseEnvironment(value: unknown): Environment {
+function parseEnvironment(value: unknown): Environment {
 	if (!isRecord(value)) throw new Error('probe returned no environment — is the probe installed?');
 	const batchOwners: BatchOwnerTiming[] = readArray(value, 'batchOwners').flatMap((entry) => {
 		if (!isRecord(entry)) return [];
@@ -363,7 +373,7 @@ export function parseEnvironment(value: unknown): Environment {
 
 // ── shared reporting ───────────────────────────────────────────────────────
 
-export function bar(label: string, value: string): string {
+function bar(label: string, value: string): string {
 	return `${space(2)}${label.padEnd(26)} ${value}`;
 }
 
@@ -373,7 +383,7 @@ export function bar(label: string, value: string): string {
  * of reading one total and guessing. A frame nobody accounts for is being paced
  * by something outside the game.
  */
-export interface FrameAccount {
+interface FrameAccount {
 	frameMs: number;
 	/** Logic and batching. The driver cannot block inside either. */
 	appCpuMs: number;
@@ -388,7 +398,7 @@ export interface FrameAccount {
 /** Share of the frame a side must reach before it explains the frame. */
 const PARITY = 0.9;
 
-export function frameAccount(sample: Sample): FrameAccount {
+function frameAccount(sample: Sample): FrameAccount {
 	const frameMs = sample.wallMsMean;
 	const appCpuMs = sample.cpuLogicMsMean + sample.cpuBatchMsMean;
 	const submitMs = sample.cpuSubmitMsMean;
@@ -418,7 +428,7 @@ export function frameAccount(sample: Sample): FrameAccount {
  * did not report a disjoint, and nothing was still linking. Each of these was a
  * measurement that looked plausible and was not.
  */
-export function sampleWarnings(sample: Sample): string[] {
+function sampleWarnings(sample: Sample): string[] {
 	const warnings: string[] = [];
 	// Presenting the frame is one fullscreen blit. Headless Chromium on ANGLE's
 	// Vulkan backend billed 13.42 ms of a 37.1 ms frame to that single draw while
@@ -449,3 +459,6 @@ export function sampleWarnings(sample: Sample): string[] {
 	if (sample.frames < 20) warnings.push(`only ${sample.frames} frames sampled — too few to trust the median`);
 	return warnings;
 }
+
+export type { FrameAccount, GameSession, OpenGameOptions, StaticServer };
+export { bar, frameAccount, openGame, parseEnvironment, parseSample, sampleWarnings, serveGame };

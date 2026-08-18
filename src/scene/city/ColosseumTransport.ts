@@ -6,7 +6,7 @@ import { CITY_GROUND_Y, COLOSSEUM_PLAN, ENTRANCE_CARPET } from '#/scene/city/cit
 import { backToBackLabel, fitText, labelCanvas, labelTexture } from '#/util/label';
 import { clamp01, half } from '#/util/math';
 
-export type ColosseumStop = 'mall' | 'colosseum';
+type ColosseumStop = 'mall' | 'colosseum';
 
 type TransportState =
 	| { kind: 'stopped'; stop: ColosseumStop; remaining: number }
@@ -21,7 +21,7 @@ const SEAT_BACK = -0.25;
 const EXIT_SIDE = 2.2;
 const CARRIAGE_CARPET_CLEARANCE = 1.5;
 
-export const COLOSSEUM_TRANSPORT_STOPS = {
+const COLOSSEUM_TRANSPORT_STOPS = {
 	mall: {
 		x: ENTRANCE_CARPET.minX + half(ENTRANCE_SPEC.carpet.width),
 		y: CITY_GROUND_Y + 0.1,
@@ -38,7 +38,7 @@ export const COLOSSEUM_TRANSPORT_STOPS = {
  * ColosseumTransport — Roman Chariot Express Shuttle connecting
  * the Shopping Mall Main Entrance Plaza directly to the Mega Colosseum Arena.
  */
-export class ColosseumTransport {
+class ColosseumTransport {
 	readonly group = new Group();
 
 	private readonly materials: Material[] = [];
@@ -145,7 +145,7 @@ export class ColosseumTransport {
 		for (const t of this.textures) t.dispose();
 	}
 
-	private box(w: number, h: number, d: number, mat: Material, x: number, y: number, z: number): Mesh {
+	private box(...[w, h, d, mat, x, y, z]: [number, number, number, Material, number, number, number]): Mesh {
 		const m = new Mesh(this.unitBox, mat);
 		m.scale.set(w, h, d);
 		m.position.set(x, y, z);
@@ -245,3 +245,6 @@ export class ColosseumTransport {
 		this.chariotMesh.rotation.y = this.heading;
 	}
 }
+
+export { ColosseumTransport, COLOSSEUM_TRANSPORT_STOPS };
+export type { ColosseumStop };

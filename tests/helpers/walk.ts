@@ -17,31 +17,31 @@ import { nr, world } from './world.ts';
  */
 
 /** Well outside the facade, on the pavement. */
-export const STREET_X = -50;
+const STREET_X = -50;
 /** Roughly one frame of walking. */
-export const WALK_PROBE_STEP = 0.05;
+const WALK_PROBE_STEP = 0.05;
 /** How much of a step has to survive collision before the walk counts as stopped. */
 const PROGRESS = 0.5;
 /** Past this the pedestrian is being steered around something rather than walking straight. */
 const SIDEWAYS = 0.05;
 
-export interface Walk {
+interface Walk {
 	x: number;
 	complaint: string | null;
 }
-export type Walker = Readonly<{ world: CollisionWorld; posture: PedestrianPosture }>;
+type Walker = Readonly<{ world: CollisionWorld; posture: PedestrianPosture }>;
 
-export const UPRIGHT: Walker = { world, posture: 'standing' };
+const UPRIGHT: Walker = { world, posture: 'standing' };
 
-export type Point = readonly [number, number];
-export type Trip = Readonly<{ x: number; z: number; y: number; complaint: string | null }>;
+type Point = readonly [number, number];
+type Trip = Readonly<{ x: number; z: number; y: number; complaint: string | null }>;
 
 /**
  * A body following a free polyline at whatever height the ground gives it, for routes that do
  * not run along one axis. It stops at the first step where the floor jumps more than the
  * player's own step height, or where collision moves it off its line.
  */
-export function followPolyline(points: readonly Point[], startY: number): Trip {
+function followPolyline(points: readonly Point[], startY: number): Trip {
 	let y = startY;
 	const first = points[0];
 	let x = first ? first[0] : 0;
@@ -76,7 +76,7 @@ export function followPolyline(points: readonly Point[], startY: number): Trip {
 	return { x, z, y, complaint: null };
 }
 
-export function walkAlongAxis(z: number, from: number, to: number, who: Walker = UPRIGHT): Walk {
+function walkAlongAxis(z: number, from: number, to: number, who: Walker = UPRIGHT): Walk {
 	const deckY = levelY('v0');
 	const direction = Math.sign(to - from);
 	const needed = postureHeadroom(who.posture);
@@ -106,3 +106,6 @@ export function walkAlongAxis(z: number, from: number, to: number, who: Walker =
 	}
 	return { x, complaint: null };
 }
+
+export type { Point, Trip, Walk, Walker };
+export { STREET_X, UPRIGHT, WALK_PROBE_STEP, followPolyline, walkAlongAxis };

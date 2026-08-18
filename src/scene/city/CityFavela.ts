@@ -76,7 +76,7 @@ const TWINK_SCALE = 0.88;
 const SLOP_COLOR = 0x6b7a3a;
 const HEAD_LEAN = 0.5;
 
-export type FavelaGangResult = Readonly<{ status: string; scoreDelta: number }>;
+type FavelaGangResult = Readonly<{ status: string; scoreDelta: number }>;
 
 type GangDef = Readonly<{
 	id: string;
@@ -188,7 +188,7 @@ const SKIN_TONES = [0xf1c27d, 0xffdbac, 0xe0ac69, 0xc68642, 0xf5d0b0, 0xd4a574] 
 /**
  * Sloppenwijk: shacks, rival gangs, and twinks with bowls of mystery slop.
  */
-export class CityFavela {
+class CityFavela {
 	readonly group = new Group();
 
 	private readonly materials: Material[] = [];
@@ -1149,7 +1149,7 @@ function planShacks(): Shack[] {
 	return out;
 }
 
-export function favelaColliders(): readonly BoxCollider[] {
+function favelaColliders(): readonly BoxCollider[] {
 	return planShacks().map((s, i) => {
 		const hw = half(s.w) + 0.08;
 		const hd = half(s.d) + 0.08;
@@ -1166,7 +1166,7 @@ export function favelaColliders(): readonly BoxCollider[] {
 }
 
 /** Walkable village ground: dense slope carpet (rise ≤ WALK_STEP per segment) + plaza. */
-export function favelaSurfaces(): readonly Readonly<{
+function favelaSurfaces(): readonly Readonly<{
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -1245,7 +1245,7 @@ export function favelaSurfaces(): readonly Readonly<{
 	return out;
 }
 
-export function favelaFillColliders(): readonly BoxCollider[] {
+function favelaFillColliders(): readonly BoxCollider[] {
 	const { minX, maxX, minZ, maxZ } = FAVELA_PLAN;
 	const zc = midpoint(minZ, maxZ);
 	const depth = span(minZ, maxZ);
@@ -1270,3 +1270,6 @@ export function favelaFillColliders(): readonly BoxCollider[] {
 	}
 	return out;
 }
+
+export { CityFavela, favelaColliders, favelaFillColliders, favelaSurfaces };
+export type { FavelaGangResult };

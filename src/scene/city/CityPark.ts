@@ -20,7 +20,6 @@ import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 import { PARK_LAWN } from './cityPlaces';
 
-export { PARK_LAWN } from './cityPlaces';
 
 /**
  * Stadspark op het NW-blok buiten de ringweg.
@@ -68,7 +67,7 @@ const PATH: readonly [number, number][] = [
 	[-120, -74],
 ];
 
-export class CityPark {
+class CityPark {
 	readonly group = new Group();
 
 	private materials: Material[] = [];
@@ -210,7 +209,7 @@ export class CityPark {
 			for (let i = 0; i < PATH.length - 1; i++) {
 				const [ax, az] = at(PATH, i);
 				const [bx, bz] = at(PATH, i + 1);
-				best = Math.min(best, distanceToSegment2(x, z, ax, az, bx, bz));
+				best = Math.min(best, distanceToSegment2({ x, z }, { a: { x: ax, z: az }, b: { x: bx, z: bz } }));
 			}
 			return best;
 		};
@@ -399,3 +398,5 @@ export class CityPark {
 		return m;
 	}
 }
+
+export { CityPark, PARK_LAWN };

@@ -54,9 +54,8 @@ import { at } from '#/util/rand';
 
 const DECK_Y = levelY('roof');
 
-export { ROOF_ISLAND_PAD, SLIDE_LADDER_CLIMB, SLIDE_PLATFORM, SLIDE_PLATFORM_TOP_Y } from '#/data/world';
+import { SLIDE_LADDER_CLIMB, SLIDE_PLATFORM_TOP_Y } from '#/data/world';
 // Het zwembadmodel woont nu in de datalaag; hier alleen doorgegeven voor bestaande lezers.
-export { inPool, POOL_CENTER, POOL_FLOOR_Y, POOL_POLYGON, POOL_WATER_Y, poolFloorY, rimDistance };
 
 /** Breedte van de tegelrand rond het water. */
 const RIM_W = 0.55;
@@ -102,7 +101,7 @@ function offsetOutward(pts: readonly Vector2[], d: number): Vector2[] {
  * en — cruciaal voor de glijbaan-doorstroom — flessen GLIJMIDDEL en BABY OIL.
  * De veiligheidsrailing is er omdat de verzekeraar het dak heeft gezien.
  */
-export class RoofIsland {
+class RoofIsland {
 	readonly group = new Group();
 
 	/** Loopbaar dek voor de integrator */
@@ -621,7 +620,8 @@ export class RoofIsland {
 		});
 		const babyMat = this.track(lit({ map: babyTex, roughness: 0.4 }));
 
-		const bottle = (mat: Material, x: number, y: number, z: number, tipped: boolean): void => {
+		const bottle = (...args: [Material, number, number, number, boolean]): void => {
+			const [mat, x, y, z, tipped] = args;
 			const b = new Mesh(bottleGeo, mat);
 			b.position.set(x, y, z);
 			if (tipped) {
@@ -740,3 +740,18 @@ export class RoofIsland {
 		this.group.add(sp);
 	}
 }
+
+export {
+	RoofIsland,
+	ROOF_ISLAND_PAD,
+	SLIDE_LADDER_CLIMB,
+	SLIDE_PLATFORM,
+	SLIDE_PLATFORM_TOP_Y,
+	inPool,
+	POOL_CENTER,
+	POOL_FLOOR_Y,
+	POOL_POLYGON,
+	POOL_WATER_Y,
+	poolFloorY,
+	rimDistance,
+};

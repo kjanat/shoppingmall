@@ -64,12 +64,8 @@ describe('full-building performance route', () => {
 			for (const ring of ROAD_RINGS) {
 				for (const edge of ring.edges) {
 					const gap = distanceToSegment2(
-						pose.x,
-						pose.z,
-						edge.ox,
-						edge.oz,
-						edge.ox + edge.dx * edge.len,
-						edge.oz + edge.dz * edge.len,
+						{ x: pose.x, z: pose.z },
+						{ a: { x: edge.ox, z: edge.oz }, b: { x: edge.ox + edge.dx * edge.len, z: edge.oz + edge.dz * edge.len } },
 					);
 					assert.ok(gap >= TRAFFIC_LANE_CLEARANCE, `${name} stands ${gap.toFixed(2)} m from a traffic lane`);
 				}

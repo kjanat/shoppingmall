@@ -1,17 +1,17 @@
 import { CON_LOT } from '#/data/conPlan';
 import { half, midpoint } from '#/util/math';
 
-export type Rect = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
+type Rect = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
 
 /** Binnenrand en breedte van de ringweg. */
-export const ROAD_INNER_X = 48;
-export const ROAD_INNER_Z = 34;
-export const ROAD_PLAN = { width: 7 } as const;
-export const LANE_X = ROAD_INNER_X + half(ROAD_PLAN.width);
-export const LANE_Z = ROAD_INNER_Z + half(ROAD_PLAN.width);
+const ROAD_INNER_X = 48;
+const ROAD_INNER_Z = 34;
+const ROAD_PLAN = { width: 7 } as const;
+const LANE_X = ROAD_INNER_X + half(ROAD_PLAN.width);
+const LANE_Z = ROAD_INNER_Z + half(ROAD_PLAN.width);
 
 /** Kavels die stadsscène, fysica en kaart samen lezen. */
-export const CITY_KAVELS = {
+const CITY_KAVELS = {
 	theatre: { minX: 52, maxX: 90, minZ: -87, maxZ: -40 },
 	garage: { minX: 52, maxX: 90, minZ: 40, maxZ: 72 },
 	park: { minX: -140, maxX: -52, minZ: -100, maxZ: -36 },
@@ -21,7 +21,7 @@ export const CITY_KAVELS = {
 	colosseum: { minX: -45, maxX: 45, minZ: 50, maxZ: 160 },
 } as const satisfies Record<string, Rect>;
 
-export const COLOSSEUM_PLAN = {
+const COLOSSEUM_PLAN = {
 	x: 0,
 	z: 104,
 	radiusX: 44,
@@ -35,7 +35,7 @@ export const COLOSSEUM_PLAN = {
 	label: 'MEGA COLOSSEUM ARENA',
 } as const;
 
-export const RIO_MOUNTAIN = {
+const RIO_MOUNTAIN = {
 	x: midpoint(CITY_KAVELS.rio.minX, CITY_KAVELS.rio.maxX),
 	z: midpoint(CITY_KAVELS.rio.minZ, CITY_KAVELS.rio.maxZ),
 	baseW: 48,
@@ -46,7 +46,7 @@ export const RIO_MOUNTAIN = {
 	label: 'MONTANHA DE JANEIRO',
 } as const;
 
-export const FAVELA_PLAN = {
+const FAVELA_PLAN = {
 	minX: CITY_KAVELS.favela.minX,
 	maxX: CITY_KAVELS.favela.maxX,
 	minZ: CITY_KAVELS.favela.minZ,
@@ -66,14 +66,14 @@ export const FAVELA_PLAN = {
 const PARK_BERM = 4;
 
 /** Het gras zelf: het parkkavel min zijn onbeplante berm. */
-export const PARK_LAWN = {
+const PARK_LAWN = {
 	minX: CITY_KAVELS.park.minX + PARK_BERM,
 	maxX: CITY_KAVELS.park.maxX - PARK_BERM,
 	minZ: CITY_KAVELS.park.minZ + PARK_BERM,
 	maxZ: CITY_KAVELS.park.maxZ - PARK_BERM,
 } as const;
 
-export const GARAGE_PLAN = {
+const GARAGE_PLAN = {
 	footprint: { minX: 58, maxX: 83, minZ: 46, maxZ: 64 },
 	floorHeight: 3.2,
 	slabThickness: 0.35,
@@ -95,14 +95,31 @@ export const GARAGE_PLAN = {
 	},
 } as const;
 
-export function garageDeckTop(index: number): number {
+function garageDeckTop(index: number): number {
 	return index === 0 ? GARAGE_PLAN.groundDeckY : index * GARAGE_PLAN.floorHeight + half(GARAGE_PLAN.slabThickness);
 }
 
-export type GarageDeck = Readonly<Rect & { id: string; y: number }>;
+type GarageDeck = Readonly<Rect & { id: string; y: number }>;
 
-export const GARAGE_DECKS: readonly GarageDeck[] = Array.from({ length: GARAGE_PLAN.decks }, (_, index) => ({
+const GARAGE_DECKS: readonly GarageDeck[] = Array.from({ length: GARAGE_PLAN.decks }, (_, index) => ({
 	id: `garage_deck_${index + 1}`,
 	...GARAGE_PLAN.footprint,
 	y: garageDeckTop(index + 1),
 }));
+
+export {
+	CITY_KAVELS,
+	COLOSSEUM_PLAN,
+	FAVELA_PLAN,
+	GARAGE_DECKS,
+	GARAGE_PLAN,
+	LANE_X,
+	LANE_Z,
+	PARK_LAWN,
+	RIO_MOUNTAIN,
+	ROAD_INNER_X,
+	ROAD_INNER_Z,
+	ROAD_PLAN,
+	garageDeckTop,
+};
+export type { GarageDeck, Rect };

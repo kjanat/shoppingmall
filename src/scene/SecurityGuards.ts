@@ -27,13 +27,13 @@ import { tagLevelCulled } from '#/util/visibility';
 type GuardState = 'patrol' | 'alert' | 'firing';
 
 /** Het lijf van een kogel. De mesh en de vraag of hij door een vloergat past lezen dezelfde maat. */
-export const BULLET_RADIUS = 0.06;
+const BULLET_RADIUS = 0.06;
 
 /**
  * Hoe hard een kogel gaat. De wereldcontrole marcheert er een langs de westgevel om
  * te bewijzen dat hij erop stukloopt, en die stap moet dezelfde zijn als hier.
  */
-export const BULLET_SPEED = { min: 28, spread: 8 } as const;
+const BULLET_SPEED = { min: 28, spread: 8 } as const;
 
 interface Guard {
 	root: Group;
@@ -119,7 +119,7 @@ const NAMES = [
  * Typical American mall security — hypersensitive, hair-trigger, opens fire
  * on shadows, croissants, and mildly interesting body language.
  */
-export class SecurityGuards {
+class SecurityGuards {
 	readonly group = new Group();
 	private world: CollisionWorld;
 	private pool: LightPool;
@@ -690,3 +690,5 @@ function shortName(full: string): string {
 	const parts = full.split(/\s+/);
 	return parts[parts.length - 1] ?? full;
 }
+
+export { BULLET_RADIUS, BULLET_SPEED, SecurityGuards };

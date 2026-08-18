@@ -30,13 +30,13 @@
 import { BATCH_KEY, isBatchMode, SHELL_SHADOW_KEY, ZONE_CULL_KEY } from '#/render/graphicsPrefs';
 
 /** One render target + viewport size, e.g. the main pass or the shadow map. */
-export interface PassTiming {
+interface PassTiming {
 	pass: string;
 	msPerFrame: number;
 	drawsPerFrame: number;
 }
 
-export interface BatchOwnerTiming {
+interface BatchOwnerTiming {
 	name: string;
 	sources: number;
 	dynamicSources: number;
@@ -46,7 +46,7 @@ export interface BatchOwnerTiming {
 	largestRadius: number;
 }
 
-export interface Sample {
+interface Sample {
 	frames: number;
 	/** Median wall time between frames. The number a player feels. */
 	wallMsMedian: number;
@@ -78,7 +78,7 @@ export interface Sample {
 	trianglesPerFrame: number;
 }
 
-export interface RoutePose {
+interface RoutePose {
 	x: number;
 	y: number;
 	z: number;
@@ -91,7 +91,7 @@ export interface RoutePose {
  * Wat de zonecull van dit standpunt vond. Zonder deze telling is een cull die
  * niets doet niet te onderscheiden van een cull die alles al mocht tekenen.
  */
-export interface ZoneCullTally {
+interface ZoneCullTally {
 	zone: string;
 	/** Stond de cull aan? Met hem uit telt niemand mee en zijn alle eigenaarsregels nul. */
 	enabled: boolean;
@@ -113,7 +113,7 @@ export interface ZoneCullTally {
  * schaduw werpt. Wat de cull wegneemt verdwijnt uit de scenepass én uit de
  * schaduwpass, dus `castersKept` is wat dit standpunt nog aan de zon aanbiedt.
  */
-export interface ZoneOwnerTiming {
+interface ZoneOwnerTiming {
 	name: string;
 	items: number;
 	casters: number;
@@ -123,7 +123,7 @@ export interface ZoneOwnerTiming {
 	castersHidden: number;
 }
 
-export interface Environment {
+interface Environment {
 	renderer: string;
 	vendor: string;
 	parallelShaderCompile: boolean;
@@ -161,7 +161,7 @@ export interface Environment {
 }
 
 /** Eén object onder een beeldpunt: wie het gebouwd heeft en waar het staat. */
-export interface RayHit {
+interface RayHit {
 	owner: string;
 	name: string;
 	geometry: string;
@@ -190,22 +190,30 @@ declare global {
 }
 
 /** The probe source, ready to hand to Page.addScriptToEvaluateOnNewDocument. */
-export function probeSource(batchOverride?: string, zoneCull?: boolean, shellShadow?: boolean): string {
+function probeSource(batchOverride?: string, zoneCull?: boolean, shellShadow?: boolean): string {
 	const mode = isBatchMode(batchOverride) ? batchOverride : undefined;
-	return `(${installProbe.toString()})(${JSON.stringify(BATCH_KEY)}, ${JSON.stringify(mode)}, ${JSON.stringify(ZONE_CULL_KEY)}, ${JSON.stringify(zoneCull)}, ${JSON.stringify(SHELL_SHADOW_KEY)}, ${JSON.stringify(shellShadow)});`;
+	return `(${installProbe.toString()})(${JSON.stringify({
+		batchKey: BATCH_KEY,
+		batchOverride: mode,
+		zoneCullKey: ZONE_CULL_KEY,
+		zoneCull,
+		shellShadowKey: SHELL_SHADOW_KEY,
+		shellShadow,
+	})});`;
 }
 
 // Everything below runs in the browser. It must stay self-contained: it is
 // stringified, so a reference to anything outside this function will not exist
 // at the other end.
-function installProbe(
-	batchKey: string,
-	batchOverride: string | undefined,
-	zoneCullKey: string,
-	zoneCull: boolean | undefined,
-	shellShadowKey: string,
-	shellShadow?: boolean,
-): void {
+function installProbe(options: {
+	batchKey: string;
+	batchOverride?: string;
+	zoneCullKey: string;
+	zoneCull?: boolean;
+	shellShadowKey: string;
+	shellShadow?: boolean;
+}): void {
+	const { batchKey, batchOverride, zoneCullKey, zoneCull, shellShadowKey, shellShadow } = options;
 	// App uses its own GPU query for the HUD. Two TIME_ELAPSED_EXT queries cannot
 	// overlap on one context, so announce the external probe before App starts.
 	Object.defineProperty(globalThis, '__mallPerfProbeActive', { value: true, configurable: true });
@@ -858,3 +866,6 @@ function installProbe(
 		},
 	};
 }
+
+export type { BatchOwnerTiming, Environment, PassTiming, RayHit, RoutePose, Sample, ZoneCullTally, ZoneOwnerTiming };
+export { probeSource };

@@ -13,7 +13,7 @@
 import { clamp, half } from '#/util/math';
 
 /** Een lichaam in het XZ-vlak: waar het staat, hoe hard het gaat, hoe dik het is. */
-export type OrcaBody = Readonly<{
+type OrcaBody = Readonly<{
 	x: number;
 	z: number;
 	vx: number;
@@ -25,7 +25,7 @@ export type OrcaBody = Readonly<{
  * Een toegestane halfruimte van snelheden: `v` mag als `(v − p) · n >= 0`, met
  * `n` als eenheidsvector.
  */
-export type VelocityConstraint = Readonly<{
+type VelocityConstraint = Readonly<{
 	px: number;
 	pz: number;
 	nx: number;
@@ -33,13 +33,13 @@ export type VelocityConstraint = Readonly<{
 }>;
 
 /** Een as-uitgelijnde doos in het grondvlak. */
-export type PlanBox = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
+type PlanBox = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
 
 /** Twee lichamen op exact dezelfde plek hebben geen richting om uit elkaar te gaan; daaronder kiest de code er zelf een. */
 const DEGENERATE = 1e-6;
 
 /** Ieder van twee lopers neemt de helft van de correctie. Een muur loopt niet mee en laat de volle correctie liggen. */
-export const RECIPROCAL_SHARE = half(1);
+const RECIPROCAL_SHARE = half(1);
 
 /**
  * Het halfvlak dat `self` moet respecteren om `other` binnen `horizon` seconden
@@ -52,13 +52,13 @@ export const RECIPROCAL_SHARE = half(1);
  * `dt` telt alleen mee als de twee al in elkaar staan: dan is de horizon de
  * frametijd, want die overlap moet er nu uit en niet over een seconde.
  */
-export function agentConstraint(
-	self: OrcaBody,
-	other: OrcaBody,
-	horizon: number,
-	dt: number,
-	share: number,
-): VelocityConstraint | null {
+function agentConstraint({ self, other, horizon, dt, share }: Readonly<{
+	self: OrcaBody;
+	other: OrcaBody;
+	horizon: number;
+	dt: number;
+	share: number;
+}>): VelocityConstraint | null {
 	const rx = other.x - self.x;
 	const rz = other.z - self.z;
 	const rvx = self.vx - other.vx;
@@ -108,7 +108,12 @@ export function agentConstraint(
  * strenger dan nodig. Een muur beweegt niet mee, dus de loper draagt de hele
  * correctie in plaats van de helft.
  */
-export function staticConstraint(self: OrcaBody, box: PlanBox, horizon: number, dt: number): VelocityConstraint {
+function staticConstraint({ self, box, horizon, dt }: Readonly<{
+	self: OrcaBody;
+	box: PlanBox;
+	horizon: number;
+	dt: number;
+}>): VelocityConstraint {
 	const dx = self.x - clamp(self.x, box.minX, box.maxX);
 	const dz = self.z - clamp(self.z, box.minZ, box.maxZ);
 	const dist = Math.hypot(dx, dz);
@@ -143,13 +148,13 @@ export function staticConstraint(self: OrcaBody, box: PlanBox, horizon: number, 
  * geschonden snelheid in plaats van een uitzondering, en dat geval komt in een
  * volle mall vaker voor dan het optimum een halve centimeter waard is.
  */
-export function solveVelocity(
-	prefVx: number,
-	prefVz: number,
-	maxSpeed: number,
-	constraints: readonly VelocityConstraint[],
-	rounds: number,
-): { vx: number; vz: number } {
+function solveVelocity({ prefVx, prefVz, maxSpeed, constraints, rounds }: Readonly<{
+	prefVx: number;
+	prefVz: number;
+	maxSpeed: number;
+	constraints: readonly VelocityConstraint[];
+	rounds: number;
+}>): { vx: number; vz: number } {
 	let vx = prefVx;
 	let vz = prefVz;
 	const wanted = Math.hypot(vx, vz);
@@ -175,3 +180,6 @@ export function solveVelocity(
 	}
 	return { vx, vz };
 }
+
+export type { OrcaBody, PlanBox, VelocityConstraint };
+export { RECIPROCAL_SHARE, agentConstraint, solveVelocity, staticConstraint };

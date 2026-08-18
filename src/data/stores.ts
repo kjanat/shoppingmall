@@ -1,9 +1,9 @@
 import type { NodeId } from './graph';
 import type { LevelId } from './levels';
 
-export type StoreCategory = 'beauty' | 'fashion' | 'food' | 'tech' | 'home' | 'sport' | 'services' | 'utility';
+type StoreCategory = 'beauty' | 'fashion' | 'food' | 'tech' | 'home' | 'sport' | 'services' | 'utility';
 
-export interface StoreDef {
+interface StoreDef {
 	id: string;
 	name: string;
 	category: StoreCategory;
@@ -31,7 +31,7 @@ export interface StoreDef {
 	blurb?: string;
 }
 
-export const CATEGORY_LABELS: Record<StoreCategory, string> = {
+const CATEGORY_LABELS: Record<StoreCategory, string> = {
 	beauty: 'Beauty & gezondheid',
 	fashion: 'Mode',
 	food: 'Horeca',
@@ -58,7 +58,7 @@ export const CATEGORY_LABELS: Record<StoreCategory, string> = {
  *  Food court balcony (0, 11.5) — between void and south stores
  *  Secret stairs SE → helipad roof
  */
-export const STORES: StoreDef[] = [
+const STORES: StoreDef[] = [
 	// ── Floor 0 north ────────────────────────────────────
 	{
 		id: 'zara',
@@ -498,12 +498,12 @@ export const STORES: StoreDef[] = [
 	},
 ];
 
-export function getStore(id: string): StoreDef | undefined {
+function getStore(id: string): StoreDef | undefined {
 	return STORES.find((s) => s.id === id);
 }
 
 /** For authored world geometry that must not silently drift off a missing directory record. */
-export function requireStore(id: string): StoreDef {
+function requireStore(id: string): StoreDef {
 	const store = getStore(id);
 	if (!store) throw new Error(`no store '${id}' in STORES`);
 	return store;
@@ -518,7 +518,7 @@ export function requireStore(id: string): StoreDef {
  */
 const SHOPS: StoreDef[] = STORES.filter((s) => !s.utility && s.id !== 'info');
 
-export function shopStores(): readonly StoreDef[] {
+function shopStores(): readonly StoreDef[] {
 	return SHOPS;
 }
 
@@ -526,8 +526,11 @@ export function shopStores(): readonly StoreDef[] {
  * Where the kiosk's main button walks you. Kruidvat by name, not by `hero`:
  * that flag is facade styling and two stores carry it.
  */
-export function getKruidvat(): StoreDef {
+function getKruidvat(): StoreDef {
 	const store = STORES.find((s) => s.id === 'kruidvat');
 	if (!store) throw new Error('no kruidvat in STORES');
 	return store;
 }
+
+export { requireStore, CATEGORY_LABELS, STORES, getStore, shopStores, getKruidvat };
+export type { StoreCategory, StoreDef };

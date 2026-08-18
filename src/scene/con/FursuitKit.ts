@@ -4,30 +4,30 @@ import { CON_BODY } from '#/data/conPlan';
 import { lit } from '#/render/material';
 
 /** Body fur — warm canines, greys, pastels, classic suit dyes. */
-export const FUR_COLORS = [
+const FUR_COLORS = [
 	0xc4783a, 0xe8a070, 0x8b5a2b, 0xd4a574, 0xf0c8a0, 0x6b4f3a, 0xb0b8c0, 0xe8d0e8, 0x4a90d9, 0x2a2a38, 0xf5e6d3, 0xff8c42,
 	0x8b7355, 0x5c4033, 0xd2691e, 0x9e9e9e,
 ] as const;
 
 /** Cream / belly two-tone. */
-export const BELLY_COLORS = [0xfff0dd, 0xffe4c4, 0xf5e6d3, 0xfff8f0, 0xe8dcc8, 0xffeaa7, 0xf0e6ff] as const;
+const BELLY_COLORS = [0xfff0dd, 0xffe4c4, 0xf5e6d3, 0xfff8f0, 0xe8dcc8, 0xffeaa7, 0xf0e6ff] as const;
 
 /** Pride / club accents — ears tips, shirt, harness. */
-export const ACCENT_COLORS = [
+const ACCENT_COLORS = [
 	0xff6b9d, 0x7c5cff, 0x00e5a0, 0xffc857, 0xff4d6d, 0x5eead4, 0xff2d95, 0x38bdf8, 0xa855f7, 0xf472b6, 0x22d3ee, 0xe879f9,
 ] as const;
 
-export const PRIDE_STRIPES = [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982, 0x5bcefa, 0xf5a9b8, 0xffffff] as const;
+const PRIDE_STRIPES = [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982, 0x5bcefa, 0xf5a9b8, 0xffffff] as const;
 
-export const SPECIES = ['wolf', 'fox', 'dragon', 'cat', 'bunny', 'husky', 'protogen'] as const;
-export type Species = (typeof SPECIES)[number];
+const SPECIES = ['wolf', 'fox', 'dragon', 'cat', 'bunny', 'husky', 'protogen'] as const;
+type Species = (typeof SPECIES)[number];
 
 /**
  * Skeleton authored at body height 1.9 m.
  */
 const U = CON_BODY / 1.9;
 
-export type BodyPartId =
+type BodyPartId =
 	| 'pelvis'
 	| 'waist'
 	| 'chest'
@@ -52,16 +52,16 @@ export type BodyPartId =
 	| 'earR'
 	| 'tail';
 
-export type FurChannel = 'fur' | 'belly' | 'cloth' | 'dark' | 'eye' | 'nose';
+type FurChannel = 'fur' | 'belly' | 'cloth' | 'dark' | 'eye' | 'nose';
 
-export interface Bone {
+interface Bone {
 	id: BodyPartId;
 	node: Object3D;
 	channel: FurChannel;
 }
 
 /** Per-species head / tail / ear read so a fox is not a wolf with longer ears. */
-export type SpeciesLook = Readonly<{
+type SpeciesLook = Readonly<{
 	earH: number;
 	earW: number;
 	earD: number;
@@ -75,7 +75,7 @@ export type SpeciesLook = Readonly<{
 	nose: number;
 }>;
 
-export const SPECIES_LOOK: Readonly<Record<Species, SpeciesLook>> = {
+const SPECIES_LOOK: Readonly<Record<Species, SpeciesLook>> = {
 	wolf: {
 		earH: 1.15,
 		earW: 1,
@@ -173,7 +173,7 @@ export const SPECIES_LOOK: Readonly<Record<Species, SpeciesLook>> = {
  * Pose skeleton for matrix math. Never added to the scene.
  * Head bits parent under skull so one yaw moves the whole face.
  */
-export function makeSkeleton(): { root: Object3D; hips: Object3D; bones: readonly Bone[] } {
+function makeSkeleton(): { root: Object3D; hips: Object3D; bones: readonly Bone[] } {
 	const root = new Object3D();
 	const hips = new Object3D();
 	hips.name = 'hips';
@@ -181,7 +181,7 @@ export function makeSkeleton(): { root: Object3D; hips: Object3D; bones: readonl
 	root.add(hips);
 
 	const bones: Bone[] = [];
-	const add = (id: BodyPartId, parent: Object3D, x: number, y: number, z: number, channel: FurChannel = 'fur'): Object3D => {
+	const add = (...[id, parent, x, y, z, channel = 'fur']: [BodyPartId, Object3D, number, number, number, FurChannel?]): Object3D => {
 		const node = new Object3D();
 		node.name = id;
 		node.position.set(x * U, y * U, z * U);
@@ -221,7 +221,7 @@ export function makeSkeleton(): { root: Object3D; hips: Object3D; bones: readonl
 	return { root, hips, bones };
 }
 
-export function partGeometry(id: BodyPartId): BufferGeometry {
+function partGeometry(id: BodyPartId): BufferGeometry {
 	switch (id) {
 		case 'pelvis':
 			return new SphereGeometry(0.26 * U, 10, 8);
@@ -265,7 +265,7 @@ export function partGeometry(id: BodyPartId): BufferGeometry {
 	}
 }
 
-export function partRestScale(id: BodyPartId): Vector3 {
+function partRestScale(id: BodyPartId): Vector3 {
 	switch (id) {
 		case 'pelvis':
 			return new Vector3(1.45, 0.9, 1.25);
@@ -302,7 +302,7 @@ export function partRestScale(id: BodyPartId): Vector3 {
 	}
 }
 
-export function partRestOffset(id: BodyPartId): Vector3 {
+function partRestOffset(id: BodyPartId): Vector3 {
 	switch (id) {
 		case 'thighL':
 		case 'thighR':
@@ -323,7 +323,7 @@ export function partRestOffset(id: BodyPartId): Vector3 {
 }
 
 /** Rest pose matrix for a part (shared), before species multiply. */
-export function partRestMatrix(id: BodyPartId): Matrix4 {
+function partRestMatrix(id: BodyPartId): Matrix4 {
 	const s = partRestScale(id);
 	const o = partRestOffset(id);
 	const m = new Matrix4().makeTranslation(o.x, o.y, o.z).multiply(new Matrix4().makeScale(s.x, s.y, s.z));
@@ -337,7 +337,7 @@ export function partRestMatrix(id: BodyPartId): Matrix4 {
 }
 
 /** Extra scale/offset for species identity on head & tail. */
-export function speciesPartScale(species: Species, id: BodyPartId): Vector3 {
+function speciesPartScale(species: Species, id: BodyPartId): Vector3 {
 	const L = SPECIES_LOOK[species];
 	switch (id) {
 		case 'skull':
@@ -359,11 +359,11 @@ export function speciesPartScale(species: Species, id: BodyPartId): Vector3 {
 	}
 }
 
-export function speciesEarSpread(species: Species): number {
+function speciesEarSpread(species: Species): number {
 	return SPECIES_LOOK[species].earSpread;
 }
 
-export function channelColor(channel: FurChannel, fur: number, belly: number, cloth: number): number {
+function channelColor(channel: FurChannel, fur: number, belly: number, cloth: number): number {
 	switch (channel) {
 		case 'cloth':
 			return cloth;
@@ -382,7 +382,7 @@ export function channelColor(channel: FurChannel, fur: number, belly: number, cl
 
 const litCache = new Map<number, Material>();
 
-export function furMat(color: number, rough = 0.88): Material {
+function furMat(color: number, rough = 0.88): Material {
 	const key = (color >>> 0) ^ (Math.round(rough * 50) << 24);
 	const hit = litCache.get(key);
 	if (hit) return hit;
@@ -391,7 +391,7 @@ export function furMat(color: number, rough = 0.88): Material {
 	return m;
 }
 
-export function disposeFurMats(): void {
+function disposeFurMats(): void {
 	for (const m of litCache.values()) m.dispose();
 	litCache.clear();
 }
@@ -399,14 +399,15 @@ export function disposeFurMats(): void {
 /**
  * Close-up fursuit (adult wing). Same parts as the crowd so they read as the same cast.
  */
-export function buildHeroSuit(
-	species: Species,
-	fur: number,
-	belly: number,
-	cloth: number,
-	rand: () => number,
-	opts?: { male?: boolean },
-): Group {
+function buildHeroSuit(options: {
+	species: Species;
+	fur: number;
+	belly: number;
+	cloth: number;
+	rand: () => number;
+	opts?: { male?: boolean };
+}): Group {
+	const { species, fur, belly, cloth, rand, opts } = options;
 	const root = new Group();
 	const skin = furMat(fur);
 	const bellyM = furMat(belly);
@@ -438,7 +439,7 @@ export function buildHeroSuit(
 		}
 	};
 
-	const addPart = (id: BodyPartId, parent: Object3D, x: number, y: number, z: number, channel: FurChannel) => {
+	const addPart = (...[id, parent, x, y, z, channel]: [BodyPartId, Object3D, number, number, number, FurChannel]) => {
 		const geo = partGeometry(id);
 		const mesh = new Mesh(geo, matOf(channel));
 		const s = partRestScale(id);
@@ -503,3 +504,24 @@ export function buildHeroSuit(
 	root.scale.setScalar(0.94 + rand() * 0.14);
 	return root;
 }
+
+export {
+	ACCENT_COLORS,
+	BELLY_COLORS,
+	FUR_COLORS,
+	PRIDE_STRIPES,
+	SPECIES,
+	SPECIES_LOOK,
+	buildHeroSuit,
+	channelColor,
+	disposeFurMats,
+	furMat,
+	makeSkeleton,
+	partGeometry,
+	partRestMatrix,
+	partRestOffset,
+	partRestScale,
+	speciesEarSpread,
+	speciesPartScale,
+};
+export type { Bone, BodyPartId, FurChannel, Species, SpeciesLook };

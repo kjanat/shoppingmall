@@ -421,7 +421,7 @@ export class BeardCave {
 	}
 
 	private buildSigns(): void {
-		const makePlate = (lines: string[], _w: number, _h: number, bg: string, fg: string) => {
+		const makePlate = ({ lines, bg, fg }: { lines: string[]; bg: string; fg: string }) => {
 			const { canvas: c, ctx } = labelCanvas(512, 256);
 			ctx.fillStyle = bg;
 			ctx.fillRect(0, 0, 512, 256);
@@ -442,7 +442,7 @@ export class BeardCave {
 
 		const doorSign = new Mesh(
 			new PlaneGeometry(1.8, 0.9),
-			makePlate(["BEARD-MAN'S CAVE", 'JUWELEN · GOUD', 'baard-dief only 💀'], 512, 256, '#1a1208', '#ffd700'),
+			makePlate({ lines: ["BEARD-MAN'S CAVE", 'JUWELEN · GOUD', 'baard-dief only 💀'], bg: '#1a1208', fg: '#ffd700' }),
 		);
 		doorSign.position.set(0.75, 2.55, 0);
 		doorSign.rotation.y = Math.PI / 2;
@@ -450,7 +450,7 @@ export class BeardCave {
 
 		const lootSign = new Mesh(
 			new PlaneGeometry(1.4, 0.55),
-			makePlate(['★ LOOT HOARD ★', 'niet aanraken (toch wel)'], 512, 256, '#3e2723', '#ffe082'),
+			makePlate({ lines: ['★ LOOT HOARD ★', 'niet aanraken (toch wel)'], bg: '#3e2723', fg: '#ffe082' }),
 		);
 		lootSign.position.set(-2.0, 1.9, 0);
 		lootSign.rotation.y = Math.PI / 2;

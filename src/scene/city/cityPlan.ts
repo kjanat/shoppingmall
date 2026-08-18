@@ -21,21 +21,6 @@ import { at, jitterWith, mulberry32 } from '#/util/rand';
 import type { GarageDeck, Rect } from './cityPlaces';
 import {
 	CITY_KAVELS,
-	FAVELA_PLAN,
-	GARAGE_DECKS,
-	GARAGE_PLAN,
-	garageDeckTop,
-	LANE_X,
-	LANE_Z,
-	RIO_MOUNTAIN,
-	ROAD_INNER_X,
-	ROAD_INNER_Z,
-	ROAD_PLAN,
-} from './cityPlaces';
-
-export type { GarageDeck, Rect } from './cityPlaces';
-export {
-	CITY_KAVELS,
 	COLOSSEUM_PLAN,
 	FAVELA_PLAN,
 	GARAGE_DECKS,
@@ -69,7 +54,7 @@ export {
  * Walkable outdoor clamp + ground plate size.
  * West room for Montanha/favela/park, south room for the colosseum, east follows the con lot.
  */
-export const CITY_BOUNDS = {
+const CITY_BOUNDS = {
 	minX: -145,
 	maxX: CON_LOT.maxX + CON_CITY_MARGIN,
 	minZ: Math.min(-115, CON_LOT.minZ - CON_CITY_MARGIN),
@@ -77,7 +62,7 @@ export const CITY_BOUNDS = {
 } as const;
 
 /** Straatniveau. Buiten de mall ligt hier de vloer, tenzij een citySurface hoger komt. */
-export const CITY_GROUND_Y = 0;
+const CITY_GROUND_Y = 0;
 
 /** Hoever onder straatniveau er nog buitenwereld is om in te staan. */
 const FOOTPRINT_EXEMPT_DROP = 0.5;
@@ -89,7 +74,7 @@ const FOOTPRINT_EXEMPT_DROP = 0.5;
  * naar de stad. Eronder niet, want daar ligt alleen de parkeergarage en die heeft geen
  * buitenwereld. De uitrit zelf valt onder de eigen vrijstelling in `resolveCircle`.
  */
-export function outsideMallFootprint(feetY: number): boolean {
+function outsideMallFootprint(feetY: number): boolean {
 	return feetY > CITY_GROUND_Y - FOOTPRINT_EXEMPT_DROP;
 }
 
@@ -109,13 +94,13 @@ const ROAD_HALF_WIDTH = half(ROAD_PLAN.width);
  * Hart van een rijstrook: een kwart rijbaan naast de middellijn, want twee stroken met
  * de middenstreep ertussen delen de rijbaan doormidden.
  */
-export const LANE_OFFSET = half(ROAD_HALF_WIDTH);
+const LANE_OFFSET = half(ROAD_HALF_WIDTH);
 
 /** Welke lichtfase deze rand groen geeft. 'ns' hoort bij de randen die langs x lopen. */
-export type RoadPhase = 'ns' | 'ew';
+type RoadPhase = 'ns' | 'ew';
 
 /** Eén rechte rand van een rijstrook: waar hij begint, welke kant hij op loopt, hoe lang. */
-export type RoadEdge = Readonly<{
+type RoadEdge = Readonly<{
 	ox: number;
 	oz: number;
 	dx: number;
@@ -126,7 +111,7 @@ export type RoadEdge = Readonly<{
 }>;
 
 /** Eén rijstrook: vier randen met de boogafstanden erlangs voorgekauwd. */
-export type RoadRing = Readonly<{
+type RoadRing = Readonly<{
 	/** +1 is met de klok mee van boven gezien (+x rechts, +z onder). */
 	turn: 1 | -1;
 	edges: readonly RoadEdge[];
@@ -172,13 +157,13 @@ function roadRing(turn: 1 | -1): RoadRing {
 }
 
 /** Binnenste strook met de klok mee, buitenste ertegenin. */
-export const ROAD_RINGS: readonly RoadRing[] = [roadRing(1), roadRing(-1)];
+const ROAD_RINGS: readonly RoadRing[] = [roadRing(1), roadRing(-1)];
 
 /** Het hart van de binnenste rijstrook langs de westrand: de strook die de mall passeert. */
-export const RING_INNER_WEST_X = -(LANE_X - LANE_OFFSET);
+const RING_INNER_WEST_X = -(LANE_X - LANE_OFFSET);
 
 /** Carrosserie van het stadsverkeer. Botsstraal, remafstand en strookbreedte hangen eraan. */
-export const TRAFFIC_CAR = { length: 4.2, width: 1.85 } as const;
+const TRAFFIC_CAR = { length: 4.2, width: 1.85 } as const;
 
 /**
  * En die van de motorrijders op de ring. Ze rijden dezelfde stroken en hetzelfde
@@ -186,25 +171,25 @@ export const TRAFFIC_CAR = { length: 4.2, width: 1.85 } as const;
  * hun botsstraal komen er anders uit. Afgeleid van de motor in het wereldmodel, want
  * dezelfde machine staat ook op P1 en in de hal geparkeerd.
  */
-export const TRAFFIC_RIDER = { length: MOTORCYCLE_SPEC.body.length, width: MOTORCYCLE_SPEC.body.width } as const;
+const TRAFFIC_RIDER = { length: MOTORCYCLE_SPEC.body.length, width: MOTORCYCLE_SPEC.body.width } as const;
 
 /**
  * Wat een lichaam vrij moet houden van het hart van een rijstrook: een halve auto plus
  * zichzelf. Wie er dichterbij staat, staat in de strook.
  */
-export const TRAFFIC_LANE_CLEARANCE = half(TRAFFIC_CAR.width) + PLAYER_RADIUS;
+const TRAFFIC_LANE_CLEARANCE = half(TRAFFIC_CAR.width) + PLAYER_RADIUS;
 
 /**
  * Eén zebrapad: balken dwars op de rijrichting. `sideInset` is wat er aan beide
  * kanten van de rijbaan onbeschilderd blijft, dus de balk is zoveel korter.
  */
-export const ZEBRA_PLAN = { bars: 6, pitch: 0.85, barWidth: 0.55, sideInset: 0.3 } as const;
+const ZEBRA_PLAN = { bars: 6, pitch: 0.85, barWidth: 0.55, sideInset: 0.3 } as const;
 
 /** Van de eerste tot de laatste balk: zo breed steek je over. */
-export const ZEBRA_WIDTH = (ZEBRA_PLAN.bars - 1) * ZEBRA_PLAN.pitch + ZEBRA_PLAN.barWidth;
+const ZEBRA_WIDTH = (ZEBRA_PLAN.bars - 1) * ZEBRA_PLAN.pitch + ZEBRA_PLAN.barWidth;
 
 /** Een oversteekplaats op de ringweg: waar hij ligt en hoe de balken erop liggen. */
-export type RoadCrossing = Readonly<{ id: string; x: number; z: number; rotY: number }>;
+type RoadCrossing = Readonly<{ id: string; x: number; z: number; rotY: number }>;
 
 /**
  * De vier oversteekplaatsen. De westelijke ligt op de as van de hoofdingang en niet
@@ -216,7 +201,7 @@ export type RoadCrossing = Readonly<{ id: string; x: number; z: number; rotY: nu
  * Spur from the east ring face to the fur-con plaza.
  * Two-way, keep-right: eastbound on +z of centreline, westbound on −z.
  */
-export const CON_ACCESS = {
+const CON_ACCESS = {
 	/** Road centreline (z). Aligned with the east ring crossing and the con doors. */
 	z: 0,
 	/** Starts at the outer face of the east ring strip. */
@@ -227,12 +212,12 @@ export const CON_ACCESS = {
 } as const;
 
 /** Dual-lane centres on the spur (keep right when heading east / west). */
-export const CON_ACCESS_LANE = {
+const CON_ACCESS_LANE = {
 	east: CON_ACCESS.z + LANE_OFFSET,
 	west: CON_ACCESS.z - LANE_OFFSET,
 } as const;
 
-export const ROAD_CROSSINGS: readonly RoadCrossing[] = [
+const ROAD_CROSSINGS: readonly RoadCrossing[] = [
 	{ id: 'north', x: 0, z: -LANE_Z, rotY: 0 },
 	{ id: 'south', x: 0, z: LANE_Z, rotY: 0 },
 	{ id: 'west', x: -LANE_X, z: ENTRANCE_PORTAL.centerZ, rotY: Math.PI / 2 },
@@ -249,7 +234,7 @@ function crossing(id: string): RoadCrossing {
 }
 
 /** De oversteek waar de loper van de hoofdingang op uitkomt. */
-export const ENTRANCE_CROSSING = crossing('west');
+const ENTRANCE_CROSSING = crossing('west');
 
 /**
  * De onderbroken middenstreep, in meters: streep plus gat is één tegel, en de streep
@@ -258,17 +243,17 @@ export const ENTRANCE_CROSSING = crossing('west');
  * De maat staat hier omdat de tekenaar hem in de bocht als kwartcirkel en op het rechte
  * stuk als losse rechthoeken uitzet, en `wegen` naleest dat geen streep een zebra kruist.
  */
-export const ROAD_DASH = { length: 3.25, gap: 4.75, width: 0.33 } as const;
+const ROAD_DASH = { length: 3.25, gap: 4.75, width: 0.33 } as const;
 
 /** Streep plus gat: de lengte van één tegel van de middenstreep. */
-export const ROAD_DASH_TILE = ROAD_DASH.length + ROAD_DASH.gap;
+const ROAD_DASH_TILE = ROAD_DASH.length + ROAD_DASH.gap;
 
 /**
  * De beschilderde vlek van een oversteekplaats: de balken vullen `ZEBRA_WIDTH` langs de
  * rijrichting en `ROAD_PLAN.width` min de twee `sideInset` dwars daarop. `rotY` nul legt
  * de rijrichting langs x, dus dan is de langsmaat de x-maat.
  */
-export function zebraBounds(plek: RoadCrossing): Bounds2 {
+function zebraBounds(plek: RoadCrossing): Bounds2 {
 	const along = half(ZEBRA_WIDTH);
 	const across = half(span(ZEBRA_PLAN.sideInset, ROAD_PLAN.width - ZEBRA_PLAN.sideInset));
 	const langsX = plek.rotY === 0;
@@ -284,7 +269,7 @@ export function zebraBounds(plek: RoadCrossing): Bounds2 {
  * De doorgetrokken kantstreep, in meters: het hart van de streep ligt zoveel van de
  * wegrand af, en zo breed is hij. Twee ervan lopen de strook af, een aan elke rand.
  */
-export const ROAD_EDGE = { inset: 0.355, width: 0.164 } as const;
+const ROAD_EDGE = { inset: 0.355, width: 0.164 } as const;
 
 /** Eén recht stuk van de ringweg: langs welke as het loopt, op welke middellijn, en hoe ver naar weerskanten. */
 type RoadStrip = Readonly<{ axis: 'x' | 'z'; fixed: number; reach: number }>;
@@ -300,7 +285,7 @@ const ROAD_STRIPS: readonly RoadStrip[] = [
  * Een rechthoek op een strook: `along` is het hart langs de strookas met `halfAlong` naar
  * weerskanten, `across` de zijwaartse verschuiving vanaf de middellijn met `halfAcross`.
  */
-function stripRect(strip: RoadStrip, along: number, halfAlong: number, across: number, halfAcross: number): Bounds2 {
+function stripRect(...[strip, along, halfAlong, across, halfAcross]: [RoadStrip, number, number, number, number]): Bounds2 {
 	if (strip.axis === 'x') {
 		const z = strip.fixed + across;
 		return { minX: along - halfAlong, maxX: along + halfAlong, minZ: z - halfAcross, maxZ: z + halfAcross };
@@ -310,8 +295,8 @@ function stripRect(strip: RoadStrip, along: number, halfAlong: number, across: n
 }
 
 /** Wat er op de rijbaan geschilderd staat: de onderbroken middenstreep en de doorgetrokken kantstrepen. */
-export type RoadPaintKind = 'dash' | 'edge';
-export type RoadPaintPatch = Readonly<{ kind: RoadPaintKind; rect: Bounds2 }>;
+type RoadPaintKind = 'dash' | 'edge';
+type RoadPaintPatch = Readonly<{ kind: RoadPaintKind; rect: Bounds2 }>;
 
 /**
  * Alle wegmarkering op de rechte stukken, elk als eigen rechthoek en met de zebrapaden
@@ -324,7 +309,7 @@ export type RoadPaintPatch = Readonly<{ kind: RoadPaintKind; rect: Bounds2 }>;
  * eindigt en zijn ritme aansluit op de bocht; de streeplengte rekt met de tegel mee. De
  * kantstrepen lopen als één streep de strook af en breken alleen waar een zebra ligt.
  */
-export function roadPaintPatches(): readonly RoadPaintPatch[] {
+function roadPaintPatches(): readonly RoadPaintPatch[] {
 	const holes = ROAD_CROSSINGS.map(zebraBounds);
 	const patches: RoadPaintPatch[] = [];
 	const cut = (kind: RoadPaintKind, rect: Bounds2): void => {
@@ -376,7 +361,7 @@ export function roadPaintPatches(): readonly RoadPaintPatch[] {
 }
 
 /** Asphalt rectangle of the con access road (for scene + apron). */
-export const CON_ACCESS_ASPHALT: Rect = {
+const CON_ACCESS_ASPHALT: Rect = {
 	minX: CON_ACCESS.minX,
 	maxX: CON_ACCESS.maxX,
 	minZ: CON_ACCESS.z - half(CON_ACCESS.width),
@@ -384,7 +369,7 @@ export const CON_ACCESS_ASPHALT: Rect = {
 };
 
 /** Short apron from spur end into the con plaza. */
-export const CON_ACCESS_APRON: Rect = {
+const CON_ACCESS_APRON: Rect = {
 	minX: CON_ACCESS.maxX - 0.5,
 	maxX: CON_PLAZA.minX + 4,
 	minZ: CON_ACCESS.z - half(CON_ACCESS.width) - 1,
@@ -403,7 +388,7 @@ export const CON_ACCESS_APRON: Rect = {
  * overlappen flikkeren tegen elkaar op. Twee centimeter zie je niet en ze vechten
  * niet meer.
  */
-export const PLAZA_PLAN = {
+const PLAZA_PLAN = {
 	sink: 0.02,
 	/** Dik genoeg om onder het grondvlak van de wereld door te lopen, dus geen rand in zicht. */
 	thickness: 0.6,
@@ -419,13 +404,13 @@ export const PLAZA_PLAN = {
 } as const;
 
 /** Buitenrand van de bestrating: de binnenrand van de ringweg. */
-export const PLAZA_OUTER: Rect = { minX: -ROAD_INNER_X, maxX: ROAD_INNER_X, minZ: -ROAD_INNER_Z, maxZ: ROAD_INNER_Z };
+const PLAZA_OUTER: Rect = { minX: -ROAD_INNER_X, maxX: ROAD_INNER_X, minZ: -ROAD_INNER_Z, maxZ: ROAD_INNER_Z };
 
 /**
  * De mond van de uitritgeul blijft open. Bestrating erover is een plaat dwars over
  * de helling waar je onderdoor omhoog rijdt.
  */
-export const PLAZA_TRENCH_GAP: Rect = {
+const PLAZA_TRENCH_GAP: Rect = {
 	minX: PARKING_EXIT_TRENCH.minX,
 	maxX: PARKING_EXIT_TRENCH.coverX,
 	minZ: -PARKING_EXIT_WALL_GAP,
@@ -436,7 +421,7 @@ export const PLAZA_TRENCH_GAP: Rect = {
  * Het voorplein van de hoofdingang legt zijn eigen bestrating en de loper naar het
  * zebrapad. Daar hoeft geen straatmeubilair bij te komen staan.
  */
-export const PLAZA_ENTRANCE_GAP: Rect = {
+const PLAZA_ENTRANCE_GAP: Rect = {
 	minX: ENTRANCE_SPEC.forecourt.west,
 	maxX: MALL_WALL_ENVELOPE.minX,
 	minZ: ENTRANCE_SPEC.forecourt.north,
@@ -448,7 +433,7 @@ export const PLAZA_ENTRANCE_GAP: Rect = {
  * as van het portaal en dus op de as van de oversteek erachter. De loper ís de maat
  * die de entree en het zebrapad delen, en `controleIngang` leest hem daarop na.
  */
-export const ENTRANCE_CARPET: Rect = {
+const ENTRANCE_CARPET: Rect = {
 	minX: PLAZA_OUTER.minX,
 	maxX: ENTRANCE_PORTAL.outerX + ENTRANCE_SPEC.carpet.startInset,
 	minZ: ENTRANCE_PORTAL.centerZ - half(ENTRANCE_SPEC.carpet.width),
@@ -456,7 +441,7 @@ export const ENTRANCE_CARPET: Rect = {
 };
 
 /** Bovenkant van de bestrating. */
-export const PLAZA_TOP_Y = CITY_GROUND_Y - PLAZA_PLAN.sink;
+const PLAZA_TOP_Y = CITY_GROUND_Y - PLAZA_PLAN.sink;
 
 /**
  * Het maaiveld van de wereld buiten de mall.
@@ -467,7 +452,7 @@ export const PLAZA_TOP_Y = CITY_GROUND_Y - PLAZA_PLAN.sink;
  * boven de grond die ze moesten raken. De plaat ligt nu net onder het loopvlak, en
  * nog een tikje onder de bestrating zodat die twee niet tegen elkaar op flikkeren.
  */
-export const CITY_GROUND_PLANE_Y = PLAZA_TOP_Y - PLAZA_PLAN.sink;
+const CITY_GROUND_PLANE_Y = PLAZA_TOP_Y - PLAZA_PLAN.sink;
 
 /**
  * De inrit: het stuk rijbaan tussen de binnenrand van de ringweg en de mond van de
@@ -476,7 +461,7 @@ export const CITY_GROUND_PLANE_Y = PLAZA_TOP_Y - PLAZA_PLAN.sink;
  * Hij ligt op de hoogte van het straateind van de helling, zodat er geen drempel op
  * de naad staat.
  */
-export const EXIT_APRON: Rect = {
+const EXIT_APRON: Rect = {
 	minX: PLAZA_OUTER.minX,
 	maxX: PARKING_EXIT_TRENCH.minX,
 	minZ: -PARKING_EXIT_RAIL_OUTER,
@@ -484,16 +469,16 @@ export const EXIT_APRON: Rect = {
 };
 
 /** Bovenkant van de inrit: het loopvlak van de helling waar hij tegenaan komt. */
-export const EXIT_APRON_TOP_Y = parkingExitRampY(EXIT_APRON.maxX);
+const EXIT_APRON_TOP_Y = parkingExitRampY(EXIT_APRON.maxX);
 
 /** Halve rijstrook op de uitrit: naar binnen rijd je +z, naar buiten −z, en dat is rechts houden. */
-export const EXIT_LANE_OFFSET = half(half(PARKING_EXIT_RAMP.width));
+const EXIT_LANE_OFFSET = half(half(PARKING_EXIT_RAMP.width));
 
 /** Waar de auto beneden omdraait: tussen twee kolomlijnen in, ruim voor de vakken langs. */
 const EXIT_TURN_X = -20;
 
 /** Een knikpunt van de aftakking. `park` is het punt waar de auto beneden stilstaat. */
-export type RoutePoint = Readonly<{ x: number; y: number; z: number; park?: boolean }>;
+type RoutePoint = Readonly<{ x: number; y: number; z: number; park?: boolean }>;
 
 /**
  * De aftakking van de ringweg naar P1: van de binnenste rijstrook de inrit op, de
@@ -504,7 +489,7 @@ export type RoutePoint = Readonly<{ x: number; y: number; z: number; park?: bool
  * ook doen. De hoogtes komen van de helling zelf: een tweede getal ernaast zou de
  * auto een halve meter boven of onder zijn eigen dek zetten.
  */
-export const EXIT_BRANCH_ROUTE: readonly RoutePoint[] = [
+const EXIT_BRANCH_ROUTE: readonly RoutePoint[] = [
 	{ x: RING_INNER_WEST_X, y: CITY_GROUND_Y, z: EXIT_LANE_OFFSET },
 	{ x: EXIT_APRON.maxX, y: EXIT_APRON_TOP_Y, z: EXIT_LANE_OFFSET },
 	{ x: PARKING_EXIT_RAMP.start.x, y: PARKING_EXIT_RAMP.start.y, z: EXIT_LANE_OFFSET },
@@ -520,7 +505,7 @@ export const EXIT_BRANCH_ROUTE: readonly RoutePoint[] = [
  * de ring, rijdt oost naar de plaza, keert, en komt op dezelfde strook terug.
  * Hart van de oostbaan op de buitenste ring is x = LANE_X + LANE_OFFSET.
  */
-export const CON_BRANCH_ROUTE: readonly RoutePoint[] = [
+const CON_BRANCH_ROUTE: readonly RoutePoint[] = [
 	{ x: LANE_X + LANE_OFFSET, y: CITY_GROUND_Y, z: 0 },
 	{ x: CON_ACCESS.minX + 4, y: CITY_GROUND_Y, z: CON_ACCESS_LANE.east },
 	{ x: CON_ACCESS.maxX - 4, y: CITY_GROUND_Y, z: CON_ACCESS_LANE.east },
@@ -539,7 +524,7 @@ export const CON_BRANCH_ROUTE: readonly RoutePoint[] = [
  * stond. Afgeleid en niet opgeschreven, zodat een route die morgen ergens anders
  * heen loopt zijn eigen klok meeneemt.
  */
-export const CITY_TRAFFIC_ZONES: number = (() => {
+const CITY_TRAFFIC_ZONES: number = (() => {
 	let mask = 0;
 	for (const point of EXIT_BRANCH_ROUTE) mask |= zoneBit(zoneAt(point.x, point.y, point.z));
 	for (const point of CON_BRANCH_ROUTE) mask |= zoneBit(zoneAt(point.x, point.y, point.z));
@@ -561,21 +546,21 @@ export const CITY_TRAFFIC_ZONES: number = (() => {
  * arm is een `automatic-gate` met een toelatingsbeleid, en dat hoort naast de arm
  * te staan en niet in de bestuurder die ervoor remt.
  */
-export const EXIT_BOOM: BarrierSpec = barrierSpec('parking-exit-boom');
+const EXIT_BOOM: BarrierSpec = barrierSpec('parking-exit-boom');
 
 /** Punt van de arm als hij ligt: de hartlijn van de geul. */
-export const EXIT_BOOM_TIP_Z = EXIT_BOOM.post.z + EXIT_BOOM.armSide * EXIT_BOOM.armLength;
+const EXIT_BOOM_TIP_Z = EXIT_BOOM.post.z + EXIT_BOOM.armSide * EXIT_BOOM.armLength;
 
 /** Hoeveel de plaat voorbij de wereldrand doorloopt, zodat er geen kant in beeld komt. */
 const CITY_GROUND_MARGIN = 25;
 
 /** Groeit een rechthoek met `margin` aan alle kanten. */
-export function grownRect(rect: Rect, margin: number): Rect {
+function grownRect(rect: Rect, margin: number): Rect {
 	return { minX: rect.minX - margin, maxX: rect.maxX + margin, minZ: rect.minZ - margin, maxZ: rect.maxZ + margin };
 }
 
 /** Waar de maaiveldplaat ligt: de hele wereld, met een rand eromheen. */
-export const CITY_GROUND_PLAN: Rect = grownRect(CITY_BOUNDS, CITY_GROUND_MARGIN);
+const CITY_GROUND_PLAN: Rect = grownRect(CITY_BOUNDS, CITY_GROUND_MARGIN);
 
 function inRect(rect: Rect, x: number, z: number): boolean {
 	return x >= rect.minX && x <= rect.maxX && z >= rect.minZ && z <= rect.maxZ;
@@ -586,7 +571,7 @@ function inRect(rect: Rect, x: number, z: number): boolean {
  * noordwesthoek. Het aantal wordt op een heel getal afgerond zodat de laatste stap
  * even lang is als de eerste en de ring dus rond loopt.
  */
-export function ringStations(ring: Rect, spacing: number): readonly Vec2[] {
+function ringStations(ring: Rect, spacing: number): readonly Vec2[] {
 	const width = span(ring.minX, ring.maxX);
 	const depth = span(ring.minZ, ring.maxZ);
 	const perimeter = (width + depth) * 2;
@@ -618,17 +603,17 @@ export function ringStations(ring: Rect, spacing: number): readonly Vec2[] {
  * Waar het straatmeubilair mag staan: op de twee ringen, en niet in de geul of op
  * het voorplein van de hoofdingang, waar de entree zijn eigen bestrating heeft.
  */
-export function plazaStations(): readonly Vec2[] {
+function plazaStations(): readonly Vec2[] {
 	const rings: Rect[] = [grownRect(MALL_WALL_ENVELOPE, PLAZA_PLAN.facadeOffset), grownRect(PLAZA_OUTER, -PLAZA_PLAN.kerbOffset)];
 	const keepOut = [PLAZA_TRENCH_GAP, PLAZA_ENTRANCE_GAP].map((rect) => grownRect(rect, PLAZA_PLAN.keepOut));
 	return rings.flatMap((ring) => ringStations(ring, PLAZA_PLAN.spacing).filter((s) => !keepOut.some((r) => inRect(r, s.x, s.z))));
 }
 
-export type Rand = () => number;
+type Rand = () => number;
 
-export const TOWER_SEED = 0x404;
+const TOWER_SEED = 0x404;
 
-export type TowerSpec = Readonly<{ x: number; z: number; w: number; d: number; h: number; rot: number }>;
+type TowerSpec = Readonly<{ x: number; z: number; w: number; d: number; h: number; rot: number }>;
 
 /**
  * Kavels van theater, garage en park — daar bouwt de skyline niet overheen.
@@ -637,7 +622,7 @@ export type TowerSpec = Readonly<{ x: number; z: number; w: number; d: number; h
  * toren tegen de artiesteningang komt te staan.
  */
 /** Ground height of the village: climbs from the ring to the Redeemer, plateau west of him. */
-export function favelaGroundY(x: number, _z: number): number {
+function favelaGroundY(x: number, _z: number): number {
 	const { maxX, minX, yLow, yHigh } = FAVELA_PLAN;
 	const peakX = RIO_MOUNTAIN.x;
 	if (x <= peakX) {
@@ -650,7 +635,7 @@ export function favelaGroundY(x: number, _z: number): number {
 }
 
 /** Contour street X positions (east → west up the hill). */
-export function favelaContourXs(): readonly number[] {
+function favelaContourXs(): readonly number[] {
 	const { minX, maxX, contours } = FAVELA_PLAN;
 	const xs: number[] = [];
 	for (let i = 1; i < contours; i++) {
@@ -663,7 +648,7 @@ export function favelaContourXs(): readonly number[] {
  * Free street cells: contour lanes (N–S), switchback ramps between them (E–W at
  * alternating ends), a centre spine, the peak plaza, and the road apron.
  */
-export function favelaIsStreet(x: number, z: number): boolean {
+function favelaIsStreet(x: number, z: number): boolean {
 	const { minX, maxX, minZ, maxZ, alleyHalf, streetHalf, contours, plazaR } = FAVELA_PLAN;
 	const zc = midpoint(minZ, maxZ);
 	if (x > maxX - 1.5) return true;
@@ -699,7 +684,7 @@ function opKavel(x: number, z: number, w: number, d: number): boolean {
  * ~30 torens in vier banden om de ringweg: |x| 58..90 of |z| 44..72,
  * netjes binnen de wereldgrens, ook mét halve breedte.
  */
-export function planTowers(rand: Rand): TowerSpec[] {
+function planTowers(rand: Rand): TowerSpec[] {
 	const specs: TowerSpec[] = [];
 	const bands: [number, () => [number, number]][] = [
 		[9, () => [lerp(-120, 100, rand()), -lerp(48, 95, rand())]], // noord
@@ -737,7 +722,7 @@ export function planTowers(rand: Rand): TowerSpec[] {
  * Dezelfde lijst die CityBuildings tekent. Deterministisch uit `TOWER_SEED`,
  * dus wie hem hier opvraagt krijgt exact de torens die er staan.
  */
-export const TOWER_SPECS: readonly TowerSpec[] = planTowers(mulberry32(TOWER_SEED));
+const TOWER_SPECS: readonly TowerSpec[] = planTowers(mulberry32(TOWER_SEED));
 
 /**
  * De parkeergarage op het ZO-kavel. Het maaiveld-dek is open aan alle zijden,
@@ -756,7 +741,7 @@ const EAST_MAX_X = EAST_MIN_X + RAMP.east.width;
 const EAST_X = midpoint(EAST_MIN_X, EAST_MAX_X);
 
 /** Een schuine plaat van de spiraal: `start` en `end` liggen op zijn loopvlak. */
-export type GarageRampRun = Readonly<{
+type GarageRampRun = Readonly<{
 	id: string;
 	start: Readonly<{ x: number; y: number; z: number }>;
 	end: Readonly<{ x: number; y: number; z: number }>;
@@ -765,9 +750,9 @@ export type GarageRampRun = Readonly<{
 
 /** Een vlak loopvlak van de garage: een bordes van de spiraal of een heel dek. */
 /** Een borstweringdoos: hij houdt je tegen zolang je op het dek eronder staat. */
-export type GarageParapet = Readonly<Rect & { id: string; minY: number; maxY: number }>;
+type GarageParapet = Readonly<Rect & { id: string; minY: number; maxY: number }>;
 
-export const GARAGE_RAMP_RUNS: readonly GarageRampRun[] = [
+const GARAGE_RAMP_RUNS: readonly GarageRampRun[] = [
 	{
 		id: 'garage_ramp_south',
 		start: { x: RAMP.south.fromX, y: CITY_GROUND_Y, z: RAMP.south.z },
@@ -783,7 +768,7 @@ export const GARAGE_RAMP_RUNS: readonly GarageRampRun[] = [
 ];
 
 /** Het hoekbordes waar de klim van oost naar noord draait, en het bordes bovenaan. */
-export const GARAGE_RAMP_LANDINGS: readonly GarageDeck[] = [
+const GARAGE_RAMP_LANDINGS: readonly GarageDeck[] = [
 	{
 		id: 'garage_ramp_corner',
 		minX: EAST_MIN_X,
@@ -807,7 +792,7 @@ export const GARAGE_RAMP_LANDINGS: readonly GarageDeck[] = [
 const PLAN_EPS = 1e-6;
 
 /** Een z-strook, zoals een doorgang of een stuk borstwering die eromheen valt. */
-export type ZBand = Readonly<{ minZ: number; maxZ: number }>;
+type ZBand = Readonly<{ minZ: number; maxZ: number }>;
 
 /**
  * Waar een bordes van de spiraal op dekhoogte tegen de oostrand van een dek aankomt.
@@ -816,7 +801,7 @@ export type ZBand = Readonly<{ minZ: number; maxZ: number }>;
  * langs die rand, dus wie de hele spiraal opklom stond voor een muur van een meter
  * en kwam er alleen met een sprong overheen: de helling leverde je nergens af.
  */
-export function deckDoorways(deck: GarageDeck): readonly ZBand[] {
+function deckDoorways(deck: GarageDeck): readonly ZBand[] {
 	const wanted = GARAGE_PLAN.parapet.doorway;
 	return GARAGE_RAMP_LANDINGS.filter(
 		(landing) =>
@@ -904,7 +889,7 @@ const GARAGE_DECK_PARAPETS: readonly GarageParapet[] = GARAGE_DECKS.flatMap((dec
 	];
 });
 
-export const GARAGE_PARAPETS: readonly GarageParapet[] = [
+const GARAGE_PARAPETS: readonly GarageParapet[] = [
 	...GARAGE_DECK_PARAPETS,
 	...GARAGE_RAMP_LANDINGS.flatMap(landingParapets),
 ];
@@ -914,23 +899,111 @@ export const GARAGE_PARAPETS: readonly GarageParapet[] = [
  * de klimmende oostplaat, of het bordes bovenaan. De steunpoten lezen hem, en
  * zo staan ze precies onder wat ze dragen.
  */
-export function garageEastSpiralY(z: number): number {
+function garageEastSpiralY(z: number): number {
 	return lerp(garageDeckTop(1), garageDeckTop(2), inverseLerpClamped(RAMP.east.fromZ, RAMP.east.toZ, z));
 }
 
 /** Buitenrand van de oostelijke strook, waar de leuning van de oostplaat staat. */
-export const GARAGE_RAMP_EAST_EDGE_X = EAST_MAX_X;
+const GARAGE_RAMP_EAST_EDGE_X = EAST_MAX_X;
 
 /** Zuidrand van de zuidplaat, waar zijn leuning staat. */
-export const GARAGE_RAMP_SOUTH_EDGE_Z = RAMP.south.z + half(RAMP.south.width);
+const GARAGE_RAMP_SOUTH_EDGE_Z = RAMP.south.z + half(RAMP.south.width);
 
 /** Hart van de oostelijke strook, waar de poten staan. */
-export const GARAGE_RAMP_EAST_X = EAST_X;
+const GARAGE_RAMP_EAST_X = EAST_X;
 
 /** De voetafdruk van de hele spiraal, voor wie hem alleen als vlak nodig heeft. */
-export const GARAGE_RAMP_FOOTPRINT: Rect = {
+const GARAGE_RAMP_FOOTPRINT: Rect = {
 	minX: RAMP.south.fromX,
 	maxX: EAST_MAX_X,
 	minZ: RAMP.east.toZ - RAMP.landingDepth,
 	maxZ: GARAGE_RAMP_SOUTH_EDGE_Z,
+};
+
+export {
+	CITY_BOUNDS,
+	CITY_GROUND_PLAN,
+	CITY_GROUND_PLANE_Y,
+	CITY_GROUND_Y,
+	CITY_KAVELS,
+	CITY_TRAFFIC_ZONES,
+	COLOSSEUM_PLAN,
+	CON_ACCESS,
+	CON_ACCESS_APRON,
+	CON_ACCESS_ASPHALT,
+	CON_ACCESS_LANE,
+	CON_BRANCH_ROUTE,
+	deckDoorways,
+	ENTRANCE_CARPET,
+	ENTRANCE_CROSSING,
+	EXIT_APRON,
+	EXIT_APRON_TOP_Y,
+	EXIT_BOOM,
+	EXIT_BOOM_TIP_Z,
+	EXIT_BRANCH_ROUTE,
+	EXIT_LANE_OFFSET,
+	FAVELA_PLAN,
+	GARAGE_DECKS,
+	GARAGE_PARAPETS,
+	GARAGE_PLAN,
+	GARAGE_RAMP_EAST_EDGE_X,
+	GARAGE_RAMP_EAST_X,
+	GARAGE_RAMP_FOOTPRINT,
+	GARAGE_RAMP_LANDINGS,
+	GARAGE_RAMP_RUNS,
+	GARAGE_RAMP_SOUTH_EDGE_Z,
+	LANE_OFFSET,
+	LANE_X,
+	LANE_Z,
+	PARK_LAWN,
+	PLAZA_ENTRANCE_GAP,
+	PLAZA_OUTER,
+	PLAZA_PLAN,
+	PLAZA_TOP_Y,
+	PLAZA_TRENCH_GAP,
+	RIO_MOUNTAIN,
+	RING_INNER_WEST_X,
+	ROAD_CROSSINGS,
+	ROAD_DASH,
+	ROAD_DASH_TILE,
+	ROAD_EDGE,
+	ROAD_INNER_X,
+	ROAD_INNER_Z,
+	ROAD_PLAN,
+	ROAD_RINGS,
+	TOWER_SEED,
+	TOWER_SPECS,
+	TRAFFIC_CAR,
+	TRAFFIC_LANE_CLEARANCE,
+	TRAFFIC_RIDER,
+	ZEBRA_PLAN,
+	ZEBRA_WIDTH,
+	outsideMallFootprint,
+	garageDeckTop,
+	garageEastSpiralY,
+	grownRect,
+	ringStations,
+	plazaStations,
+	favelaGroundY,
+	favelaContourXs,
+	favelaIsStreet,
+	planTowers,
+	roadPaintPatches,
+	zebraBounds,
+};
+export type {
+	GarageDeck,
+	GarageParapet,
+	GarageRampRun,
+	Rand,
+	Rect,
+	RoadCrossing,
+	RoadEdge,
+	RoadPaintKind,
+	RoadPaintPatch,
+	RoadPhase,
+	RoadRing,
+	RoutePoint,
+	TowerSpec,
+	ZBand,
 };

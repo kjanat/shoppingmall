@@ -61,7 +61,7 @@ const ACCEL = 4; // m/s² — optrekken alsof de benzine gratis is
  * niet bij zonder ze te kopiëren. Ze worden nu uit de eigen maat gerekend: een motor
  * volgt korter en raakt je pas dichterbij, met precies hetzelfde remmodel.
  */
-export type TrafficProfile = Readonly<{
+type TrafficProfile = Readonly<{
 	length: number;
 	width: number;
 	/** Rem als de voorligger dichterbij is (hart-op-hart). */
@@ -90,13 +90,13 @@ function trafficProfile(body: Readonly<{ length: number; width: number }>): Traf
 }
 
 /** De twee soorten die de ring rijdt, elk met zijn eigen volgprofiel. */
-export const TRAFFIC_PROFILES = {
+const TRAFFIC_PROFILES = {
 	car: trafficProfile(TRAFFIC_CAR),
 	rider: trafficProfile(TRAFFIC_RIDER),
 } as const;
 
 /** Welk profiel elk slot van het wagenpark rijdt. De controle op de wegen leest hem terug. */
-export const TRAFFIC_FLEET: readonly (keyof typeof TRAFFIC_PROFILES)[] = Array.from({ length: N }, (_unused, slot) =>
+const TRAFFIC_FLEET: readonly (keyof typeof TRAFFIC_PROFILES)[] = Array.from({ length: N }, (_unused, slot) =>
 	RIDER_SLOT.has(slot) ? 'rider' : 'car',
 );
 
@@ -125,7 +125,7 @@ const HIT_PUSH = 3;
 const HIT_LIFT = 5.5;
 
 /** Iets op de rijbaan waar de auto's rekening mee houden. Voeten, niet ogen. */
-export interface RoadObstacle {
+interface RoadObstacle {
 	x: number;
 	y: number;
 	z: number;
@@ -315,7 +315,7 @@ interface Car {
 	vmax: number;
 }
 
-export class CityTraffic {
+class CityTraffic {
 	readonly group = new Group();
 
 	private materials: Material[] = [];
@@ -775,3 +775,6 @@ export class CityTraffic {
 		return m;
 	}
 }
+
+export { CityTraffic, TRAFFIC_FLEET, TRAFFIC_PROFILES };
+export type { RoadObstacle, TrafficProfile };

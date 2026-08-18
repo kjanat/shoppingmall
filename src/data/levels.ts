@@ -9,38 +9,38 @@
  * `y` is the walkable deck. Anything that used to hardcode 0, 6, 13.95 or -6,
  * and anything that used to guess a floor from a height, resolves here.
  */
-export const LEVELS = [
+const LEVELS = [
 	{ id: 'roof', y: 13.95, code: 'DAK', name: 'Dak', hint: 'Helipad · uitzicht' },
 	{ id: 'v1', y: 6, code: 'V1', name: 'Verdieping 1', hint: 'Kruidvat · food court' },
 	{ id: 'v0', y: 0, code: 'V0', name: 'Begane grond', hint: 'Winkels · kiosk' },
 	{ id: 'p1', y: -6, code: 'P1', name: 'Parkeergarage', hint: "Ondergronds · auto's" },
 ] as const satisfies readonly LevelRecord[];
 
-export type Level = (typeof LEVELS)[number];
+type Level = (typeof LEVELS)[number];
 
 /** Algorithmic elevation order for movement that advances upward by index. */
-export const LEVELS_BOTTOM_UP = LEVELS.toReversed();
+const LEVELS_BOTTOM_UP = LEVELS.toReversed();
 
-export type LevelId = Level['id'];
+type LevelId = Level['id'];
 
 const BY_ID = new Map<LevelId, Level>(LEVELS.map((l) => [l.id, l]));
 
-export function level(id: LevelId): Level {
+function level(id: LevelId): Level {
 	const found = BY_ID.get(id);
 	if (!found) throw new Error(`no level ${id}`);
 	return found;
 }
 
-export function levelY(id: LevelId): number {
+function levelY(id: LevelId): number {
 	return level(id).y;
 }
 
 /** Position by elevation, with a larger index meaning a physically higher deck. */
-export function levelElevationIndex(id: LevelId): number {
+function levelElevationIndex(id: LevelId): number {
 	return LEVELS_BOTTOM_UP.findIndex((entry) => entry.id === id);
 }
 
-export function levelAtElevationIndex(index: number): LevelId | undefined {
+function levelAtElevationIndex(index: number): LevelId | undefined {
 	return LEVELS_BOTTOM_UP[index]?.id;
 }
 
@@ -56,7 +56,7 @@ const DECK_SLACK = 0.5;
  * and nobody is 6 m tall. This replaces a dozen hand-written thresholds
  * (`y > 3`, `y < 4.5`, `y >= 10`, …) that all disagreed slightly.
  */
-export function levelAt(y: number): LevelId {
+function levelAt(y: number): LevelId {
 	let best: (typeof LEVELS)[number] = LEVELS[3];
 	for (const l of LEVELS_BOTTOM_UP) {
 		if (y >= l.y - DECK_SLACK) best = l;
@@ -65,7 +65,7 @@ export function levelAt(y: number): LevelId {
 }
 
 /** True when `y` is at or above the given deck. */
-export function isAtOrAbove(y: number, id: LevelId): boolean {
+function isAtOrAbove(y: number, id: LevelId): boolean {
 	return y >= levelY(id) - DECK_SLACK;
 }
 
@@ -77,7 +77,7 @@ export function isAtOrAbove(y: number, id: LevelId): boolean {
  * halve meter naast `levelAt` uit: de dikte van een vloerplaat valt dan buiten de
  * zone waar diezelfde functie hem in legt.
  */
-export function levelBand(id: LevelId): Readonly<{ minY: number; maxY: number }> {
+function levelBand(id: LevelId): Readonly<{ minY: number; maxY: number }> {
 	const index = levelElevationIndex(id);
 	const above = LEVELS_BOTTOM_UP[index + 1];
 	const below = LEVELS_BOTTOM_UP[index - 1];
@@ -88,3 +88,6 @@ export function levelBand(id: LevelId): Readonly<{ minY: number; maxY: number }>
 }
 
 import type { LevelRecord } from '#/data/levelSchema';
+
+export { LEVELS, LEVELS_BOTTOM_UP, level, levelY, levelElevationIndex, levelAtElevationIndex, levelAt, isAtOrAbove, levelBand };
+export type { LevelId, Level };

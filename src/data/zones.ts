@@ -39,9 +39,9 @@ import {
 } from '#/data/world';
 import { half, span } from '#/util/math';
 
-export const ZONES = ['stad', 'p1', 'mall-v0', 'mall-v1', 'roof', 'theatre', 'con'] as const;
+const ZONES = ['stad', 'p1', 'mall-v0', 'mall-v1', 'roof', 'theatre', 'con'] as const;
 
-export type ZoneId = (typeof ZONES)[number];
+type ZoneId = (typeof ZONES)[number];
 
 /**
  * Welk dek in welke zone ligt. Buiten de voetafdruk is er geen dek en is alles
@@ -56,24 +56,24 @@ const ZONE_BY_LEVEL: Readonly<Record<LevelId, ZoneId>> = {
 
 const ZONE_INDEX: ReadonlyMap<ZoneId, number> = new Map(ZONES.map((zone, index) => [zone, index]));
 
-export function zoneIndex(zone: ZoneId): number {
+function zoneIndex(zone: ZoneId): number {
 	const index = ZONE_INDEX.get(zone);
 	if (index === undefined) throw new Error(`no zone ${zone}`);
 	return index;
 }
 
 /** Zones reizen als bitmasker: een batch of een portaal raakt er meestal meer dan één. */
-export function zoneBit(zone: ZoneId): number {
+function zoneBit(zone: ZoneId): number {
 	return 1 << zoneIndex(zone);
 }
 
-export const ALL_ZONES_MASK = ZONES.reduce((mask, zone) => mask | zoneBit(zone), 0);
+const ALL_ZONES_MASK = ZONES.reduce((mask, zone) => mask | zoneBit(zone), 0);
 
-export function zonesOfMask(mask: number): readonly ZoneId[] {
+function zonesOfMask(mask: number): readonly ZoneId[] {
 	return ZONES.filter((zone) => (mask & zoneBit(zone)) !== 0);
 }
 
-export function zoneOfLevel(level: LevelId): ZoneId {
+function zoneOfLevel(level: LevelId): ZoneId {
 	return ZONE_BY_LEVEL[level];
 }
 
@@ -194,7 +194,7 @@ const ENCLOSURE_BY_ZONE: ReadonlyMap<ZoneId, Enclosure> = new Map(
  * staat. Zonder deze lijst kende ze er maar één en stak het hele theater honderd
  * meter voorbij de oostgevel van de mall uit.
  */
-export const ZONE_ENCLOSURES: readonly Readonly<{
+const ZONE_ENCLOSURES: readonly Readonly<{
 	id: 'mall' | 'theatre' | 'con';
 	plan: Bounds2;
 	envelope: Bounds2;
@@ -213,7 +213,7 @@ export const ZONE_ENCLOSURES: readonly Readonly<{
  * leest de gebouwen die er staan, niet een tweede rechthoek naast de eerste. De marge
  * dekt de dakrand die een halve winkel voorbij de gevel uitsteekt.
  */
-export function coversColumn(x: number, z: number, margin = 0): boolean {
+function coversColumn(x: number, z: number, margin = 0): boolean {
 	return ZONE_ENCLOSURES.some(
 		({ plan }) => x >= plan.minX - margin && x <= plan.maxX + margin && z >= plan.minZ - margin && z <= plan.maxZ + margin,
 	);
@@ -257,7 +257,7 @@ function inRoofBasin(x: number, y: number, z: number): boolean {
 }
 
 /** Binnen een gebouw telt zijn eigen dek, erbuiten is er geen gebouw en dus alleen stad. */
-export function zoneAt(x: number, y: number, z: number): ZoneId {
+function zoneAt(x: number, y: number, z: number): ZoneId {
 	if (inRoofBasin(x, y, z)) return 'roof';
 	return enclosureAt(x, y, z)?.zoneOfY(y) ?? 'stad';
 }
@@ -268,7 +268,7 @@ export function zoneAt(x: number, y: number, z: number): ZoneId {
  * `levelAt` kent alleen hoogte en legt een zwemmer in het diepe een verdieping te laag;
  * de HUD en de zonekeuze horen hem op het dak te tellen, waar hij ook zwemt.
  */
-export function deckAt(x: number, y: number, z: number): LevelId {
+function deckAt(x: number, y: number, z: number): LevelId {
 	if (inRoofBasin(x, y, z)) return 'roof';
 	return levelAt(y);
 }
@@ -285,7 +285,7 @@ export function deckAt(x: number, y: number, z: number): LevelId {
  * twee schillen zonder in één ervan te passen, dan zou ze hier ten onrechte de
  * stad claimen. `controleTheater` leest die afstand na.
  */
-export function zoneMaskOfBounds(bounds: Bounds3): number {
+function zoneMaskOfBounds(bounds: Bounds3): number {
 	let mask = 0;
 	let housed = false;
 	for (const enclosure of ENCLOSURES) {
@@ -300,7 +300,7 @@ export function zoneMaskOfBounds(bounds: Bounds3): number {
 }
 
 /** De bol om een object heen als doos, want een zone is een doos en een bol niet. */
-export function zoneMaskAround(x: number, y: number, z: number, radius: number): number {
+function zoneMaskAround(x: number, y: number, z: number, radius: number): number {
 	return zoneMaskOfBounds({
 		minX: x - radius,
 		maxX: x + radius,
@@ -323,7 +323,7 @@ export function zoneMaskAround(x: number, y: number, z: number, radius: number):
  * uitrit een tunnel van zestien meter en voor de lift een koker van tweeëntwintig:
  * van dichtbij dekt zo'n kegel het halve beeld en cullt hij niets.
  */
-export type ZonePortalFace = Readonly<{
+type ZonePortalFace = Readonly<{
 	/** De entiteit die hem verklaart; de zonegraafcontrole meldt hem onder deze naam. */
 	id: string;
 	from: ZoneId;
@@ -332,7 +332,7 @@ export type ZonePortalFace = Readonly<{
 	aperture: Bounds3;
 }>;
 
-export type ZonePortal = Readonly<{
+type ZonePortal = Readonly<{
 	/** De entiteit die hem verklaart; de zonegraafcontrole meldt hem onder deze naam. */
 	id: string;
 	label: string;
@@ -366,7 +366,7 @@ function unionBounds(a: Bounds3, b: Bounds3): Bounds3 {
  * De puistrook van een winkel valt hier buiten: `storefront-clearance` houdt de
  * vloer vóór de etalage vrij en verbindt geen twee dekken.
  */
-export function portalOfEntity(entity: WorldEntity): ZonePortal | null {
+function portalOfEntity(entity: WorldEntity): ZonePortal | null {
 	let bounds: Bounds3 | null = null;
 	for (const volume of entity.volumes) {
 		if (!seesThrough(volume)) continue;
@@ -447,7 +447,7 @@ const SKY_HEADROOM = span(LEVELS_BOTTOM_UP[0]?.y ?? 0, LEVELS_BOTTOM_UP[LEVELS_B
  * een kegel zegt dat er een doorkijk bestaat, niet dat er iets achter ligt. Vanaf
  * de stoep is dat het verschil tussen het dak wegcullen en het hele gebouw tekenen.
  */
-export function zoneVolume(zone: ZoneId): Bounds3 | null {
+function zoneVolume(zone: ZoneId): Bounds3 | null {
 	const enclosure = ENCLOSURE_BY_ZONE.get(zone);
 	if (!enclosure) return null;
 	const band = zoneBand(zone);
@@ -550,7 +550,7 @@ function deckFaceOf(bounds: Bounds3, from: ZoneId, to: ZoneId): Bounds3 | null {
 }
 
 /** Elke entiteit die doorkijk verklaart, of ze nu twee zones raakt of één. */
-export const PORTAL_CANDIDATES: readonly ZonePortal[] = WORLD_ENTITIES.map(portalOfEntity).filter(
+const PORTAL_CANDIDATES: readonly ZonePortal[] = WORLD_ENTITIES.map(portalOfEntity).filter(
 	(candidate): candidate is ZonePortal => candidate !== null,
 );
 
@@ -558,10 +558,10 @@ function portalZoneCount(portal: ZonePortal): number {
 	return zonesOfMask(portal.mask).length;
 }
 
-export const ZONE_PORTALS: readonly ZonePortal[] = PORTAL_CANDIDATES.filter((portal) => portalZoneCount(portal) > 1);
+const ZONE_PORTALS: readonly ZonePortal[] = PORTAL_CANDIDATES.filter((portal) => portalZoneCount(portal) > 1);
 
 /** De entiteiten die doorkijk verklaren en tóch niets verbinden, met hun vrijstelling erbij. */
-export function declaredNonPortals(): readonly Readonly<{ id: string; exempt: boolean }>[] {
+function declaredNonPortals(): readonly Readonly<{ id: string; exempt: boolean }>[] {
 	const singles = new Set(PORTAL_CANDIDATES.filter((portal) => portalZoneCount(portal) === 1).map((portal) => portal.id));
 	return WORLD_ENTITIES.filter((entity) => singles.has(entity.id) || entity.tags.includes(NOT_A_PORTAL_TAG)).map((entity) => ({
 		id: entity.id,
@@ -581,9 +581,9 @@ function openToSky(zone: ZoneId): boolean {
 	return levelElevationIndex(level.id) === LEVELS.length - 1;
 }
 
-export const SKY_ZONES_MASK = ZONES.reduce((mask, zone) => (openToSky(zone) ? mask | zoneBit(zone) : mask), 0);
+const SKY_ZONES_MASK = ZONES.reduce((mask, zone) => (openToSky(zone) ? mask | zoneBit(zone) : mask), 0);
 
-export function isOpenToSky(zone: ZoneId): boolean {
+function isOpenToSky(zone: ZoneId): boolean {
 	return (SKY_ZONES_MASK & zoneBit(zone)) !== 0;
 }
 
@@ -603,15 +603,15 @@ const VISIBLE_ZONES: ReadonlyMap<ZoneId, number> = new Map(ZONES.map((zone) => [
  * De zone zelf plus alles wat er vanuit te zien is: door zijn portalen, en over de
  * dakrand voor de twee zones die onder de open lucht liggen.
  */
-export function visibleZonesMask(zone: ZoneId): number {
+function visibleZonesMask(zone: ZoneId): number {
 	return VISIBLE_ZONES.get(zone) ?? ALL_ZONES_MASK;
 }
 
-export function visibleZones(zone: ZoneId): readonly ZoneId[] {
+function visibleZones(zone: ZoneId): readonly ZoneId[] {
 	return zonesOfMask(visibleZonesMask(zone));
 }
 
-export function seesZone(from: ZoneId, target: ZoneId): boolean {
+function seesZone(from: ZoneId, target: ZoneId): boolean {
 	return (visibleZonesMask(from) & zoneBit(target)) !== 0;
 }
 
@@ -620,12 +620,12 @@ const FACES_FROM: ReadonlyMap<ZoneId, readonly ZonePortalFace[]> = new Map(
 );
 
 /** De doorkijken die vanuit deze zone ergens anders heen gaan. */
-export function portalsFrom(zone: ZoneId): readonly ZonePortalFace[] {
+function portalsFrom(zone: ZoneId): readonly ZonePortalFace[] {
 	return FACES_FROM.get(zone) ?? [];
 }
 
 /** Elke zone die je vanaf `zone` via portalen kunt bereiken, hoe ver ook. */
-export function reachableZones(zone: ZoneId): readonly ZoneId[] {
+function reachableZones(zone: ZoneId): readonly ZoneId[] {
 	let mask = zoneBit(zone);
 	for (;;) {
 		let grown = mask;
@@ -636,3 +636,6 @@ export function reachableZones(zone: ZoneId): readonly ZoneId[] {
 		mask = grown;
 	}
 }
+
+export { ZONES, zoneIndex, zoneBit, ALL_ZONES_MASK, zonesOfMask, zoneOfLevel, ZONE_ENCLOSURES, coversColumn, zoneAt, deckAt, zoneMaskOfBounds, zoneMaskAround, portalOfEntity, zoneVolume, PORTAL_CANDIDATES, ZONE_PORTALS, declaredNonPortals, SKY_ZONES_MASK, isOpenToSky, visibleZonesMask, visibleZones, seesZone, portalsFrom, reachableZones };
+export type { ZoneId, ZonePortalFace, ZonePortal };

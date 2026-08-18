@@ -26,7 +26,7 @@ const QUALITY_KEY = 'mallsim.quality.v1';
 const BINAURAL_KEY = 'mallsim.binaural.v1';
 const DYNRES_KEY = 'mallsim.dynres.v1';
 
-export type QualityLevel = 'laag' | 'middel' | 'hoog';
+type QualityLevel = 'laag' | 'middel' | 'hoog';
 
 function qualityLevel(value: string | null): QualityLevel | null {
 	if (value === 'laag' || value === 'low') return 'laag';
@@ -76,7 +76,7 @@ function loadDynRes(): boolean {
  * Besturing-instellingen: mouse-look on/off, tank-steering, left-handed mouse.
  * Lives in its own overlay so it never fights the kiosk panel for space.
  */
-export class SettingsPanel {
+class SettingsPanel {
 	private root: HTMLElement;
 	private host: HTMLElement;
 	private card!: HTMLElement;
@@ -488,3 +488,6 @@ export class SettingsPanel {
 		this.onChange(this.settings);
 	}
 }
+
+export type { QualityLevel };
+export { SettingsPanel };

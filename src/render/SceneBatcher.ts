@@ -60,7 +60,7 @@ interface Batch {
 	zoneMask: number;
 }
 
-export interface SceneBatchStats {
+interface SceneBatchStats {
 	mode: BatchMode;
 	sourceMeshes: number;
 	dynamicSources: number;
@@ -71,13 +71,13 @@ export interface SceneBatchStats {
 }
 
 /** Eén batch zoals de wereldcontrole hem naleest: zijn zonemasker, bol en bronnen. */
-export interface BatchAudit {
+interface BatchAudit {
 	zoneMask: number;
 	sphere: Sphere | null;
 	sources: readonly Object3D[];
 }
 
-export interface BatchOwnerStats {
+interface BatchOwnerStats {
 	name: string;
 	sources: number;
 	dynamicSources: number;
@@ -279,7 +279,7 @@ function isVisible(object: Object3D): boolean {
  * hierarchy remains alive for gameplay and animation; only its render layer is
  * disabled. Transform, visibility and color are copied before each render.
  */
-export class SceneBatcher {
+class SceneBatcher {
 	readonly stats: SceneBatchStats;
 	private readonly batches: Batch[] = [];
 	private readonly dynamicRoots: Object3D[];
@@ -603,3 +603,6 @@ export class SceneBatcher {
 		for (const batch of this.batches) batch.mesh.visible = true;
 	}
 }
+
+export { SceneBatcher };
+export type { SceneBatchStats, BatchAudit, BatchOwnerStats };

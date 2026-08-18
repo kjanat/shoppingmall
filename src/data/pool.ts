@@ -20,8 +20,8 @@ import { at } from '#/util/rand';
 const DECK_Y = levelY('roof');
 
 /** Waterspiegel-centrum in wereldcoördinaten. PoolPeople zet er zwemmers op. */
-export const POOL_CENTER = { x: -20, z: 2 } as const;
-export const POOL_ROT = 0.3;
+const POOL_CENTER = { x: -20, z: 2 } as const;
+const POOL_ROT = 0.3;
 
 /** Nierboon — twee lobben, één taille. Anatomisch niet correct, wel gezellig. */
 function kidneyShape(): Shape {
@@ -43,10 +43,10 @@ function kidneyShape(): Shape {
  * de rand `kidney(1.15)`: dat schaalt om de vorm-oorsprong, en die ligt niet
  * in het bad, dus de rand schoof mee in plaats van gelijkmatig te verbreden.
  */
-export const POOL_OUTLINE: Vector2[] = kidneyShape().getPoints(96);
+const POOL_OUTLINE: Vector2[] = kidneyShape().getPoints(96);
 
 /** Dezelfde waterlijn, maar in wereld-XZ. */
-export const POOL_POLYGON: ReadonlyArray<readonly [number, number]> = POOL_OUTLINE.map((p) => {
+const POOL_POLYGON: ReadonlyArray<readonly [number, number]> = POOL_OUTLINE.map((p) => {
 	// De vlakken staan plat via rotation.x = -PI/2, dus vorm-y wordt wereld-min-z.
 	const lx = p.x;
 	const lz = -p.y;
@@ -59,18 +59,18 @@ export const POOL_POLYGON: ReadonlyArray<readonly [number, number]> = POOL_OUTLI
 const POOL_PLAN: Polygon2 = { kind: 'polygon', points: POOL_POLYGON.map(([x, z]) => ({ x, z })) };
 
 /** Ligt (x, z) in het water? Ray casting op de echte waterlijn. */
-export function inPool(x: number, z: number): boolean {
+function inPool(x: number, z: number): boolean {
 	return pointInPlan(POOL_PLAN, x, z);
 }
 
 /** Waterspiegel in wereld-y: het watervlak uit buildPool ligt precies hier. */
-export const POOL_WATER_Y = DECK_Y + 0.1;
+const POOL_WATER_Y = DECK_Y + 0.1;
 /**
  * Bodem van het diepe: 1.15 onder de waterlijn zet je borst op het water.
  * PoolPeople hangt zijn zwemmers met dezelfde 1.15 op, maar rekent vanaf een
  * eigen WATER_Y (13.75), dus die drijven 0.30 lager dan waar jij staat.
  */
-export const POOL_FLOOR_Y = POOL_WATER_Y - 1.15;
+const POOL_FLOOR_Y = POOL_WATER_Y - 1.15;
 /** Breedte van de aflopende instap: binnen deze band waad je naar het diepe. */
 const POOL_SHALLOW_W = 1.8;
 
@@ -78,12 +78,12 @@ const POOL_SHALLOW_W = 1.8;
 const POOL_BOUNDS = planBounds(POOL_PLAN);
 
 /** Kortste afstand tot de waterlijn: hoe verder naar binnen, hoe dieper. */
-export function rimDistance(x: number, z: number): number {
+function rimDistance(x: number, z: number): number {
 	let best = Number.POSITIVE_INFINITY;
 	for (let i = 0; i < POOL_POLYGON.length; i++) {
 		const a = at(POOL_POLYGON, i);
 		const b = at(POOL_POLYGON, i + 1);
-		const d = distanceToSegment2(x, z, a[0], a[1], b[0], b[1]);
+		const d = distanceToSegment2({ x, z }, { a: { x: a[0], z: a[1] }, b: { x: b[0], z: b[1] } });
 		if (d < best) best = d;
 	}
 	return best;
@@ -99,7 +99,7 @@ export function rimDistance(x: number, z: number): number {
  * beton snijden en de onderlijven van de zwemmers bloot leggen. In first person
  * zie je alleen je camera zakken, en die klopt wel.
  */
-export function poolFloorY(x: number, z: number): number | null {
+function poolFloorY(x: number, z: number): number | null {
 	if (x < POOL_BOUNDS.minX || x > POOL_BOUNDS.maxX) return null;
 	if (z < POOL_BOUNDS.minZ || z > POOL_BOUNDS.maxZ) return null;
 	if (!inPool(x, z)) return null;
@@ -108,3 +108,5 @@ export function poolFloorY(x: number, z: number): number | null {
 	// Smoothstep: vlakke bodem in het diepe, zachte knik bij de rand
 	return DECK_Y - (DECK_Y - POOL_FLOOR_Y) * t * t * (3 - 2 * t);
 }
+
+export { POOL_ROT, POOL_CENTER, POOL_OUTLINE, POOL_POLYGON, inPool, POOL_WATER_Y, POOL_FLOOR_Y, rimDistance, poolFloorY };

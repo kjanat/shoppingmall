@@ -3,7 +3,7 @@ import { WORLD_VIEW_DISTANCE } from '#/data/layout';
 import { LEVELS } from '#/data/levels';
 
 /** Authoring policy for the ordered vertical registry. All distances are metres. */
-export const LEVEL_LIMITS = {
+const LEVEL_LIMITS = {
 	registrySize: { min: 2, max: 32 },
 	elevation: { min: -WORLD_VIEW_DISTANCE, max: WORLD_VIEW_DISTANCE },
 	deckGap: { min: 2.4, max: 32 },
@@ -20,7 +20,7 @@ const AuthoredTextSchema = (limits: Readonly<{ min: number; max: number }>) =>
 		.max(limits.max)
 		.refine((value) => value === value.trim(), { error: 'authored text cannot start or end with whitespace' });
 
-export const LevelSchema = z.strictObject({
+const LevelSchema = z.strictObject({
 	id: AuthoredTextSchema(LEVEL_LIMITS.idLength).regex(/^[a-z][a-z0-9-]*$/, {
 		error: 'level id must use lower-case kebab syntax',
 	}),
@@ -32,9 +32,9 @@ export const LevelSchema = z.strictObject({
 	hint: AuthoredTextSchema(LEVEL_LIMITS.hintLength),
 });
 
-export type LevelRecord = Readonly<z.output<typeof LevelSchema>>;
+type LevelRecord = Readonly<z.output<typeof LevelSchema>>;
 
-export const LevelRegistrySchema = z
+const LevelRegistrySchema = z
 	.array(LevelSchema)
 	.min(LEVEL_LIMITS.registrySize.min)
 	.max(LEVEL_LIMITS.registrySize.max)
@@ -78,11 +78,14 @@ export const LevelRegistrySchema = z
 	});
 
 /** Invalid authored levels are a build error, so this deliberately throws. */
-export function assertValidLevelRegistry(input: unknown): void {
+function assertValidLevelRegistry(input: unknown): void {
 	LevelRegistrySchema.parse(input);
 }
 
 /** The canonical registry is parsed by builds and headless world checks. */
-export function assertCanonicalLevelRegistry(): void {
+function assertCanonicalLevelRegistry(): void {
 	assertValidLevelRegistry(LEVELS);
 }
+
+export { LEVEL_LIMITS, LevelSchema, LevelRegistrySchema, assertValidLevelRegistry, assertCanonicalLevelRegistry };
+export type { LevelRecord };

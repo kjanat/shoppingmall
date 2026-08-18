@@ -408,7 +408,8 @@ export class Restrooms {
 		return g;
 	}
 
-	private makeDoorSign(x: number, z: number, title: string, sub: string, color: string): Mesh {
+	private makeDoorSign(...args: [number, number, string, string, string]): Mesh {
+		const [x, z, title, sub, color] = args;
 		const { canvas: c, ctx } = labelCanvas(256, 96);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 256, 96);
@@ -458,7 +459,8 @@ export class Restrooms {
 	}
 
 	/** Flat board on the front (north) face */
-	private wallBoard(x: number, y: number, z: number, title: string, sub: string, color: string): Mesh {
+	private wallBoard(...args: [number, number, number, string, string, string]): Mesh {
+		const [x, y, z, title, sub, color] = args;
 		const { canvas: c, ctx } = labelCanvas(320, 140);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 320, 140);
@@ -475,7 +477,8 @@ export class Restrooms {
 		return mesh;
 	}
 
-	private pictogram(x: number, y: number, z: number, symbol: string, color: string): Mesh {
+	private pictogram(...args: [number, number, number, string, string]): Mesh {
+		const [x, y, z, symbol, color] = args;
 		const { canvas: c, ctx } = labelCanvas(128, 128);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 128, 128);
@@ -492,7 +495,8 @@ export class Restrooms {
 	}
 
 	/** Sign flush on outer side wall (face = ±1 for +X / −X) */
-	private sideWallPlate(x: number, y: number, z: number, title: string, symbol: string, color: string, face: 1 | -1): Mesh {
+	private sideWallPlate(...args: [number, number, number, string, string, string, 1 | -1]): Mesh {
+		const [x, y, z, title, symbol, color, face] = args;
 		const { canvas: c, ctx } = labelCanvas(160, 200);
 		ctx.fillStyle = color;
 		ctx.fillRect(0, 0, 160, 200);

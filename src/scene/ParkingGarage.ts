@@ -37,7 +37,7 @@ import { half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** World Y of the parking deck (one storey under V0) */
-export const GARAGE_Y = levelY('p1');
+const GARAGE_Y = levelY('p1');
 
 /** Straal van een ophangstang. Een bord dat aan niets hangt is geen bord maar een vlek. */
 const SIGN_HANGER_RADIUS = 0.02;
@@ -95,7 +95,7 @@ const CHEVRON_PAINT = {
  * Underground parking garage — grey concrete, pillars, bays, a few cars.
  * Reachable via the glass elevator (Hans: “P1 / parkeergarage”).
  */
-export class ParkingGarage {
+class ParkingGarage {
 	readonly group = new Group();
 	readonly pos = new Vector3(0, GARAGE_Y, 0);
 	private materials: Material[] = [];
@@ -552,7 +552,8 @@ export class ParkingGarage {
 		});
 	}
 
-	private makeTextPlane(text: string, w: number, h: number, bg = '#1565c0', fg = '#ffffff'): Mesh {
+	private makeTextPlane(...args: [string, number, number, string?, string?]): Mesh {
+		const [text, w, h, bg = '#1565c0', fg = '#ffffff'] = args;
 		const { canvas: c, ctx } = labelCanvas(512, 128);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 512, 128);
@@ -565,3 +566,5 @@ export class ParkingGarage {
 		return new Mesh(new PlaneGeometry(w, h), this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
 	}
 }
+
+export { GARAGE_Y, ParkingGarage };

@@ -22,13 +22,13 @@ export class StoreLabels {
 			tagLevelCulled(sprite);
 		}
 
-		const ground = this.makeFloorBadge('GROUND FLOOR', 0, 0.4, 0, '#334155');
-		const first = this.makeFloorBadge('LEVEL 1', 0, 6.4, 0, '#1e40af');
+		const ground = this.makeFloorBadge({ text: 'GROUND FLOOR', x: 0, y: 0.4, z: 0, color: '#334155' });
+		const first = this.makeFloorBadge({ text: 'LEVEL 1', x: 0, y: 6.4, z: 0, color: '#1e40af' });
 		this.group.add(ground, first);
 		tagLevelCulled(ground);
 		tagLevelCulled(first);
 		// Hangs in the atrium void between two decks, so it belongs to neither.
-		this.group.add(this.makeFloorBadge('YOU ARE HERE', 0, 3.5, 10, '#dc2626'));
+		this.group.add(this.makeFloorBadge({ text: 'YOU ARE HERE', x: 0, y: 3.5, z: 10, color: '#dc2626' }));
 	}
 
 	private makeLabel(store: StoreDef): Sprite {
@@ -67,7 +67,7 @@ export class StoreLabels {
 		return sprite;
 	}
 
-	private makeFloorBadge(text: string, x: number, y: number, z: number, color: string): Sprite {
+	private makeFloorBadge({ text, x, y, z, color }: { text: string; x: number; y: number; z: number; color: string }): Sprite {
 		const { canvas, ctx } = labelCanvas(512, 80);
 		ctx.fillStyle = 'rgba(255,255,255,0.9)';
 		roundRect(ctx, { x: 40, y: 10, width: 432, height: 60, radius: 12 });

@@ -27,8 +27,6 @@ import { CITY_BOUNDS, outsideMallFootprint } from '#/scene/city/cityPlan';
 import { isTypingTarget } from '#/util/dom';
 import { clamp, ease, half, lerp } from '#/util/math';
 
-export { EYE } from '#/player/constants';
-
 const ACCEL = 46;
 const FRICTION = 26;
 const AIR_ACCEL = 9;
@@ -113,7 +111,7 @@ const FLIGHT_BANK = 0.004;
  * How you steer. `turnWithKeys` is the no-mouse mode: A/D (and ←/→) swing the
  * whole camera like a tank instead of side-stepping.
  */
-export interface ControlSettings {
+interface ControlSettings {
 	turnWithKeys: boolean;
 	mouseLook: boolean;
 	/** 0 = left button, 2 = right button (left-handed mice) */
@@ -122,7 +120,7 @@ export interface ControlSettings {
 	invertY: boolean;
 }
 
-export const DEFAULT_SETTINGS: ControlSettings = {
+const DEFAULT_SETTINGS: ControlSettings = {
 	turnWithKeys: false,
 	mouseLook: true,
 	lookButton: 0,
@@ -138,7 +136,7 @@ export const DEFAULT_SETTINGS: ControlSettings = {
  * Escalator and stairs are ramps here (see CollisionWorld.groundHeightAt), so you
  * can actually reach floor 1 on foot instead of circling the ground floor.
  */
-export class PlayerControls {
+class PlayerControls {
 	enabled = true;
 	locked = false;
 	settings: ControlSettings = { ...DEFAULT_SETTINGS };
@@ -859,3 +857,7 @@ export class PlayerControls {
 		else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
 	}
 }
+
+export { EYE } from '#/player/constants';
+export { DEFAULT_SETTINGS, PlayerControls };
+export type { ControlSettings };

@@ -289,7 +289,13 @@ export class CityTheatre {
 		if (this.bulbs.instanceColor) this.bulbs.instanceColor.needsUpdate = true;
 	}
 
-	private box(mat: Material, w: number, h: number, d: number, x: number, y: number, z: number): Mesh {
+	private box(
+		...args:
+			| [Material, number, number, number, number, number, number]
+			| [{ mat: Material; w: number; h: number; d: number; x: number; y: number; z: number }]
+	): Mesh {
+		const options = args.length === 1 ? args[0] : { mat: args[0], w: args[1], h: args[2], d: args[3], x: args[4], y: args[5], z: args[6] };
+		const { mat, w, h, d, x, y, z } = options;
 		const m = new Mesh(this.unitBox, mat);
 		m.scale.set(w, h, d);
 		m.position.set(x, y, z);
@@ -299,15 +305,7 @@ export class CityTheatre {
 
 	/** Dezelfde doos, maar opgegeven zoals het wereldmodel hem opschrijft. */
 	private boxOf(mat: Material, b: Bounds3): Mesh {
-		return this.box(
-			mat,
-			span(b.minX, b.maxX),
-			span(b.minY, b.maxY),
-			span(b.minZ, b.maxZ),
-			midpoint(b.minX, b.maxX),
-			midpoint(b.minY, b.maxY),
-			midpoint(b.minZ, b.maxZ),
-		);
+		return this.box({ mat: mat, w: span(b.minX, b.maxX), h: span(b.minY, b.maxY), d: span(b.minZ, b.maxZ), x: midpoint(b.minX, b.maxX), y: midpoint(b.minY, b.maxY), z: midpoint(b.minZ, b.maxZ) });
 	}
 
 	private makeTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void): CanvasTexture {
@@ -355,29 +353,13 @@ export class CityTheatre {
 		// Podium (het buiten-soort) met brede trap naar de stoep.
 		const dek = THEATRE_PLAN.podium;
 		const dekY = THEATRE_PLAN.podiumY;
-		const podium = this.box(
-			donker,
-			span(dek.minX, dek.maxX),
-			dekY,
-			span(dek.minZ, dek.maxZ),
-			midpoint(dek.minX, dek.maxX),
-			half(dekY),
-			midpoint(dek.minZ, dek.maxZ),
-		);
+		const podium = this.box({ mat: donker, w: span(dek.minX, dek.maxX), h: dekY, d: span(dek.minZ, dek.maxZ), x: midpoint(dek.minX, dek.maxX), y: half(dekY), z: midpoint(dek.minZ, dek.maxZ) });
 		podium.receiveShadow = true;
 		const trap = THEATRE_PLAN.stair;
 		for (let i = 0; i < trap.treads; i++) {
 			const top = theatreTreadY(i);
 			const { minZ, maxZ } = theatreTreadZ(i);
-			const tree = this.box(
-				donker,
-				span(trap.minX, trap.maxX),
-				top,
-				span(minZ, maxZ),
-				midpoint(trap.minX, trap.maxX),
-				half(top),
-				midpoint(minZ, maxZ),
-			);
+			const tree = this.box({ mat: donker, w: span(trap.minX, trap.maxX), h: top, d: span(minZ, maxZ), x: midpoint(trap.minX, trap.maxX), y: half(top), z: midpoint(minZ, maxZ) });
 			tree.receiveShadow = true;
 		}
 
@@ -466,8 +448,8 @@ export class CityTheatre {
 		this.instanced.push(zuilen, blokjes);
 		this.group.add(zuilen, blokjes);
 
-		this.box(steen, 24.5, 1.2, 2.0, 72, 10.6, -50.6); // architraaf
-		this.box(steen, 26, 0.6, 4.2, 72, 11.5, -50.4); // porticodak
+		this.box({ mat: steen, w: 24.5, h: 1.2, d: 2.0, x: 72, y: 10.6, z: -50.6 }); // architraaf
+		this.box({ mat: steen, w: 26, h: 0.6, d: 4.2, x: 72, y: 11.5, z: -50.4 }); // porticodak
 	}
 
 	/** Marquee-luifel boven de trap: slab, gloed-onderkant, ophangstangen en 40 bollen. */
@@ -478,7 +460,7 @@ export class CityTheatre {
 		this.materials.push(bordeaux, gloed, staal);
 
 		// Slab: x 63..81, y 6.2..7.8, z -49.1..-44.5 — hangt boven trap én tapijt.
-		this.box(bordeaux, 18, 1.6, 4.6, 72, 7.0, -46.8);
+		this.box({ mat: bordeaux, w: 18, h: 1.6, d: 4.6, x: 72, y: 7.0, z: -46.8 });
 
 		// Onderkant "verlicht" met één basic-vlak: alle bollen samen, nul lampen.
 		const onder = new Mesh(this.unitPlane, gloed);
@@ -532,7 +514,7 @@ export class CityTheatre {
 		this.materials.push(bordeaux, goudLijst);
 
 		// Groot naambord bovenop de marquee — vanaf de straat én de drone leesbaar.
-		this.box(bordeaux, 15, 3.0, 0.35, 72, 9.3, -46.2);
+		this.box({ mat: bordeaux, w: 15, h: 3.0, d: 0.35, x: 72, y: 9.3, z: -46.2 });
 		const titelTex = this.makeTexture(1024, 192, (ctx) => {
 			ctx.fillStyle = '#141233';
 			ctx.fillRect(0, 0, 1024, 192);
@@ -625,7 +607,7 @@ export class CityTheatre {
 			[posterB, 81],
 		];
 		for (const [tex, x] of posters) {
-			this.box(goudLijst, 2.0, 2.8, 0.12, x, 4.0, -51.94);
+			this.box({ mat: goudLijst, w: 2.0, h: 2.8, d: 0.12, x: x, y: 4.0, z: -51.94 });
 			const mat = new MeshBasicMaterial({ map: tex, toneMapped: false });
 			this.materials.push(mat);
 			const vlak = new Mesh(this.unitPlane, mat);
@@ -644,7 +626,7 @@ export class CityTheatre {
 		const koord = lit({ color: 0x7a1230, roughness: 0.8 });
 		this.materials.push(rood, goud, koord);
 
-		const loper = (w: number, d: number, x: number, y: number, z: number, plat: boolean) => {
+		const loper = (...[w, d, x, y, z, plat]: [number, number, number, number, number, boolean]) => {
 			const m = new Mesh(this.unitPlane, rood);
 			m.scale.set(w, d, 1);
 			if (plat) m.rotation.x = -Math.PI / 2;
@@ -948,7 +930,7 @@ export class CityTheatre {
 	 * een bol erbovenop. De maten hangen aan de zitting, dus wie de stoel verzet
 	 * verplaatst het lijf mee in plaats van het erdoorheen te laten zakken.
 	 */
-	private buildBezoeker(x: number, floor: number, z: number, jas: Material, huid: Material, rand: () => number): Group {
+	private buildBezoeker(...[x, floor, z, jas, huid, rand]: [number, number, number, Material, Material, () => number]): Group {
 		const root = new Group();
 		root.position.set(x, floor, z);
 		root.rotation.y = jitterWith(SITTER_YAW_SPREAD, rand);
@@ -960,7 +942,7 @@ export class CityTheatre {
 		const body = new Group();
 		hips.add(body);
 
-		const doos = (mat: Material, w: number, h: number, d: number, px: number, py: number, pz: number, parent: Object3D) => {
+		const doos = (...[mat, w, h, d, px, py, pz, parent]: [Material, number, number, number, number, number, number, Object3D]) => {
 			const m = new Mesh(this.unitBox, mat);
 			m.scale.set(w, h, d);
 			m.position.set(px, py, pz);
@@ -1092,7 +1074,7 @@ export class CityTheatre {
 			this.materials.push(mat);
 			const t = (index + 0.5) / kleuren.length;
 			const z = lerp(rack.centerZ - half(rack.length) + 0.2, rack.centerZ + half(rack.length) - 0.2, t);
-			this.box(mat, 0.16, 1.1, 0.34, x, BACKSTAGE_FLOOR_Y + rack.height - 0.6, z).castShadow = true;
+			this.box({ mat: mat, w: 0.16, h: 1.1, d: 0.34, x: x, y: BACKSTAGE_FLOOR_Y + rack.height - 0.6, z: z }).castShadow = true;
 		}
 	}
 
@@ -1107,7 +1089,7 @@ export class CityTheatre {
 		this.materials.push(lijst);
 		const z = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTERIOR.maxZ);
 		const y = BACKSTAGE_FLOOR_Y + mirror.centerY;
-		this.box(lijst, 0.1, mirror.height + 0.16, mirror.width + 0.16, wallX + inward * 0.03, y, z).castShadow = true;
+		this.box({ mat: lijst, w: 0.1, h: mirror.height + 0.16, d: mirror.width + 0.16, x: wallX + inward * 0.03, y: y, z: z }).castShadow = true;
 		const tex = this.makeTexture(128, 256, (ctx) => {
 			const grad = ctx.createLinearGradient(0, 0, 0, 256);
 			grad.addColorStop(0, '#dfe6ea');
@@ -1126,27 +1108,11 @@ export class CityTheatre {
 	/** Het achterbordes met zijn trap, uit dezelfde maten als de collision. */
 	private buildBackstageBordes(mat: Material): void {
 		const bordes = BACKSTAGE_LANDING;
-		this.box(
-			mat,
-			span(bordes.minX, bordes.maxX),
-			bordes.y,
-			span(bordes.minZ, bordes.maxZ),
-			midpoint(bordes.minX, bordes.maxX),
-			half(bordes.y),
-			midpoint(bordes.minZ, bordes.maxZ),
-		).receiveShadow = true;
+		this.box({ mat: mat, w: span(bordes.minX, bordes.maxX), h: bordes.y, d: span(bordes.minZ, bordes.maxZ), x: midpoint(bordes.minX, bordes.maxX), y: half(bordes.y), z: midpoint(bordes.minZ, bordes.maxZ) }).receiveShadow = true;
 		for (let i = 0; i < THEATRE_PLAN.backstage.landing.treads; i++) {
 			const top = backstageLandingTreadY(i);
 			const { minZ, maxZ } = backstageLandingTreadZ(i);
-			this.box(
-				mat,
-				span(bordes.minX, bordes.maxX),
-				top,
-				span(minZ, maxZ),
-				midpoint(bordes.minX, bordes.maxX),
-				half(top),
-				midpoint(minZ, maxZ),
-			).receiveShadow = true;
+			this.box({ mat: mat, w: span(bordes.minX, bordes.maxX), h: top, d: span(minZ, maxZ), x: midpoint(bordes.minX, bordes.maxX), y: half(top), z: midpoint(minZ, maxZ) }).receiveShadow = true;
 		}
 	}
 

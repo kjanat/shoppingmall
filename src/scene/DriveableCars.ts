@@ -284,7 +284,7 @@ export class DriveableCars {
 		// een rand af is het een boog met dezelfde GRAVITY als de speler. De eigen
 		// hellingformule die hier stond was een tweede kopie van de uitrit, en zette de
 		// auto aan de mond van de geul zonder boog op straatniveau.
-		if (stepVehicleGround(this.world, this.ground, nx, nz, dt, { floorOverride: null, ceiling: CEILING })) {
+		if (stepVehicleGround({ world: this.world, state: this.ground, x: nx, z: nz, dt, floorOverride: null, ceiling: CEILING })) {
 			this.speed *= LANDING_GRIP;
 		}
 		const gy = this.ground.y;

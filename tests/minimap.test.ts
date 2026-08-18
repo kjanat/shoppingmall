@@ -53,7 +53,13 @@ function labelOf(entity: (typeof WORLD_ENTITIES)[number]): string {
 	return (entity.map.label ?? '').split('\n').join(' ');
 }
 
-function labelsOnDeck(x: number, z: number, level: (typeof LEVELS)[number]['id'], yaw = 0, y?: number): string[] {
+function labelsOnDeck({ x, z, level, yaw = 0, y }: Readonly<{
+	x: number;
+	z: number;
+	level: (typeof LEVELS)[number]['id'];
+	yaw?: number;
+	y?: number;
+}>): string[] {
 	return minimapLabelPlan(metric, { x, y, z, yaw, level }).plan.map((planned) => planned.text);
 }
 
@@ -62,7 +68,7 @@ function center(rect: Readonly<{ minX: number; maxX: number; minZ: number; maxZ:
 }
 
 function localLabels(x: number, z: number, y: number, yaw = 0): string[] {
-	return labelsOnDeck(x, z, deckAt(x, y, z), yaw, y);
+	return labelsOnDeck({ x, z, level: deckAt(x, y, z), yaw, y });
 }
 
 describe('the minimap', () => {
@@ -289,7 +295,7 @@ describe('the minimap shows the place the player is actually in', () => {
 		const label = pool ? labelOf(pool) : '';
 		expect(label, 'the roof pool has no authored map label').not.toBe('');
 		const missing = [0, Math.PI / 2, Math.PI, -Math.PI / 2].filter(
-			(yaw) => !labelsOnDeck(POOL_CENTER.x, POOL_CENTER.z, 'roof', yaw).includes(label),
+			(yaw) => !labelsOnDeck({ x: POOL_CENTER.x, z: POOL_CENTER.z, level: 'roof', yaw }).includes(label),
 		);
 		expect(missing, `the pool name disappears at headings ${missing.map(nr).join(', ')}`).toBeEmpty();
 	});

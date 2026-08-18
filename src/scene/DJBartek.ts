@@ -251,7 +251,7 @@ export class DJBartek {
 		}
 
 		// Back banner
-		const banner = this.makeCanvasPlane(['DJ BARTEK', 'BARTEK BARTEK', 'REQUESTS · E'], 1.8, 0.7, '#0f172a', '#f472b6');
+		const banner = this.makeCanvasPlane({ lines: ['DJ BARTEK', 'BARTEK BARTEK', 'REQUESTS · E'], w: 1.8, h: 0.7, bg: '#0f172a', fg: '#f472b6' });
 		banner.position.set(0, 2.35, -0.9);
 		this.group.add(banner);
 	}
@@ -364,7 +364,7 @@ export class DJBartek {
 		return sp;
 	}
 
-	private makeCanvasPlane(lines: string[], w: number, h: number, bg: string, fg: string): Mesh {
+	private makeCanvasPlane({ lines, w, h, bg, fg }: { lines: string[]; w: number; h: number; bg: string; fg: string }): Mesh {
 		const { canvas: c, ctx } = labelCanvas(512, 256);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, 512, 256);

@@ -17,13 +17,13 @@ import { clamp, half, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
 /** One dot on the map — a sim, mostly. */
-export interface MapBlip {
+interface MapBlip {
 	x: number;
 	z: number;
 	level: LevelId;
 }
 
-export interface MapState {
+interface MapState {
 	x: number;
 	y: number;
 	z: number;
@@ -126,7 +126,7 @@ const MAP_BACKDROP = '#0a1020';
  */
 const PLAN_CUT_HEIGHT = 1.2;
 
-export type MapFeature = Readonly<{
+type MapFeature = Readonly<{
 	id: string;
 	layer: MapLayer;
 	label: string;
@@ -329,13 +329,13 @@ const LABELS_BY_LEVEL = new Map<LevelId, MapFeature[]>(
 );
 
 /** Wat een kaart tekent: het gebouw waar de plattegrond over gaat, of de hele wereld. */
-export type MapScope = 'mall' | 'world';
+type MapScope = 'mall' | 'world';
 
 function inScope(features: readonly MapFeature[], scope: MapScope): readonly MapFeature[] {
 	return scope === 'world' ? features : features.filter((feature) => feature.inMall);
 }
 
-export function featuresOn(levelId: LevelId, scope: MapScope): readonly MapFeature[] {
+function featuresOn(levelId: LevelId, scope: MapScope): readonly MapFeature[] {
 	return inScope(FEATURES_BY_LEVEL.get(levelId) ?? [], scope);
 }
 
@@ -396,6 +396,20 @@ type LabelSpace = Readonly<{ point: ScreenPoint; width: number }>;
 
 type LabelRoom = (point: ScreenPoint) => LabelSpace | null;
 
+type DishSpaceOptions = Readonly<{
+	point: ScreenPoint;
+	center: ScreenPoint;
+	radius: number;
+	pull: number;
+}>;
+
+type DishProjectOptions = Readonly<{
+	point: Vec2;
+	view: MinimapView;
+	center: ScreenPoint;
+	scale: number;
+}>;
+
 /** De grote plattegrond is rechthoekig en knipt geen enkel label af. */
 const UNCLIPPED: LabelRoom = (point) => ({ point, width: Number.POSITIVE_INFINITY });
 
@@ -409,7 +423,7 @@ const BIG_LABEL_GAP = 5;
 const MINI_LABEL_GAP = 3;
 
 /** De smalste plattegrond die de kiosk tekent, wat er om de canvas heen zit, en de val-terug. */
-export const BIG_MAP_MIN_WIDTH = 320;
+const BIG_MAP_MIN_WIDTH = 320;
 const BIG_MAP_PADDING = 36;
 const BIG_MAP_FALLBACK_WIDTH = 820;
 
@@ -455,7 +469,7 @@ function labelFont(weight: number, size: number): string {
  * meten. Zo kan de wereldcontrole de kaartlabels naleggen zonder een canvas te hebben,
  * en meet ze met dezelfde regels als de kiosk.
  */
-export interface LabelMeasure {
+interface LabelMeasure {
 	font: string;
 	measureText: (text: string) => Readonly<{ width: number }>;
 }
@@ -516,23 +530,25 @@ function dishRoom(point: ScreenPoint, cx: number, cy: number, radius: number): n
  * het midden tot het op `radius - pull` staat en meet het zijn breedte daar. Verder weg
  * dan dat hoort het niet meer bij deze schotel.
  */
-function dishSpace(point: ScreenPoint, cx: number, cy: number, radius: number, pull: number): LabelSpace | null {
-	const offsetX = point.x - cx;
-	const offsetY = point.y - cy;
+function dishSpace({ point, center, radius, pull }: DishSpaceOptions): LabelSpace | null {
+	const offsetX = point.x - center.x;
+	const offsetY = point.y - center.y;
 	const distance = Math.hypot(offsetX, offsetY);
 	if (distance > radius + pull) return null;
 	const limit = Math.max(0, radius - pull);
 	const moved =
-		distance > limit && distance > 0 ? { x: cx + (offsetX * limit) / distance, y: cy + (offsetY * limit) / distance } : point;
-	const width = dishRoom(moved, cx, cy, radius);
+		distance > limit && distance > 0
+			? { x: center.x + (offsetX * limit) / distance, y: center.y + (offsetY * limit) / distance }
+			: point;
+	const width = dishRoom(moved, center.x, center.y, radius);
 	return width === null ? null : { point: moved, width };
 }
 
 /** Een gemeten label: de regels zoals ze getekend worden, plus wat ze innemen. */
-export type FittedLabel = Readonly<{ lines: readonly string[]; size: number; width: number; height: number; whole: boolean }>;
+type FittedLabel = Readonly<{ lines: readonly string[]; size: number; width: number; height: number; whole: boolean }>;
 
 /** Eén label zoals het getekend gaat worden. */
-export type PlannedLabel = Readonly<{
+type PlannedLabel = Readonly<{
 	text: string;
 	label: FittedLabel;
 	point: ScreenPoint;
@@ -542,21 +558,24 @@ export type PlannedLabel = Readonly<{
 }>;
 
 /** Wat er van de labels van één dek terechtkomt: wat er staat, en wat nergens paste. */
-export type LabelPlan = Readonly<{ plan: readonly PlannedLabel[]; unfittable: readonly string[] }>;
+type LabelPlan = Readonly<{ plan: readonly PlannedLabel[]; unfittable: readonly string[] }>;
 
 /** De ronde schotel in de HUD: haar maat, de ring eromheen en de stand waarop ze begint. */
 const MINIMAP = { size: 200, rim: 3, zoom: 2 } as const;
 
 /** Waar de speler staat en hoe hij kijkt: alles wat de schotel van hem nodig heeft. */
-export type MinimapView = Readonly<{ x: number; y?: number; z: number; yaw: number; level: LevelId; zoom?: number }>;
+type MinimapView = Readonly<{ x: number; y?: number; z: number; yaw: number; level: LevelId; zoom?: number }>;
 
 /** Wereld → schotel: gedraaid zodat de kijkrichting boven ligt, met de speler in het midden. */
-function dishProject(x: number, z: number, view: MinimapView, cx: number, cy: number, scale: number): ScreenPoint {
-	const dx = x - view.x;
-	const dz = z - view.z;
+function dishProject({ point, view, center, scale }: DishProjectOptions): ScreenPoint {
+	const dx = point.x - view.x;
+	const dz = point.z - view.z;
 	const cosine = Math.cos(view.yaw);
 	const sine = Math.sin(view.yaw);
-	return { x: cx + (dx * cosine - dz * sine) * scale, y: cy + (dx * sine + dz * cosine) * scale };
+	return {
+		x: center.x + (dx * cosine - dz * sine) * scale,
+		y: center.y + (dx * sine + dz * cosine) * scale,
+	};
 }
 
 /** Woorden over regels verdelen, elke regel zo vol als `budget` toelaat. Meet met de font die op `ctx` staat. */
@@ -587,15 +606,16 @@ function wrapWords(ctx: LabelMeasure, words: readonly string[], budget: number):
  * portaal terwijl er een halve centimeter naast plek genoeg was, en de uitwijkplekken
  * kwamen nooit aan de beurt.
  */
-function fitLabel(
-	ctx: LabelMeasure,
-	text: string,
-	weight: number,
-	budget: number,
-	height: number,
-	maxLines: number,
-	cut: boolean,
-): FittedLabel | null {
+type FitLabelOptions = Readonly<{
+	text: string;
+	weight: number;
+	budget: number;
+	height: number;
+	maxLines: number;
+	cut: boolean;
+}>;
+
+function fitLabel(ctx: LabelMeasure, { text, weight, budget, height, maxLines, cut }: FitLabelOptions): FittedLabel | null {
 	const words = text.split(' ');
 	for (let size = LABEL_SIZE_MAX; size >= LABEL_SIZE_MIN; size -= 0.5) {
 		ctx.font = labelFont(weight, size);
@@ -624,14 +644,15 @@ function labelBox(point: ScreenPoint, width: number, height: number): ScreenBox 
 	return { minX: point.x - half(width), maxX: point.x + half(width), minY: point.y - half(height), maxY: point.y + half(height) };
 }
 
-function drawLabel(
-	ctx: CanvasRenderingContext2D,
-	label: FittedLabel,
-	point: ScreenPoint,
-	vertical: boolean,
-	weight: number,
-	color: string,
-): void {
+type DrawLabelOptions = Readonly<{
+	label: FittedLabel;
+	point: ScreenPoint;
+	vertical: boolean;
+	weight: number;
+	color: string;
+}>;
+
+function drawLabel(ctx: CanvasRenderingContext2D, { label, point, vertical, weight, color }: DrawLabelOptions): void {
 	ctx.save();
 	ctx.translate(point.x, point.y);
 	if (vertical) ctx.rotate(-Math.PI / 2);
@@ -665,16 +686,18 @@ function drawLabel(
  * ze kregen een vaste maat en de volle breedte van het tekenvlak, en zo hing
  * BEARD-MAN'S CAVE bijna zes meter buiten de westgevel in de lege achtergrond.
  */
-function planLabels(
-	ctx: LabelMeasure,
-	lvl: LevelId,
-	scope: MapScope,
-	project: Project,
-	gap: number,
-	room: LabelRoom,
-	focus: Vec2 | null,
-	y: number | undefined,
-): LabelPlan {
+type PlanLabelsOptions = Readonly<{
+	ctx: LabelMeasure;
+	lvl: LevelId;
+	scope: MapScope;
+	project: Project;
+	gap: number;
+	room: LabelRoom;
+	focus: Vec2 | null;
+	y: number | undefined;
+}>;
+
+function planLabels({ ctx, lvl, scope, project, gap, room, focus, y }: PlanLabelsOptions): LabelPlan {
 	const plan: PlannedLabel[] = [];
 	const unfittable: string[] = [];
 	const placed: ScreenBox[] = [];
@@ -763,11 +786,13 @@ function planLabels(
 			offered = true;
 			const point = available.point;
 			const budget = Math.min(across, available.width);
-			const flat = fitLabel(ctx, text, weight, budget, along, maxLines, spot.cut);
+			const flat = fitLabel(ctx, { text, weight, budget, height: along, maxLines, cut: spot.cut });
 			// Een smalle, diepe vorm draagt zijn naam overlangs: het catwalkdek is
 			// 2,7 m breed en tien meter lang. Alleen als de naam daar wél heel past.
 			const upright =
-				spot.upright && along > across && flat?.whole !== true ? fitLabel(ctx, text, weight, along, across, 1, false) : null;
+				spot.upright && along > across && flat?.whole !== true
+					? fitLabel(ctx, { text, weight, budget: along, height: across, maxLines: 1, cut: false })
+					: null;
 			const vertical = upright?.whole === true;
 			const label = vertical ? upright : flat;
 			if (label === null) continue;
@@ -794,7 +819,7 @@ function planLabels(
  * naamloos op de schotel stond was op geen enkele plattegrond te zien, en op een
  * schermafdruk alleen als je wist waar je moest kijken.
  */
-export function bigMapHeight(cssW: number): number {
+function bigMapHeight(cssW: number): number {
 	return cssW * (PLAN_FRAME_DEPTH / PLAN_FRAME_WIDTH);
 }
 
@@ -807,31 +832,46 @@ function bigMapScale(cssW: number): number {
  * breed. Op de smalste breedte die de kiosk toelaat leest de wereldcontrole ze na: een
  * naam die daar wegvalt, valt op elk smaller scherm weg.
  */
-export function deckLabelPlan(ctx: LabelMeasure, lvl: LevelId, cssW: number): LabelPlan {
+function deckLabelPlan(ctx: LabelMeasure, lvl: LevelId, cssW: number): LabelPlan {
 	const cssH = bigMapHeight(cssW);
 	const scale = bigMapScale(cssW);
 	const sx = (x: number): number => half(cssW) + (x - PLAN_FRAME_CENTER.x) * scale;
 	const sy = (z: number): number => half(cssH) + (z - PLAN_FRAME_CENTER.z) * scale;
-	return planLabels(ctx, lvl, 'mall', (x, z) => ({ x: sx(x), y: sy(z) }), BIG_LABEL_GAP, UNCLIPPED, null, undefined);
+	return planLabels({
+		ctx,
+		lvl,
+		scope: 'mall',
+		project: (x, z) => ({ x: sx(x), y: sy(z) }),
+		gap: BIG_LABEL_GAP,
+		room: UNCLIPPED,
+		focus: null,
+		y: undefined,
+	});
 }
 
-export function minimapLabelPlan(ctx: LabelMeasure, view: MinimapView): LabelPlan {
+function minimapLabelPlan(ctx: LabelMeasure, view: MinimapView): LabelPlan {
 	const center = half(MINIMAP.size);
 	const radius = center - MINIMAP.rim;
 	const scale = at(ZOOM_STEPS, view.zoom ?? MINIMAP.zoom);
-	return planLabels(
+	return planLabels({
 		ctx,
-		view.level,
-		'world',
-		(x, z) => dishProject(x, z, view, center, center, scale),
-		MINI_LABEL_GAP,
-		(point) => dishSpace(point, center, center, radius - MINI_LABEL_INSET, MINI_LABEL_PULL * scale),
-		{ x: view.x, z: view.z },
-		view.y,
-	);
+		lvl: view.level,
+		scope: 'world',
+		project: (x, z) => dishProject({ point: { x, z }, view, center: { x: center, y: center }, scale }),
+		gap: MINI_LABEL_GAP,
+		room: (point) =>
+			dishSpace({
+				point,
+				center: { x: center, y: center },
+				radius: radius - MINI_LABEL_INSET,
+				pull: MINI_LABEL_PULL * scale,
+			}),
+		focus: { x: view.x, z: view.z },
+		y: view.y,
+	});
 }
 
-export interface UICallbacks {
+interface UICallbacks {
 	onSelectStore: (store: StoreDef) => void;
 	onStartRoute: (store: StoreDef) => void;
 	onCancel: () => void;
@@ -844,7 +884,7 @@ export interface UICallbacks {
 	onMood: (delta: number) => void;
 }
 
-export class KioskOverlay {
+class KioskOverlay {
 	private root: HTMLElement;
 	private callbacks: UICallbacks;
 	private selected: StoreDef | null = null;
@@ -1320,7 +1360,7 @@ export class KioskOverlay {
 		ctx.rotate(this.map.yaw);
 		ctx.scale(scale, scale);
 		ctx.translate(-this.map.x, -this.map.z);
-		this.paintWorld(ctx, lvl, 'world', scale, this.map.y);
+		this.paintWorld(ctx, { lvl, scope: 'world', scale, y: this.map.y });
 		ctx.restore();
 
 		// Upright labels for whatever is close by, under the plan's own rules
@@ -1332,7 +1372,13 @@ export class KioskOverlay {
 			level: lvl,
 			zoom: this.zoom,
 		}).plan) {
-			drawLabel(ctx, planned.label, planned.point, planned.vertical, planned.weight, planned.color);
+			drawLabel(ctx, {
+				label: planned.label,
+				point: planned.point,
+				vertical: planned.vertical,
+				weight: planned.weight,
+				color: planned.color,
+			});
 		}
 
 		// View cone — screen space, always pointing up
@@ -1366,11 +1412,14 @@ export class KioskOverlay {
 		ctx.textBaseline = 'middle';
 		ctx.fillText('N', nx, ny);
 
-		this.drawArrow(ctx, cx, cy, 0, 7);
+		this.drawArrow(ctx, { x: cx, y: cy, rot: 0, size: 7 });
 	}
 
 	/** Every map-visible entity on this deck, painted by its schema layer. */
-	private paintFeatures(ctx: CanvasRenderingContext2D, lvl: LevelId, scope: MapScope, px: number, y?: number): void {
+	private paintFeatures(
+		ctx: CanvasRenderingContext2D,
+		{ lvl, scope, px, y }: Readonly<{ lvl: LevelId; scope: MapScope; px: number; y?: number }>,
+	): void {
 		for (const feature of atElevation(featuresOn(lvl, scope), y)) {
 			const style = LAYER_STYLES[feature.layer];
 			ctx.fillStyle = feature.hero ? HERO_FILL : style.fill;
@@ -1428,13 +1477,16 @@ export class KioskOverlay {
 		);
 	}
 
-	private paintWorld(ctx: CanvasRenderingContext2D, lvl: LevelId, scope: MapScope, scale: number, y?: number): void {
+	private paintWorld(
+		ctx: CanvasRenderingContext2D,
+		{ lvl, scope, scale, y }: Readonly<{ lvl: LevelId; scope: MapScope; scale: number; y?: number }>,
+	): void {
 		const px = 1 / scale;
 		ctx.lineJoin = 'round';
 		ctx.lineCap = 'round';
 
 		// Rooms, shells, shafts and holes — whatever the schema puts on this deck
-		this.paintFeatures(ctx, lvl, scope, px, y);
+		this.paintFeatures(ctx, { lvl, scope, px, y });
 
 		if (lvl === 'roof') this.paintRoofLayer(ctx, px);
 
@@ -1505,11 +1557,20 @@ export class KioskOverlay {
 	}
 
 	/** North-up labels for the big plan, in screen space so text stays crisp. */
-	private paintBigLabels(ctx: CanvasRenderingContext2D, cssW: number, cssH: number, scale: number, lvl: LevelId): void {
+	private paintBigLabels(
+		ctx: CanvasRenderingContext2D,
+		{ cssW, cssH, scale, lvl }: Readonly<{ cssW: number; cssH: number; scale: number; lvl: LevelId }>,
+	): void {
 		const sx = (x: number) => half(cssW) + (x - PLAN_FRAME_CENTER.x) * scale;
 		const sy = (z: number) => half(cssH) + (z - PLAN_FRAME_CENTER.z) * scale;
 		for (const planned of deckLabelPlan(ctx, lvl, cssW).plan) {
-			drawLabel(ctx, planned.label, planned.point, planned.vertical, planned.weight, planned.color);
+			drawLabel(ctx, {
+				label: planned.label,
+				point: planned.point,
+				vertical: planned.vertical,
+				weight: planned.weight,
+				color: planned.color,
+			});
 		}
 
 		ctx.fillStyle = 'rgba(148,163,184,0.8)';
@@ -1534,15 +1595,15 @@ export class KioskOverlay {
 		ctx.translate(half(cssW), half(cssH));
 		ctx.scale(scale, scale);
 		ctx.translate(-PLAN_FRAME_CENTER.x, -PLAN_FRAME_CENTER.z);
-		this.paintWorld(ctx, this.bigLevel, 'mall', scale);
+		this.paintWorld(ctx, { lvl: this.bigLevel, scope: 'mall', scale });
 		ctx.restore();
-		this.paintBigLabels(ctx, cssW, cssH, scale, this.bigLevel);
+		this.paintBigLabels(ctx, { cssW, cssH, scale, lvl: this.bigLevel });
 
 		// You are here — only on the deck you're standing on
 		if (this.bigLevel === this.map.level) {
 			const sx = half(cssW) + (this.map.x - PLAN_FRAME_CENTER.x) * scale;
 			const sy = half(cssH) + (this.map.z - PLAN_FRAME_CENTER.z) * scale;
-			this.drawArrow(ctx, sx, sy, -this.map.yaw, 9);
+			this.drawArrow(ctx, { x: sx, y: sy, rot: -this.map.yaw, size: 9 });
 		} else {
 			ctx.fillStyle = 'rgba(226,232,240,0.75)';
 			ctx.font = '600 12px ui-monospace, monospace';
@@ -1552,7 +1613,7 @@ export class KioskOverlay {
 	}
 
 	/** Player marker: triangle + dot, `rot` in radians (0 = up). */
-	private drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, rot: number, size: number): void {
+	private drawArrow(ctx: CanvasRenderingContext2D, { x, y, rot, size }: Readonly<{ x: number; y: number; rot: number; size: number }>): void {
 		ctx.save();
 		ctx.translate(x, y);
 		ctx.rotate(rot);
@@ -1694,3 +1755,17 @@ export class KioskOverlay {
 		});
 	}
 }
+
+export type {
+	FittedLabel,
+	LabelMeasure,
+	LabelPlan,
+	MapBlip,
+	MapFeature,
+	MapScope,
+	MapState,
+	MinimapView,
+	PlannedLabel,
+	UICallbacks,
+};
+export { BIG_MAP_MIN_WIDTH, KioskOverlay, bigMapHeight, deckLabelPlan, featuresOn, minimapLabelPlan };

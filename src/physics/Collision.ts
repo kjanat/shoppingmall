@@ -57,9 +57,8 @@ import {
 import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
 import { clamp, half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 
-export { ESCALATOR_SPEED } from '#/data/world';
 
-export interface AABB {
+interface AABB {
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -98,6 +97,25 @@ interface BoxOptions {
 	disabled?: boolean;
 	tags?: readonly string[];
 }
+
+type AddArgs = [minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions];
+type BlockersNearArgs = [minX: number, maxX: number, minZ: number, maxZ: number, y: number, climb: boolean, out: AABB[]];
+type UnstickBodyArgs = [x: number, z: number, feetY: number, outside: boolean, radius?: number];
+type SurfacePitchArgs = [x: number, z: number, currentY: number, forwardX: number, forwardZ: number, wheelbase: number];
+type BlockedByArgs = [fromX: number, fromZ: number, toX: number, toZ: number, y: number, radius: number, climb: boolean];
+type ResolveCircleArgs = [
+	x: number,
+	z: number,
+	y: number,
+	radius: number,
+	iterations?: number,
+	climb?: boolean,
+	airborne?: boolean,
+	outside?: boolean,
+	wheeled?: boolean,
+	bodyClearance?: BodyClearance | null,
+];
+type SeparateArgs = [ax: number, az: number, bx: number, bz: number, minDist: number];
 
 /**
  * Een doos die ook het zicht tegenhoudt.
@@ -154,12 +172,18 @@ function segmentPlanWithin(from: Vec3, to: Vec3, lowY: number, highY: number): B
 }
 
 /** De plakjesmethode in XZ: het segment raakt de doos als beide assen elkaar overlappen. */
-function segmentCrossesBox(b: AABB, x: number, z: number, dx: number, dz: number): boolean {
+function segmentCrossesBox({ box, x, z, dx, dz }: Readonly<{
+	box: AABB;
+	x: number;
+	z: number;
+	dx: number;
+	dz: number;
+}>): boolean {
 	let enter = 0;
 	let exit = 1;
 	for (const axis of [
-		{ origin: x, delta: dx, min: b.minX, max: b.maxX },
-		{ origin: z, delta: dz, min: b.minZ, max: b.maxZ },
+			{ origin: x, delta: dx, min: box.minX, max: box.maxX },
+			{ origin: z, delta: dz, min: box.minZ, max: box.maxZ },
 	]) {
 		if (Math.abs(axis.delta) < SIGHT_MIN_RUN) {
 			if (axis.origin < axis.min || axis.origin > axis.max) return false;
@@ -183,7 +207,7 @@ function segmentCrossesBox(b: AABB, x: number, z: number, dx: number, dz: number
  * zicht tegen, want dat is wat een kamerwand is. Een bank van kniehoogte is dat
  * niet: die zet zijn eigen `maxY` en laat het zicht door.
  */
-export type RoomCollider = Readonly<{
+type RoomCollider = Readonly<{
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -195,7 +219,7 @@ export type RoomCollider = Readonly<{
 }>;
 
 /** A flat walkable rectangle in the city, above street level. */
-export interface CitySurface {
+interface CitySurface {
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -205,7 +229,7 @@ export interface CitySurface {
 }
 
 /** A walkable incline running along Z (escalator / stairs). */
-export interface Ramp {
+interface Ramp {
 	minX: number;
 	maxX: number;
 	zBottom: number;
@@ -229,14 +253,14 @@ export interface Ramp {
 	openUndersideThickness?: number;
 }
 
-export type BodyClearance = Readonly<{ feetY: number; height: number }>;
+type BodyClearance = Readonly<{ feetY: number; height: number }>;
 
 /**
  * Een vlak dakstuk. `disabled` betekent hier hetzelfde als op een AABB: een luik is
  * dezelfde plaat of hij nu dicht ligt of openstaat, en wat verandert is of er vloer
  * boven het gat hangt.
  */
-export interface RoofPad {
+interface RoofPad {
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -250,7 +274,7 @@ export interface RoofPad {
  * A low deck whose top face is the walkable surface. `nose` rounds off the maxZ end:
  * past `centerZ` the deck is that circle, so the box corners beyond it are not floor.
  */
-export interface Platform {
+interface Platform {
 	minX: number;
 	maxX: number;
 	minZ: number;
@@ -279,8 +303,9 @@ const MIN_RAMP_RUN = 1e-6;
 function pathRampSurface(ramp: PathRamp, x: number, z: number, margin = 0): number | null {
 	const { start, end } = ramp;
 	if (Math.hypot(end.x - start.x, end.z - start.z) <= MIN_RAMP_RUN) return null;
-	if (!pointInSegmentStrip2(x, z, start.x, start.z, end.x, end.z, ramp.width, margin)) return null;
-	const t = segmentParameter2(x, z, start.x, start.z, end.x, end.z);
+	const segment = { a: { x: start.x, z: start.z }, b: { x: end.x, z: end.z } };
+	if (!pointInSegmentStrip2({ point: { x, z }, segment, width: ramp.width, epsilon: margin })) return null;
+	const t = segmentParameter2({ x, z }, segment);
 	return start.y + (end.y - start.y) * t;
 }
 
@@ -311,7 +336,7 @@ const BASEMENT_H = levelY('p1');
  * echt op staat. Stond hij hier ruimer, dan sleepte de roltrap je onderaan ook
  * mee terwijl je gewoon op de vloerplaat eronder liep.
  */
-export const WALK_STEP = 0.5;
+const WALK_STEP = 0.5;
 
 /** Hoeveel de kerbdoos onder het loopvlak van een platform stopt, zodat je erop kunt staan. */
 const KERB_LIP = 0.04;
@@ -324,7 +349,7 @@ const KERB_LIP = 0.04;
 const BOX_FOOT_SLACK = 0.3;
 
 /** Zo ver van zijn eigen twee einden af telt een vlucht als "je staat er middenop". */
-export const RAMP_BAND_MARGIN = 0.4;
+const RAMP_BAND_MARGIN = 0.4;
 
 /**
  * Waar de buitenschil ophoudt. Onder het dakdek houdt hij je binnen, erboven
@@ -397,7 +422,7 @@ const ROOF_DECK_PADS: readonly RoofPad[] = coverMinusHoles(
  * Lightweight horizontal collision world (XZ cylinders vs AABBs).
  * Keeps player + sims out of walls, stores, escalator/stairs volumes.
  */
-export class CollisionWorld {
+class CollisionWorld {
 	readonly boxes: AABB[] = [];
 	readonly pathRamps: readonly PathRamp[] = [
 		{
@@ -474,7 +499,8 @@ export class CollisionWorld {
 		this.buildCity();
 	}
 
-	private add(minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions): AABB {
+	private add(...args: AddArgs): AABB {
+		const [minX, maxX, minZ, maxZ, opts] = args;
 		const box: AABB = {
 			minX,
 			maxX,
@@ -548,7 +574,8 @@ export class CollisionWorld {
 	 * staat uit, buiten telt niet mee binnen, en wat je met `climb` doorloopt is
 	 * voor hem geen wand.
 	 */
-	blockersNear(minX: number, maxX: number, minZ: number, maxZ: number, y: number, climb: boolean, out: AABB[]): AABB[] {
+	blockersNear(...args: BlockersNearArgs): AABB[] {
+		const [minX, maxX, minZ, maxZ, y, climb, out] = args;
 		out.length = 0;
 		const index = this.boxIndex ?? this.buildBoxIndex();
 		const minCellX = Math.floor(minX / CollisionWorld.INDEX_CELL);
@@ -575,8 +602,8 @@ export class CollisionWorld {
 	}
 
 	/** Runtime colliders (WC walls, props added after construct). Returns the box so a gate can toggle its own. */
-	addBox(minX: number, maxX: number, minZ: number, maxZ: number, opts?: BoxOptions): AABB {
-		return this.add(minX, maxX, minZ, maxZ, opts);
+	addBox(...args: AddArgs): AABB {
+		return this.add(...args);
 	}
 
 	/** Zelfde afspraak voor een dakstuk: de plaat komt terug, zodat zijn eigenaar hem kan openen. */
@@ -994,7 +1021,7 @@ export class CollisionWorld {
 			// wand aan geduwd is zou anders nooit meer iets zien.
 			if (ends && forgiveEnds) continue;
 			if (ends) return false;
-			if (segmentCrossesBox(b, from.x, from.z, dx, dz)) return false;
+			if (segmentCrossesBox({ box: b, x: from.x, z: from.z, dx, dz })) return false;
 		}
 		return true;
 	}
@@ -1199,13 +1226,8 @@ export class CollisionWorld {
 	 * voertuig staan: dan loop je geen kant meer op, want elke stap wordt teruggeduwd.
 	 * Dezelfde vraag als een stap, alleen zonder stap.
 	 */
-	unstickBody(
-		x: number,
-		z: number,
-		feetY: number,
-		outside: boolean,
-		radius = STANDING_PEDESTRIAN.radius,
-	): { x: number; z: number } {
+	unstickBody(...args: UnstickBodyArgs): { x: number; z: number } {
+		const [x, z, feetY, outside, radius = STANDING_PEDESTRIAN.radius] = args;
 		return this.resolveCircle(x, z, feetY, radius, 3, true, false, outside);
 	}
 
@@ -1277,7 +1299,8 @@ export class CollisionWorld {
 	 * `wheelbase` is de volle afstand van as tot as; de monsters staan op de assen.
 	 * Positief is neus omhoog.
 	 */
-	surfacePitchAt(x: number, z: number, currentY: number, forwardX: number, forwardZ: number, wheelbase: number): number {
+	surfacePitchAt(...args: SurfacePitchArgs): number {
+		const [x, z, currentY, forwardX, forwardZ, wheelbase] = args;
 		const reach = half(wheelbase);
 		const front = this.groundHeightAt(x + forwardX * reach, z + forwardZ * reach, currentY, WALK_STEP + reach);
 		const back = this.groundHeightAt(x - forwardX * reach, z - forwardZ * reach, currentY, WALK_STEP + reach);
@@ -1348,7 +1371,8 @@ export class CollisionWorld {
 	 * er frontaal tegenaan. Ligt er meer dan één in de weg, dan komt de dichtste
 	 * bij het vertrekpunt terug: die moet eerst opgelost.
 	 */
-	blockedBy(fromX: number, fromZ: number, toX: number, toZ: number, y: number, radius: number, climb: boolean): AABB | null {
+	blockedBy(...args: BlockedByArgs): AABB | null {
+		const [fromX, fromZ, toX, toZ, y, radius, climb] = args;
 		const dx = toX - fromX;
 		const dz = toZ - fromZ;
 		this.blockersNear(
@@ -1369,7 +1393,7 @@ export class CollisionWorld {
 				minZ: box.minZ - radius,
 				maxZ: box.maxZ + radius,
 			};
-			if (!segmentCrossesBox(grown, fromX, fromZ, dx, dz)) continue;
+			if (!segmentCrossesBox({ box: grown, x: fromX, z: fromZ, dx, dz })) continue;
 			const distance = Math.hypot(midpoint(box.minX, box.maxX) - fromX, midpoint(box.minZ, box.maxZ) - fromZ);
 			if (distance < nearestDistance) {
 				nearestDistance = distance;
@@ -1396,18 +1420,8 @@ export class CollisionWorld {
 	 * voetafdruk-klem in voor de wereldrand; de muren houden hem nog steeds
 	 * tegen, en het atriumgat schopt hem er nog steeds uit.
 	 */
-	resolveCircle(
-		x: number,
-		z: number,
-		y: number,
-		radius: number,
-		iterations = 3,
-		climb = false,
-		airborne = false,
-		outside = false,
-		wheeled = false,
-		bodyClearance: BodyClearance | null = null,
-	): { x: number; z: number } {
+	resolveCircle(...args: ResolveCircleArgs): { x: number; z: number } {
+		const [x, z, y, radius, iterations = 3, climb = false, airborne = false, outside = false, wheeled = false, bodyClearance = null] = args;
 		let px = x;
 		let pz = z;
 		const inGarageExit =
@@ -1499,7 +1513,8 @@ export class CollisionWorld {
 	}
 
 	/** Separate two agents (sim-sim / player-sim). */
-	separate(ax: number, az: number, bx: number, bz: number, minDist: number): { ax: number; az: number; bx: number; bz: number } {
+	separate(...args: SeparateArgs): { ax: number; az: number; bx: number; bz: number } {
+		const [ax, az, bx, bz, minDist] = args;
 		let dx = bx - ax;
 		let dz = bz - az;
 		let d2 = dx * dx + dz * dz;
@@ -1522,3 +1537,8 @@ export class CollisionWorld {
 		};
 	}
 }
+
+export { ESCALATOR_SPEED } from '#/data/world';
+export { WALK_STEP, RAMP_BAND_MARGIN, CollisionWorld };
+export type { AABB };
+export type { RoomCollider, CitySurface, Ramp, BodyClearance, RoofPad, Platform };

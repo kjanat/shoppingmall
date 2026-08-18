@@ -90,15 +90,18 @@ function clearance(id: string, box: Bounds3, role: 'opening-clearance' | 'connec
 	};
 }
 
-function entity(
+type EntityArgs = readonly [
 	id: string,
 	label: string,
 	category: MallWorldCategory,
 	volumes: readonly SpatialVolume[],
 	tags: readonly string[],
 	mapLabel?: string,
-	mapPriority = 80,
-): MallWorldEntity {
+	mapPriority?: number,
+];
+
+function entity(...args: EntityArgs): MallWorldEntity {
+	const [id, label, category, volumes, tags, mapLabel, mapPriority = 80] = args;
 	const c = rectCenter(CON_FOOTPRINT);
 	return {
 		id,

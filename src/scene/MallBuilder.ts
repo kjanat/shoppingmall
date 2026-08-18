@@ -70,7 +70,13 @@ function escLine(spec: EscalatorSpec, geometry: EscalatorGeometry, z: number): n
  */
 type EscRailPoint = Readonly<{ z: number; y: number }>;
 
-function escRailPath(spec: EscalatorSpec, geometry: EscalatorGeometry, zLo: number, zHi: number, off: number): EscRailPoint[] {
+function escRailPath({ spec, geometry, zLo, zHi, off }: {
+	spec: EscalatorSpec;
+	geometry: EscalatorGeometry;
+	zLo: number;
+	zHi: number;
+	off: number;
+}): EscRailPoint[] {
 	const r = geometry.handrail.newelRadius;
 	const dir = Math.sign(zHi - zLo);
 	const points: EscRailPoint[] = [];
@@ -80,15 +86,15 @@ function escRailPath(spec: EscalatorSpec, geometry: EscalatorGeometry, zLo: numb
 			const a = -Math.PI / 2 + (k / 12) * Math.PI;
 			return { z: zEnd + direction * dir * r * Math.cos(a), y: base - r + r * Math.sin(a) };
 		});
-	const straight = (za: number, ya: number, zb: number, yb: number, n: number) => {
+	const straight = ({ za, ya, zb, yb, n }: { za: number; ya: number; zb: number; yb: number; n: number }) => {
 		for (let k = 1; k <= n; k++) {
 			points.push({ z: za + ((zb - za) * k) / n, y: ya + ((yb - ya) * k) / n });
 		}
 	};
 	points.push(...newel(zLo, off, -1));
-	straight(zLo, off, spec.zBottom, off, 4);
-	straight(spec.zBottom, off, spec.zTop, geometry.rise + off, 24);
-	straight(spec.zTop, geometry.rise + off, zHi, geometry.rise + off, 5);
+	straight({ za: zLo, ya: off, zb: spec.zBottom, yb: off, n: 4 });
+	straight({ za: spec.zBottom, ya: off, zb: spec.zTop, yb: geometry.rise + off, n: 24 });
+	straight({ za: spec.zTop, ya: geometry.rise + off, zb: zHi, yb: geometry.rise + off, n: 5 });
 	// slice(1): de omkeer begint op hetzelfde punt waar de rechte eindigt. Laat je
 	// dat dubbel staan, dan is dat segment nul lang, is de raaklijn daar
 	// ongedefinieerd en klapt het frame van de buis om — een knik in de leuning.
@@ -619,7 +625,7 @@ export class MallBuilder {
 		const zLo = z0 - dir * (apron - geometry.handrail.newelRadius);
 		const zHi = z1 + dir * (apron - geometry.handrail.newelRadius);
 
-		const cleat = this.escStripeTexture(64, '#8b969d', '#5b6469', 1.6, w / 0.28);
+		const cleat = this.escStripeTexture({ size: 64, bg: '#8b969d', fg: '#5b6469', lineW: 1.6, repeatX: w / 0.28 });
 		// De scene heeft geen environment map, dus metalness boven ~0.5 heeft niets
 		// om in te spiegelen en slaat om in zwart. Geborsteld staal, geen chroom.
 		const treadMat = this.track(lit({ map: cleat, metalness: 0.45, roughness: 0.5 }));
@@ -639,7 +645,7 @@ export class MallBuilder {
 		const glowMat = this.track(new MeshBasicMaterial({ color: 0x8fe3ff, toneMapped: false }));
 		const combMat = this.track(
 			lit({
-				map: this.escStripeTexture(64, '#c8a02a', '#4a3c10', 2, w / 0.09),
+				map: this.escStripeTexture({ size: 64, bg: '#c8a02a', fg: '#4a3c10', lineW: 2, repeatX: w / 0.09 }),
 				metalness: 0.6,
 				roughness: 0.45,
 			}),
@@ -788,7 +794,7 @@ export class MallBuilder {
 		this.placeEscalatorSteps(runtime);
 
 		// ── leuning: één buis van kop tot kop, geen segmentnaden ──
-		const railPoints = escRailPath(spec, geometry, zLo, zHi, geometry.handrail.centerY);
+		const railPoints = escRailPath({ spec, geometry, zLo, zHi, off: geometry.handrail.centerY });
 		const { geo: railGeo, length: railLen } = escRailTube(railPoints, geometry.handrail.radius);
 		const railTex = this.escRailTexture(railLen / geometry.handrail.textureRepeatLength);
 		const railMat = this.track(lit({ map: railTex, roughness: 0.85, metalness: 0.05 }));
@@ -850,7 +856,7 @@ export class MallBuilder {
 			g.add(post);
 		}
 
-		this.addHoleRails(g, opening, dir, geometry.rise, geometry.guard, glassMat, steelMat);
+		this.addHoleRails({ g, opening, direction: dir, rise: geometry.rise, guard: geometry.guard, glassMat, railMat: steelMat });
 
 		this.group.add(g);
 	}
@@ -861,15 +867,15 @@ export class MallBuilder {
 	 * gaat. Alleen de uitstapkant blijft open, anders sta je erop te kijken en
 	 * loop je er aan de andere kant zo in.
 	 */
-	private addHoleRails(
-		g: Group,
-		opening: OpeningDef,
-		direction: number,
-		rise: number,
-		guard: OpeningGuard,
-		glassMat: Material,
-		railMat: Material,
-	): void {
+	private addHoleRails({ g, opening, direction, rise, guard, glassMat, railMat }: {
+		g: Group;
+		opening: OpeningDef;
+		direction: number;
+		rise: number;
+		guard: OpeningGuard;
+		glassMat: Material;
+		railMat: Material;
+	}): void {
 		const { center, size } = opening;
 		// Net buiten de gatrand, anders staat het hek op lucht.
 		const sideX = half(size.width) + guard.slabOffset;
@@ -923,7 +929,14 @@ export class MallBuilder {
 	}
 
 	/** Herhaalbare streepjestextuur: ribbels op treden, tanden op de kamplaat. */
-	private escStripeTexture(size: number, bg: string, fg: string, lineW: number, repeatX: number, height = 8): Texture {
+	private escStripeTexture({ size, bg, fg, lineW, repeatX, height = 8 }: {
+		size: number;
+		bg: string;
+		fg: string;
+		lineW: number;
+		repeatX: number;
+		height?: number;
+	}): Texture {
 		const { canvas, ctx, w, h } = labelCanvas(size, height);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
@@ -1078,7 +1091,7 @@ export class MallBuilder {
 				side: DoubleSide,
 			}),
 		);
-		this.addHoleRails(g, opening, dir, rise, appearance.guard, glassMat, railMat);
+		this.addHoleRails({ g, opening, direction: dir, rise, guard: appearance.guard, glassMat, railMat });
 
 		this.group.add(g);
 	}

@@ -3,12 +3,12 @@ import { ExtrudeGeometry, Mesh, Path, Shape } from 'three';
 import type { PlanShape } from '#/data/spatial';
 import { half } from '#/util/math';
 
-export type RectangleXZ = Readonly<{
+type RectangleXZ = Readonly<{
 	center: Readonly<{ x: number; z: number }>;
 	size: Readonly<{ width: number; depth: number }>;
 }>;
 
-export type XZExtrusionSpec = Readonly<{
+type XZExtrusionSpec = Readonly<{
 	plan: PlanShape;
 	holes?: readonly PlanShape[];
 	topY: number;
@@ -67,31 +67,31 @@ function tracePlan(path: Path | Shape, plan: PlanShape): void {
 	path.closePath();
 }
 
-export function xzRectangleShape(rectangle: RectangleXZ): Shape {
+function xzRectangleShape(rectangle: RectangleXZ): Shape {
 	const shape = new Shape();
 	traceRectangle(shape, rectangle);
 	return shape;
 }
 
-export function addXZRectangleHole(shape: Shape, rectangle: RectangleXZ): void {
+function addXZRectangleHole(shape: Shape, rectangle: RectangleXZ): void {
 	const hole = new Path();
 	traceRectangle(hole, rectangle);
 	shape.holes.push(hole);
 }
 
-export function xzPlanShape(plan: PlanShape): Shape {
+function xzPlanShape(plan: PlanShape): Shape {
 	const shape = new Shape();
 	tracePlan(shape, plan);
 	return shape;
 }
 
-export function addXZPlanHole(shape: Shape, plan: PlanShape): void {
+function addXZPlanHole(shape: Shape, plan: PlanShape): void {
 	const hole = new Path();
 	tracePlan(hole, plan);
 	shape.holes.push(hole);
 }
 
-export function extrudedXZGeometry(plan: PlanShape, holes: readonly PlanShape[], thickness: number): ExtrudeGeometry {
+function extrudedXZGeometry(plan: PlanShape, holes: readonly PlanShape[], thickness: number): ExtrudeGeometry {
 	const shape = xzPlanShape(plan);
 	for (const hole of holes) addXZPlanHole(shape, hole);
 	const geometry = new ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
@@ -100,7 +100,7 @@ export function extrudedXZGeometry(plan: PlanShape, holes: readonly PlanShape[],
 }
 
 /** Builds a horizontal prism from its walkable top instead of exposing extrusion-axis bookkeeping. */
-export function addExtrudedXZMesh(
+function addExtrudedXZMesh(
 	parent: Object3D,
 	material: Material,
 	{ plan, holes = [], topY, thickness, name, castShadow = false, receiveShadow = false }: XZExtrusionSpec,
@@ -114,3 +114,6 @@ export function addExtrudedXZMesh(
 	parent.add(mesh);
 	return mesh;
 }
+
+export { xzRectangleShape, addXZRectangleHole, xzPlanShape, addXZPlanHole, extrudedXZGeometry, addExtrudedXZMesh };
+export type { XZExtrusionSpec, RectangleXZ };

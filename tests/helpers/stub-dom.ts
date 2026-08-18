@@ -47,7 +47,7 @@ function selfRepeatingStub(fields: Record<string | symbol, unknown> = {}): unkno
 const STUB_GLYPH_WIDTH = 8;
 
 /** The stub's text metric on its own, for anyone who only wants to know if a label fits. */
-export function stubTextMeasure(): { font: string; measureText: (text: string) => { width: number } } {
+function stubTextMeasure(): { font: string; measureText: (text: string) => { width: number } } {
 	return { font: '', measureText: (text: string) => ({ width: text.length * STUB_GLYPH_WIDTH }) };
 }
 
@@ -55,7 +55,7 @@ export function stubTextMeasure(): { font: string; measureText: (text: string) =
  * Canvas stub. Unknown methods return the stub itself, so chains like
  * createLinearGradient().addColorStop() do not break on undefined.
  */
-export function stubDocument(): void {
+function stubDocument(): void {
 	const ctx = selfRepeatingStub({ measureText: stubTextMeasure().measureText });
 	(globalThis as unknown as { document: unknown }).document = {
 		createElement: (tag: string) => (tag === 'canvas' ? { width: 1, height: 1, getContext: () => ctx } : {}),
@@ -63,7 +63,7 @@ export function stubDocument(): void {
 }
 
 /** What a session remembers in memory, with the four methods the storage boundary uses. */
-export interface SessionStorage {
+interface SessionStorage {
 	getItem: (key: string) => string | null;
 	setItem: (key: string, value: string) => void;
 	removeItem: (key: string) => void;
@@ -88,14 +88,14 @@ function memoryStorage(): SessionStorage {
  * `sessionStorage` in memory, so the load boundary of a saved game can be questioned
  * headlessly with exactly what a tab can hold.
  */
-export function stubSessionStorage(): SessionStorage {
+function stubSessionStorage(): SessionStorage {
 	const storage = memoryStorage();
 	(globalThis as unknown as { sessionStorage: unknown }).sessionStorage = storage;
 	return storage;
 }
 
 /** The same in memory for `localStorage`, which is where the graphics preferences live. */
-export function stubLocalStorage(): SessionStorage {
+function stubLocalStorage(): SessionStorage {
 	const storage = memoryStorage();
 	(globalThis as unknown as { localStorage: unknown }).localStorage = storage;
 	return storage;
@@ -105,7 +105,7 @@ export function stubLocalStorage(): SessionStorage {
  * WebAudio plus the `window` timers. The disco starts music the moment you switch it on,
  * and the light count test has to be able to switch it on.
  */
-export function stubAudio(): void {
+function stubAudio(): void {
 	const ctx = selfRepeatingStub({ state: 'running' });
 	(globalThis as unknown as { AudioContext: unknown }).AudioContext = function AudioContextStub(): unknown {
 		return ctx;
@@ -121,3 +121,6 @@ export function stubAudio(): void {
 		},
 	};
 }
+
+export type { SessionStorage };
+export { stubAudio, stubDocument, stubLocalStorage, stubSessionStorage, stubTextMeasure };

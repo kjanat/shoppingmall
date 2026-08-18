@@ -32,7 +32,7 @@ import { at, mulberry32, pickWith } from '#/util/rand';
 const BADGE_KEY = 'mallsim.con.badge.v1';
 const GOT_KEY = 'mallsim.con.got.v1';
 
-export type ConPlayResult = Readonly<{
+type ConPlayResult = Readonly<{
 	status: string;
 	scoreDelta: number;
 }>;
@@ -109,7 +109,7 @@ const PANELS = [
 /**
  * Everything you can actually do at the con with E.
  */
-export class ConPlay {
+class ConPlay {
 	readonly group = new Group();
 	private readonly spots: Spot[];
 	private readonly got = new Set<string>();
@@ -870,3 +870,6 @@ function writeList(key: string, list: string[]): void {
 		/* private */
 	}
 }
+
+export { ConPlay };
+export type { ConPlayResult };

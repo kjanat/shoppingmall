@@ -4,7 +4,7 @@ import { qs } from '#/util/dom';
 /**
  * Request desk UI for DJ Bartek.
  */
-export class DJOverlay {
+class DJOverlay {
 	private root: HTMLElement;
 	private input: HTMLInputElement;
 	private list: HTMLElement;
@@ -169,3 +169,5 @@ export class DJOverlay {
 function escapeHtml(s: string): string {
 	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+export { DJOverlay };

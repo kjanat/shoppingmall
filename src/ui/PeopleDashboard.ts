@@ -3,7 +3,7 @@ import type { PersonRow } from '#/scene/Americans';
 import { qs } from '#/util/dom';
 
 /** Non-shopper rows: dief, aap, DJ, catwalk-dame — the mall's fixed cast. */
-export interface CastRow {
+interface CastRow {
 	icon: string;
 	name: string;
 	doing: string;
@@ -25,7 +25,7 @@ function esc(s: string): string {
  * Bewoners-dashboard (B): every person in the mall, live — where they are,
  * what they're doing, how broke and how unhappy. Follow button = guest view.
  */
-export class PeopleDashboard {
+class PeopleDashboard {
 	private host: HTMLElement;
 	private card!: HTMLElement;
 	private listEl!: HTMLElement;
@@ -142,3 +142,6 @@ export class PeopleDashboard {
 		});
 	}
 }
+
+export type { CastRow };
+export { PeopleDashboard };

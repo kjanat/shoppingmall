@@ -112,15 +112,12 @@ export class CityColosseum {
 
 	/** A closed or open elliptical ring wall, squashed from a cylinder of x-radius `rx`. */
 	private ringWall(
-		rx: number,
-		yCenter: number,
-		height: number,
-		mat: Material,
-		opts: { openEnded?: boolean; radialTop?: number } = {},
+		options: { rx: number; yCenter: number; height: number; mat: Material; openEnded?: boolean; radialTop?: number },
 	): Mesh {
+		const { rx, yCenter, height, mat, openEnded = true, radialTop } = options;
 		// Open by default: a ring wall is a band, and a capped cylinder would lay a
 		// solid disc across the whole ellipse — a lid over the arena at that height.
-		const geo = new CylinderGeometry(opts.radialTop ?? rx, rx, height, 56, 1, opts.openEnded ?? true);
+		const geo = new CylinderGeometry(radialTop ?? rx, rx, height, 56, 1, openEnded);
 		const ring = this.addMesh(geo, mat);
 		ring.scale.set(1, 1, this.aspect);
 		ring.position.set(COLOSSEUM_PLAN.x, yCenter, COLOSSEUM_PLAN.z);
@@ -128,7 +125,8 @@ export class CityColosseum {
 	}
 
 	/** A box whose long axis follows the ellipse tangent at angle `a`. */
-	private tangentBox(a: number, rx: number, width: number, height: number, depth: number, yCenter: number, mat: Material): void {
+	private tangentBox(options: { a: number; rx: number; width: number; height: number; depth: number; yCenter: number; mat: Material }): void {
+		const { a, rx, width, height, depth, yCenter, mat } = options;
 		const [x, z] = this.onEllipse(a, rx);
 		const geo = new BoxGeometry(width, height, depth);
 		const box = this.addMesh(geo, mat);
@@ -201,8 +199,8 @@ export class CityColosseum {
 		for (let i = 0; i < archesPerLevel; i++) {
 			const a = (i / archesPerLevel) * Math.PI * 2;
 			if (this.nearGate(a)) continue;
-			this.tangentBox(a, podiumRx, chord, podiumHeight, 0.8, half(podiumHeight), podiumMat);
-			this.tangentBox(a, podiumRx, chord, 0.4, 1.0, podiumHeight, podiumCapMat);
+			this.tangentBox({ a, rx: podiumRx, width: chord, height: podiumHeight, depth: 0.8, yCenter: half(podiumHeight), mat: podiumMat });
+			this.tangentBox({ a, rx: podiumRx, width: chord, height: 0.4, depth: 1.0, yCenter: podiumHeight, mat: podiumCapMat });
 		}
 	}
 
@@ -245,13 +243,11 @@ export class CityColosseum {
 		for (let k = 0; k < rows; k++) {
 			const t0 = k / rows;
 			const t1 = (k + 1) / rows;
-			this.ringWall(rowRx(t0), midpoint(rowY(t0), rowY(t1)), rowY(t1) - rowY(t0), k % 2 === 0 ? lightRow : darkRow, {
-				openEnded: true,
-			});
+			this.ringWall({ rx: rowRx(t0), yCenter: midpoint(rowY(t0), rowY(t1)), height: rowY(t1) - rowY(t0), mat: k % 2 === 0 ? lightRow : darkRow });
 			this.tread(rowRx(t0), rowRx(t1), rowY(t1), treadMat);
 		}
 		// The crown: one light lip ring capping the top row.
-		this.ringWall(outerRx + 0.2, this.caveaTopY + 0.4, 0.8, crownMat, { openEnded: true });
+		this.ringWall({ rx: outerRx + 0.2, yCenter: this.caveaTopY + 0.4, height: 0.8, mat: crownMat });
 
 		// Radial vomitoria: a flight of dark treads down each aisle, cutting the rings
 		// so the rows do not read as one unbroken band.
@@ -289,7 +285,7 @@ export class CityColosseum {
 		const openingHalf = chord * 0.28;
 
 		// Plinth: one solid band at the foot so the ground arcade sits on stone.
-		this.ringWall(radiusX + 0.3, 0.6, 1.2, corniceMat);
+		this.ringWall({ rx: radiusX + 0.3, yCenter: 0.6, height: 1.2, mat: corniceMat });
 
 		for (let lvl = 0; lvl < levels - 1; lvl++) {
 			const yBase = lvl * tierH;
@@ -301,48 +297,49 @@ export class CityColosseum {
 				for (let i = 0; i < archesPerLevel; i++) {
 					const a = (i / archesPerLevel) * Math.PI * 2;
 					if (this.nearGate(a)) continue;
-					this.tangentBox(a, darkRx, panelChord, tierH, 0.6, yBase + half(tierH), shadowMat);
+					this.tangentBox({ a, rx: darkRx, width: panelChord, height: tierH, depth: 0.6, yCenter: yBase + half(tierH), mat: shadowMat });
 				}
 			} else {
-				this.ringWall(darkRx, yBase + half(tierH), tierH, shadowMat);
+				this.ringWall({ rx: darkRx, yCenter: yBase + half(tierH), height: tierH, mat: shadowMat });
 			}
 
 			// Piers and their round arches, one bay at a time, gates left open.
 			for (let i = 0; i < archesPerLevel; i++) {
 				const a = (i / archesPerLevel) * Math.PI * 2;
 				if (this.nearGate(a)) continue;
-				this.tangentBox(a, pierRx, pierWidth, tierH, 2.4, yBase + half(tierH), pierMat);
-				this.buildArch(a, pierRx, openingHalf, yBase + tierH * 0.66, pierMat);
+				this.tangentBox({ a, rx: pierRx, width: pierWidth, height: tierH, depth: 2.4, yCenter: yBase + half(tierH), mat: pierMat });
+				this.buildArch({ a, rx: pierRx, openingHalf, springY: yBase + tierH * 0.66, mat: pierMat });
 			}
 
 			// Entablature: a continuous open cornice band round the tier.
-			this.ringWall(radiusX + 0.5, yBase + tierH, 0.7, corniceMat);
+			this.ringWall({ rx: radiusX + 0.5, yCenter: yBase + tierH, height: 0.7, mat: corniceMat });
 		}
 
 		// The attic: a solid closed ring, tall and unbroken, with shallow pilasters
 		// and recessed square windows. This is the closed crown, and it carries the
 		// flat rim instead of a fence of masts.
 		const atticBase = (levels - 1) * tierH;
-		this.ringWall(radiusX - 0.4, atticBase + half(tierH), tierH, travertineMat);
+		this.ringWall({ rx: radiusX - 0.4, yCenter: atticBase + half(tierH), height: tierH, mat: travertineMat });
 		for (let i = 0; i < archesPerLevel; i++) {
 			const a = (i / archesPerLevel) * Math.PI * 2;
-			this.tangentBox(a, radiusX, 0.8, tierH, 0.4, atticBase + half(tierH), corniceMat);
+			this.tangentBox({ a, rx: radiusX, width: 0.8, height: tierH, depth: 0.4, yCenter: atticBase + half(tierH), mat: corniceMat });
 			if (i % 2 === 0) {
-				this.tangentBox(a, radiusX - 0.5, 1.4, 1.8, 0.5, atticBase + half(tierH), shadowMat);
+				this.tangentBox({ a, rx: radiusX - 0.5, width: 1.4, height: 1.8, depth: 0.5, yCenter: atticBase + half(tierH), mat: shadowMat });
 			}
 		}
 		// The crowning cornice: one clean horizontal rim around the top.
-		this.ringWall(radiusX + 0.6, wallHeight, 0.9, corniceMat);
+		this.ringWall({ rx: radiusX + 0.6, yCenter: wallHeight, height: 0.9, mat: corniceMat });
 
 		// The two gate portals: a tall arch marks each axial entrance, sitting flush
 		// in the wall face, with the opening itself left clear for the tunnel.
 		for (const a of [half(Math.PI), half(Math.PI) * 3]) {
-			this.buildArch(a, pierRx - 0.4, openingHalf * 1.7, tierH * 2 - 1.2, corniceMat);
+			this.buildArch({ a, rx: pierRx - 0.4, openingHalf: openingHalf * 1.7, springY: tierH * 2 - 1.2, mat: corniceMat });
 		}
 	}
 
 	/** A semicircular arch frame standing over one bay opening, facing outward. */
-	private buildArch(a: number, rx: number, openingHalf: number, springY: number, mat: Material): void {
+	private buildArch(options: { a: number; rx: number; openingHalf: number; springY: number; mat: Material }): void {
+		const { a, rx, openingHalf, springY, mat } = options;
 		const geo = new RingGeometry(openingHalf, openingHalf + 0.7, 14, 1, 0, Math.PI);
 		const arch = new Mesh(this.track(geo), mat);
 		arch.castShadow = true;
@@ -487,12 +484,13 @@ export class CityColosseum {
 		const { radiusX, arenaRadiusX, wallHeight } = COLOSSEUM_PLAN;
 
 		// The two axial approach tunnels stay clear; the walkable sand is city ground.
-		this.ringColliders(world, radiusX, 0, wallHeight, 'colosseum_facade');
-		this.ringColliders(world, arenaRadiusX + 1.0, 0, 3.0, 'colosseum_podium');
+		this.ringColliders(world, { rx: radiusX, minY: 0, maxY: wallHeight, label: 'colosseum_facade' });
+		this.ringColliders(world, { rx: arenaRadiusX + 1.0, minY: 0, maxY: 3.0, label: 'colosseum_podium' });
 	}
 
 	/** A closed ring of axis-aligned wall boxes around the ellipse, open at the two gates. */
-	private ringColliders(world: CollisionWorld, rx: number, minY: number, maxY: number, label: string): void {
+	private ringColliders(world: CollisionWorld, options: { rx: number; minY: number; maxY: number; label: string }): void {
+		const { rx, minY, maxY, label } = options;
 		const segments = 72;
 		const thickness = 1.6;
 		const h = half(thickness);

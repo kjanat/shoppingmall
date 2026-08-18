@@ -40,7 +40,7 @@ import { backToBackLabel, labelCanvas, labelTexture } from '#/util/label';
 import { clamp, half, midpoint, span } from '#/util/math';
 
 /** Roof Y — top of the mall roof slab. */
-export const ROOF_Y = levelY('roof');
+const ROOF_Y = levelY('roof');
 /** Everything on the helipad stands on the deck, which is a few cm proud of that slab. */
 const DECK_TOP = HELIPAD_DECK_TOP_Y;
 /** Hoever het luikblad opengaat, uit de openstand van zijn eigen mechanisme. */
@@ -52,7 +52,7 @@ const PAD_SINK = 0.01;
  * Secret service stairs (V1 → dak) + helicopter landing pad on the roof.
  * Reachable on foot; "land" = stand on the H.
  */
-export class Helipad {
+class Helipad {
 	readonly group = new Group();
 	readonly padCenter = new Vector3(HELIPAD_PAD_SPEC.center.x, DECK_TOP, HELIPAD_PAD_SPEC.center.z);
 	private materials: Material[] = [];
@@ -430,3 +430,5 @@ export class Helipad {
 		this.group.add(liftSign);
 	}
 }
+
+export { Helipad, ROOF_Y };

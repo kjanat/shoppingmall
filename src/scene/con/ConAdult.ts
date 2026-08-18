@@ -48,7 +48,7 @@ interface Scene {
 /**
  * Age-gated adult wing: darkroom + studio, explicit m/m fursuit scenes.
  */
-export class ConAdult {
+class ConAdult {
 	readonly group = new Group();
 	readonly filmCam = new PerspectiveCamera(50, 16 / 9, 0.1, 80);
 
@@ -391,28 +391,28 @@ export class ConAdult {
 		}
 	}
 
-	private makeScene(x: number, z: number, yaw: number, pose: Pose, label: string, studio: boolean): Scene {
+	private makeScene(...[x, z, yaw, pose, label, studio]: [number, number, number, Pose, string, boolean]): Scene {
 		const group = new Group();
 		group.position.set(x, CON_FLOOR_Y, z);
 		group.rotation.y = yaw;
 		const rand = mulberry32(hash(label));
 
-		const top = buildHeroSuit(
-			pickWith(SPECIES, rand),
-			pickWith(FUR_COLORS, rand),
-			pickWith(BELLY_COLORS, rand),
-			pickWith(ACCENT_COLORS, rand),
+		const top = buildHeroSuit({
+			species: pickWith(SPECIES, rand),
+			fur: pickWith(FUR_COLORS, rand),
+			belly: pickWith(BELLY_COLORS, rand),
+			cloth: pickWith(ACCENT_COLORS, rand),
 			rand,
-			{ male: true },
-		);
-		const bottom = buildHeroSuit(
-			pickWith(SPECIES, rand),
-			pickWith(FUR_COLORS, rand),
-			pickWith(BELLY_COLORS, rand),
-			pickWith(ACCENT_COLORS, rand),
+			opts: { male: true },
+		});
+		const bottom = buildHeroSuit({
+			species: pickWith(SPECIES, rand),
+			fur: pickWith(FUR_COLORS, rand),
+			belly: pickWith(BELLY_COLORS, rand),
+			cloth: pickWith(ACCENT_COLORS, rand),
 			rand,
-			{ male: true },
-		);
+			opts: { male: true },
+		});
 
 		const matPad = new MeshBasicMaterial({
 			color: studio ? 0xff4488 : 0xaa1133,
@@ -646,3 +646,5 @@ function hash(s: string): number {
 	for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
 	return h;
 }
+
+export { ConAdult };

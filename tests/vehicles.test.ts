@@ -94,7 +94,7 @@ describe('driving off the top landing', () => {
 	const heights: number[] = [landing.y];
 	let frames = 0;
 	while (frames < Math.ceil(10 / FRAME)) {
-		stepVehicleGround(world, state, x, z, FRAME, { floorOverride: null, ceiling: CEILING });
+		stepVehicleGround({ world, state, x, z, dt: FRAME, floorOverride: null, ceiling: CEILING });
 		heights.push(state.y);
 		frames++;
 		if (state.grounded && frames > 1) break;

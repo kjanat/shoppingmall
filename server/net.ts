@@ -37,7 +37,7 @@ function isPrivate(ip: string): boolean {
  * voor. Anders de laatste entry en niet de eerste: een proxy plakt de afzender
  * achteraan, dus alles daarvóór kan de bezoeker zelf hebben meegestuurd.
  */
-export function clientIp(req: Request, peer: string): string {
+function clientIp(req: Request, peer: string): string {
 	if (!isPrivate(peer)) return peer;
 	const cdn = req.headers.get('cf-connecting-ip')?.trim();
 	if (cdn) return cdn;
@@ -98,7 +98,9 @@ async function outwardIps(): Promise<Set<string>> {
  * binnen komen: de proxy vult dit veld zelf in en de bezoeker kan er niet meer
  * bij, want alleen de laatste entry telt.
  */
-export async function isOurs(ip: string): Promise<boolean> {
+async function isOurs(ip: string): Promise<boolean> {
 	if (isPrivate(ip)) return true;
 	return (await outwardIps()).has(key(ip));
 }
+
+export { clientIp, isOurs };

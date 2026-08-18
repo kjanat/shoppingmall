@@ -49,7 +49,7 @@ const ROWS: [id: string, label: string][] = [
 ];
 
 /** What the frame loop hands over once per frame. */
-export interface PerfFrame {
+interface PerfFrame {
 	/** Unclamped wall time since the previous frame. */
 	frameMs: number;
 	drawCalls: number;
@@ -152,7 +152,7 @@ function heapMb(): number | null {
  * its timestamp chain on `visibilitychange`, because no size threshold can
  * tell a hidden tab from a genuinely terrible frame.
  */
-export class PerfOverlay {
+class PerfOverlay {
 	private readonly host: HTMLElement;
 	private readonly chip: HTMLElement;
 	private readonly panel: HTMLElement;
@@ -389,3 +389,6 @@ export class PerfOverlay {
 		ctx.stroke();
 	}
 }
+
+export type { PerfFrame };
+export { PerfOverlay };

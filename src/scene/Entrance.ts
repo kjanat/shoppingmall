@@ -163,7 +163,8 @@ export class Entrance {
 		return this.track(lit({ color: GLASS_COLOR, transparent: true, opacity, roughness: 0.08, metalness: 0.2 }));
 	}
 
-	private box(material: Material, w: number, h: number, d: number, x: number, y: number, z: number): Mesh {
+	private box(material: Material, ...args: [number, number, number, number, number, number]): Mesh {
+		const [w, h, d, x, y, z] = args;
 		const mesh = new Mesh(new BoxGeometry(w, h, d), material);
 		mesh.position.set(x, y, z);
 		this.group.add(mesh);

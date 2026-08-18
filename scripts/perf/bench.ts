@@ -119,7 +119,12 @@ async function readBaseline(name: string): Promise<Run | null> {
 	};
 }
 
-const session = await openGame(WIDTH, HEIGHT, argv.includes('--fresh-profile'), undefined, flagValue('--batch-mode'));
+const session = await openGame({
+	width: WIDTH,
+	height: HEIGHT,
+	freshProfile: argv.includes('--fresh-profile'),
+	batchOverride: flagValue('--batch-mode'),
+});
 let run: Run;
 const warnings: string[] = [];
 

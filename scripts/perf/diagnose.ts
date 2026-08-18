@@ -159,13 +159,15 @@ const zoneCullOverride = zoneCullFlag === undefined ? undefined : zoneCullFlag !
 const shellShadowFlag = flagValue('--shell-shadow');
 const shellShadowOverride = shellShadowFlag === undefined ? undefined : shellShadowFlag !== 'off' && shellShadowFlag !== '0';
 const session = await openGame(
-	WIDTH,
-	HEIGHT,
-	argv.includes('--fresh-profile'),
-	targetUrl,
-	batchOverride,
-	zoneCullOverride,
-	shellShadowOverride,
+	{
+		width: WIDTH,
+		height: HEIGHT,
+		freshProfile: argv.includes('--fresh-profile'),
+		url: targetUrl,
+		batchOverride,
+		zoneCull: zoneCullOverride,
+		shellShadow: shellShadowOverride,
+	},
 );
 try {
 	const { readyMs, settleMs } = await session.boot();

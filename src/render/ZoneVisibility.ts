@@ -48,23 +48,23 @@ const zoneSpans = new WeakMap<Object3D, number>();
  * terwijl de camera nog onder de V1-plaat de schacht in kijkt: geen enkele
  * V1→V0-portaalkegel dekt het dan, en het verdwijnt terwijl je er recht naar kijkt.
  */
-export function tagZoneSpan(object: Object3D, mask: number): void {
+function tagZoneSpan(object: Object3D, mask: number): void {
 	zoneSpans.set(object, (zoneSpans.get(object) ?? 0) | mask);
 }
 
 /** De zones die dit object bovenop zijn doos verklaart; 0 als het niets verklaarde. */
-export function zoneSpanOf(object: Object3D): number {
+function zoneSpanOf(object: Object3D): number {
 	return zoneSpans.get(object) ?? 0;
 }
 
 /** Wat één feature aan losse objecten in de scene heeft staan. */
-export interface OccupantOwnerStats {
+interface OccupantOwnerStats {
 	name: string;
 	occupants: number;
 	casters: number;
 }
 
-export interface ZoneVisibilityStats {
+interface ZoneVisibilityStats {
 	occupants: number;
 	dynamic: number;
 	hidden: number;
@@ -115,7 +115,7 @@ function scannedZoneMask(): number {
 	});
 }
 
-export class ZoneVisibility {
+class ZoneVisibility {
 	private readonly ownerRows: OccupantOwnerStats[] = [];
 	readonly stats: ZoneVisibilityStats = { occupants: 0, dynamic: 0, hidden: 0, owners: this.ownerRows };
 	private readonly occupants: Occupant[] = [];
@@ -193,3 +193,6 @@ export class ZoneVisibility {
 		this.stats.hidden = 0;
 	}
 }
+
+export { tagZoneSpan, zoneSpanOf, ZoneVisibility };
+export type { OccupantOwnerStats, ZoneVisibilityStats };

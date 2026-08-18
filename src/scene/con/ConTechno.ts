@@ -70,7 +70,7 @@ export class ConTechno {
 		if (step === 0 || step === 8) this.blip(t0, 90, 0.2, 'sawtooth', 0.2, false);
 	}
 
-	private blip(t0: number, freq: number, dur: number, type: OscillatorType, gain: number, drop: boolean): void {
+	private blip(...[t0, freq, dur, type, gain, drop]: [number, number, number, OscillatorType, number, boolean]): void {
 		if (!(this.ctx && this.master)) return;
 		const osc = this.ctx.createOscillator();
 		const g = this.ctx.createGain();

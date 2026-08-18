@@ -55,7 +55,7 @@ const BAG_TILT_Z = 0.5;
  * Gebedsruimte — Allahu Trapbar loop + full-room chants + sacrificial goat mascot.
  * Prayer poses lock to the trapbar BPM / playback clock.
  */
-export class PrayerRoom {
+class PrayerRoom {
 	readonly group = new Group();
 	readonly pos = new Vector3(PRAYER_ROOM_SPEC.center.x, levelY('v0'), PRAYER_ROOM_SPEC.center.z);
 	private materials: Material[] = [];
@@ -867,7 +867,8 @@ export class PrayerRoom {
 	}
 
 	/** Classic sticky note: paper color + sharpie text + slight curl shadow */
-	private makePostIt(lines: string[], bg: string, fg: string, worldW: number, worldH: number): Group {
+	private makePostIt(...args: [string[], string, string, number, number]): Group {
+		const [lines, bg, fg, worldW, worldH] = args;
 		const { canvas: c, ctx } = labelCanvas(256, 256);
 		// Paper
 		ctx.fillStyle = bg;
@@ -1449,3 +1450,5 @@ function startAllahuLoop(ctx: AudioContext, dest: AudioNode): { stop: () => void
 		},
 	};
 }
+
+export { PrayerRoom };

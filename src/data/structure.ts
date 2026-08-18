@@ -1,19 +1,18 @@
 import type { CardinalSide, Vec2, Vec3 } from '#/data/spatial';
 import { half, midpoint, span } from '#/util/math';
 
-export type { CardinalSide };
-export type RectangleCorner = 'north-west' | 'north-east' | 'south-west' | 'south-east';
+type RectangleCorner = 'north-west' | 'north-east' | 'south-west' | 'south-east';
 
 const CARDINAL_SIDES = ['north', 'south', 'west', 'east'] as const satisfies readonly CardinalSide[];
 const RECTANGLE_CORNERS = ['north-west', 'north-east', 'south-west', 'south-east'] as const satisfies readonly RectangleCorner[];
 
-export type CardinalPanelSpec = Readonly<{
+type CardinalPanelSpec = Readonly<{
 	id: CardinalSide;
 	center: Vec2;
 	size: Readonly<{ width: number; depth: number }>;
 }>;
 
-export type CardinalPanelLayout = Readonly<{
+type CardinalPanelLayout = Readonly<{
 	center: Vec2;
 	offset: Vec2;
 	span: Readonly<{ width: number; depth: number }>;
@@ -21,26 +20,26 @@ export type CardinalPanelLayout = Readonly<{
 	sides?: readonly CardinalSide[];
 }>;
 
-export type RectangleCornerPoint = Readonly<{
+type RectangleCornerPoint = Readonly<{
 	id: RectangleCorner;
 	center: Vec2;
 }>;
 
-export type RectangleCornerLayout = Readonly<{
+type RectangleCornerLayout = Readonly<{
 	center: Vec2;
 	offset: Vec2;
 }>;
 
-export type BoxStructureSpec = Readonly<{
+type BoxStructureSpec = Readonly<{
 	id: string;
 	position: Vec3;
 	size: Readonly<{ width: number; height: number; depth: number }>;
 }>;
 
 /** A perimeter wall box, still carrying the side it closes so callers can read its inner face. */
-export type CardinalBoxStructureSpec = BoxStructureSpec & Readonly<{ id: CardinalSide }>;
+type CardinalBoxStructureSpec = BoxStructureSpec & Readonly<{ id: CardinalSide }>;
 
-export type RectangularPerimeterSpec = Readonly<{
+type RectangularPerimeterSpec = Readonly<{
 	footprint: Readonly<{ width: number; depth: number }>;
 	vertical: Readonly<{ min: number; max: number }>;
 	thickness: number;
@@ -63,7 +62,7 @@ function cardinalPanel(layout: CardinalPanelLayout, side: CardinalSide): Cardina
 }
 
 /** Expands selected named sides of a rectangle into horizontal wall panels. */
-export function cardinalWallPanels(layout: CardinalPanelLayout): readonly CardinalPanelSpec[] {
+function cardinalWallPanels(layout: CardinalPanelLayout): readonly CardinalPanelSpec[] {
 	return (layout.sides ?? CARDINAL_SIDES).map((side) => cardinalPanel(layout, side));
 }
 
@@ -80,12 +79,12 @@ function rectangleCorner(layout: RectangleCornerLayout, corner: RectangleCorner)
 }
 
 /** Expands a rectangle into its four named corner points. */
-export function rectangleCornerPoints(layout: RectangleCornerLayout): readonly RectangleCornerPoint[] {
+function rectangleCornerPoints(layout: RectangleCornerLayout): readonly RectangleCornerPoint[] {
 	return RECTANGLE_CORNERS.map((corner) => rectangleCorner(layout, corner));
 }
 
 /** Expands one rectangular-shell fact into its four named wall boxes. */
-export function rectangularPerimeterWalls({
+function rectangularPerimeterWalls({
 	footprint,
 	vertical,
 	thickness,
@@ -100,3 +99,6 @@ export function rectangularPerimeterWalls({
 		thickness,
 	}).map(({ id, center, size }) => ({ id, position: { ...center, y }, size: { ...size, height } }));
 }
+
+export { cardinalWallPanels, rectangleCornerPoints, rectangularPerimeterWalls };
+export type { CardinalSide, RectangleCorner, CardinalPanelSpec, CardinalPanelLayout, RectangleCornerPoint, RectangleCornerLayout, BoxStructureSpec, CardinalBoxStructureSpec, RectangularPerimeterSpec };

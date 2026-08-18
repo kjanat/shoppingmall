@@ -1,4 +1,4 @@
-export type Footprint = Readonly<{
+type Footprint = Readonly<{
 	width: number;
 	depth: number;
 }>;
@@ -12,17 +12,20 @@ function expanded(source: Footprint, margin: number): Footprint {
 }
 
 /** Walkable mall slabs and the store ring they support. */
-export const MALL_FOOTPRINT = footprint(72, 48);
+const MALL_FOOTPRINT = footprint(72, 48);
 /** Outside face of the 0.5 m perimeter wall around the mall slabs. */
-export const MALL_SHELL = expanded(MALL_FOOTPRINT, 0.5);
+const MALL_SHELL = expanded(MALL_FOOTPRINT, 0.5);
 /** The V1 floor opening and roof skylight centered on world origin. */
-export const ATRIUM_VOID = footprint(16, 12);
+const ATRIUM_VOID = footprint(16, 12);
 /** Collision guard around the open V1 slab edge. */
-export const ATRIUM_BARRIER = expanded(ATRIUM_VOID, 0.5);
+const ATRIUM_BARRIER = expanded(ATRIUM_VOID, 0.5);
 /** Underground parking shell centered under the mall. */
-export const PARKING_FOOTPRINT = footprint(64, 42);
+const PARKING_FOOTPRINT = footprint(64, 42);
 /**
  * Far clip for authored city content.
  * Must clear the fur-con far corner (CON_LOT ~ x 500) and the expanded SW city (mountain/favela).
  */
-export const WORLD_VIEW_DISTANCE = 720;
+const WORLD_VIEW_DISTANCE = 720;
+
+export { MALL_FOOTPRINT, MALL_SHELL, ATRIUM_VOID, ATRIUM_BARRIER, PARKING_FOOTPRINT, WORLD_VIEW_DISTANCE };
+export type { Footprint };

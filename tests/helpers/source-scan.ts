@@ -14,23 +14,23 @@ import { join, resolve } from 'node:path';
  * content and back.
  */
 
-export const ROOT = resolve(import.meta.dir, '..', '..');
+const ROOT = resolve(import.meta.dir, '..', '..');
 
-export interface Hit {
+interface Hit {
 	index: number;
 	message: string;
 }
-export interface Exemption {
+interface Exemption {
 	path: string;
 	fragment: string;
 	reason: string;
 }
-export interface ExemptFile {
+interface ExemptFile {
 	path: string;
 	reason: string;
 }
 
-export interface Grep {
+interface Grep {
 	files: readonly string[];
 	exemptFiles: readonly ExemptFile[];
 	exemptions: readonly Exemption[];
@@ -38,13 +38,13 @@ export interface Grep {
 }
 
 /** Every .ts file under `dir`, as a path from the repo root. */
-export async function filesIn(dir: string): Promise<string[]> {
+async function filesIn(dir: string): Promise<string[]> {
 	const out: string[] = [];
 	for await (const name of new Bun.Glob('**/*.ts').scan({ cwd: join(ROOT, dir) })) out.push(join(dir, name));
 	return out.sort((a, b) => a.localeCompare(b));
 }
 
-export function read(path: string): Promise<string> {
+function read(path: string): Promise<string> {
 	return Bun.file(join(ROOT, path)).text();
 }
 
@@ -186,7 +186,7 @@ function codeInTemplate(text: string, out: string[], start: number): number {
 }
 
 /** The same text, same length and same line breaks, without comments and literals. */
-export function withoutText(text: string): string {
+function withoutText(text: string): string {
 	// split('') and not [...text]: the spread counts codepoints, so one emoji in a string
 	// shifts every index after it away from the regex position.
 	const out = text.split('');
@@ -228,7 +228,7 @@ export function withoutText(text: string): string {
 }
 
 /** The body of a class method, from its opening brace to the matching close. */
-export function methodBody(text: string, name: string): string {
+function methodBody(text: string, name: string): string {
 	const head = text.indexOf(`private ${name}(`);
 	if (head < 0) throw new Error(`no method ${name} in the source any more — renamed or rewritten?`);
 	const open = text.indexOf('{', head);
@@ -246,7 +246,7 @@ export function methodBody(text: string, name: string): string {
 }
 
 /** The arguments of every call `pattern` finds, split at depth one. */
-export function callArguments(text: string, pattern: RegExp): { name: string; args: string[]; index: number }[] {
+function callArguments(text: string, pattern: RegExp): { name: string; args: string[]; index: number }[] {
 	const out: { name: string; args: string[]; index: number }[] = [];
 	for (const match of text.matchAll(pattern)) {
 		const name = match[1];
@@ -279,7 +279,7 @@ export function callArguments(text: string, pattern: RegExp): { name: string; ar
  * One grep with its tables around it: an exempt file has to exist, an exemption has to
  * match something, and a complaint carries the line number and the line itself.
  */
-export async function grep(job: Grep): Promise<string[]> {
+async function grep(job: Grep): Promise<string[]> {
 	const complaints: string[] = [];
 	const used = new Set<string>();
 
@@ -317,3 +317,6 @@ export async function grep(job: Grep): Promise<string[]> {
 
 	return complaints;
 }
+
+export type { ExemptFile, Exemption, Grep, Hit };
+export { ROOT, callArguments, filesIn, grep, methodBody, read, withoutText };

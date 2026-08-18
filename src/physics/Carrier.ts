@@ -9,7 +9,7 @@ import type { MallWorldEntity } from '#/data/world';
  * dat ene object. Dit is de policy-vorm: de entiteit zegt óf er gedragen
  * wordt, de receiver zegt wíe meedoet, en niemand wordt bij naam genoemd.
  */
-export type Carriable = Readonly<{
+type Carriable = Readonly<{
 	id: string;
 	receiver: InteractionReceiver;
 	position: () => Readonly<{ x: number; y: number; z: number }>;
@@ -29,7 +29,7 @@ function eligible(receiver: InteractionReceiver): boolean {
 	);
 }
 
-export class CabinCarrier {
+class CabinCarrier {
 	private readonly riders: Carriable[] = [];
 	private readonly carries: boolean;
 
@@ -55,3 +55,6 @@ export class CabinCarrier {
 		}
 	}
 }
+
+export { CabinCarrier };
+export type { Carriable };

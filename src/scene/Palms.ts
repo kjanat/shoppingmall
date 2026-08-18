@@ -12,12 +12,12 @@ export class PalmForest {
 		this.group.name = 'palms';
 
 		// Atrium ring AROUND fountain — never on top of it (radius ~3+)
-		this.plant(-4.2, 0, 0, 1.05, 0);
-		this.plant(4.2, 0, 0, 1.0, 0.5);
-		this.plant(0, 0, -4.2, 0.95, 1.1);
-		this.plant(0, 0, 4.2, 0.95, 1.6);
-		this.plant(-3.5, 0, 3.2, 0.85, 2.0);
-		this.plant(3.5, 0, -3.2, 0.85, 2.5);
+		this.plant({ x: -4.2, y: 0, z: 0, scale: 1.05, phase: 0 });
+		this.plant({ x: 4.2, y: 0, z: 0, scale: 1.0, phase: 0.5 });
+		this.plant({ x: 0, y: 0, z: -4.2, scale: 0.95, phase: 1.1 });
+		this.plant({ x: 0, y: 0, z: 4.2, scale: 0.95, phase: 1.6 });
+		this.plant({ x: -3.5, y: 0, z: 3.2, scale: 0.85, phase: 2.0 });
+		this.plant({ x: 3.5, y: 0, z: -3.2, scale: 0.85, phase: 2.5 });
 
 		// Corridor planters floor 0
 		const f0: [number, number, number][] = [
@@ -35,7 +35,7 @@ export class PalmForest {
 			[12, 0, 0],
 		];
 		f0.forEach(([x, y, z], i) => {
-			this.plant(x, y, z, 0.7 + (i % 3) * 0.08, i * 0.7);
+			this.plant({ x, y, z, scale: 0.7 + (i % 3) * 0.08, phase: i * 0.7 });
 		});
 
 		// Floor 1 balcony palms
@@ -52,12 +52,12 @@ export class PalmForest {
 			[10, 6, 2],
 		];
 		f1.forEach(([x, y, z], i) => {
-			this.plant(x, y, z, 0.65 + (i % 4) * 0.06, i * 0.9 + 3);
+			this.plant({ x, y, z, scale: 0.65 + (i % 4) * 0.06, phase: i * 0.9 + 3 });
 		});
 
 		// Balcony accents (not mid-void)
-		this.plant(14, 6, -12, 0.9, 5);
-		this.plant(-14, 6, -12, 0.85, 5.5);
+		this.plant({ x: 14, y: 6, z: -12, scale: 0.9, phase: 5 });
+		this.plant({ x: -14, y: 6, z: -12, scale: 0.85, phase: 5.5 });
 	}
 
 	update(t: number): void {
@@ -73,7 +73,7 @@ export class PalmForest {
 		return m;
 	}
 
-	private plant(x: number, y: number, z: number, scale: number, phase: number): void {
+	private plant({ x, y, z, scale, phase }: { x: number; y: number; z: number; scale: number; phase: number }): void {
 		const g = new Group();
 		g.position.set(x, y, z);
 		g.scale.setScalar(scale);

@@ -87,7 +87,7 @@ interface Placement {
 	ry: number;
 }
 
-const P = (x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, ry = 0): Placement => ({ x, y, z, sx, sy, sz, ry });
+const P = ({ x, y, z, sx = 1, sy = 1, sz = 1, ry = 0 }: { x: number; y: number; z: number; sx?: number; sy?: number; sz?: number; ry?: number }): Placement => ({ x, y, z, sx, sy, sz, ry });
 
 export class CityGarage {
 	readonly group = new Group();
@@ -132,8 +132,8 @@ export class CityGarage {
 	/** Dekken, kolommen, borstweringen en tl-balken — het betonnen casco. */
 	private buildStructure(): void {
 		// Vijf platen: dunne vloerplaat op maaiveld + vier dekken (waarvan één dak).
-		const slabs: Placement[] = [P(CX, half(GROND_DEK_Y), CZ, W, GROND_DEK_Y, D)];
-		for (let i = 1; i <= DECKS; i++) slabs.push(P(CX, i * FLOOR_H, CZ, W, SLAB_T, D));
+		const slabs: Placement[] = [P({ x: CX, y: half(GROND_DEK_Y), z: CZ, sx: W, sy: GROND_DEK_Y, sz: D })];
+		for (let i = 1; i <= DECKS; i++) slabs.push(P({ x: CX, y: i * FLOOR_H, z: CZ, sx: W, sy: SLAB_T, sz: D }));
 		const slabMesh = this.fill(this.unitBox, this.beton, slabs, 'garage_dekken');
 		slabMesh.receiveShadow = true;
 
@@ -144,7 +144,7 @@ export class CityGarage {
 		const kolomMidden = midpoint(GROND_DEK_Y, GARAGE_PLAN.columnTopY);
 		for (const x of COL_X) {
 			for (const z of COL_Z) {
-				cols.push(P(x, kolomMidden, z, GARAGE_PLAN.columnSize, kolomHoogte, GARAGE_PLAN.columnSize));
+				cols.push(P({ x, y: kolomMidden, z, sx: GARAGE_PLAN.columnSize, sy: kolomHoogte, sz: GARAGE_PLAN.columnSize }));
 			}
 		}
 		this.fill(this.unitBox, this.betonDonker, cols, 'garage_kolommen');
@@ -153,14 +153,10 @@ export class CityGarage {
 		// hoog genoeg om er een verzekeringspolis op te baseren. Het zijn dezelfde
 		// dozen die de collision als kerb gebruikt.
 		const borst: Placement[] = GARAGE_PARAPETS.map((p) =>
-			P(
-				midpoint(p.minX, p.maxX),
-				midpoint(p.minY, p.maxY),
-				midpoint(p.minZ, p.maxZ),
-				span(p.minX, p.maxX),
-				span(p.minY, p.maxY),
-				span(p.minZ, p.maxZ),
-			),
+				P({
+					x: midpoint(p.minX, p.maxX), y: midpoint(p.minY, p.maxY), z: midpoint(p.minZ, p.maxZ),
+					sx: span(p.minX, p.maxX), sy: span(p.minY, p.maxY), sz: span(p.minZ, p.maxZ),
+				}),
 		);
 		this.fill(this.unitBox, this.beton, borst, 'garage_borstwering');
 
@@ -170,7 +166,7 @@ export class CityGarage {
 		const strips: Placement[] = [];
 		for (let i = 1; i <= DECKS; i++) {
 			const y = i * FLOOR_H - half(SLAB_T) - 0.05;
-			for (const z of [50.5, 59.5]) strips.push(P(CX, y, z, 21, 0.08, 0.24));
+			for (const z of [50.5, 59.5]) strips.push(P({ x: CX, y, z, sx: 21, sy: 0.08, sz: 0.24 }));
 		}
 		this.fill(this.unitBox, stripMat, strips, 'garage_tl');
 	}
@@ -187,21 +183,13 @@ export class CityGarage {
 		for (const run of GARAGE_RAMP_RUNS) this.addRampPlate(run);
 
 		for (const bordes of GARAGE_RAMP_LANDINGS) {
-			this.addBox(
-				this.beton,
-				span(bordes.minX, bordes.maxX),
-				RAMP.thickness,
-				span(bordes.minZ, bordes.maxZ),
-				midpoint(bordes.minX, bordes.maxX),
-				bordes.y - half(RAMP.thickness),
-				midpoint(bordes.minZ, bordes.maxZ),
-			);
+			this.addBox({ mat: this.beton, sx: span(bordes.minX, bordes.maxX), sy: RAMP.thickness, sz: span(bordes.minZ, bordes.maxZ), x: midpoint(bordes.minX, bordes.maxX), y: bordes.y - half(RAMP.thickness), z: midpoint(bordes.minZ, bordes.maxZ) });
 		}
 
 		// Steunpoten — drie stuks, want beton dat zichtbaar zweeft roept vragen op.
 		for (const z of RAMP.legZ) {
 			const top = garageEastSpiralY(z) - RAMP.thickness;
-			this.addBox(this.betonDonker, RAMP.legSize, top, RAMP.legSize, GARAGE_RAMP_EAST_X, half(top), z);
+			this.addBox({ mat: this.betonDonker, sx: RAMP.legSize, sy: top, sz: RAMP.legSize, x: GARAGE_RAMP_EAST_X, y: half(top), z });
 		}
 	}
 
@@ -222,32 +210,12 @@ export class CityGarage {
 		const y = midpoint(run.start.y, run.end.y);
 		const z = midpoint(run.start.z, run.end.z);
 		if (langsX) {
-			this.addBox(this.beton, lengte, RAMP.thickness, run.width, x + Math.sin(hoek) * zak, y - Math.cos(hoek) * zak, z, 0, hoek);
-			this.addBox(
-				this.betonDonker,
-				lengte,
-				RAMP.guard.height,
-				RAMP.guard.thickness,
-				x - Math.sin(hoek) * leuning,
-				y + Math.cos(hoek) * leuning,
-				GARAGE_RAMP_SOUTH_EDGE_Z - half(RAMP.guard.thickness),
-				0,
-				hoek,
-			);
+			this.addBox({ mat: this.beton, sx: lengte, sy: RAMP.thickness, sz: run.width, x: x + Math.sin(hoek) * zak, y: y - Math.cos(hoek) * zak, z, rz: hoek });
+			this.addBox({ mat: this.betonDonker, sx: lengte, sy: RAMP.guard.height, sz: RAMP.guard.thickness, x: x - Math.sin(hoek) * leuning, y: y + Math.cos(hoek) * leuning, z: GARAGE_RAMP_SOUTH_EDGE_Z - half(RAMP.guard.thickness), rz: hoek });
 			return;
 		}
-		this.addBox(this.beton, run.width, RAMP.thickness, lengte, x, y - Math.cos(hoek) * zak, z - Math.sin(hoek) * zak, hoek, 0);
-		this.addBox(
-			this.betonDonker,
-			RAMP.guard.thickness,
-			RAMP.guard.height,
-			lengte,
-			GARAGE_RAMP_EAST_EDGE_X - half(RAMP.guard.thickness),
-			y + Math.cos(hoek) * leuning,
-			z + Math.sin(hoek) * leuning,
-			hoek,
-			0,
-		);
+		this.addBox({ mat: this.beton, sx: run.width, sy: RAMP.thickness, sz: lengte, x, y: y - Math.cos(hoek) * zak, z: z - Math.sin(hoek) * zak, rx: hoek });
+		this.addBox({ mat: this.betonDonker, sx: RAMP.guard.thickness, sy: RAMP.guard.height, sz: lengte, x: GARAGE_RAMP_EAST_EDGE_X - half(RAMP.guard.thickness), y: y + Math.cos(hoek) * leuning, z: z + Math.sin(hoek) * leuning, rx: hoek });
 	}
 
 	/** Groot blauw P-bord op de westgevel (richting mall), met VOL in rood eronder. */
@@ -273,7 +241,7 @@ export class CityGarage {
 		this.textures.push(tex);
 
 		// Donker draagvlak over de open gevel, anders hangt het bord in het niets.
-		this.addBox(this.betonDonker, 0.14, 4.9, 3.4, X0 + 0.02, 8.6, CZ);
+		this.addBox({ mat: this.betonDonker, sx: 0.14, sy: 4.9, sz: 3.4, x: X0 + 0.02, y: 8.6, z: CZ });
 		const geo = new PlaneGeometry(3.1, 4.65);
 		this.geometries.push(geo);
 		const sign = new Mesh(geo, this.track(new MeshBasicMaterial({ map: tex, toneMapped: false })));
@@ -316,11 +284,11 @@ export class CityGarage {
 			for (let n = 0; n < at(perDek, dek); n++) {
 				const [x, z] = at(vakken, n);
 				const ry = rand() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
-				bodies.push(P(x, base, z, 1, 1, 1, ry));
+				bodies.push(P({ x, y: base, z, ry }));
 				const cos = Math.cos(ry);
 				const sin = Math.sin(ry);
 				for (const [wx, wz] of WHEEL_OFFSETS) {
-					wheels.push(P(x + wx * cos + wz * sin, base + 0.38, z - wx * sin + wz * cos, 1, 1, 1, ry));
+					wheels.push(P({ x: x + wx * cos + wz * sin, y: base + 0.38, z: z - wx * sin + wz * cos, ry }));
 				}
 			}
 		}
@@ -348,8 +316,8 @@ export class CityGarage {
 	 */
 	private buildTicketMachine(): void {
 		const scherm = this.track(new MeshBasicMaterial({ color: 0x8fd8a0, toneMapped: false }));
-		this.addBox(this.betonDonker, 0.55, 1.15, 0.45, 56.9, 0.58, 49.2); // kaartautomaat
-		this.addBox(scherm, 0.05, 0.3, 0.32, 56.6, 0.85, 49.2); // schermpje: altijd groen, betekent niets
+		this.addBox({ mat: this.betonDonker, sx: 0.55, sy: 1.15, sz: 0.45, x: 56.9, y: 0.58, z: 49.2 }); // kaartautomaat
+		this.addBox({ mat: scherm, sx: 0.05, sy: 0.3, sz: 0.32, x: 56.6, y: 0.85, z: 49.2 }); // schermpje: altijd groen, betekent niets
 	}
 
 	// ── gereedschap ─────────────────────────────────────────────
@@ -372,7 +340,8 @@ export class CityGarage {
 	}
 
 	/** Losse geschaalde unit-kubus voor eenmalige onderdelen (platen, poten, paal). */
-	private addBox(mat: Material, sx: number, sy: number, sz: number, x: number, y: number, z: number, rx = 0, rz = 0): void {
+	private addBox(options: { mat: Material; sx: number; sy: number; sz: number; x: number; y: number; z: number; rx?: number; rz?: number }): void {
+		const { mat, sx, sy, sz, x, y, z, rx = 0, rz = 0 } = options;
 		const m = new Mesh(this.unitBox, mat);
 		m.scale.set(sx, sy, sz);
 		m.position.set(x, y, z);

@@ -30,7 +30,7 @@ import { clamp, ease, half } from '#/util/math';
  * Genoeg om hem terug te zetten nadat de wereld opnieuw is opgebouwd; welk
  * voertuig het was staat erbuiten, want dat weet de aanroeper al.
  */
-export interface VehicleRide {
+interface VehicleRide {
 	/** Welk exemplaar: de naam van de huurauto, leeg waar er maar één is. */
 	id: string;
 	x: number;
@@ -41,7 +41,7 @@ export interface VehicleRide {
 }
 
 /** Arcade drive input from the player */
-export interface DriveInput {
+interface DriveInput {
 	/** -1..1 forward (W/S) */
 	throttle: number;
 	/** -1..1 steer left/right (A/D or Q/E) */
@@ -84,7 +84,7 @@ const SEAT_BACK = 0.05;
  * Empty ride-on floor scrubber — same class of buggy Wei Chen drives,
  * parked for the player to hop in and race the mall corridors.
  */
-export class ScrubberBuggy {
+class ScrubberBuggy {
 	readonly group = new Group();
 	readonly pos = new Vector3().copy(PARK);
 	readonly radius = RADIUS;
@@ -301,7 +301,15 @@ export class ScrubberBuggy {
 		// Cabine > staand op de vloer > ballistisch. Elke frame naar de vloerhoogte
 		// snappen teleporteerde het karretje van de garagehelling af naar straatniveau;
 		// nu valt het met dezelfde GRAVITY als de speler. Zelfde stap als de huurauto's.
-		if (stepVehicleGround(this.world, this.ground, nx, nz, dt, { floorOverride: this.floorOverride, ceiling: CEILING })) {
+		if (stepVehicleGround({
+			world: this.world,
+			state: this.ground,
+			x: nx,
+			z: nz,
+			dt,
+			floorOverride: this.floorOverride,
+			ceiling: CEILING,
+		})) {
 			this.speed *= LANDING_GRIP;
 		}
 		const feetY = this.ground.y;
@@ -518,7 +526,8 @@ export class ScrubberBuggy {
 		return g;
 	}
 
-	private makePlate(text: string, bg: string, fg: string, w: number, h: number): CanvasTexture {
+	private makePlate(...args: [string, string, string, number, number]): CanvasTexture {
+		const [text, bg, fg, w, h] = args;
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);
@@ -539,3 +548,6 @@ export class ScrubberBuggy {
 		return new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
 	}
 }
+
+export { ScrubberBuggy };
+export type { DriveInput, VehicleRide };

@@ -155,7 +155,13 @@ const route = profileRoute(flagValue('--route') ?? FULL_MALL_ROUTE.id, seed);
 const startPoint = route.points[0];
 if (!startPoint) throw new Error(`route '${route.id}' has no points`);
 const freezeSimulation = !process.argv.includes('--live-sim');
-const session = await openGame(WIDTH, HEIGHT, process.argv.includes('--fresh-profile'), targetUrl, batchOverride);
+const session = await openGame({
+	width: WIDTH,
+	height: HEIGHT,
+	freshProfile: process.argv.includes('--fresh-profile'),
+	url: targetUrl,
+	batchOverride,
+});
 const results: SegmentResult[] = [];
 let artifact: RouteArtifact;
 

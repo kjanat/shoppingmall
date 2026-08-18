@@ -8,7 +8,7 @@
  */
 import { pick } from '#/util/rand';
 
-export interface SimPersona {
+interface SimPersona {
 	name: string;
 	mood: string;
 	lifeLine: string;
@@ -20,7 +20,7 @@ export interface SimPersona {
 	isMiss?: boolean;
 }
 
-export interface ChatExchange {
+interface ChatExchange {
 	a: string;
 	b: string;
 }
@@ -43,7 +43,7 @@ function newId(prefix: string): string {
  * Stable per-browser user id for OpenRouter Broadcast `user` (max 128 chars).
  * Survives tabs/reloads; used for end-user analytics + abuse isolation.
  */
-export function getMallUserId(): string {
+function getMallUserId(): string {
 	try {
 		let id = localStorage.getItem(USER_STORAGE_KEY);
 		if (!id || id.length < 8) {
@@ -60,7 +60,7 @@ export function getMallUserId(): string {
  * Stable per-tab session id for OpenRouter `session_id` (max 256 chars).
  * Survives HMR within the tab; new tab = new session.
  */
-export function getMallSessionId(): string {
+function getMallSessionId(): string {
 	try {
 		let id = sessionStorage.getItem(SESSION_STORAGE_KEY);
 		if (!id || id.length < 8) {
@@ -75,7 +75,7 @@ export function getMallSessionId(): string {
 }
 
 /** Local fallback if OpenRouter is down — meaner when unhappy */
-export function localBanter(a: SimPersona, b: SimPersona): ChatExchange {
+function localBanter(a: SimPersona, b: SimPersona): ChatExchange {
 	const an = a.name.split(' ')[0];
 	const bn = b.name.split(' ')[0];
 	const mean = a.unhappiness >= 55 || b.unhappiness >= 55;
@@ -121,7 +121,7 @@ export function localBanter(a: SimPersona, b: SimPersona): ChatExchange {
 	};
 }
 
-export async function fetchSimChat(a: SimPersona, b: SimPersona, context?: string): Promise<ChatExchange> {
+async function fetchSimChat(a: SimPersona, b: SimPersona, context?: string): Promise<ChatExchange> {
 	if (inflight >= MAX_INFLIGHT) return localBanter(a, b);
 	inflight++;
 	const sessionId = getMallSessionId();
@@ -156,3 +156,6 @@ export async function fetchSimChat(a: SimPersona, b: SimPersona, context?: strin
 		inflight--;
 	}
 }
+
+export type { ChatExchange, SimPersona };
+export { fetchSimChat, getMallSessionId, getMallUserId, localBanter };

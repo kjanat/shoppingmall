@@ -115,14 +115,14 @@ const LEDGE_HEIGHT = 0.75;
  * higher. The tuck arrives through `ease` at CROUCH_RATE, which is where the frame time bites:
  * at a long frame the knees come up in fewer, coarser steps than at a short one.
  */
-function jumpOntoLedge(
-	ledgeWorld: CollisionWorld,
-	startX: number,
-	z: number,
-	floorY: number,
-	crouchInAir: boolean,
-	frameTime: number,
-): number {
+function jumpOntoLedge({ ledgeWorld, startX, z, floorY, crouchInAir, frameTime }: Readonly<{
+	ledgeWorld: CollisionWorld;
+	startX: number;
+	z: number;
+	floorY: number;
+	crouchInAir: boolean;
+	frameTime: number;
+}>): number {
 	let x = startX;
 	let feetY = floorY;
 	let vy = JUMP_V;
@@ -189,7 +189,7 @@ describe('the crouch jump clears what a standing jump cannot', () => {
 
 	describe.each(FRAME_TIMES)('at %d s a frame', (frameTime) => {
 		test('a standing jump does not reach the ledge', () => {
-			const landing = jumpOntoLedge(ledgeWorld, startX, cell.z, V0, false, frameTime);
+			const landing = jumpOntoLedge({ ledgeWorld, startX, z: cell.z, floorY: V0, crouchInAir: false, frameTime });
 			expect(landing, `a standing jump already clears ${nr(LEDGE_HEIGHT)} m, so crouching proves nothing`).not.toBeCloseTo(
 				ledgeY,
 				2,
@@ -197,7 +197,7 @@ describe('the crouch jump clears what a standing jump cannot', () => {
 		});
 
 		test('a crouched jump lands on top of it', () => {
-			const landing = jumpOntoLedge(ledgeWorld, startX, cell.z, V0, true, frameTime);
+			const landing = jumpOntoLedge({ ledgeWorld, startX, z: cell.z, floorY: V0, crouchInAir: true, frameTime });
 			expect(landing, `a crouched jump lands at ${nr(landing)} instead of on the ${nr(LEDGE_HEIGHT)} m ledge`).toBeCloseTo(
 				ledgeY,
 				2,

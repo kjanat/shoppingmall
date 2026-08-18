@@ -1,10 +1,10 @@
 import type { Material, Object3D } from 'three';
 import { BoxGeometry, Mesh, PlaneGeometry, Vector3 } from 'three';
 
-export type Position3 = Readonly<{ x: number; y: number; z: number }>;
-export type Rotation3 = Readonly<{ x: number; y: number; z: number }>;
+type Position3 = Readonly<{ x: number; y: number; z: number }>;
+type Rotation3 = Readonly<{ x: number; y: number; z: number }>;
 
-export type MeshPlacement = Readonly<{
+type MeshPlacement = Readonly<{
 	position: Position3;
 	rotation?: Rotation3;
 	name?: string;
@@ -23,7 +23,7 @@ function place(mesh: Mesh, parent: Object3D, placement: MeshPlacement): Mesh {
 	return mesh;
 }
 
-export function addBoxMesh(
+function addBoxMesh(
 	parent: Object3D,
 	material: Material,
 	spec: MeshPlacement & Readonly<{ width: number; height: number; depth: number }>,
@@ -40,7 +40,7 @@ export function addBoxMesh(
  * plaat. Het staat `gap` achter het bord, gemeten langs de kant waar het bord naar
  * kijkt, en deelt zijn geometrie en schaal.
  */
-export function addSignBack(parent: Object3D, sign: Mesh, material: Material, gap: number): Mesh {
+function addSignBack(parent: Object3D, sign: Mesh, material: Material, gap: number): Mesh {
 	const back = new Mesh(sign.geometry, material);
 	back.position.copy(sign.position).addScaledVector(new Vector3(0, 0, 1).applyEuler(sign.rotation), -gap);
 	back.rotation.set(sign.rotation.x, sign.rotation.y + Math.PI, sign.rotation.z);
@@ -49,10 +49,13 @@ export function addSignBack(parent: Object3D, sign: Mesh, material: Material, ga
 	return back;
 }
 
-export function addPlaneMesh(
+function addPlaneMesh(
 	parent: Object3D,
 	material: Material,
 	spec: MeshPlacement & Readonly<{ width: number; height: number }>,
 ): Mesh {
 	return place(new Mesh(new PlaneGeometry(spec.width, spec.height), material), parent, spec);
 }
+
+export { addBoxMesh, addSignBack, addPlaneMesh };
+export type { MeshPlacement, Position3, Rotation3 };

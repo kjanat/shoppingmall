@@ -39,7 +39,7 @@ import { tagLevelCulled } from '#/util/visibility';
 import MANIFEST from '$/public/voices/protest/manifest.json' with { type: 'json' };
 
 /** Prebaked multi-voice chants (public/voices/protest/) — different speaker each clip */
-export interface ProtestClip {
+interface ProtestClip {
 	id: string;
 	file: string;
 	text: string;
@@ -190,7 +190,7 @@ const FIST_PUNCH_ROT = 0.5;
  * Atrium protest — liberal groupies + LGBTQIA+ flags +
  * thick elderly Angela Merkel. Swarm walks the floor like chanting zombies.
  */
-export class ProtestGroupies {
+class ProtestGroupies {
 	readonly group = new Group();
 	/** East of atrium ground — clear of kiosk / north corridor */
 	readonly pos = new Vector3(8, 0, 4);
@@ -680,19 +680,8 @@ export class ProtestGroupies {
 		for (const mesh of Object.values(crowd)) mesh.instanceMatrix.needsUpdate = true;
 	}
 
-	private writePart(
-		mesh: InstancedMesh,
-		index: number,
-		x: number,
-		y: number,
-		z: number,
-		rx: number,
-		ry: number,
-		rz: number,
-		sx: number,
-		sy: number,
-		sz: number,
-	): void {
+	private writePart(mesh: InstancedMesh, index: number, ...args: [number, number, number, number, number, number, number, number, number]): void {
+		const [x, y, z, rx, ry, rz, sx, sy, sz] = args;
 		this.tempPosition.set(x, y, z);
 		this.tempRotation.set(rx, ry, rz);
 		this.tempQuaternion.setFromEuler(this.tempRotation);
@@ -1474,3 +1463,6 @@ export class ProtestGroupies {
 		p.speechLife = merkel ? 3.2 : 2.4 + Math.random() * 0.8;
 	}
 }
+
+export { ProtestGroupies };
+export type { ProtestClip };

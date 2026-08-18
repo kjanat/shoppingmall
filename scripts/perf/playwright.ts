@@ -21,13 +21,13 @@ import { BROWSER_LOCK_PATH as LOCK_PATH, PERF_DIR, PROFILE_DIR as PERF_PROFILE_F
 
 const MCP_PROFILE_FRAGMENT = String.raw`\.cache\chrome-devtools-mcp\chrome-profile`;
 
-export interface PerfBrowser {
+interface PerfBrowser {
 	context: BrowserContext;
 	page: Page;
 	close: () => Promise<void>;
 }
 
-export function isSoftwareHeadless(): boolean {
+function isSoftwareHeadless(): boolean {
 	return env['MALL_PERF_SOFTWARE'] === '1';
 }
 
@@ -150,7 +150,7 @@ function assertNoOtherMeasurementChrome(): void {
 }
 
 /** Launch one Playwright-owned Chrome and keep its shader cache between runs. */
-export async function launchPerfBrowser(width: number, height: number, persistentProfile?: string): Promise<PerfBrowser> {
+async function launchPerfBrowser(width: number, height: number, persistentProfile?: string): Promise<PerfBrowser> {
 	const releaseLock = await acquirePerfLock();
 	let profileDir = persistentProfile;
 	let disposableProfile = false;
@@ -215,3 +215,6 @@ export async function launchPerfBrowser(width: number, height: number, persisten
 		throw error;
 	}
 }
+
+export type { PerfBrowser };
+export { isSoftwareHeadless, launchPerfBrowser };

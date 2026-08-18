@@ -101,7 +101,7 @@ const CLIP_POINTS: ClipPoint[] = CORNERS.map(() => ({ x: 0, y: 0, w: 0 }));
  * tekent. Wat de cull wegneemt verdwijnt uit allebei, dus `castersKept` is wat een
  * standpunt nog aan de zon aanbiedt.
  */
-export interface ZoneOwnerTally {
+interface ZoneOwnerTally {
 	name: string;
 	items: number;
 	casters: number;
@@ -111,7 +111,7 @@ export interface ZoneOwnerTally {
 	castersHidden: number;
 }
 
-export interface ZoneCullStats {
+interface ZoneCullStats {
 	zone: ZoneId;
 	visibleZones: number;
 	cones: number;
@@ -137,7 +137,7 @@ const ZONE_BOXES: ReadonlyMap<ZoneId, Box3> = new Map(
 	}),
 );
 
-export class ZoneCuller {
+class ZoneCuller {
 	private readonly ownerRows: ZoneOwnerTally[] = [];
 	private readonly ownerIndex = new Map<string, ZoneOwnerTally>();
 	readonly stats: ZoneCullStats = {
@@ -418,3 +418,6 @@ export class ZoneCuller {
 		}
 	}
 }
+
+export { ZoneCuller };
+export type { ZoneCullStats, ZoneOwnerTally };

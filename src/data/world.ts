@@ -60,13 +60,13 @@ import { unreachable } from '#/util/invariant';
 import { half, inverseLerpClamped, lerp, midpoint, span } from '#/util/math';
 import { at } from '#/util/rand';
 
-export type WorldCategory = 'floor' | 'ceiling' | 'wall' | 'opening' | 'shop' | 'vertical-circulation' | 'parking';
+type WorldCategory = 'floor' | 'ceiling' | 'wall' | 'opening' | 'shop' | 'vertical-circulation' | 'parking';
 
-export const ESCALATOR_SPEED = 0.5;
-export const SHOP_HEIGHT = 4.2;
+const ESCALATOR_SPEED = 0.5;
+const SHOP_HEIGHT = 4.2;
 /** Floor a shopfront keeps for itself, so a shopper can stand at the window and step in. */
-export const STOREFRONT_CLEARANCE_DEPTH = 1.5;
-export const ELEVATOR_SPEC = {
+const STOREFRONT_CLEARANCE_DEPTH = 1.5;
+const ELEVATOR_SPEC = {
 	center: { x: 16, z: -8 },
 	cabin: {
 		width: 2,
@@ -94,7 +94,7 @@ export const ELEVATOR_SPEC = {
 } as const;
 
 /** Fixed shaft panels. The south face is intentionally open at every landing. */
-export const ELEVATOR_SHAFT_WALLS = cardinalWallPanels({
+const ELEVATOR_SHAFT_WALLS = cardinalWallPanels({
 	center: ELEVATOR_SPEC.center,
 	offset: { x: ELEVATOR_SPEC.shaft.wallOffset, z: ELEVATOR_SPEC.shaft.wallOffset },
 	span: { width: ELEVATOR_SPEC.shaft.panelSpan, depth: ELEVATOR_SPEC.shaft.panelSpan },
@@ -102,7 +102,7 @@ export const ELEVATOR_SHAFT_WALLS = cardinalWallPanels({
 	sides: ['north', 'west', 'east'],
 });
 
-export const ELEVATOR_SHAFT_POSTS = rectangleCornerPoints({
+const ELEVATOR_SHAFT_POSTS = rectangleCornerPoints({
 	center: ELEVATOR_SPEC.center,
 	offset: { x: ELEVATOR_SPEC.shaft.postOffset, z: ELEVATOR_SPEC.shaft.postOffset },
 });
@@ -114,9 +114,9 @@ export const ELEVATOR_SHAFT_POSTS = rectangleCornerPoints({
  * vechten en niet meer dan dat; de pijlen op de uitrit meten hetzelfde langs de
  * normaal van hun helling.
  */
-export const PAINT_LIFT = 0.012;
+const PAINT_LIFT = 0.012;
 
-export const PARKING_EXIT_RAMP = {
+const PARKING_EXIT_RAMP = {
 	id: 'parking-exit-ramp',
 	start: { x: -30, y: levelY('p1'), z: 0 },
 	end: { x: -46, y: levelY('v0') + 0.05, z: 0 },
@@ -129,7 +129,7 @@ export const PARKING_EXIT_RAMP = {
 } as const;
 
 /** Headroom the ramp keeps over its whole run; the lintel above it starts there. */
-export const PARKING_EXIT_HEADROOM = 2.4;
+const PARKING_EXIT_HEADROOM = 2.4;
 
 /** Kerb the ramp keeps either side of its deck where it passes through the west wall. */
 const PARKING_EXIT_WALL_KERB = 0.5;
@@ -139,10 +139,10 @@ const PARKING_EXIT_WALL_KERB = 0.5;
  * on this, and the entrance portal starts exactly where it ends, so the two share
  * one jamb instead of two numbers that have to be kept equal by hand.
  */
-export const PARKING_EXIT_WALL_GAP = half(PARKING_EXIT_RAMP.width) + PARKING_EXIT_WALL_KERB;
+const PARKING_EXIT_WALL_GAP = half(PARKING_EXIT_RAMP.width) + PARKING_EXIT_WALL_KERB;
 
 /** Outer face of the guard rail: where the trench's retaining wall stands against it. */
-export const PARKING_EXIT_RAIL_OUTER =
+const PARKING_EXIT_RAIL_OUTER =
 	half(PARKING_EXIT_RAMP.width) + PARKING_EXIT_RAMP.railOffset + half(PARKING_EXIT_RAMP.railThickness);
 
 /**
@@ -167,9 +167,9 @@ const PARKING_EXIT_RAIL_HEAD_MARGIN = 0.07;
 const PARKING_EXIT_RUN = span(PARKING_EXIT_RAMP.end.x, PARKING_EXIT_RAMP.start.x);
 const PARKING_EXIT_RISE = span(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y);
 /** Draaiing van dek, leuning en verf om z. Negatief: naar het westen loopt de helling omhoog. */
-export const PARKING_EXIT_RAMP_ANGLE = -Math.atan2(PARKING_EXIT_RISE, PARKING_EXIT_RUN);
+const PARKING_EXIT_RAMP_ANGLE = -Math.atan2(PARKING_EXIT_RISE, PARKING_EXIT_RUN);
 /** Lengte van het loopvlak zelf, dus langs de helling en niet in het platte vlak. */
-export const PARKING_EXIT_RAMP_LENGTH = Math.hypot(PARKING_EXIT_RUN, PARKING_EXIT_RISE);
+const PARKING_EXIT_RAMP_LENGTH = Math.hypot(PARKING_EXIT_RUN, PARKING_EXIT_RISE);
 
 /**
  * Het punt `above` meter boven het midden van het loopvlak, gemeten langs de normaal
@@ -184,7 +184,7 @@ function parkingExitRampCenter(above: number): Vec3 {
 	};
 }
 
-export type ParkingExitRail = Readonly<{
+type ParkingExitRail = Readonly<{
 	/** Lengte langs de helling. */
 	length: number;
 	centerX: number;
@@ -209,13 +209,13 @@ function parkingExitRail(): ParkingExitRail {
 	};
 }
 
-export const PARKING_EXIT_RAIL: ParkingExitRail = parkingExitRail();
+const PARKING_EXIT_RAIL: ParkingExitRail = parkingExitRail();
 
 /**
  * De twee koppen bij de mond. Ze lopen van de leuning tot de buitenkant van de
  * keermuur ernaast, staan met hun voet op de helling en komen niet voorbij de mond.
  */
-export const PARKING_EXIT_RAIL_HEADS: readonly Bounds3[] = ([-1, 1] as const).map((sign) => {
+const PARKING_EXIT_RAIL_HEADS: readonly Bounds3[] = ([-1, 1] as const).map((sign) => {
 	const minX = PARKING_EXIT_RAMP.end.x;
 	const maxX = minX + PARKING_EXIT_RAIL_HEAD_LENGTH;
 	const inner = PARKING_EXIT_RAIL_OUTER - PARKING_EXIT_RAMP.railThickness;
@@ -230,7 +230,7 @@ export const PARKING_EXIT_RAIL_HEADS: readonly Bounds3[] = ([-1, 1] as const).ma
 });
 
 /** The ramp's travel surface at `x`, clamped to its own ends. */
-export function parkingExitRampY(x: number): number {
+function parkingExitRampY(x: number): number {
 	const t = inverseLerpClamped(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x, x);
 	return lerp(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y, t);
 }
@@ -255,7 +255,7 @@ const PARKING_EXIT_CHEVRON_SPEC = {
 	count: 5,
 } as const;
 
-export type ParkingExitChevrons = Readonly<{
+type ParkingExitChevrons = Readonly<{
 	/** Hart van het vak, langs de normaal boven het loopvlak. */
 	center: Vec3;
 	/** Draaiing om z, gelijk aan die van de helling. */
@@ -267,7 +267,7 @@ export type ParkingExitChevrons = Readonly<{
 	lift: number;
 }>;
 
-export const PARKING_EXIT_CHEVRONS: ParkingExitChevrons = {
+const PARKING_EXIT_CHEVRONS: ParkingExitChevrons = {
 	center: parkingExitRampCenter(PARKING_EXIT_CHEVRON_SPEC.lift),
 	angle: PARKING_EXIT_RAMP_ANGLE,
 	length: PARKING_EXIT_RAMP_LENGTH - PARKING_EXIT_CHEVRON_SPEC.margin * 2,
@@ -276,7 +276,7 @@ export const PARKING_EXIT_CHEVRONS: ParkingExitChevrons = {
 	lift: PARKING_EXIT_CHEVRON_SPEC.lift,
 };
 
-export const ATRIUM_OPENING: OpeningDef = {
+const ATRIUM_OPENING: OpeningDef = {
 	id: 'atrium',
 	category: 'atrium',
 	center: { x: 0, z: 0 },
@@ -284,7 +284,7 @@ export const ATRIUM_OPENING: OpeningDef = {
 	connects: ['v0', 'v1', 'roof'],
 };
 
-export const ELEVATOR_OPENING_V1: OpeningDef = {
+const ELEVATOR_OPENING_V1: OpeningDef = {
 	id: 'elevator-v1',
 	category: 'elevator',
 	center: ELEVATOR_SPEC.center,
@@ -292,7 +292,7 @@ export const ELEVATOR_OPENING_V1: OpeningDef = {
 	connects: ['v0', 'v1'],
 };
 
-export const ELEVATOR_OPENING_ROOF: OpeningDef = {
+const ELEVATOR_OPENING_ROOF: OpeningDef = {
 	id: 'elevator-roof',
 	category: 'elevator',
 	center: ELEVATOR_OPENING_V1.center,
@@ -300,7 +300,7 @@ export const ELEVATOR_OPENING_ROOF: OpeningDef = {
 	connects: ['v1', 'roof'],
 };
 
-export const ELEVATOR_OPENING_V0: OpeningDef = {
+const ELEVATOR_OPENING_V0: OpeningDef = {
 	id: 'elevator-v0',
 	category: 'elevator',
 	center: ELEVATOR_SPEC.center,
@@ -308,7 +308,7 @@ export const ELEVATOR_OPENING_V0: OpeningDef = {
 	connects: ['p1', 'v0'],
 };
 
-export const ELEVATOR_OPENING_P1: OpeningDef = {
+const ELEVATOR_OPENING_P1: OpeningDef = {
 	id: 'elevator-p1',
 	category: 'elevator',
 	center: ELEVATOR_SPEC.center,
@@ -441,7 +441,7 @@ const WEST_STAIRS_OPENING = connectorOpeningZ(WEST_STAIRS_FLIGHT);
 const SECRET_STAIRS_FLIGHT = { from: 'v1', to: 'roof', zBottom: 14, zTop: 18, apron: 0.5 } as const;
 const SECRET_STAIRS_OPENING = connectorOpeningZ(SECRET_STAIRS_FLIGHT);
 
-export const VERTICAL_CONNECTORS = [
+const VERTICAL_CONNECTORS = [
 	{
 		id: 'east-escalator',
 		label: 'East escalator',
@@ -620,10 +620,10 @@ function partitionVerticalConnectors(connectors: readonly VerticalConnector[]): 
 }
 
 const CONNECTORS_BY_KIND = partitionVerticalConnectors(VERTICAL_CONNECTORS);
-export const ESCALATORS = CONNECTORS_BY_KIND.escalators;
-export const STAIR_CONNECTORS = CONNECTORS_BY_KIND.stairs;
+const ESCALATORS = CONNECTORS_BY_KIND.escalators;
+const STAIR_CONNECTORS = CONNECTORS_BY_KIND.stairs;
 
-export function stairConnector(id: string): StairSpec {
+function stairConnector(id: string): StairSpec {
 	const connector = STAIR_CONNECTORS.find((candidate) => candidate.id === id);
 	if (!connector) throw new Error(`no stair connector '${id}'`);
 	return connector;
@@ -631,7 +631,7 @@ export function stairConnector(id: string): StairSpec {
 
 const secretStairs = stairConnector('secret-stairs');
 
-export type MallWorldCategory =
+type MallWorldCategory =
 	| WorldCategory
 	| 'helipad'
 	| 'connector-opening'
@@ -641,7 +641,7 @@ export type MallWorldCategory =
 	| 'prop'
 	| 'theatre';
 
-export type MallWorldEntity = WorldEntity<MallWorldCategory, LevelId>;
+type MallWorldEntity = WorldEntity<MallWorldCategory, LevelId>;
 
 const ZERO_ROTATION = { yaw: 0, pitch: 0, roll: 0 } as const;
 const NO_PORTS = [] as const;
@@ -665,19 +665,24 @@ const CONNECTOR_RECEIVER: InteractionReceiver = {
 	responses: { translation: 'none', rotation: 'none' },
 };
 
-function rectangle(centerX: number, centerZ: number, width: number, depth: number, yaw = 0): PlanShape {
+type RectangleOptions = Readonly<{ centerX: number; centerZ: number; width: number; depth: number; yaw?: number }>;
+
+function rectangle({ centerX, centerZ, width, depth, yaw = 0 }: RectangleOptions): PlanShape {
 	return { kind: 'rectangle', center: { x: centerX, z: centerZ }, width, depth, yaw };
 }
 
-function solidPrism(
+type SolidPrismArgs = readonly [
 	id: string,
 	plan: PlanShape,
 	minY: number,
 	maxY: number,
-	holes: readonly PlanShape[] = [],
-	role: SpatialRole = 'solid',
-	blocksMovement: boolean = role === 'solid',
-): SpatialVolume {
+	holes?: readonly PlanShape[],
+	role?: SpatialRole,
+	blocksMovement?: boolean,
+];
+
+function solidPrism(...args: SolidPrismArgs): SpatialVolume {
+	const [id, plan, minY, maxY, holes = [], role = 'solid', blocksMovement = role === 'solid'] = args;
 	return {
 		id,
 		role,
@@ -689,14 +694,10 @@ function solidPrism(
 	};
 }
 
-function uprightCylinder(
-	id: string,
-	center: Vec3,
-	radius: number,
-	height: number,
-	role: SpatialRole,
-	blocksMovement: boolean,
-): SpatialVolume {
+type UprightCylinderArgs = readonly [id: string, center: Vec3, radius: number, height: number, role: SpatialRole, blocksMovement: boolean];
+
+function uprightCylinder(...args: UprightCylinderArgs): SpatialVolume {
+	const [id, center, radius, height, role, blocksMovement] = args;
 	return {
 		id,
 		role,
@@ -708,13 +709,16 @@ function uprightCylinder(
 	};
 }
 
-function clearancePrism(
+type ClearancePrismArgs = readonly [
 	id: string,
 	plan: PlanShape,
 	minY: number,
 	maxY: number,
 	role: 'opening-clearance' | 'connector-clearance' | 'storefront-clearance',
-): SpatialVolume {
+];
+
+function clearancePrism(...args: ClearancePrismArgs): SpatialVolume {
+	const [id, plan, minY, maxY, role] = args;
 	return {
 		id,
 		role,
@@ -751,19 +755,25 @@ function connectorPlacement(): MallWorldEntity['placement'] {
 	return { class: 'connector', requiresSupport: false, mayCover: [], mayBeCoveredBy: [] };
 }
 
-function map(layer: MallWorldEntity['map']['layer'], label?: string, priority = 50): MallWorldEntity['map'] {
+type MapArgs = readonly [layer: MallWorldEntity['map']['layer'], label?: string, priority?: number];
+
+function map(...args: MapArgs): MallWorldEntity['map'] {
+	const [layer, label, priority = 50] = args;
 	return { visible: true, layer, priority, ...(label === undefined ? {} : { label }) };
 }
 
-function openingEntity(
+type OpeningEntityArgs = readonly [
 	id: string,
 	label: string,
 	levels: readonly LevelId[],
 	plan: PlanShape,
 	minY: number,
 	maxY: number,
-	extraTags: readonly string[] = [],
-): MallWorldEntity {
+	extraTags?: readonly string[],
+];
+
+function openingEntity(...args: OpeningEntityArgs): MallWorldEntity {
+	const [id, label, levels, plan, minY, maxY, extraTags = []] = args;
 	return {
 		id,
 		label,
@@ -788,11 +798,11 @@ const V1_ATRIUM_PLAN = rectanglePlan(ATRIUM_OPENING);
 const V1_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_V1);
 const V0_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_V0);
 const P1_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_P1);
-export const SECRET_STAIRS_OPENING_PLAN = rectanglePlan(secretStairs.opening);
-export const SECRET_STAIRS_OPENING_BOUNDS = planBounds(SECRET_STAIRS_OPENING_PLAN);
+const SECRET_STAIRS_OPENING_PLAN = rectanglePlan(secretStairs.opening);
+const SECRET_STAIRS_OPENING_BOUNDS = planBounds(SECRET_STAIRS_OPENING_PLAN);
 const ROOF_ELEVATOR_PLAN = rectanglePlan(ELEVATOR_OPENING_ROOF);
 
-export const HELIPAD_DECK_PLAN = {
+const HELIPAD_DECK_PLAN = {
 	kind: 'polygon',
 	points: [
 		{ x: 8, z: 7 },
@@ -801,16 +811,16 @@ export const HELIPAD_DECK_PLAN = {
 		{ x: 8, z: 23 },
 	],
 } satisfies PlanShape;
-export const HELIPAD_DECK_BOUNDS = planBounds(HELIPAD_DECK_PLAN);
+const HELIPAD_DECK_BOUNDS = planBounds(HELIPAD_DECK_PLAN);
 /**
  * De dekplaat ligt óp de dakplaat. Als dikke plaat mét zijn bovenkant op
  * levelY('roof') lag hij in het dak en flikkerde hij over de hele 24×16 m.
  * Het loopvlak blijft levelY('roof'): het dak heeft één hoogte en check-world
  * eist dat de uiteinden van elke vlucht daarop uitkomen.
  */
-export const HELIPAD_DECK_THICKNESS = 0.05;
-export const HELIPAD_DECK_TOP_Y = levelY('roof') + HELIPAD_DECK_THICKNESS;
-export const HELIPAD_HATCH_FRAME_SPEC = { thickness: 0.12, height: 0.15 } as const;
+const HELIPAD_DECK_THICKNESS = 0.05;
+const HELIPAD_DECK_TOP_Y = levelY('roof') + HELIPAD_DECK_THICKNESS;
+const HELIPAD_HATCH_FRAME_SPEC = { thickness: 0.12, height: 0.15 } as const;
 
 /** Ruimte tussen de rand van het landingsplateau en het kozijn van het trapluik. */
 const HELIPAD_PAD_HATCH_GAP = 0.5;
@@ -823,7 +833,7 @@ const HELIPAD_PAD_BOTTOM_RADIUS = 5.8;
  * ging eraf, en je keek nog steeds op massief plateau. Zijn oostrand komt nu uit
  * het kozijn van het luik, dus de enige trap naar het dak blijft vrij.
  */
-export const HELIPAD_PAD_SPEC = {
+const HELIPAD_PAD_SPEC = {
 	center: {
 		x: SECRET_STAIRS_OPENING_BOUNDS.minX - HELIPAD_HATCH_FRAME_SPEC.thickness - HELIPAD_PAD_HATCH_GAP - HELIPAD_PAD_BOTTOM_RADIUS,
 		z: 16,
@@ -841,7 +851,7 @@ function connectorOpeningPlansAt(levelId: LevelId): readonly PlanShape[] {
 const FLOOR_V1_HOLES = [V1_ATRIUM_PLAN, ...connectorOpeningPlansAt('v1'), V1_ELEVATOR_PLAN];
 const ROOF_SLAB_HOLES = [V1_ATRIUM_PLAN, ...connectorOpeningPlansAt('roof'), ROOF_ELEVATOR_PLAN];
 
-export type StructuralSlabSpec = Readonly<{
+type StructuralSlabSpec = Readonly<{
 	id: string;
 	label: string;
 	category: 'floor' | 'ceiling' | 'parking';
@@ -852,7 +862,7 @@ export type StructuralSlabSpec = Readonly<{
 	holes: readonly PlanShape[];
 }>;
 
-export const MALL_SLAB_SPECS = {
+const MALL_SLAB_SPECS = {
 	v0: {
 		id: 'mall-floor-v0',
 		label: 'Ground-floor slab',
@@ -885,7 +895,7 @@ export const MALL_SLAB_SPECS = {
 	},
 } as const satisfies Readonly<Record<'v0' | 'v1' | 'roof', StructuralSlabSpec>>;
 
-export const PARKING_SLAB_SPEC = {
+const PARKING_SLAB_SPEC = {
 	id: 'parking-floor',
 	label: 'Parking deck',
 	category: 'parking',
@@ -903,7 +913,7 @@ export const PARKING_SLAB_SPEC = {
  * het atriumgat wel, door de vloer eronder niet. Dezelfde vier platen die de
  * entiteiten hierboven bouwen, dus een gat kan er niet aan één kant bij komen.
  */
-export const SLAB_SPEC_BY_LEVEL: Readonly<Record<LevelId, StructuralSlabSpec>> = {
+const SLAB_SPEC_BY_LEVEL: Readonly<Record<LevelId, StructuralSlabSpec>> = {
 	...MALL_SLAB_SPECS,
 	p1: PARKING_SLAB_SPEC,
 };
@@ -915,7 +925,7 @@ export const SLAB_SPEC_BY_LEVEL: Readonly<Record<LevelId, StructuralSlabSpec>> =
  * V1-plaat, onder het atrium niets. De UFO klemde op het dak en hing daardoor boven
  * een V0-cluster dwars door de V1-vloer.
  */
-export function slabCeilingAbove(x: number, z: number, y: number): number | null {
+function slabCeilingAbove(x: number, z: number, y: number): number | null {
 	let laagste: number | null = null;
 	for (const spec of Object.values(SLAB_SPEC_BY_LEVEL)) {
 		const onderkant = spec.topY - spec.thickness;
@@ -935,7 +945,7 @@ export function slabCeilingAbove(x: number, z: number, y: number): number | null
  * er precies voor gesneden is. Wie het middelpunt vraagt krijgt "dicht" te horen
  * over een trap waar je bovenaan doorheen loopt.
  */
-export function slabOpeningWithin(level: LevelId, rect: Bounds2): Bounds2 | null {
+function slabOpeningWithin(level: LevelId, rect: Bounds2): Bounds2 | null {
 	const slab = SLAB_SPEC_BY_LEVEL[level];
 	const plan = planBounds(slab.plan);
 	if (rect.maxX <= plan.minX || rect.minX >= plan.maxX || rect.maxZ <= plan.minZ || rect.minZ >= plan.maxZ) return rect;
@@ -1020,7 +1030,7 @@ const WEST_WALL = perimeterWall('west');
  * `glassTopY`, five metres higher: the deck above stays whole and the portal still
  * reads two storeys tall from the street.
  */
-export const ENTRANCE_SPEC = {
+const ENTRANCE_SPEC = {
 	/** North jamb: where the wall gap for the parking exit ends. */
 	minZ: PARKING_EXIT_WALL_GAP,
 	/** Clear width of the bay cut through the facade. */
@@ -1103,7 +1113,7 @@ const ENTRANCE_OUTER_X = WEST_WALL.position.x - half(WEST_WALL.size.width);
 const ENTRANCE_INNER_X = WEST_WALL.position.x + half(WEST_WALL.size.width);
 
 /** The portal in world coordinates: wall split, collision, scene and checks all read these. */
-export const ENTRANCE_PORTAL = {
+const ENTRANCE_PORTAL = {
 	minZ: ENTRANCE_SPEC.minZ,
 	maxZ: ENTRANCE_MAX_Z,
 	centerZ: ENTRANCE_CENTER_Z,
@@ -1138,7 +1148,7 @@ export const ENTRANCE_PORTAL = {
 } as const;
 
 /** One box of the canopy: the slab itself, or a piece of the bronze fascia around it. */
-export type EntranceCanopyPart = Bounds3 & Readonly<{ id: string; finish: 'slab' | 'fascia' }>;
+type EntranceCanopyPart = Bounds3 & Readonly<{ id: string; finish: 'slab' | 'fascia' }>;
 
 const CANOPY_DEPTH = ENTRANCE_SPEC.width + ENTRANCE_SPEC.canopy.flank * 2;
 const CANOPY_MIN_Z = ENTRANCE_CENTER_Z - half(CANOPY_DEPTH);
@@ -1150,7 +1160,7 @@ const CANOPY_BOTTOM_Y = ENTRANCE_SPEC.canopy.topY - ENTRANCE_SPEC.canopy.thickne
  * flank. Every face of every piece is either buried inside another piece or alone on
  * its plane, which is what `controleIngang` reads them for.
  */
-export const ENTRANCE_CANOPY_PARTS: readonly EntranceCanopyPart[] = ((): readonly EntranceCanopyPart[] => {
+const ENTRANCE_CANOPY_PARTS: readonly EntranceCanopyPart[] = ((): readonly EntranceCanopyPart[] => {
 	const { topY, trim } = ENTRANCE_SPEC.canopy;
 	const front = ENTRANCE_PORTAL.canopyX;
 	const flank = (sign: -1 | 1, id: string): EntranceCanopyPart => ({
@@ -1190,16 +1200,16 @@ export const ENTRANCE_CANOPY_PARTS: readonly EntranceCanopyPart[] = ((): readonl
 })();
 
 /** De steek van de ribben onder de luifel, die ook de vakken ertussen uitzet. */
-export const ENTRANCE_CANOPY_RIB_PITCH = CANOPY_DEPTH / ENTRANCE_SPEC.canopy.rib.count;
+const ENTRANCE_CANOPY_RIB_PITCH = CANOPY_DEPTH / ENTRANCE_SPEC.canopy.rib.count;
 
 /** De ribben onder de luifel, symmetrisch om de portaalas. */
-export const ENTRANCE_CANOPY_RIB_ZS: readonly number[] = Array.from(
+const ENTRANCE_CANOPY_RIB_ZS: readonly number[] = Array.from(
 	{ length: ENTRANCE_SPEC.canopy.rib.count },
 	(_, index) => ENTRANCE_CENTER_Z + (index - half(ENTRANCE_SPEC.canopy.rib.count - 1)) * ENTRANCE_CANOPY_RIB_PITCH,
 );
 
 /** De vakken tússen de ribben: daar hangt alles wat onder de luifel licht geeft. */
-export const ENTRANCE_CANOPY_BAY_ZS: readonly number[] = ENTRANCE_CANOPY_RIB_ZS.flatMap((z, index, alle) => {
+const ENTRANCE_CANOPY_BAY_ZS: readonly number[] = ENTRANCE_CANOPY_RIB_ZS.flatMap((z, index, alle) => {
 	const volgende = alle[index + 1];
 	return volgende === undefined ? [] : [midpoint(z, volgende)];
 });
@@ -1211,7 +1221,7 @@ export const ENTRANCE_CANOPY_BAY_ZS: readonly number[] = ENTRANCE_CANOPY_RIB_ZS.
  * onder de lamp tegen 1,20 m voor zijn buren: kop-op las de luifel als een witte
  * balk. Hij hangt nu in het vak naast die as, net als de spots.
  */
-export const ENTRANCE_CANOPY_WASH_Z = ENTRANCE_CANOPY_BAY_ZS.reduce((dichtste, z) =>
+const ENTRANCE_CANOPY_WASH_Z = ENTRANCE_CANOPY_BAY_ZS.reduce((dichtste, z) =>
 	Math.abs(z - ENTRANCE_CENTER_Z) < Math.abs(dichtste - ENTRANCE_CENTER_Z) ? z : dichtste,
 );
 
@@ -1259,9 +1269,9 @@ function westWallSegments(wall: CardinalBoxStructureSpec): readonly MallWallSpec
 }
 
 /** A perimeter wall box that still knows which elevation it closes, after any splitting. */
-export type MallWallSpec = BoxStructureSpec & Readonly<{ side: CardinalSide }>;
+type MallWallSpec = BoxStructureSpec & Readonly<{ side: CardinalSide }>;
 
-export const MALL_WALL_SPECS: readonly MallWallSpec[] = PERIMETER_WALLS.flatMap((wall) =>
+const MALL_WALL_SPECS: readonly MallWallSpec[] = PERIMETER_WALLS.flatMap((wall) =>
 	wall.id === 'west' ? westWallSegments(wall) : [{ ...wall, side: wall.id }],
 );
 
@@ -1271,7 +1281,7 @@ export const MALL_WALL_SPECS: readonly MallWallSpec[] = PERIMETER_WALLS.flatMap(
  * Langs de gevel is z op west en oost en x op noord en zuid, en dat onderscheid
  * hoort één keer gemaakt te worden in plaats van bij elke vergelijking opnieuw.
  */
-export type FacadePanel = Readonly<{ minU: number; maxU: number; minY: number; maxY: number }>;
+type FacadePanel = Readonly<{ minU: number; maxU: number; minY: number; maxY: number }>;
 
 function alongFacade(side: CardinalSide): boolean {
 	return side === 'west' || side === 'east';
@@ -1325,7 +1335,7 @@ function unionPanel(a: FacadePanel | null, b: FacadePanel): FacadePanel {
  * geen paneel meer, en daar is de uitritgeul dan ook echt open. Het theater voert
  * zijn eigen schil aan; twee gebouwen, één som.
  */
-export function panelOpeningWithin(panels: readonly FacadePanel[], face: FacadePanel): FacadePanel | null {
+function panelOpeningWithin(panels: readonly FacadePanel[], face: FacadePanel): FacadePanel | null {
 	const us = cutsWithin(
 		face.minU,
 		face.maxU,
@@ -1353,7 +1363,7 @@ export function panelOpeningWithin(panels: readonly FacadePanel[], face: FacadeP
 }
 
 /** Waar de mallgevel op deze zijde open is: de schil van `MALL_WALL_SPECS`, en verder niets. */
-export function facadeOpeningWithin(side: CardinalSide, face: FacadePanel): FacadePanel | null {
+function facadeOpeningWithin(side: CardinalSide, face: FacadePanel): FacadePanel | null {
 	return panelOpeningWithin(FACADE_PANELS[side], face);
 }
 
@@ -1403,7 +1413,7 @@ const MALL_WALLS: readonly MallWorldEntity[] = MALL_WALL_SPECS.map(({ id, positi
 		{
 			...solidPrism(
 				'wall',
-				rectangle(position.x, position.z, size.width, size.depth),
+				rectangle({ centerX: position.x, centerZ: position.z, width: size.width, depth: size.depth }),
 				position.y - half(size.height),
 				position.y + half(size.height),
 			),
@@ -1442,7 +1452,7 @@ function mallWallEnvelope(): Bounds2 {
 	return { minX, maxX, minZ, maxZ };
 }
 
-export const MALL_WALL_ENVELOPE: Bounds2 = mallWallEnvelope();
+const MALL_WALL_ENVELOPE: Bounds2 = mallWallEnvelope();
 
 /** De naar buiten wijzende normaal per gevel. Mesh, entiteit en controle lezen deze vier. */
 
@@ -1459,7 +1469,7 @@ export const MALL_WALL_ENVELOPE: Bounds2 = mallWallEnvelope();
  * portaal langs in plaats van eroverheen. De latei boven het glas houdt daardoor
  * alleen wat er op zijn eigen hoogte hoort.
  */
-export const FACADE_RELIEF_SPEC = {
+const FACADE_RELIEF_SPEC = {
 	/** Het diepste dat een gevelstuk voor zijn eigen wandvlak uit mag komen. */
 	reachBudget: 0.45,
 	/** Onderste band, van de wandvoet tot ruim boven het maaiveld. */
@@ -1482,10 +1492,10 @@ export const FACADE_RELIEF_SPEC = {
 /** Minder dan dit hoog is geen band meer maar een streep; die slaat de generator over. */
 const FACADE_BAND_MIN_HEIGHT = 0.05;
 
-export type FacadeReliefKind = 'plinth' | 'course' | 'cornice' | 'seam' | 'sign';
+type FacadeReliefKind = 'plinth' | 'course' | 'cornice' | 'seam' | 'sign';
 
 /** Eén stuk gevelwerk als wereldbox. De mesh, het volume en de controle lezen dezelfde zes randen. */
-export type FacadeReliefPiece = Readonly<{
+type FacadeReliefPiece = Readonly<{
 	id: string;
 	side: CardinalSide;
 	kind: FacadeReliefKind;
@@ -1543,7 +1553,7 @@ function facadeFace(side: CardinalSide, box: BoxStructureSpec): FacadeFace {
 	};
 }
 
-function reliefPiece(
+type ReliefPieceArgs = readonly [
 	face: FacadeFace,
 	id: string,
 	kind: FacadeReliefKind,
@@ -1552,7 +1562,10 @@ function reliefPiece(
 	minY: number,
 	maxY: number,
 	reach: number,
-): FacadeReliefPiece {
+];
+
+function reliefPiece(...args: ReliefPieceArgs): FacadeReliefPiece {
+	const [face, id, kind, alongMin, alongMax, minY, maxY, reach] = args;
 	const outer = face.face + face.outward * reach;
 	const near = Math.min(face.face, outer);
 	const far = Math.max(face.face, outer);
@@ -1630,7 +1643,7 @@ function facadeReliefPieces(): readonly FacadeReliefPiece[] {
  * de twee kanten waar je het gebouw van de straat af op je af ziet komen. De
  * belettering is emissief in het materiaal en heeft dus geen enkele lamp nodig.
  */
-export const FACADE_SIGN_SPEC = {
+const FACADE_SIGN_SPEC = {
 	text: 'MALL SIM',
 	height: 2.8,
 	reach: 0.36,
@@ -1669,8 +1682,8 @@ function facadeSignBoards(): readonly FacadeReliefPiece[] {
 	});
 }
 
-export const MALL_FACADE_RELIEF: readonly FacadeReliefPiece[] = facadeReliefPieces();
-export const MALL_FACADE_SIGNS: readonly FacadeReliefPiece[] = facadeSignBoards();
+const MALL_FACADE_RELIEF: readonly FacadeReliefPiece[] = facadeReliefPieces();
+const MALL_FACADE_SIGNS: readonly FacadeReliefPiece[] = facadeSignBoards();
 
 /**
  * De vergunning die een gevelstuk nodig heeft, uit zijn eigen doos afgeleid.
@@ -1694,12 +1707,7 @@ function facadeProtrusion(piece: FacadeReliefPiece): Protrusion | undefined {
 function facadeVolume(piece: FacadeReliefPiece): SpatialVolume {
 	const volume = solidPrism(
 		piece.id,
-		rectangle(
-			midpoint(piece.minX, piece.maxX),
-			midpoint(piece.minZ, piece.maxZ),
-			span(piece.minX, piece.maxX),
-			span(piece.minZ, piece.maxZ),
-		),
+		rectangle({ centerX: midpoint(piece.minX, piece.maxX), centerZ: midpoint(piece.minZ, piece.maxZ), width: span(piece.minX, piece.maxX), depth: span(piece.minZ, piece.maxZ) }),
 		piece.minY,
 		piece.maxY,
 		[],
@@ -1710,7 +1718,7 @@ function facadeVolume(piece: FacadeReliefPiece): SpatialVolume {
 	return permit === undefined ? volume : { ...volume, protrusion: permit };
 }
 
-export const MALL_FACADE_ENTITY: MallWorldEntity = {
+const MALL_FACADE_ENTITY: MallWorldEntity = {
 	id: 'mall-facade',
 	label: 'Facade relief and roof-edge signs',
 	category: 'decorative-surface',
@@ -1737,7 +1745,7 @@ export const MALL_FACADE_ENTITY: MallWorldEntity = {
 const helipadStore = requireStore('helipad');
 const elevatorStore = requireStore('elevator');
 
-export const HELIPAD_DECK: MallWorldEntity = {
+const HELIPAD_DECK: MallWorldEntity = {
 	id: 'helipad-deck',
 	label: 'Helipad roof deck',
 	category: 'helipad',
@@ -1760,7 +1768,7 @@ const HATCH_FRAME_Y = HELIPAD_DECK_TOP_Y + half(HATCH_FRAME_HEIGHT);
 const HATCH_WIDTH = span(SECRET_STAIRS_OPENING_BOUNDS.minX, SECRET_STAIRS_OPENING_BOUNDS.maxX);
 const HATCH_DEPTH = span(SECRET_STAIRS_OPENING_BOUNDS.minZ, SECRET_STAIRS_OPENING_BOUNDS.maxZ);
 
-export const HELIPAD_HATCH_FRAME_RAILS = cardinalWallPanels({
+const HELIPAD_HATCH_FRAME_RAILS = cardinalWallPanels({
 	center: secretStairs.opening.center,
 	offset: {
 		x: half(HATCH_WIDTH + HATCH_FRAME_THICKNESS),
@@ -1781,7 +1789,7 @@ const HATCH_OPEN_SECONDS = 1.1;
  * twee meter naar een dicht luik te kijken en liep een renner op een half open
  * blad.
  */
-export const HELIPAD_HATCH_SPEC = {
+const HELIPAD_HATCH_SPEC = {
 	lidThickness: 0.06,
 	approach: RUN_SPEED * HATCH_OPEN_SECONDS,
 	reachDown: 2.4,
@@ -1790,7 +1798,7 @@ export const HELIPAD_HATCH_SPEC = {
 	clearFraction: 0.55,
 } as const;
 
-export const HELIPAD_HATCH_GATE: ClearanceMechanism = {
+const HELIPAD_HATCH_GATE: ClearanceMechanism = {
 	id: 'helipad-hatch',
 	kind: 'hinged',
 	stateId: 'helipad-hatch-open',
@@ -1803,12 +1811,7 @@ export const HELIPAD_HATCH_GATE: ClearanceMechanism = {
 	access: { admits: ['pedestrian'] },
 };
 
-const HATCH_PRESENCE_PLAN = rectangle(
-	secretStairs.opening.center.x,
-	secretStairs.opening.center.z,
-	HATCH_WIDTH + HELIPAD_HATCH_SPEC.approach * 2,
-	HATCH_DEPTH + HELIPAD_HATCH_SPEC.approach * 2,
-);
+const HATCH_PRESENCE_PLAN = rectangle({ centerX: secretStairs.opening.center.x, centerZ: secretStairs.opening.center.z, width: HATCH_WIDTH + HELIPAD_HATCH_SPEC.approach * 2, depth: HATCH_DEPTH + HELIPAD_HATCH_SPEC.approach * 2 });
 
 /**
  * Het luik boven de geheime trap, met zijn kozijn.
@@ -1816,7 +1819,7 @@ const HATCH_PRESENCE_PLAN = rectangle(
  * Het blad houdt zelf niets tegen: `HELIPAD_HATCH_GATE` is wat dichtvalt, en Helipad
  * zet de vloerplaat die daarbij hoort in de wereld.
  */
-export const HELIPAD_HATCH: MallWorldEntity = {
+const HELIPAD_HATCH: MallWorldEntity = {
 	id: 'helipad-hatch',
 	label: 'Secret-stairs roof hatch',
 	category: 'helipad',
@@ -1871,12 +1874,12 @@ export const HELIPAD_HATCH: MallWorldEntity = {
 };
 
 /** Het volume waar dit mechanisme op afgaat, uit het mechanisme zelf gelezen. */
-export function mechanismTriggerBounds(entity: MallWorldEntity, mechanismId: string): Bounds3 {
+function mechanismTriggerBounds(entity: MallWorldEntity, mechanismId: string): Bounds3 {
 	return mechanismVolumeBounds(entity, mechanismId, (mechanism) => [mechanism.triggerVolumeId]);
 }
 
 /** Wat dit mechanisme afsluit zolang het dicht staat: de omhullende van zijn bewegende delen. */
-export function mechanismGateBounds(entity: MallWorldEntity, mechanismId: string): Bounds3 {
+function mechanismGateBounds(entity: MallWorldEntity, mechanismId: string): Bounds3 {
 	return mechanismVolumeBounds(entity, mechanismId, (mechanism) => mechanism.movingVolumeIds);
 }
 
@@ -1905,7 +1908,7 @@ function mechanismVolumeBounds(
 }
 
 /** Gaat dit mechanisme voor deze verkeersklasse open? Het beleid staat op het mechanisme. */
-export function mechanismAdmits(entity: MallWorldEntity, mechanismId: string, traffic: TrafficClass): boolean {
+function mechanismAdmits(entity: MallWorldEntity, mechanismId: string, traffic: TrafficClass): boolean {
 	return entity.mechanisms.some((candidate) => candidate.id === mechanismId && candidate.access.admits.includes(traffic));
 }
 
@@ -2032,7 +2035,7 @@ function connectorEntity(connector: VerticalConnector): MallWorldEntity {
 	};
 }
 
-export const CONNECTOR_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTORS.map(connectorEntity);
+const CONNECTOR_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTORS.map(connectorEntity);
 
 /**
  * Wie een verticale doorgang lópend of op wielen neemt, in plaats van erin te botsen.
@@ -2042,7 +2045,7 @@ export const CONNECTOR_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTOR
  * staat al op de poorten van elke entiteit; de collision-doos leest het daar uit in
  * plaats van dat elk voertuig een eigen lijst trappen bijhoudt.
  */
-export type ClimbMode = 'walking' | 'wheeled';
+type ClimbMode = 'walking' | 'wheeled';
 
 function entityClimbModes(entity: MallWorldEntity): readonly ClimbMode[] {
 	const modes = new Set<ClimbMode>();
@@ -2057,7 +2060,7 @@ function entityClimbModes(entity: MallWorldEntity): readonly ClimbMode[] {
 const CONNECTOR_CLIMB_MODES = new Map(CONNECTOR_ENTITIES.map((entity) => [entity.id, entityClimbModes(entity)]));
 
 /** De verplaatsingswijzen waarvoor een verticale verbinding een doorgang is, uit zijn poorten. */
-export function connectorClimbModes(id: string): readonly ClimbMode[] {
+function connectorClimbModes(id: string): readonly ClimbMode[] {
 	const modes = CONNECTOR_CLIMB_MODES.get(id);
 	if (!modes) throw new Error(`no connector '${id}'`);
 	return modes;
@@ -2075,7 +2078,7 @@ export function connectorClimbModes(id: string): readonly ClimbMode[] {
 const PARKING_EXIT_REACH = span(PARKING_EXIT_RAMP.end.x, MALL_WALL_ENVELOPE.minX);
 const PARKING_EXIT_PROTRUSION: Protrusion = { depth: PARKING_EXIT_REACH, sides: ['west'] };
 
-export const PARKING_EXIT_RAMP_ENTITY: MallWorldEntity = {
+const PARKING_EXIT_RAMP_ENTITY: MallWorldEntity = {
 	id: PARKING_EXIT_RAMP.id,
 	label: 'Parking exit ramp to city',
 	category: 'vertical-circulation',
@@ -2153,9 +2156,9 @@ export const PARKING_EXIT_RAMP_ENTITY: MallWorldEntity = {
 
 const ELEVATOR_SHAFT_WIDTH = ELEVATOR_SPEC.cabin.width + ELEVATOR_SPEC.shaftGap * 2;
 const ELEVATOR_SHAFT_DEPTH = ELEVATOR_SPEC.cabin.depth + ELEVATOR_SPEC.shaftGap * 2;
-const ELEVATOR_SHAFT_PLAN = rectangle(ELEVATOR_SPEC.center.x, ELEVATOR_SPEC.center.z, ELEVATOR_SHAFT_WIDTH, ELEVATOR_SHAFT_DEPTH);
+const ELEVATOR_SHAFT_PLAN = rectangle({ centerX: ELEVATOR_SPEC.center.x, centerZ: ELEVATOR_SPEC.center.z, width: ELEVATOR_SHAFT_WIDTH, depth: ELEVATOR_SHAFT_DEPTH });
 
-export const ELEVATOR_ENTITY: MallWorldEntity = {
+const ELEVATOR_ENTITY: MallWorldEntity = {
 	id: 'glass-elevator',
 	label: 'Glass elevator',
 	category: 'vertical-circulation',
@@ -2174,7 +2177,7 @@ export const ELEVATOR_ENTITY: MallWorldEntity = {
 			role: 'walkable',
 			geometry: {
 				kind: 'prism',
-				plan: rectangle(ELEVATOR_SPEC.center.x, ELEVATOR_SPEC.center.z, ELEVATOR_SPEC.cabin.width, ELEVATOR_SPEC.cabin.depth),
+				plan: rectangle({ centerX: ELEVATOR_SPEC.center.x, centerZ: ELEVATOR_SPEC.center.z, width: ELEVATOR_SPEC.cabin.width, depth: ELEVATOR_SPEC.cabin.depth }),
 				minY: levelY('v0'),
 				maxY: levelY('v0') + 0.1,
 				holes: [],
@@ -2237,7 +2240,7 @@ export const ELEVATOR_ENTITY: MallWorldEntity = {
 };
 
 /** De verplaatsingswijzen die de liftschacht doorlaat: lopend én op wielen, uit de lift-poort. */
-export const ELEVATOR_CLIMB_MODES = entityClimbModes(ELEVATOR_ENTITY);
+const ELEVATOR_CLIMB_MODES = entityClimbModes(ELEVATOR_ENTITY);
 
 const CONNECTOR_OPENING_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTORS.map((connector) =>
 	openingEntity(
@@ -2250,7 +2253,7 @@ const CONNECTOR_OPENING_ENTITIES: readonly MallWorldEntity[] = VERTICAL_CONNECTO
 	),
 );
 
-export const OPENING_ENTITIES: readonly MallWorldEntity[] = [
+const OPENING_ENTITIES: readonly MallWorldEntity[] = [
 	openingEntity(
 		'opening-elevator-p1',
 		'Elevator recess at P1',
@@ -2319,7 +2322,7 @@ function runToMallInterior(x: number, z: number, dirX: number, dirZ: number): nu
  * noordgevel. De mesh in MallBuilder, de collider en het volume hieronder lezen
  * dit alle drie.
  */
-export function shopRoomDepth(store: StoreDef): number {
+function shopRoomDepth(store: StoreDef): number {
 	return runToMallInterior(store.x, store.z, -Math.sin(store.rotation), -Math.cos(store.rotation));
 }
 
@@ -2339,11 +2342,13 @@ function shopEntity(store: StoreDef): MallWorldEntity {
 				solidPrism(
 					'room-shell',
 					rectangle(
-						store.x - Math.sin(store.rotation) * half(roomDepth),
-						store.z - Math.cos(store.rotation) * half(roomDepth),
-						store.width,
-						roomDepth,
-						store.rotation,
+						{
+							centerX: store.x - Math.sin(store.rotation) * half(roomDepth),
+							centerZ: store.z - Math.cos(store.rotation) * half(roomDepth),
+							width: store.width,
+							depth: roomDepth,
+							yaw: store.rotation,
+						},
 					),
 					levelY(store.level),
 					levelY(store.level) + SHOP_HEIGHT,
@@ -2352,11 +2357,13 @@ function shopEntity(store: StoreDef): MallWorldEntity {
 			clearancePrism(
 				'frontage',
 				rectangle(
-					store.x + Math.sin(store.rotation) * half(STOREFRONT_CLEARANCE_DEPTH),
-					store.z + Math.cos(store.rotation) * half(STOREFRONT_CLEARANCE_DEPTH),
-					store.width,
-					STOREFRONT_CLEARANCE_DEPTH,
-					store.rotation,
+					{
+						centerX: store.x + Math.sin(store.rotation) * half(STOREFRONT_CLEARANCE_DEPTH),
+						centerZ: store.z + Math.cos(store.rotation) * half(STOREFRONT_CLEARANCE_DEPTH),
+						width: store.width,
+						depth: STOREFRONT_CLEARANCE_DEPTH,
+						yaw: store.rotation,
+					},
 				),
 				levelY(store.level),
 				levelY(store.level) + STANDING_PEDESTRIAN.requiredHeadroom,
@@ -2440,7 +2447,7 @@ function roomEntity(spec: RoomEntitySpec): MallWorldEntity {
  * `tipZ + tipOffset + halfWidth` moet vóór die van IKEA blijven. In x staat hij
  * voorbij x 31, waar geen enkele looproute-tak meer komt.
  */
-export const CATWALK_SPEC = {
+const CATWALK_SPEC = {
 	runwayX: 32.4,
 	startZ: 6,
 	tipZ: 14,
@@ -2456,10 +2463,10 @@ export const CATWALK_SPEC = {
 const CATWALK_DECK_CENTER_Z = midpoint(CATWALK_SPEC.startZ, CATWALK_SPEC.tipZ);
 const CATWALK_DECK_LENGTH = span(CATWALK_SPEC.startZ, CATWALK_SPEC.tipZ) + CATWALK_SPEC.deckMargin;
 const CATWALK_DECK_TOP = V0_Y + CATWALK_SPEC.podiumY;
-const CATWALK_DECK_PLAN = rectangle(CATWALK_SPEC.runwayX, CATWALK_DECK_CENTER_Z, CATWALK_SPEC.halfWidth * 2, CATWALK_DECK_LENGTH);
+const CATWALK_DECK_PLAN = rectangle({ centerX: CATWALK_SPEC.runwayX, centerZ: CATWALK_DECK_CENTER_Z, width: CATWALK_SPEC.halfWidth * 2, depth: CATWALK_DECK_LENGTH });
 
 /** Runway footprint the deck mesh, the walkable platform and the kerb all read. */
-export const CATWALK_DECK = {
+const CATWALK_DECK = {
 	centerZ: CATWALK_DECK_CENTER_Z,
 	length: CATWALK_DECK_LENGTH,
 	topY: CATWALK_DECK_TOP,
@@ -2472,12 +2479,12 @@ export const CATWALK_DECK = {
 } as const;
 
 /** Chairs run alongside the walked span and stop before the nose. */
-export function catwalkSeatRows(): number {
+function catwalkSeatRows(): number {
 	const { startZ, tipZ, seating } = CATWALK_SPEC;
 	return Math.floor((span(startZ, tipZ) - seating.firstOffset) / seating.spacing) + 1;
 }
 
-export const CATWALK_ENTITY: MallWorldEntity = roomEntity({
+const CATWALK_ENTITY: MallWorldEntity = roomEntity({
 	id: 'catwalk',
 	label: 'Fashion Week runway',
 	category: 'prop',
@@ -2496,12 +2503,7 @@ export const CATWALK_ENTITY: MallWorldEntity = roomEntity({
 		),
 		solidPrism(
 			'backdrop',
-			rectangle(
-				CATWALK_SPEC.runwayX,
-				CATWALK_SPEC.startZ - CATWALK_SPEC.backdrop.offset,
-				CATWALK_SPEC.backdrop.width,
-				CATWALK_SPEC.backdrop.thickness,
-			),
+			rectangle({ centerX: CATWALK_SPEC.runwayX, centerZ: CATWALK_SPEC.startZ - CATWALK_SPEC.backdrop.offset, width: CATWALK_SPEC.backdrop.width, depth: CATWALK_SPEC.backdrop.thickness }),
 			V0_Y,
 			V0_Y + CATWALK_SPEC.backdrop.height,
 			[],
@@ -2533,7 +2535,7 @@ function slidingLeaf(id: string, minZ: number, maxZ: number): SpatialVolume {
 		role: 'solid',
 		geometry: {
 			kind: 'prism',
-			plan: rectangle(ENTRANCE_PORTAL.glassX, midpoint(minZ, maxZ), ENTRANCE_SPEC.doorThickness, span(minZ, maxZ)),
+			plan: rectangle({ centerX: ENTRANCE_PORTAL.glassX, centerZ: midpoint(minZ, maxZ), width: ENTRANCE_SPEC.doorThickness, depth: span(minZ, maxZ) }),
 			minY: V0_Y,
 			maxY: V0_Y + ENTRANCE_SPEC.doorLeafHeight,
 			holes: [],
@@ -2549,7 +2551,7 @@ function entranceSidelight(id: string, minZ: number, maxZ: number): SpatialVolum
 	return glazed(
 		solidPrism(
 			id,
-			rectangle(ENTRANCE_PORTAL.glassX, midpoint(minZ, maxZ), ENTRANCE_SPEC.glassThickness, span(minZ, maxZ)),
+			rectangle({ centerX: ENTRANCE_PORTAL.glassX, centerZ: midpoint(minZ, maxZ), width: ENTRANCE_SPEC.glassThickness, depth: span(minZ, maxZ) }),
 			V0_Y,
 			V0_Y + ENTRANCE_SPEC.doorHeadY,
 		),
@@ -2573,7 +2575,7 @@ function entranceColumn(id: string, z: number): SpatialVolume {
 }
 
 /** De naam die de kaart aan het portaal geeft. De controle op de schotel leest hem terug. */
-export const ENTRANCE_LABEL = 'HOOFDINGANG';
+const ENTRANCE_LABEL = 'HOOFDINGANG';
 
 /**
  * HOOFDINGANG: de doorgang op straatniveau in de westgevel.
@@ -2584,7 +2586,7 @@ export const ENTRANCE_LABEL = 'HOOFDINGANG';
  * `automatic-gate` van `entrance-doors` en houden zelf niets tegen, en `presence` is
  * het vlak waar dat mechanisme op afgaat.
  */
-export const ENTRANCE_ENTITY: MallWorldEntity = {
+const ENTRANCE_ENTITY: MallWorldEntity = {
 	id: 'main-entrance',
 	label: 'Main street entrance',
 	category: 'opening',
@@ -2593,12 +2595,7 @@ export const ENTRANCE_ENTITY: MallWorldEntity = {
 	volumes: [
 		clearancePrism(
 			'threshold',
-			rectangle(
-				midpoint(ENTRANCE_PORTAL.outerX, ENTRANCE_PORTAL.innerX + ENTRANCE_SPEC.trigger.inreach),
-				ENTRANCE_PORTAL.centerZ,
-				span(ENTRANCE_PORTAL.outerX, ENTRANCE_PORTAL.innerX + ENTRANCE_SPEC.trigger.inreach),
-				span(ENTRANCE_PORTAL.doorMinZ, ENTRANCE_PORTAL.doorMaxZ),
-			),
+			rectangle({ centerX: midpoint(ENTRANCE_PORTAL.outerX, ENTRANCE_PORTAL.innerX + ENTRANCE_SPEC.trigger.inreach), centerZ: ENTRANCE_PORTAL.centerZ, width: span(ENTRANCE_PORTAL.outerX, ENTRANCE_PORTAL.innerX + ENTRANCE_SPEC.trigger.inreach), depth: span(ENTRANCE_PORTAL.doorMinZ, ENTRANCE_PORTAL.doorMaxZ) }),
 			V0_Y,
 			V0_Y + ENTRANCE_SPEC.doorHeadY,
 			'opening-clearance',
@@ -2611,7 +2608,7 @@ export const ENTRANCE_ENTITY: MallWorldEntity = {
 		glazed(
 			solidPrism(
 				'screen',
-				rectangle(ENTRANCE_PORTAL.glassX, ENTRANCE_PORTAL.centerZ, ENTRANCE_SPEC.glassThickness, ENTRANCE_SPEC.width),
+				rectangle({ centerX: ENTRANCE_PORTAL.glassX, centerZ: ENTRANCE_PORTAL.centerZ, width: ENTRANCE_SPEC.glassThickness, depth: ENTRANCE_SPEC.width }),
 				V0_Y + ENTRANCE_SPEC.doorHeadY,
 				V0_Y + ENTRANCE_SPEC.glassTopY,
 			),
@@ -2623,12 +2620,7 @@ export const ENTRANCE_ENTITY: MallWorldEntity = {
 			role: 'trigger',
 			geometry: {
 				kind: 'prism',
-				plan: rectangle(
-					midpoint(ENTRANCE_PORTAL.trigger.minX, ENTRANCE_PORTAL.trigger.maxX),
-					midpoint(ENTRANCE_PORTAL.trigger.minZ, ENTRANCE_PORTAL.trigger.maxZ),
-					span(ENTRANCE_PORTAL.trigger.minX, ENTRANCE_PORTAL.trigger.maxX),
-					span(ENTRANCE_PORTAL.trigger.minZ, ENTRANCE_PORTAL.trigger.maxZ),
-				),
+				plan: rectangle({ centerX: midpoint(ENTRANCE_PORTAL.trigger.minX, ENTRANCE_PORTAL.trigger.maxX), centerZ: midpoint(ENTRANCE_PORTAL.trigger.minZ, ENTRANCE_PORTAL.trigger.maxZ), width: span(ENTRANCE_PORTAL.trigger.minX, ENTRANCE_PORTAL.trigger.maxX), depth: span(ENTRANCE_PORTAL.trigger.minZ, ENTRANCE_PORTAL.trigger.maxZ) }),
 				minY: V0_Y,
 				maxY: V0_Y + ENTRANCE_PORTAL.trigger.maxY,
 				holes: [],
@@ -2640,12 +2632,7 @@ export const ENTRANCE_ENTITY: MallWorldEntity = {
 		},
 		solidPrism(
 			'hall-floor',
-			rectangle(
-				ENTRANCE_PORTAL.innerX + half(ENTRANCE_SPEC.hall.depth),
-				ENTRANCE_PORTAL.centerZ,
-				ENTRANCE_SPEC.hall.depth,
-				ENTRANCE_SPEC.width,
-			),
+			rectangle({ centerX: ENTRANCE_PORTAL.innerX + half(ENTRANCE_SPEC.hall.depth), centerZ: ENTRANCE_PORTAL.centerZ, width: ENTRANCE_SPEC.hall.depth, depth: ENTRANCE_SPEC.width }),
 			V0_Y,
 			V0_Y + ENTRANCE_SPEC.hall.thickness,
 			[],
@@ -2655,12 +2642,7 @@ export const ENTRANCE_ENTITY: MallWorldEntity = {
 		{
 			...solidPrism(
 				'canopy',
-				rectangle(
-					midpoint(ENTRANCE_PORTAL.canopyX, ENTRANCE_PORTAL.outerX),
-					ENTRANCE_PORTAL.centerZ,
-					span(ENTRANCE_PORTAL.canopyX, ENTRANCE_PORTAL.outerX),
-					ENTRANCE_SPEC.width + ENTRANCE_SPEC.canopy.flank * 2,
-				),
+				rectangle({ centerX: midpoint(ENTRANCE_PORTAL.canopyX, ENTRANCE_PORTAL.outerX), centerZ: ENTRANCE_PORTAL.centerZ, width: span(ENTRANCE_PORTAL.canopyX, ENTRANCE_PORTAL.outerX), depth: ENTRANCE_SPEC.width + ENTRANCE_SPEC.canopy.flank * 2 }),
 				ENTRANCE_SPEC.canopy.topY - ENTRANCE_SPEC.canopy.thickness,
 				ENTRANCE_SPEC.canopy.topY,
 				[],
@@ -2715,7 +2697,7 @@ export const ENTRANCE_ENTITY: MallWorldEntity = {
  * kwam bij een reisbureau uit. Alles wat hier een kant kiest, kiest daarom noord
  * als voorkant en zuid als achterkant.
  */
-export const RESTROOMS_SPEC = {
+const RESTROOMS_SPEC = {
 	center: { x: restroomsStore.x, z: restroomsStore.z },
 	shell: { width: 8.2, depth: 6.4 },
 	floorThickness: 0.08,
@@ -2740,7 +2722,7 @@ function restroomsWallCenter(halfSpan: number, thickness: number): number {
  * Wandharten van de schil: mesh, collider en volume lezen dezelfde drie. `backZ` is
  * de dichte wand op het zuiden en `fasciaZ` de latei boven de opening op het noorden.
  */
-export const RESTROOMS_SHELL = {
+const RESTROOMS_SHELL = {
 	sideX: restroomsWallCenter(half(RESTROOMS_SPEC.shell.width), RESTROOMS_SPEC.wallThickness),
 	backZ: restroomsWallCenter(half(RESTROOMS_SPEC.shell.depth), RESTROOMS_SPEC.wallThickness),
 	fasciaZ: restroomsWallCenter(half(RESTROOMS_SPEC.shell.depth), RESTROOMS_SPEC.fascia.thickness),
@@ -2762,7 +2744,7 @@ const RESTROOMS_DIVIDER_MIN_Z = -RESTROOMS_HALF_DEPTH + RESTROOMS_SPEC.divider.f
 const RESTROOMS_DIVIDER_MAX_Z = RESTROOMS_HALF_DEPTH - RESTROOMS_SPEC.divider.backGap;
 
 /** The divider wall in the block's own frame: mesh, collider and plan all read this. */
-export const RESTROOMS_DIVIDER = {
+const RESTROOMS_DIVIDER = {
 	minZ: RESTROOMS_DIVIDER_MIN_Z,
 	maxZ: RESTROOMS_DIVIDER_MAX_Z,
 	centerZ: midpoint(RESTROOMS_DIVIDER_MIN_Z, RESTROOMS_DIVIDER_MAX_Z),
@@ -2784,7 +2766,7 @@ const RESTROOMS_MIRROR = { height: 0.9, thickness: 0.04, y: 1.6 } as const;
  * oostwand naast de urinoirs. De spiegel hing eerder aan die opening; nu hangt hij
  * boven de wastafels op diezelfde wand (zie RESTROOMS_MIRRORS).
  */
-export const RESTROOMS_INTERIOR = {
+const RESTROOMS_INTERIOR = {
 	/** Afstand van de scheidingswand tot het hart van elk van de twee ruimtes. */
 	roomOffsetX: RESTROOMS_ROOM_OFFSET_X,
 	zone: { width: 3.6, depth: 5.6, thickness: 0.02, centerY: 0.09 },
@@ -2828,22 +2810,18 @@ export const RESTROOMS_INTERIOR = {
  * De twee ruimtes ten opzichte van de scheidingswand. Met de opening op het noorden
  * houdt heren dezelfde hand als voorheen: wie binnenloopt heeft de urinoirs links.
  */
-export const RESTROOMS_ROOMS = {
+const RESTROOMS_ROOMS = {
 	mensX: RESTROOMS_INTERIOR.roomOffsetX,
 	womensX: -RESTROOMS_INTERIOR.roomOffsetX,
 } as const;
 
-function restroomsFitting(
-	id: string,
-	offset: Vec2,
-	width: number,
-	depth: number,
-	height: number,
-	role: SpatialRole = 'solid',
-): SpatialVolume {
+type RestroomsFittingArgs = readonly [id: string, offset: Vec2, width: number, depth: number, height: number, role?: SpatialRole];
+
+function restroomsFitting(...args: RestroomsFittingArgs): SpatialVolume {
+	const [id, offset, width, depth, height, role = 'solid'] = args;
 	return solidPrism(
 		id,
-		rectangle(RESTROOMS_SPEC.center.x + offset.x, RESTROOMS_SPEC.center.z + offset.z, width, depth),
+		rectangle({ centerX: RESTROOMS_SPEC.center.x + offset.x, centerZ: RESTROOMS_SPEC.center.z + offset.z, width: width, depth: depth }),
 		V0_Y,
 		V0_Y + height,
 		[],
@@ -2908,7 +2886,7 @@ function restroomsInteriorVolumes(): readonly SpatialVolume[] {
 	];
 }
 
-export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
+const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 	id: 'restrooms',
 	label: 'Restroom block',
 	category: 'facility',
@@ -2919,7 +2897,7 @@ export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 		planEnvelope(
 			solidPrism(
 				'floor-tile',
-				rectangle(RESTROOMS_SPEC.center.x, RESTROOMS_SPEC.center.z, RESTROOMS_SPEC.shell.width, RESTROOMS_SPEC.shell.depth),
+				rectangle({ centerX: RESTROOMS_SPEC.center.x, centerZ: RESTROOMS_SPEC.center.z, width: RESTROOMS_SPEC.shell.width, depth: RESTROOMS_SPEC.shell.depth }),
 				V0_Y,
 				V0_Y + RESTROOMS_SPEC.floorThickness,
 				[],
@@ -2928,56 +2906,31 @@ export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 		),
 		solidPrism(
 			'wall-south',
-			rectangle(
-				RESTROOMS_SPEC.center.x,
-				RESTROOMS_SPEC.center.z + RESTROOMS_SHELL.backZ,
-				RESTROOMS_SPEC.shell.width,
-				RESTROOMS_SPEC.wallThickness,
-			),
+			rectangle({ centerX: RESTROOMS_SPEC.center.x, centerZ: RESTROOMS_SPEC.center.z + RESTROOMS_SHELL.backZ, width: RESTROOMS_SPEC.shell.width, depth: RESTROOMS_SPEC.wallThickness }),
 			V0_Y,
 			RESTROOMS_WALL_TOP,
 		),
 		solidPrism(
 			'wall-west',
-			rectangle(
-				RESTROOMS_SPEC.center.x - RESTROOMS_SHELL.sideX,
-				RESTROOMS_SPEC.center.z,
-				RESTROOMS_SPEC.wallThickness,
-				RESTROOMS_SPEC.shell.depth,
-			),
+			rectangle({ centerX: RESTROOMS_SPEC.center.x - RESTROOMS_SHELL.sideX, centerZ: RESTROOMS_SPEC.center.z, width: RESTROOMS_SPEC.wallThickness, depth: RESTROOMS_SPEC.shell.depth }),
 			V0_Y,
 			RESTROOMS_WALL_TOP,
 		),
 		solidPrism(
 			'wall-east',
-			rectangle(
-				RESTROOMS_SPEC.center.x + RESTROOMS_SHELL.sideX,
-				RESTROOMS_SPEC.center.z,
-				RESTROOMS_SPEC.wallThickness,
-				RESTROOMS_SPEC.shell.depth,
-			),
+			rectangle({ centerX: RESTROOMS_SPEC.center.x + RESTROOMS_SHELL.sideX, centerZ: RESTROOMS_SPEC.center.z, width: RESTROOMS_SPEC.wallThickness, depth: RESTROOMS_SPEC.shell.depth }),
 			V0_Y,
 			RESTROOMS_WALL_TOP,
 		),
 		solidPrism(
 			'divider',
-			rectangle(
-				RESTROOMS_SPEC.center.x,
-				RESTROOMS_SPEC.center.z + RESTROOMS_DIVIDER.centerZ,
-				RESTROOMS_DIVIDER.thickness,
-				RESTROOMS_DIVIDER.depth,
-			),
+			rectangle({ centerX: RESTROOMS_SPEC.center.x, centerZ: RESTROOMS_SPEC.center.z + RESTROOMS_DIVIDER.centerZ, width: RESTROOMS_DIVIDER.thickness, depth: RESTROOMS_DIVIDER.depth }),
 			V0_Y,
 			RESTROOMS_WALL_TOP,
 		),
 		solidPrism(
 			'fascia',
-			rectangle(
-				RESTROOMS_SPEC.center.x,
-				RESTROOMS_SPEC.center.z - RESTROOMS_SHELL.fasciaZ,
-				RESTROOMS_SPEC.shell.width,
-				RESTROOMS_SPEC.fascia.thickness,
-			),
+			rectangle({ centerX: RESTROOMS_SPEC.center.x, centerZ: RESTROOMS_SPEC.center.z - RESTROOMS_SHELL.fasciaZ, width: RESTROOMS_SPEC.shell.width, depth: RESTROOMS_SPEC.fascia.thickness }),
 			RESTROOMS_WALL_TOP - RESTROOMS_SPEC.fascia.height,
 			RESTROOMS_WALL_TOP,
 			[],
@@ -2989,12 +2942,7 @@ export const RESTROOMS_ENTITY: MallWorldEntity = roomEntity({
 		// bewaakt hij de enige deur van het blok tegen het volgende meubel.
 		clearancePrism(
 			'frontage',
-			rectangle(
-				RESTROOMS_SPEC.center.x,
-				RESTROOMS_SPEC.center.z - RESTROOMS_HALF_DEPTH - half(STOREFRONT_CLEARANCE_DEPTH),
-				RESTROOMS_SPEC.shell.width,
-				STOREFRONT_CLEARANCE_DEPTH,
-			),
+			rectangle({ centerX: RESTROOMS_SPEC.center.x, centerZ: RESTROOMS_SPEC.center.z - RESTROOMS_HALF_DEPTH - half(STOREFRONT_CLEARANCE_DEPTH), width: RESTROOMS_SPEC.shell.width, depth: STOREFRONT_CLEARANCE_DEPTH }),
 			V0_Y,
 			V0_Y + STANDING_PEDESTRIAN.requiredHeadroom,
 			'storefront-clearance',
@@ -3020,7 +2968,7 @@ const WUDU_BENCH_TOP_Y = V0_Y + RESTROOMS_INTERIOR.wudu.bench.centerY + half(RES
  * tabel, want een nis die draait moet zijn grondvlak meedraaien en die twee
  * mogen niet uit elkaar lopen.
  */
-export const BACK_TO_WALL_Y: Readonly<Record<CardinalSide, number>> = {
+const BACK_TO_WALL_Y: Readonly<Record<CardinalSide, number>> = {
 	west: Math.PI / 2,
 	east: -Math.PI / 2,
 	north: 0,
@@ -3028,11 +2976,11 @@ export const BACK_TO_WALL_Y: Readonly<Record<CardinalSide, number>> = {
 };
 
 /** Loopt de lengte van iets dat tegen deze wand staat langs z? Op west en oost wel. */
-export function alongZAgainst(side: CardinalSide): boolean {
+function alongZAgainst(side: CardinalSide): boolean {
 	return side === 'west' || side === 'east';
 }
 
-export type RestroomMirror = Readonly<{
+type RestroomMirror = Readonly<{
 	id: string;
 	/** De dichte wand van de schil waar hij co-planair op hangt. */
 	wall: CardinalSide;
@@ -3051,7 +2999,7 @@ export type RestroomMirror = Readonly<{
  * op de zuidwand, de heren op de oostwand. Blok-lokaal, dus de mesh hangt ze in de
  * groep en de check leest ze met RESTROOMS_SPEC.center erbij.
  */
-export const RESTROOMS_MIRRORS: readonly RestroomMirror[] = [
+const RESTROOMS_MIRRORS: readonly RestroomMirror[] = [
 	{
 		id: 'mirror-womens',
 		wall: 'south',
@@ -3080,7 +3028,7 @@ const WUDU_ALONG_Z = alongZAgainst(RESTROOMS_INTERIOR.wudu.against);
 
 /** Het grondvlak van een stuk van de nis, gedraaid met de wand waar hij tegenaan staat. */
 function wuduPlan(length: number, depth: number): PlanShape {
-	return rectangle(WUDU_CENTER.x, WUDU_CENTER.z, WUDU_ALONG_Z ? depth : length, WUDU_ALONG_Z ? length : depth);
+	return rectangle({ centerX: WUDU_CENTER.x, centerZ: WUDU_CENTER.z, width: WUDU_ALONG_Z ? depth : length, depth: WUDU_ALONG_Z ? length : depth });
 }
 
 /**
@@ -3088,7 +3036,7 @@ function wuduPlan(length: number, depth: number): PlanShape {
  * dus buiten het toiletblok, en hij houdt een lichaam tegen: een bank van 38 cm is
  * geen vloer waar je doorheen loopt.
  */
-export const WUDU_ENTITY: MallWorldEntity = roomEntity({
+const WUDU_ENTITY: MallWorldEntity = roomEntity({
 	id: 'wudu-niche',
 	label: 'Wudu niche',
 	category: 'facility',
@@ -3122,7 +3070,7 @@ export const WUDU_ENTITY: MallWorldEntity = roomEntity({
 });
 
 /** De doos die de nis in de collisionwereld is. Scene en wereldmodel lezen dezelfde maten. */
-export const WUDU_COLLIDER = {
+const WUDU_COLLIDER = {
 	minX: WUDU_CENTER.x - half(WUDU_ALONG_Z ? RESTROOMS_INTERIOR.wudu.bench.depth : RESTROOMS_INTERIOR.wudu.bench.length),
 	maxX: WUDU_CENTER.x + half(WUDU_ALONG_Z ? RESTROOMS_INTERIOR.wudu.bench.depth : RESTROOMS_INTERIOR.wudu.bench.length),
 	minZ: WUDU_CENTER.z - half(WUDU_ALONG_Z ? RESTROOMS_INTERIOR.wudu.bench.length : RESTROOMS_INTERIOR.wudu.bench.depth),
@@ -3132,7 +3080,7 @@ export const WUDU_COLLIDER = {
 
 const PRAYER_WALL_THICKNESS = 0.15;
 
-export const PRAYER_ROOM_SPEC = {
+const PRAYER_ROOM_SPEC = {
 	center: {
 		x: MALL_INTERIOR.minX + half(prayerStore.width),
 		z: MALL_INTERIOR.minZ + half(prayerStore.depth),
@@ -3150,7 +3098,7 @@ export const PRAYER_ROOM_SPEC = {
 const PRAYER_WALL_TOP = V0_Y + PRAYER_ROOM_SPEC.wallHeight;
 const PRAYER_CARPET_Y = V0_Y + PRAYER_ROOM_SPEC.carpet.centerY;
 
-export const PRAYER_ROOM_ENTITY: MallWorldEntity = roomEntity({
+const PRAYER_ROOM_ENTITY: MallWorldEntity = roomEntity({
 	id: 'prayer-room',
 	label: 'Prayer room',
 	category: 'facility',
@@ -3161,7 +3109,7 @@ export const PRAYER_ROOM_ENTITY: MallWorldEntity = roomEntity({
 		roomShell(
 			solidPrism(
 				'floor',
-				rectangle(PRAYER_ROOM_SPEC.center.x, PRAYER_ROOM_SPEC.center.z, PRAYER_ROOM_SPEC.room.width, PRAYER_ROOM_SPEC.room.depth),
+				rectangle({ centerX: PRAYER_ROOM_SPEC.center.x, centerZ: PRAYER_ROOM_SPEC.center.z, width: PRAYER_ROOM_SPEC.room.width, depth: PRAYER_ROOM_SPEC.room.depth }),
 				V0_Y,
 				V0_Y + PRAYER_ROOM_SPEC.floorThickness,
 				[],
@@ -3172,45 +3120,25 @@ export const PRAYER_ROOM_ENTITY: MallWorldEntity = roomEntity({
 		),
 		solidPrism(
 			'wall-north',
-			rectangle(
-				PRAYER_ROOM_SPEC.center.x,
-				PRAYER_ROOM_SPEC.center.z - PRAYER_ROOM_SPEC.backWallOffset,
-				PRAYER_ROOM_SPEC.room.width,
-				PRAYER_ROOM_SPEC.wallThickness,
-			),
+			rectangle({ centerX: PRAYER_ROOM_SPEC.center.x, centerZ: PRAYER_ROOM_SPEC.center.z - PRAYER_ROOM_SPEC.backWallOffset, width: PRAYER_ROOM_SPEC.room.width, depth: PRAYER_ROOM_SPEC.wallThickness }),
 			V0_Y,
 			PRAYER_WALL_TOP,
 		),
 		solidPrism(
 			'wall-west',
-			rectangle(
-				PRAYER_ROOM_SPEC.center.x - PRAYER_ROOM_SPEC.sideWallOffset,
-				PRAYER_ROOM_SPEC.center.z,
-				PRAYER_ROOM_SPEC.wallThickness,
-				PRAYER_ROOM_SPEC.room.depth,
-			),
+			rectangle({ centerX: PRAYER_ROOM_SPEC.center.x - PRAYER_ROOM_SPEC.sideWallOffset, centerZ: PRAYER_ROOM_SPEC.center.z, width: PRAYER_ROOM_SPEC.wallThickness, depth: PRAYER_ROOM_SPEC.room.depth }),
 			V0_Y,
 			PRAYER_WALL_TOP,
 		),
 		solidPrism(
 			'wall-east',
-			rectangle(
-				PRAYER_ROOM_SPEC.center.x + PRAYER_ROOM_SPEC.sideWallOffset,
-				PRAYER_ROOM_SPEC.center.z,
-				PRAYER_ROOM_SPEC.wallThickness,
-				PRAYER_ROOM_SPEC.room.depth,
-			),
+			rectangle({ centerX: PRAYER_ROOM_SPEC.center.x + PRAYER_ROOM_SPEC.sideWallOffset, centerZ: PRAYER_ROOM_SPEC.center.z, width: PRAYER_ROOM_SPEC.wallThickness, depth: PRAYER_ROOM_SPEC.room.depth }),
 			V0_Y,
 			PRAYER_WALL_TOP,
 		),
 		solidPrism(
 			'carpet',
-			rectangle(
-				PRAYER_ROOM_SPEC.center.x,
-				PRAYER_ROOM_SPEC.center.z + PRAYER_ROOM_SPEC.carpet.offsetZ,
-				PRAYER_ROOM_SPEC.carpet.width,
-				PRAYER_ROOM_SPEC.carpet.depth,
-			),
+			rectangle({ centerX: PRAYER_ROOM_SPEC.center.x, centerZ: PRAYER_ROOM_SPEC.center.z + PRAYER_ROOM_SPEC.carpet.offsetZ, width: PRAYER_ROOM_SPEC.carpet.width, depth: PRAYER_ROOM_SPEC.carpet.depth }),
 			PRAYER_CARPET_Y - half(PRAYER_ROOM_SPEC.carpet.thickness),
 			PRAYER_CARPET_Y + half(PRAYER_ROOM_SPEC.carpet.thickness),
 			[],
@@ -3221,7 +3149,7 @@ export const PRAYER_ROOM_ENTITY: MallWorldEntity = roomEntity({
 	tags: ['prayer-room', prayerStore.category, 'static'],
 });
 
-export const BEARD_CAVE_SPEC = {
+const BEARD_CAVE_SPEC = {
 	entrance: { x: beardCaveStore.x, z: beardCaveStore.z },
 	/** The hollow sits west of the mouth the path targets. */
 	interiorOffsetX: -1,
@@ -3235,7 +3163,7 @@ export const BEARD_CAVE_SPEC = {
 	loot: { offsetX: -1.2, centerY: 0.4 },
 } as const;
 
-export const BEARD_CAVE_LOOT_CENTER = {
+const BEARD_CAVE_LOOT_CENTER = {
 	x: BEARD_CAVE_SPEC.entrance.x + BEARD_CAVE_SPEC.loot.offsetX,
 	y: V0_Y + BEARD_CAVE_SPEC.loot.centerY,
 	z: BEARD_CAVE_SPEC.entrance.z,
@@ -3247,7 +3175,7 @@ function beardCaveSideWall(id: string, sign: number): SpatialVolume {
 	const { sideWall } = BEARD_CAVE_SPEC;
 	return solidPrism(
 		id,
-		rectangle(BEARD_CAVE_INTERIOR_X, BEARD_CAVE_SPEC.entrance.z + sign * sideWall.offsetZ, sideWall.width, sideWall.depth),
+		rectangle({ centerX: BEARD_CAVE_INTERIOR_X, centerZ: BEARD_CAVE_SPEC.entrance.z + sign * sideWall.offsetZ, width: sideWall.width, depth: sideWall.depth }),
 		V0_Y + sideWall.centerY - half(sideWall.height),
 		V0_Y + sideWall.centerY + half(sideWall.height),
 	);
@@ -3279,7 +3207,7 @@ function beardCavePillar(id: string, sign: number): SpatialVolume {
 	);
 }
 
-export const BEARD_CAVE_ENTITY: MallWorldEntity = roomEntity({
+const BEARD_CAVE_ENTITY: MallWorldEntity = roomEntity({
 	id: 'beard-cave',
 	label: "Beard-man's cave",
 	category: 'prop',
@@ -3289,7 +3217,7 @@ export const BEARD_CAVE_ENTITY: MallWorldEntity = roomEntity({
 	volumes: [
 		solidPrism(
 			'cave-floor',
-			rectangle(BEARD_CAVE_INTERIOR_X, BEARD_CAVE_SPEC.entrance.z, BEARD_CAVE_SPEC.floor.width, BEARD_CAVE_SPEC.floor.depth),
+			rectangle({ centerX: BEARD_CAVE_INTERIOR_X, centerZ: BEARD_CAVE_SPEC.entrance.z, width: BEARD_CAVE_SPEC.floor.width, depth: BEARD_CAVE_SPEC.floor.depth }),
 			V0_Y + BEARD_CAVE_SPEC.floor.centerY - half(BEARD_CAVE_SPEC.floor.height),
 			V0_Y + BEARD_CAVE_SPEC.floor.centerY + half(BEARD_CAVE_SPEC.floor.height),
 			[],
@@ -3297,12 +3225,7 @@ export const BEARD_CAVE_ENTITY: MallWorldEntity = roomEntity({
 		),
 		solidPrism(
 			'cave-back-wall',
-			rectangle(
-				BEARD_CAVE_SPEC.entrance.x + BEARD_CAVE_SPEC.backWall.offsetX,
-				BEARD_CAVE_SPEC.entrance.z,
-				BEARD_CAVE_SPEC.backWall.width,
-				BEARD_CAVE_SPEC.backWall.depth,
-			),
+			rectangle({ centerX: BEARD_CAVE_SPEC.entrance.x + BEARD_CAVE_SPEC.backWall.offsetX, centerZ: BEARD_CAVE_SPEC.entrance.z, width: BEARD_CAVE_SPEC.backWall.width, depth: BEARD_CAVE_SPEC.backWall.depth }),
 			V0_Y + BEARD_CAVE_SPEC.backWall.centerY - half(BEARD_CAVE_SPEC.backWall.height),
 			V0_Y + BEARD_CAVE_SPEC.backWall.centerY + half(BEARD_CAVE_SPEC.backWall.height),
 		),
@@ -3310,7 +3233,7 @@ export const BEARD_CAVE_ENTITY: MallWorldEntity = roomEntity({
 		beardCaveSideWall('cave-wall-south', 1),
 		solidPrism(
 			'cave-ceiling',
-			rectangle(BEARD_CAVE_INTERIOR_X, BEARD_CAVE_SPEC.entrance.z, BEARD_CAVE_SPEC.ceiling.width, BEARD_CAVE_SPEC.ceiling.depth),
+			rectangle({ centerX: BEARD_CAVE_INTERIOR_X, centerZ: BEARD_CAVE_SPEC.entrance.z, width: BEARD_CAVE_SPEC.ceiling.width, depth: BEARD_CAVE_SPEC.ceiling.depth }),
 			V0_Y + BEARD_CAVE_SPEC.ceiling.centerY - half(BEARD_CAVE_SPEC.ceiling.height),
 			V0_Y + BEARD_CAVE_SPEC.ceiling.centerY + half(BEARD_CAVE_SPEC.ceiling.height),
 		),
@@ -3321,7 +3244,7 @@ export const BEARD_CAVE_ENTITY: MallWorldEntity = roomEntity({
 	tags: ['beard-cave', beardCaveStore.category, 'static'],
 });
 
-export const ISLAND_HOP_SPEC = {
+const ISLAND_HOP_SPEC = {
 	center: { x: islandHopStore.x, z: islandHopStore.z },
 	slab: { width: islandHopStore.width, depth: islandHopStore.depth, thickness: 0.1 },
 	wallHeight: 2.6,
@@ -3352,14 +3275,14 @@ export const ISLAND_HOP_SPEC = {
 	},
 } as const;
 
-export type IslandHopBanner = Bounds3 & Readonly<{ id: string }>;
+type IslandHopBanner = Bounds3 & Readonly<{ id: string }>;
 
 /**
  * De borden, van boven naar beneden onder de bovenkant van de lijst. De bouwer en de
  * volumes hieronder lezen dezelfde dozen, dus een bord kan niet in de mesh ergens
  * anders hangen dan in het model.
  */
-export const ISLAND_HOP_BANNERS: readonly IslandHopBanner[] = ((): readonly IslandHopBanner[] => {
+const ISLAND_HOP_BANNERS: readonly IslandHopBanner[] = ((): readonly IslandHopBanner[] => {
 	const { center, fascia, banner } = ISLAND_HOP_SPEC;
 	const front = center.x + fascia.offsetX + half(fascia.width) + banner.standoff;
 	let top = V0_Y + fascia.centerY + half(fascia.height);
@@ -3389,7 +3312,7 @@ export const ISLAND_HOP_BANNERS: readonly IslandHopBanner[] = ((): readonly Isla
  */
 const ISLAND_HOP_STANDOFF: Standoff = { side: 'west', depth: 3.8 };
 
-export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
+const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 	id: `shop-${islandHopStore.id}`,
 	label: islandHopStore.name,
 	category: 'shop',
@@ -3401,7 +3324,7 @@ export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 		roomShell(
 			solidPrism(
 				'room-shell',
-				rectangle(ISLAND_HOP_SPEC.center.x, ISLAND_HOP_SPEC.center.z, ISLAND_HOP_SPEC.slab.width, ISLAND_HOP_SPEC.slab.depth),
+				rectangle({ centerX: ISLAND_HOP_SPEC.center.x, centerZ: ISLAND_HOP_SPEC.center.z, width: ISLAND_HOP_SPEC.slab.width, depth: ISLAND_HOP_SPEC.slab.depth }),
 				V0_Y,
 				V0_Y + ISLAND_HOP_SPEC.wallHeight,
 			),
@@ -3409,12 +3332,7 @@ export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 		),
 		solidPrism(
 			'desk',
-			rectangle(
-				ISLAND_HOP_SPEC.center.x + ISLAND_HOP_SPEC.desk.offsetX,
-				ISLAND_HOP_SPEC.center.z,
-				ISLAND_HOP_SPEC.desk.width,
-				ISLAND_HOP_SPEC.desk.depth,
-			),
+			rectangle({ centerX: ISLAND_HOP_SPEC.center.x + ISLAND_HOP_SPEC.desk.offsetX, centerZ: ISLAND_HOP_SPEC.center.z, width: ISLAND_HOP_SPEC.desk.width, depth: ISLAND_HOP_SPEC.desk.depth }),
 			V0_Y,
 			V0_Y + ISLAND_HOP_SPEC.desk.height,
 		),
@@ -3422,12 +3340,7 @@ export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 		// puiprisma ontstond: als enige van de negentien stond zijn pui open.
 		clearancePrism(
 			'frontage',
-			rectangle(
-				ISLAND_HOP_SPEC.center.x + half(ISLAND_HOP_SPEC.slab.width) + half(STOREFRONT_CLEARANCE_DEPTH),
-				ISLAND_HOP_SPEC.center.z,
-				STOREFRONT_CLEARANCE_DEPTH,
-				ISLAND_HOP_SPEC.slab.depth,
-			),
+			rectangle({ centerX: ISLAND_HOP_SPEC.center.x + half(ISLAND_HOP_SPEC.slab.width) + half(STOREFRONT_CLEARANCE_DEPTH), centerZ: ISLAND_HOP_SPEC.center.z, width: STOREFRONT_CLEARANCE_DEPTH, depth: ISLAND_HOP_SPEC.slab.depth }),
 			V0_Y,
 			V0_Y + STANDING_PEDESTRIAN.requiredHeadroom,
 			'storefront-clearance',
@@ -3435,12 +3348,7 @@ export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 		signage(
 			solidPrism(
 				'fascia',
-				rectangle(
-					ISLAND_HOP_SPEC.center.x + ISLAND_HOP_SPEC.fascia.offsetX,
-					ISLAND_HOP_SPEC.center.z,
-					ISLAND_HOP_SPEC.fascia.width,
-					ISLAND_HOP_SPEC.fascia.depth,
-				),
+				rectangle({ centerX: ISLAND_HOP_SPEC.center.x + ISLAND_HOP_SPEC.fascia.offsetX, centerZ: ISLAND_HOP_SPEC.center.z, width: ISLAND_HOP_SPEC.fascia.width, depth: ISLAND_HOP_SPEC.fascia.depth }),
 				V0_Y + ISLAND_HOP_SPEC.fascia.centerY - half(ISLAND_HOP_SPEC.fascia.height),
 				V0_Y + ISLAND_HOP_SPEC.fascia.centerY + half(ISLAND_HOP_SPEC.fascia.height),
 				[],
@@ -3452,12 +3360,7 @@ export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 			signage(
 				solidPrism(
 					`banner-${board.id}`,
-					rectangle(
-						midpoint(board.minX, board.maxX),
-						midpoint(board.minZ, board.maxZ),
-						span(board.minX, board.maxX),
-						span(board.minZ, board.maxZ),
-					),
+					rectangle({ centerX: midpoint(board.minX, board.maxX), centerZ: midpoint(board.minZ, board.maxZ), width: span(board.minX, board.maxX), depth: span(board.minZ, board.maxZ) }),
 					board.minY,
 					board.maxY,
 					[],
@@ -3471,7 +3374,7 @@ export const ISLAND_HOP_ENTITY: MallWorldEntity = roomEntity({
 	tags: ['shop', islandHopStore.category, 'static'],
 });
 
-export const FOUNTAIN_SPEC = {
+const FOUNTAIN_SPEC = {
 	center: ATRIUM_OPENING.center,
 	/** Kerb radius: what the collider blocks, where the accent ring starts and what the plan draws. */
 	kerbRadius: 2.6,
@@ -3482,7 +3385,7 @@ export const FOUNTAIN_SPEC = {
 
 const FOUNTAIN_LABEL = 'FONTEIN · GOD';
 
-export const FOUNTAIN_ENTITY: MallWorldEntity = roomEntity({
+const FOUNTAIN_ENTITY: MallWorldEntity = roomEntity({
 	id: 'atrium-fountain',
 	label: FOUNTAIN_LABEL,
 	category: 'prop',
@@ -3516,14 +3419,14 @@ const KIOSK_LABEL = 'KIOSK · START';
 /** The directory record and the graph node both mark where you stand at the kiosk. */
 const KIOSK_STAND_GAP = 1;
 
-export const KIOSK_SPEC = {
+const KIOSK_SPEC = {
 	center: { x: kioskStore.x, z: kioskStore.z + KIOSK_STAND_GAP },
 	/** The cabinet you bump into; the screen leans out over it. */
 	baseRadius: 1,
 	height: 3,
 } as const;
 
-export const KIOSK_ENTITY: MallWorldEntity = roomEntity({
+const KIOSK_ENTITY: MallWorldEntity = roomEntity({
 	id: 'info-kiosk',
 	label: KIOSK_LABEL,
 	category: 'prop',
@@ -3533,7 +3436,7 @@ export const KIOSK_ENTITY: MallWorldEntity = roomEntity({
 	volumes: [
 		solidPrism(
 			'cabinet',
-			rectangle(KIOSK_SPEC.center.x, KIOSK_SPEC.center.z, KIOSK_SPEC.baseRadius * 2, KIOSK_SPEC.baseRadius * 2),
+			rectangle({ centerX: KIOSK_SPEC.center.x, centerZ: KIOSK_SPEC.center.z, width: KIOSK_SPEC.baseRadius * 2, depth: KIOSK_SPEC.baseRadius * 2 }),
 			V0_Y,
 			V0_Y + KIOSK_SPEC.height,
 		),
@@ -3542,13 +3445,13 @@ export const KIOSK_ENTITY: MallWorldEntity = roomEntity({
 	tags: ['kiosk', kioskStore.category, 'static'],
 });
 
-export const FOOD_COURT_SPEC = {
+const FOOD_COURT_SPEC = {
 	center: { x: foodCourtStore.x, z: foodCourtStore.z },
 	plaza: { width: foodCourtStore.width, depth: 5.2, thickness: 0.06 },
 	stripe: { width: 14.2, thickness: 0.04, depth: 0.18, offsetZ: 2.5, centerY: 0.06 },
 } as const;
 
-export const FOOD_COURT_ENTITY: MallWorldEntity = roomEntity({
+const FOOD_COURT_ENTITY: MallWorldEntity = roomEntity({
 	id: 'food-court',
 	label: foodCourtStore.name,
 	category: 'facility',
@@ -3558,7 +3461,7 @@ export const FOOD_COURT_ENTITY: MallWorldEntity = roomEntity({
 	volumes: [
 		solidPrism(
 			'plaza',
-			rectangle(FOOD_COURT_SPEC.center.x, FOOD_COURT_SPEC.center.z, FOOD_COURT_SPEC.plaza.width, FOOD_COURT_SPEC.plaza.depth),
+			rectangle({ centerX: FOOD_COURT_SPEC.center.x, centerZ: FOOD_COURT_SPEC.center.z, width: FOOD_COURT_SPEC.plaza.width, depth: FOOD_COURT_SPEC.plaza.depth }),
 			V1_Y,
 			V1_Y + FOOD_COURT_SPEC.plaza.thickness,
 			[],
@@ -3570,7 +3473,7 @@ export const FOOD_COURT_ENTITY: MallWorldEntity = roomEntity({
 });
 
 /** A crowd occupies a patch of floor, so its footprint is the directory record and nothing else. */
-export const PROTEST_ENTITY: MallWorldEntity = roomEntity({
+const PROTEST_ENTITY: MallWorldEntity = roomEntity({
 	id: 'protest',
 	label: protestStore.name,
 	category: 'prop',
@@ -3580,7 +3483,7 @@ export const PROTEST_ENTITY: MallWorldEntity = roomEntity({
 	volumes: [
 		solidPrism(
 			'gathering',
-			rectangle(protestStore.x, protestStore.z, protestStore.width, protestStore.depth),
+			rectangle({ centerX: protestStore.x, centerZ: protestStore.z, width: protestStore.width, depth: protestStore.depth }),
 			V0_Y,
 			V0_Y + STANDING_PEDESTRIAN.bodyHeight,
 			[],
@@ -3594,7 +3497,7 @@ export const PROTEST_ENTITY: MallWorldEntity = roomEntity({
 
 const SPACESHIP_LABEL = 'UFO · WEIDE';
 
-export const SPACESHIP_SPEC = {
+const SPACESHIP_SPEC = {
 	center: ATRIUM_OPENING.center,
 	/** Hazard frame around the V1 void edge, lying on the deck. */
 	frame: { thickness: 0.35, height: 0.05, edgeOffset: 0.2, overhang: 0.4 },
@@ -3603,7 +3506,7 @@ export const SPACESHIP_SPEC = {
 
 const SPACESHIP_SAUCER_RADIUS = SPACESHIP_SPEC.saucer.hullRadius * SPACESHIP_SPEC.saucer.scale;
 
-export const SPACESHIP_FRAME_RAILS = cardinalWallPanels({
+const SPACESHIP_FRAME_RAILS = cardinalWallPanels({
 	center: SPACESHIP_SPEC.center,
 	offset: {
 		x: half(ATRIUM_VOID.width) + SPACESHIP_SPEC.frame.edgeOffset,
@@ -3616,9 +3519,9 @@ export const SPACESHIP_FRAME_RAILS = cardinalWallPanels({
 	thickness: SPACESHIP_SPEC.frame.thickness,
 });
 
-export const SPACESHIP_FRAME_Y = V1_Y + half(SPACESHIP_SPEC.frame.height);
+const SPACESHIP_FRAME_Y = V1_Y + half(SPACESHIP_SPEC.frame.height);
 
-export const SPACESHIP_ENTITY: MallWorldEntity = roomEntity({
+const SPACESHIP_ENTITY: MallWorldEntity = roomEntity({
 	id: 'spaceship',
 	label: SPACESHIP_LABEL,
 	category: 'prop',
@@ -3654,13 +3557,13 @@ export const SPACESHIP_ENTITY: MallWorldEntity = roomEntity({
  * de buis er bovenop. Het Bouwbesluit vraagt 1 m bij een val van 6 m, dus 1,1 m
  * is die eis plus de marge die een winkelcentrum aanhoudt.
  */
-export const ATRIUM_BALUSTRADE_SPEC = {
+const ATRIUM_BALUSTRADE_SPEC = {
 	glassHeight: 1.1,
 	railThickness: 0.05,
 } as const;
 
 /** Bovenkant van de handrail: hier moet je overheen om het atrium in te springen. */
-export const ATRIUM_BALUSTRADE_TOP_Y = V1_Y + ATRIUM_BALUSTRADE_SPEC.glassHeight + half(ATRIUM_BALUSTRADE_SPEC.railThickness);
+const ATRIUM_BALUSTRADE_TOP_Y = V1_Y + ATRIUM_BALUSTRADE_SPEC.glassHeight + half(ATRIUM_BALUSTRADE_SPEC.railThickness);
 
 const ATRIUM_PLANTER_LABEL = 'PLANTENBAK · VIDE';
 
@@ -3684,7 +3587,7 @@ const ATRIUM_PLANTER_LABEL = 'PLANTENBAK · VIDE';
  * verder naar binnen, dan duwt die klem je van je eigen bakrand af zodra je erop
  * landt, en dan is de bak een decorstuk.
  */
-export const ATRIUM_PLANTER_SPEC = {
+const ATRIUM_PLANTER_SPEC = {
 	innerX: half(ATRIUM_BARRIER.width) + STANDING_PEDESTRIAN.radius,
 	centerZ: ATRIUM_OPENING.center.z,
 	length: 2.4,
@@ -3698,7 +3601,7 @@ export const ATRIUM_PLANTER_SPEC = {
 	shrub: { radius: 0.22, count: 4 },
 } as const;
 
-export type AtriumPlanterTier = Readonly<{
+type AtriumPlanterTier = Readonly<{
 	id: string;
 	minX: number;
 	maxX: number;
@@ -3723,7 +3626,7 @@ export type AtriumPlanterTier = Readonly<{
  * dekt, en op de naad tussen bak en zitrand dekken ze allebei. Andersom stond je
  * daar op de bakrand en zei de vloer 0,38 m lager te liggen.
  */
-export function atriumPlanterTiers(): readonly AtriumPlanterTier[] {
+function atriumPlanterTiers(): readonly AtriumPlanterTier[] {
 	const { innerX, centerZ, length, planter, bench } = ATRIUM_PLANTER_SPEC;
 	const minZ = centerZ - half(length);
 	const maxZ = centerZ + half(length);
@@ -3744,7 +3647,7 @@ export function atriumPlanterTiers(): readonly AtriumPlanterTier[] {
 	];
 }
 
-export const ATRIUM_PLANTER_ENTITY: MallWorldEntity = roomEntity({
+const ATRIUM_PLANTER_ENTITY: MallWorldEntity = roomEntity({
 	id: 'atrium-planter',
 	label: 'Atrium void planter',
 	category: 'prop',
@@ -3757,12 +3660,7 @@ export const ATRIUM_PLANTER_ENTITY: MallWorldEntity = roomEntity({
 	volumes: atriumPlanterTiers().map((tier) =>
 		solidPrism(
 			tier.id,
-			rectangle(
-				midpoint(tier.minX, tier.maxX),
-				midpoint(tier.minZ, tier.maxZ),
-				span(tier.minX, tier.maxX),
-				span(tier.minZ, tier.maxZ),
-			),
+			rectangle({ centerX: midpoint(tier.minX, tier.maxX), centerZ: midpoint(tier.minZ, tier.maxZ), width: span(tier.minX, tier.maxX), depth: span(tier.minZ, tier.maxZ) }),
 			V1_Y,
 			tier.topY,
 			[],
@@ -3785,7 +3683,7 @@ const PARKING_CEILING = { thickness: 0.3, height: 4.6 } as const;
  */
 const PARKING_CLEAR_HEIGHT = PARKING_CEILING.height - half(PARKING_CEILING.thickness);
 
-export const PARKING_DECK_SPEC = {
+const PARKING_DECK_SPEC = {
 	/** Height of the walls and the pillars alike, above the deck. */
 	clearHeight: PARKING_CLEAR_HEIGHT,
 	ceiling: PARKING_CEILING,
@@ -3816,7 +3714,7 @@ const PARKING_EXIT_JAMB_DEPTH = span(PARKING_EXIT_WALL_GAP, half(PARKING_FOOTPRI
  */
 const PARKING_EXIT_HEAD_Y = parkingExitRampY(PARKING_WALL_WEST_FACE) + PARKING_EXIT_HEADROOM;
 
-export type ParkingWallPanel = Readonly<{
+type ParkingWallPanel = Readonly<{
 	id: string;
 	center: Vec2;
 	size: Readonly<{ width: number; depth: number }>;
@@ -3830,7 +3728,7 @@ export type ParkingWallPanel = Readonly<{
  * basement level; only the exit mouth is an opening, and even that is capped by a
  * lintel above the ramp's headroom.
  */
-export const PARKING_WALL_PANELS: readonly ParkingWallPanel[] = [
+const PARKING_WALL_PANELS: readonly ParkingWallPanel[] = [
 	{
 		id: 'north',
 		center: { x: 0, z: -PARKING_WALL_Z },
@@ -3873,7 +3771,7 @@ export const PARKING_WALL_PANELS: readonly ParkingWallPanel[] = [
 ];
 
 /** The grid minus the bay the elevator landing needs. */
-export function parkingPillarCenters(): readonly Vec2[] {
+function parkingPillarCenters(): readonly Vec2[] {
 	const { pillar } = PARKING_DECK_SPEC;
 	const centers: Vec2[] = [];
 	for (let column = -pillar.columns; column <= pillar.columns; column++) {
@@ -3897,7 +3795,7 @@ export function parkingPillarCenters(): readonly Vec2[] {
  * looking west out of P1 gave cars and towers floating on the sky colour. These two
  * retaining walls flank the whole ramp and close it.
  */
-export const PARKING_EXIT_TRENCH = {
+const PARKING_EXIT_TRENCH = {
 	id: 'parking-exit-trench',
 	label: 'Parking exit trench',
 	/** Bottom: the deck, so the wedge under the rising slab is closed too. */
@@ -3922,7 +3820,7 @@ const PARKING_EXIT_TRENCH_LAP: Penetration = {
 	into: ['structure'],
 };
 
-export type ParkingTrenchWall = Readonly<{
+type ParkingTrenchWall = Readonly<{
 	id: string;
 	minX: number;
 	maxX: number;
@@ -3938,7 +3836,7 @@ export type ParkingTrenchWall = Readonly<{
  * the jamb of the mouth it runs out through. The covered stretch stops under the
  * ground-floor slab; carried on to street level it would stand inside the facade.
  */
-export const PARKING_EXIT_TRENCH_WALLS: readonly ParkingTrenchWall[] = ([-1, 1] as const).flatMap((sign) => {
+const PARKING_EXIT_TRENCH_WALLS: readonly ParkingTrenchWall[] = ([-1, 1] as const).flatMap((sign) => {
 	const kant = sign < 0 ? 'north' : 'south';
 	const minZ = sign < 0 ? -PARKING_EXIT_WALL_GAP : PARKING_EXIT_RAIL_OUTER;
 	const maxZ = sign < 0 ? -PARKING_EXIT_RAIL_OUTER : PARKING_EXIT_WALL_GAP;
@@ -3965,14 +3863,14 @@ export const PARKING_EXIT_TRENCH_WALLS: readonly ParkingTrenchWall[] = ([-1, 1] 
 });
 
 /** Het straathek boven op de open keermuren: stijl en collision lezen dezelfde envelop. */
-export const PARKING_EXIT_TRENCH_GUARD = {
+const PARKING_EXIT_TRENCH_GUARD = {
 	height: 1.1,
 	railThickness: 0.12,
 	postSize: 0.12,
 	postPitch: 1.8,
 } as const;
 
-export type ParkingTrenchGuard = Readonly<{
+type ParkingTrenchGuard = Readonly<{
 	id: string;
 	minX: number;
 	maxX: number;
@@ -3988,7 +3886,7 @@ export type ParkingTrenchGuard = Readonly<{
  * een wandelaar wel tegenhield en een springer erover liet vallen. Boven elk open
  * stuk staat nu één hek uit dezelfde maten als de keermuur.
  */
-export const PARKING_EXIT_TRENCH_GUARDS: readonly ParkingTrenchGuard[] = PARKING_EXIT_TRENCH_WALLS.filter(
+const PARKING_EXIT_TRENCH_GUARDS: readonly ParkingTrenchGuard[] = PARKING_EXIT_TRENCH_WALLS.filter(
 	(wall) => wall.openToSky,
 ).map((wall) => ({
 	id: `guard-${wall.id}`,
@@ -4010,7 +3908,7 @@ export const PARKING_EXIT_TRENCH_GUARDS: readonly ParkingTrenchGuard[] = PARKING
  * plaat, tussen de keermuren, en laat de doorrijhoogte onder zich vrij: bij de mond
  * ligt de hellinglijn plus `PARKING_EXIT_HEADROOM` nog onder het parkeerdak.
  */
-export const PARKING_EXIT_TRENCH_HEAD: Bounds3 = {
+const PARKING_EXIT_TRENCH_HEAD: Bounds3 = {
 	minX: PARKING_EXIT_TRENCH.coverX,
 	maxX: PARKING_EXIT_TRENCH.maxX,
 	minY: PARKING_CEILING_TOP_Y,
@@ -4019,7 +3917,7 @@ export const PARKING_EXIT_TRENCH_HEAD: Bounds3 = {
 	maxZ: PARKING_EXIT_RAIL_OUTER,
 };
 
-export const PARKING_EXIT_TRENCH_ENTITY: MallWorldEntity = {
+const PARKING_EXIT_TRENCH_ENTITY: MallWorldEntity = {
 	id: PARKING_EXIT_TRENCH.id,
 	label: PARKING_EXIT_TRENCH.label,
 	category: 'parking',
@@ -4040,12 +3938,7 @@ export const PARKING_EXIT_TRENCH_ENTITY: MallWorldEntity = {
 		...PARKING_EXIT_TRENCH_WALLS.map((wall) => {
 			const prism = solidPrism(
 				wall.id,
-				rectangle(
-					midpoint(wall.minX, wall.maxX),
-					midpoint(wall.minZ, wall.maxZ),
-					span(wall.minX, wall.maxX),
-					span(wall.minZ, wall.maxZ),
-				),
+				rectangle({ centerX: midpoint(wall.minX, wall.maxX), centerZ: midpoint(wall.minZ, wall.maxZ), width: span(wall.minX, wall.maxX), depth: span(wall.minZ, wall.maxZ) }),
 				PARKING_EXIT_TRENCH.baseY,
 				wall.topY,
 			);
@@ -4059,7 +3952,7 @@ export const PARKING_EXIT_TRENCH_ENTITY: MallWorldEntity = {
 		...PARKING_EXIT_TRENCH_GUARDS.map((guard) => ({
 			...solidPrism(
 				guard.id,
-				rectangle(midpoint(guard.minX, guard.maxX), guard.centerZ, span(guard.minX, guard.maxX), guard.thickness),
+				rectangle({ centerX: midpoint(guard.minX, guard.maxX), centerZ: guard.centerZ, width: span(guard.minX, guard.maxX), depth: guard.thickness }),
 				guard.minY,
 				guard.maxY,
 			),
@@ -4067,12 +3960,7 @@ export const PARKING_EXIT_TRENCH_ENTITY: MallWorldEntity = {
 		})),
 		solidPrism(
 			'trench-head',
-			rectangle(
-				midpoint(PARKING_EXIT_TRENCH_HEAD.minX, PARKING_EXIT_TRENCH_HEAD.maxX),
-				midpoint(PARKING_EXIT_TRENCH_HEAD.minZ, PARKING_EXIT_TRENCH_HEAD.maxZ),
-				span(PARKING_EXIT_TRENCH_HEAD.minX, PARKING_EXIT_TRENCH_HEAD.maxX),
-				span(PARKING_EXIT_TRENCH_HEAD.minZ, PARKING_EXIT_TRENCH_HEAD.maxZ),
-			),
+			rectangle({ centerX: midpoint(PARKING_EXIT_TRENCH_HEAD.minX, PARKING_EXIT_TRENCH_HEAD.maxX), centerZ: midpoint(PARKING_EXIT_TRENCH_HEAD.minZ, PARKING_EXIT_TRENCH_HEAD.maxZ), width: span(PARKING_EXIT_TRENCH_HEAD.minX, PARKING_EXIT_TRENCH_HEAD.maxX), depth: span(PARKING_EXIT_TRENCH_HEAD.minZ, PARKING_EXIT_TRENCH_HEAD.maxZ) }),
 			PARKING_EXIT_TRENCH_HEAD.minY,
 			PARKING_EXIT_TRENCH_HEAD.maxY,
 		),
@@ -4094,7 +3982,7 @@ export const PARKING_EXIT_TRENCH_ENTITY: MallWorldEntity = {
  * the ground-floor slab nothing can fall in, and a box there would be an invisible
  * wall standing inside the building.
  */
-export function parkingExitTrenchColliders(): readonly WorldCollider[] {
+function parkingExitTrenchColliders(): readonly WorldCollider[] {
 	return [
 		...PARKING_EXIT_TRENCH_WALLS.filter((wall) => wall.openToSky).map((wall) => ({
 			minX: wall.minX,
@@ -4118,7 +4006,7 @@ export function parkingExitTrenchColliders(): readonly WorldCollider[] {
 }
 
 /** The mall's underside. Cut for the elevator, which travels straight through it. */
-export const PARKING_CEILING_SPEC = {
+const PARKING_CEILING_SPEC = {
 	plan: PARKING_FOOTPRINT_PLAN,
 	holes: [P1_ELEVATOR_PLAN],
 	thickness: PARKING_DECK_SPEC.ceiling.thickness,
@@ -4126,27 +4014,22 @@ export const PARKING_CEILING_SPEC = {
 } as const;
 
 /** Zandplaat van het dakeiland. De dekmesh, de collider en de plattegrond lezen dezelfde randen. */
-export const ROOF_ISLAND_PAD = { minX: -32, maxX: -6, minZ: -20, maxZ: 20 } as const;
+const ROOF_ISLAND_PAD = { minX: -32, maxX: -6, minZ: -20, maxZ: 20 } as const;
 
 /**
  * De zandplaat is een deklaag óp de dakplaat. Als dikke plaat mét zijn bovenkant
  * op levelY('roof') lag hij precies in het dak en flikkerde hij over 26×40 m.
  */
-export const ROOF_ISLAND_DECK_THICKNESS = 0.04;
+const ROOF_ISLAND_DECK_THICKNESS = 0.04;
 const ROOF_ISLAND_SAND_TOP_Y = levelY('roof') + ROOF_ISLAND_DECK_THICKNESS;
 
 /**
  * Het dakterras beslaat een derde van het dek en stond nergens in het model, dus
  * de plattegrond tekende een naamloos vlak waar de speler niets van kon maken.
  */
-const ROOF_TERRACE_PLAN = rectangle(
-	midpoint(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX),
-	midpoint(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ),
-	span(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX),
-	span(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ),
-);
+const ROOF_TERRACE_PLAN = rectangle({ centerX: midpoint(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX), centerZ: midpoint(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ), width: span(ROOF_ISLAND_PAD.minX, ROOF_ISLAND_PAD.maxX), depth: span(ROOF_ISLAND_PAD.minZ, ROOF_ISLAND_PAD.maxZ) });
 
-export const ROOF_TERRACE_ENTITY: MallWorldEntity = {
+const ROOF_TERRACE_ENTITY: MallWorldEntity = {
 	id: 'roof-terrace',
 	label: 'Roof island sun deck',
 	category: 'prop',
@@ -4188,7 +4071,7 @@ export const ROOF_TERRACE_ENTITY: MallWorldEntity = {
 };
 
 /** Tikibar op het dek: de bar, de palen, de krukken en het rieten dak. */
-export const TIKI_BAR_SPEC = {
+const TIKI_BAR_SPEC = {
 	center: { x: -12.3, z: 14.5 },
 	post: { offset: 1.4, radius: 0.08, height: 3.2, centerY: 1.6 },
 	counter: { width: 1, depth: 3.2, height: 1.1, offsetX: -0.6 },
@@ -4211,7 +4094,7 @@ function tikiPost(id: string, signX: number, signZ: number): SpatialVolume {
 	);
 }
 
-export const TIKI_BAR_ENTITY: MallWorldEntity = roomEntity({
+const TIKI_BAR_ENTITY: MallWorldEntity = roomEntity({
 	id: 'tiki-bar',
 	label: 'Roof island tiki bar',
 	category: 'prop',
@@ -4231,12 +4114,7 @@ export const TIKI_BAR_ENTITY: MallWorldEntity = roomEntity({
 		),
 		solidPrism(
 			'counter',
-			rectangle(
-				TIKI_BAR_SPEC.center.x + TIKI_BAR_SPEC.counter.offsetX,
-				TIKI_BAR_SPEC.center.z,
-				TIKI_BAR_SPEC.counter.width,
-				TIKI_BAR_SPEC.counter.depth,
-			),
+			rectangle({ centerX: TIKI_BAR_SPEC.center.x + TIKI_BAR_SPEC.counter.offsetX, centerZ: TIKI_BAR_SPEC.center.z, width: TIKI_BAR_SPEC.counter.width, depth: TIKI_BAR_SPEC.counter.depth }),
 			ROOF_Y,
 			ROOF_Y + TIKI_BAR_SPEC.counter.height,
 			[],
@@ -4263,7 +4141,7 @@ export const TIKI_BAR_ENTITY: MallWorldEntity = roomEntity({
 });
 
 /** De reling langs de dakrand, met de entree aan de oostkant. */
-export const ROOF_RAILING_SPEC = {
+const ROOF_RAILING_SPEC = {
 	height: 1.05,
 	barThickness: 0.07,
 	postRadius: 0.035,
@@ -4272,9 +4150,9 @@ export const ROOF_RAILING_SPEC = {
 	entranceHalfDepth: 2.5,
 } as const;
 
-export const ROOF_PALM_SPEC = { trunk: { topRadius: 0.09, bottomRadius: 0.17, height: 3.4 } } as const;
+const ROOF_PALM_SPEC = { trunk: { topRadius: 0.09, bottomRadius: 0.17, height: 3.4 } } as const;
 
-export const ROOF_PALM_SPOTS = [
+const ROOF_PALM_SPOTS = [
 	{ x: -30.2, z: -17.5, scale: 1.1 },
 	{ x: -8.5, z: -17, scale: 0.95 },
 	{ x: -30, z: 16.5, scale: 1.05 },
@@ -4285,16 +4163,16 @@ export const ROOF_PALM_SPOTS = [
 	{ x: -25.5, z: 13, scale: 0.85 },
 ] as const;
 
-export const ROOF_LOUNGER_SPEC = {
+const ROOF_LOUNGER_SPEC = {
 	seat: { width: 0.7, depth: 1.8, thickness: 0.16, centerY: 0.18 },
 	back: { width: 0.7, depth: 0.8, thickness: 0.06, centerY: 0.42, offset: 0.75, tilt: -0.65 },
 	row: { x: -10.6, firstZ: -13.2, spacing: 2.4, count: 6, yaw: -Math.PI / 2 },
 } as const;
 
-export type RoofLounger = Readonly<{ x: number; z: number; yaw: number }>;
+type RoofLounger = Readonly<{ x: number; z: number; yaw: number }>;
 
 /** Zes op een rij langs de oostrand, twee los bij het bad. Handdoeken en volumes lezen dezelfde plekken. */
-export const ROOF_LOUNGER_SPOTS: readonly RoofLounger[] = [
+const ROOF_LOUNGER_SPOTS: readonly RoofLounger[] = [
 	...Array.from({ length: ROOF_LOUNGER_SPEC.row.count }, (_, index) => ({
 		x: ROOF_LOUNGER_SPEC.row.x,
 		z: ROOF_LOUNGER_SPEC.row.firstZ + index * ROOF_LOUNGER_SPEC.row.spacing,
@@ -4306,10 +4184,13 @@ export const ROOF_LOUNGER_SPOTS: readonly RoofLounger[] = [
 
 const ROOF_FURNITURE_LABEL = 'LIGSTOELEN · PALMEN';
 
-function roofRailingBar(id: string, centerX: number, centerZ: number, width: number, depth: number): SpatialVolume {
+type RoofRailingBarArgs = readonly [id: string, centerX: number, centerZ: number, width: number, depth: number];
+
+function roofRailingBar(...args: RoofRailingBarArgs): SpatialVolume {
+	const [id, centerX, centerZ, width, depth] = args;
 	return solidPrism(
 		id,
-		rectangle(centerX, centerZ, width, depth),
+		rectangle({ centerX: centerX, centerZ: centerZ, width: width, depth: depth }),
 		ROOF_Y,
 		ROOF_Y + ROOF_RAILING_SPEC.height + half(ROOF_RAILING_SPEC.barThickness),
 		[],
@@ -4331,7 +4212,7 @@ function roofRailingVolumes(): readonly SpatialVolume[] {
 	];
 }
 
-export const ROOF_FURNITURE_ENTITY: MallWorldEntity = roomEntity({
+const ROOF_FURNITURE_ENTITY: MallWorldEntity = roomEntity({
 	id: 'roof-furniture',
 	label: 'Roof island furniture',
 	category: 'prop',
@@ -4346,7 +4227,7 @@ export const ROOF_FURNITURE_ENTITY: MallWorldEntity = roomEntity({
 		...ROOF_LOUNGER_SPOTS.map((spot, index) =>
 			solidPrism(
 				`lounger-${index + 1}`,
-				rectangle(spot.x, spot.z, ROOF_LOUNGER_SPEC.seat.width, ROOF_LOUNGER_SPEC.seat.depth, spot.yaw),
+				rectangle({ centerX: spot.x, centerZ: spot.z, width: ROOF_LOUNGER_SPEC.seat.width, depth: ROOF_LOUNGER_SPEC.seat.depth, yaw: spot.yaw }),
 				ROOF_Y,
 				ROOF_Y + ROOF_LOUNGER_SPEC.back.centerY + half(ROOF_LOUNGER_SPEC.back.depth),
 				[],
@@ -4370,7 +4251,7 @@ export const ROOF_FURNITURE_ENTITY: MallWorldEntity = roomEntity({
 });
 
 /** Glijbaantoren: de plaat waar je bovenop staat. Mesh, collider, kaart en klim lezen deze. */
-export const SLIDE_PLATFORM = {
+const SLIDE_PLATFORM = {
 	center: { x: -28.5, z: -10 },
 	size: 1.9,
 	thickness: 0.15,
@@ -4378,13 +4259,13 @@ export const SLIDE_PLATFORM = {
 } as const;
 
 /** Loopvlak van die plaat: bovenkant van de doos, niet het hart. */
-export const SLIDE_PLATFORM_TOP_Y = ROOF_Y + SLIDE_PLATFORM.standHeight + half(SLIDE_PLATFORM.thickness);
+const SLIDE_PLATFORM_TOP_Y = ROOF_Y + SLIDE_PLATFORM.standHeight + half(SLIDE_PLATFORM.thickness);
 
 /**
  * De toren en de buis. De ladder is ruimer dan zijn sporten (arcade-klimmen) en
  * alles is gemeten vanaf de plaat waar hij op uitkomt: los ingetikt liep hij ernaast.
  */
-export const SLIDE_TOWER_SPEC = {
+const SLIDE_TOWER_SPEC = {
 	leg: { radius: 0.09, offset: 0.8 },
 	ladder: { halfWidth: 0.7, topInset: 0.05, run: 1.3, openBefore: 0.6, openAfter: 0.5, rungs: 8, rungThickness: 0.05 },
 	tube: {
@@ -4405,7 +4286,7 @@ export const SLIDE_TOWER_SPEC = {
 const SLIDE_LADDER_TOP_Z = SLIDE_PLATFORM.center.z - half(SLIDE_PLATFORM.size) + SLIDE_TOWER_SPEC.ladder.topInset;
 
 /** Klimkoker van de ladder, zoals CollisionWorld hem als helling opneemt. */
-export const SLIDE_LADDER_CLIMB = {
+const SLIDE_LADDER_CLIMB = {
 	minX: SLIDE_PLATFORM.center.x - SLIDE_TOWER_SPEC.ladder.halfWidth,
 	maxX: SLIDE_PLATFORM.center.x + SLIDE_TOWER_SPEC.ladder.halfWidth,
 	zTop: SLIDE_LADDER_TOP_Z,
@@ -4416,7 +4297,7 @@ export const SLIDE_LADDER_CLIMB = {
 
 const ROOF_SLIDE_LABEL = 'GLIJBAAN';
 /** Het hart van de klimkoker: waar de ladder op de plaat uitkomt. */
-export const SLIDE_LADDER_X = midpoint(SLIDE_LADDER_CLIMB.minX, SLIDE_LADDER_CLIMB.maxX);
+const SLIDE_LADDER_X = midpoint(SLIDE_LADDER_CLIMB.minX, SLIDE_LADDER_CLIMB.maxX);
 
 function slideLeg(id: string, signX: number, signZ: number): SpatialVolume {
 	const { leg } = SLIDE_TOWER_SPEC;
@@ -4508,7 +4389,7 @@ const SLIDE_ENTRY_VOLUME: SpatialVolume = {
 	role: 'trigger',
 	geometry: {
 		kind: 'prism',
-		plan: rectangle(SLIDE_MOUTH.x, SLIDE_MOUTH.z, SLIDE_TOWER_SPEC.tube.radius * 2, SLIDE_TOWER_SPEC.tube.radius * 2),
+		plan: rectangle({ centerX: SLIDE_MOUTH.x, centerZ: SLIDE_MOUTH.z, width: SLIDE_TOWER_SPEC.tube.radius * 2, depth: SLIDE_TOWER_SPEC.tube.radius * 2 }),
 		minY: SLIDE_MOUTH.y - SLIDE_TOWER_SPEC.tube.radius,
 		maxY: SLIDE_PLATFORM_TOP_Y + STANDING_PEDESTRIAN.bodyHeight,
 		holes: [],
@@ -4519,7 +4400,7 @@ const SLIDE_ENTRY_VOLUME: SpatialVolume = {
 	tags: ['trigger', 'slide-entry'],
 };
 
-export const ROOF_SLIDE_ENTITY: MallWorldEntity = {
+const ROOF_SLIDE_ENTITY: MallWorldEntity = {
 	...roomEntity({
 		id: 'roof-slide',
 		label: 'Roof island water slide',
@@ -4534,7 +4415,7 @@ export const ROOF_SLIDE_ENTITY: MallWorldEntity = {
 			slideLeg('leg-se', 1, 1),
 			solidPrism(
 				'platform',
-				rectangle(SLIDE_PLATFORM.center.x, SLIDE_PLATFORM.center.z, SLIDE_PLATFORM.size, SLIDE_PLATFORM.size),
+				rectangle({ centerX: SLIDE_PLATFORM.center.x, centerZ: SLIDE_PLATFORM.center.z, width: SLIDE_PLATFORM.size, depth: SLIDE_PLATFORM.size }),
 				SLIDE_PLATFORM_TOP_Y - SLIDE_PLATFORM.thickness,
 				SLIDE_PLATFORM_TOP_Y,
 				[],
@@ -4567,7 +4448,7 @@ export const ROOF_SLIDE_ENTITY: MallWorldEntity = {
 	emitters: slideConveyors(),
 };
 
-export const PARKING_DECK_ENTITY: MallWorldEntity = roomEntity({
+const PARKING_DECK_ENTITY: MallWorldEntity = roomEntity({
 	id: 'parking-deck',
 	label: 'Parking deck shell',
 	category: 'parking',
@@ -4587,7 +4468,7 @@ export const PARKING_DECK_ENTITY: MallWorldEntity = roomEntity({
 		...PARKING_WALL_PANELS.map((panel) =>
 			solidPrism(
 				`wall-${panel.id}`,
-				rectangle(panel.center.x, panel.center.z, panel.size.width, panel.size.depth),
+				rectangle({ centerX: panel.center.x, centerZ: panel.center.z, width: panel.size.width, depth: panel.size.depth }),
 				panel.base,
 				PARKING_CLEAR_TOP,
 			),
@@ -4595,7 +4476,7 @@ export const PARKING_DECK_ENTITY: MallWorldEntity = roomEntity({
 		...parkingPillarCenters().map((center, index) =>
 			solidPrism(
 				`pillar-${index}`,
-				rectangle(center.x, center.z, PARKING_DECK_SPEC.pillar.width, PARKING_DECK_SPEC.pillar.width),
+				rectangle({ centerX: center.x, centerZ: center.z, width: PARKING_DECK_SPEC.pillar.width, depth: PARKING_DECK_SPEC.pillar.width }),
 				PARKING_DECK_Y,
 				PARKING_CLEAR_TOP,
 			),
@@ -4606,14 +4487,14 @@ export const PARKING_DECK_ENTITY: MallWorldEntity = roomEntity({
 });
 
 /** Wat er op het hokje staat, en wat de plattegrond ervan noemt. */
-export const PARKING_BOOTH_LABEL = 'P · TICKETS';
+const PARKING_BOOTH_LABEL = 'P · TICKETS';
 
 /**
  * Het kaartjeshokje op P1. Het was een volume van de schil, dus het deelde het
  * kaartlabel van het hele dek en stond naamloos op de plattegrond: een blokje in
  * de oosthoek waar de speler niets van kon maken.
  */
-export const PARKING_BOOTH_ENTITY: MallWorldEntity = roomEntity({
+const PARKING_BOOTH_ENTITY: MallWorldEntity = roomEntity({
 	id: 'parking-booth',
 	label: 'Parking ticket booth',
 	category: 'facility',
@@ -4623,12 +4504,7 @@ export const PARKING_BOOTH_ENTITY: MallWorldEntity = roomEntity({
 	volumes: [
 		solidPrism(
 			'booth',
-			rectangle(
-				PARKING_DECK_SPEC.booth.center.x,
-				PARKING_DECK_SPEC.booth.center.z,
-				PARKING_DECK_SPEC.booth.width,
-				PARKING_DECK_SPEC.booth.depth,
-			),
+			rectangle({ centerX: PARKING_DECK_SPEC.booth.center.x, centerZ: PARKING_DECK_SPEC.booth.center.z, width: PARKING_DECK_SPEC.booth.width, depth: PARKING_DECK_SPEC.booth.depth }),
 			PARKING_DECK_Y,
 			PARKING_DECK_Y + PARKING_DECK_SPEC.booth.height,
 		),
@@ -4638,7 +4514,7 @@ export const PARKING_BOOTH_ENTITY: MallWorldEntity = roomEntity({
 });
 
 /** De vakken naast het middenpad: de belijning, de nummers en de plattegrond lezen dezelfde rasterstap. */
-export const PARKING_BAY_SPEC = {
+const PARKING_BAY_SPEC = {
 	rowZ: [-14, 14],
 	columns: 5,
 	spacing: 5.2,
@@ -4648,10 +4524,10 @@ export const PARKING_BAY_SPEC = {
 	aisle: { arrows: 4, spacing: 6, width: 1.2, depth: 0.4 },
 } as const;
 
-export type ParkingStall = Readonly<{ id: string; center: Vec2 }>;
+type ParkingStall = Readonly<{ id: string; center: Vec2 }>;
 
 /** Rij A ten noorden van het middenpad, rij B ten zuiden; het nummer telt vanaf de westkant. */
-export function parkingStalls(): readonly ParkingStall[] {
+function parkingStalls(): readonly ParkingStall[] {
 	const { rowZ, columns, spacing } = PARKING_BAY_SPEC;
 	const stalls: ParkingStall[] = [];
 	for (const z of rowZ) {
@@ -4680,7 +4556,7 @@ const PARKING_PAINT_CLEARANCE = 0.05;
 const PARKING_PAINT_MIN_SIDE = 0.3;
 
 /** De voet van elke kolom plus de speling die de verf eromheen houdt. */
-export function parkingPillarFootprints(): readonly Bounds2[] {
+function parkingPillarFootprints(): readonly Bounds2[] {
 	const reach = half(PARKING_DECK_SPEC.pillar.width) + PARKING_PAINT_CLEARANCE;
 	return parkingPillarCenters().map((center) => ({
 		minX: center.x - reach,
@@ -4690,7 +4566,7 @@ export function parkingPillarFootprints(): readonly Bounds2[] {
 	}));
 }
 
-export type ParkingPaintPatch = Readonly<{
+type ParkingPaintPatch = Readonly<{
 	id: string;
 	kind: 'bay' | 'lane';
 	center: Vec2;
@@ -4722,21 +4598,21 @@ function paintAround(id: string, kind: ParkingPaintPatch['kind'], vlak: Bounds2,
  * het beton verdwijnt. Wat er van een pijl overblijft is te klein om er nog een pijl
  * van te maken, dus daar staat er geen.
  */
-export function parkingPaintPatches(): readonly ParkingPaintPatch[] {
+function parkingPaintPatches(): readonly ParkingPaintPatch[] {
 	const gaten = parkingPillarFootprints();
 	const { stall, aisle } = PARKING_BAY_SPEC;
 	return [
 		...parkingStalls().flatMap((vak) =>
-			paintAround(`stall-${vak.id}`, 'bay', planBounds(rectangle(vak.center.x, vak.center.z, stall.width, stall.depth)), gaten),
+			paintAround(`stall-${vak.id}`, 'bay', planBounds(rectangle({ centerX: vak.center.x, centerZ: vak.center.z, width: stall.width, depth: stall.depth })), gaten),
 		),
 		...parkingAisleArrowX().flatMap((x, index) =>
-			paintAround(`aisle-${index + 1}`, 'lane', planBounds(rectangle(x, PARKING_AISLE_Z, aisle.width, aisle.depth)), gaten),
+			paintAround(`aisle-${index + 1}`, 'lane', planBounds(rectangle({ centerX: x, centerZ: PARKING_AISLE_Z, width: aisle.width, depth: aisle.depth })), gaten),
 		),
 	];
 }
 
 /** Decoratieve auto's. De huurauto's van de speler staan hieronder en houden hun eigen plekken vrij. */
-export const PARKED_CAR_SPEC = {
+const PARKED_CAR_SPEC = {
 	body: { width: 1.9, length: 4, height: 0.45, centerY: 0.45 },
 	cabin: { width: 1.7, length: 2, height: 0.4, centerY: 0.85, offsetZ: -0.15 },
 	wheel: { radius: 0.28, width: 0.22, offsetX: 0.85, offsetZ: 1.2 },
@@ -4749,11 +4625,11 @@ export const PARKED_CAR_SPEC = {
 } as const;
 
 /** De huurauto's die de speler kan wegrijden, gebouwd door DriveableCars. */
-export const RENTAL_CAR_SPEC = {
+const RENTAL_CAR_SPEC = {
 	body: { width: 1.9, length: 4.2, height: 0.5, centerY: 0.5 },
 } as const;
 
-export type ParkedCarSpot = Readonly<{ x: number; z: number; yaw: number }>;
+type ParkedCarSpot = Readonly<{ x: number; z: number; yaw: number }>;
 
 /**
  * De vakkenrij loopt in stappen van 5,2 m en de kolommenrij in stappen van 8 m,
@@ -4763,7 +4639,7 @@ export type ParkedCarSpot = Readonly<{ x: number; z: number; yaw: number }>;
  * dezelfde kolommen aan, dus staan hun plekken hier en niet in de scene-bouwer;
  * `controleParkeerplekken` in check-world houdt beide lijsten vrij.
  */
-export const PARKED_CAR_SPOTS: readonly ParkedCarSpot[] = [
+const PARKED_CAR_SPOTS: readonly ParkedCarSpot[] = [
 	{ x: -5.2, z: -14, yaw: 0.3 },
 	{ x: -20.8, z: -14, yaw: 0 },
 	{ x: 10.4, z: -14, yaw: 0.15 },
@@ -4773,9 +4649,9 @@ export const PARKED_CAR_SPOTS: readonly ParkedCarSpot[] = [
 	{ x: -20.8, z: 14, yaw: Math.PI - 0.05 },
 ];
 
-export type RentalCarSpot = ParkedCarSpot & Readonly<{ color: number; name: string }>;
+type RentalCarSpot = ParkedCarSpot & Readonly<{ color: number; name: string }>;
 
-export const RENTAL_CAR_SPOTS: readonly RentalCarSpot[] = [
+const RENTAL_CAR_SPOTS: readonly RentalCarSpot[] = [
 	{ x: -26, z: -14, yaw: 0, color: 0xc62828, name: 'RODE HATCH' },
 	{ x: -10.4, z: -14, yaw: 0.05, color: 0x1565c0, name: 'BLAUWE SEDAN' },
 	{ x: 5.2, z: -14, yaw: -0.08, color: 0xffc107, name: 'TAXI #88' },
@@ -4786,7 +4662,7 @@ export const RENTAL_CAR_SPOTS: readonly RentalCarSpot[] = [
 const PARKED_CAR_TOP_Y =
 	PARKING_DECK_Y + PARKED_CAR_SPEC.standY + PARKED_CAR_SPEC.cabin.centerY + half(PARKED_CAR_SPEC.cabin.height);
 
-export const PARKING_BAYS_ENTITY: MallWorldEntity = roomEntity({
+const PARKING_BAYS_ENTITY: MallWorldEntity = roomEntity({
 	id: 'parking-bays',
 	label: 'Parking bays',
 	category: 'parking',
@@ -4796,7 +4672,7 @@ export const PARKING_BAYS_ENTITY: MallWorldEntity = roomEntity({
 	volumes: parkingPaintPatches().map((patch) =>
 		solidPrism(
 			patch.id,
-			rectangle(patch.center.x, patch.center.z, patch.width, patch.depth),
+			rectangle({ centerX: patch.center.x, centerZ: patch.center.z, width: patch.width, depth: patch.depth }),
 			PARKING_DECK_Y,
 			PARKING_DECK_Y + PARKING_BAY_SPEC.paintY,
 			[],
@@ -4808,7 +4684,7 @@ export const PARKING_BAYS_ENTITY: MallWorldEntity = roomEntity({
 	tags: ['parking', 'bays', 'static'],
 });
 
-export const PARKED_CARS_ENTITY: MallWorldEntity = roomEntity({
+const PARKED_CARS_ENTITY: MallWorldEntity = roomEntity({
 	id: 'parking-cars',
 	label: 'Parked cars',
 	category: 'parking',
@@ -4818,7 +4694,7 @@ export const PARKED_CARS_ENTITY: MallWorldEntity = roomEntity({
 	volumes: PARKED_CAR_SPOTS.map((spot, index) =>
 		solidPrism(
 			`car-${index + 1}`,
-			rectangle(spot.x, spot.z, PARKED_CAR_SPEC.body.width, PARKED_CAR_SPEC.body.length, spot.yaw),
+			rectangle({ centerX: spot.x, centerZ: spot.z, width: PARKED_CAR_SPEC.body.width, depth: PARKED_CAR_SPEC.body.length, yaw: spot.yaw }),
 			PARKING_DECK_Y,
 			PARKED_CAR_TOP_Y,
 			[],
@@ -4841,7 +4717,7 @@ export const PARKED_CARS_ENTITY: MallWorldEntity = roomEntity({
  * het verkeer en de doos waar `controleParkeerplekken` mee rekent hangen er alle
  * drie aan.
  */
-export const MOTORCYCLE_SPEC = {
+const MOTORCYCLE_SPEC = {
 	body: { width: 0.72, length: 2.1, height: 0.34, centerY: 0.66 },
 	seat: { width: 0.36, length: 0.7, height: 0.14, centerY: 0.9, offsetZ: -0.3 },
 	wheel: { radius: 0.32, width: 0.14, offsetZ: 0.78 },
@@ -4852,10 +4728,10 @@ export const MOTORCYCLE_SPEC = {
 } as const;
 
 /** Hoogste punt van een stilstaande motor boven zijn loopvlak: het stuur. */
-export const MOTORCYCLE_HEIGHT = MOTORCYCLE_SPEC.bars.centerY + half(MOTORCYCLE_SPEC.bars.thickness);
+const MOTORCYCLE_HEIGHT = MOTORCYCLE_SPEC.bars.centerY + half(MOTORCYCLE_SPEC.bars.thickness);
 
 /** Waar een motor staat. De hoogte staat erbij omdat ze op drie verschillende vlakken staan. */
-export type MotorcycleSpot = Readonly<{ x: number; y: number; z: number; yaw: number }>;
+type MotorcycleSpot = Readonly<{ x: number; y: number; z: number; yaw: number }>;
 
 /**
  * Motoren in de vakken op P1.
@@ -4876,7 +4752,7 @@ function p1MotorcycleRow(centerX: number, z: number, yaw: number): readonly Moto
 	}));
 }
 
-export const PARKED_MOTORCYCLE_SPOTS: readonly MotorcycleSpot[] = [
+const PARKED_MOTORCYCLE_SPOTS: readonly MotorcycleSpot[] = [
 	...p1MotorcycleRow(26, -14, 0),
 	...p1MotorcycleRow(-26, 14, Math.PI),
 ];
@@ -4921,7 +4797,7 @@ function entranceMotorcycleSpot(slot: number): MotorcycleSpot {
  * en niet in een solid volume, want dan stonden ze dubbel en met een collider eronder
  * waar je juist naast moet kunnen staan om in te stappen.
  */
-export const ENTRANCE_RIDEABLE_MOTORCYCLES: readonly (MotorcycleSpot & Readonly<{ color: number; name: string }>)[] = [
+const ENTRANCE_RIDEABLE_MOTORCYCLES: readonly (MotorcycleSpot & Readonly<{ color: number; name: string }>)[] = [
 	{ ...entranceMotorcycleSpot(0), color: 0xb71c1c, name: 'RODE MOTOR' },
 	{ ...entranceMotorcycleSpot(1), color: 0x1565c0, name: 'BLAUWE MOTOR' },
 ];
@@ -4929,7 +4805,7 @@ export const ENTRANCE_RIDEABLE_MOTORCYCLES: readonly (MotorcycleSpot & Readonly<
 function motorcycleVolume(spot: MotorcycleSpot, index: number): SpatialVolume {
 	return solidPrism(
 		`motorcycle-${index + 1}`,
-		rectangle(spot.x, spot.z, MOTORCYCLE_SPEC.body.width, MOTORCYCLE_SPEC.body.length, spot.yaw),
+		rectangle({ centerX: spot.x, centerZ: spot.z, width: MOTORCYCLE_SPEC.body.width, depth: MOTORCYCLE_SPEC.body.length, yaw: spot.yaw }),
 		spot.y,
 		spot.y + MOTORCYCLE_HEIGHT,
 		[],
@@ -4938,7 +4814,7 @@ function motorcycleVolume(spot: MotorcycleSpot, index: number): SpatialVolume {
 	);
 }
 
-export const PARKED_MOTORCYCLES_ENTITY: MallWorldEntity = roomEntity({
+const PARKED_MOTORCYCLES_ENTITY: MallWorldEntity = roomEntity({
 	id: 'parking-motorcycles',
 	label: 'Parked motorcycles',
 	category: 'parking',
@@ -4952,7 +4828,7 @@ export const PARKED_MOTORCYCLES_ENTITY: MallWorldEntity = roomEntity({
 
 // ── wat de speler wegrijdt ─────────────────────────────────────────────────
 
-export type DriveableKind = 'car' | 'motorcycle';
+type DriveableKind = 'car' | 'motorcycle';
 
 /**
  * Hoe een bestuurbaar voertuig rijdt.
@@ -4962,7 +4838,7 @@ export type DriveableKind = 'car' | 'motorcycle';
  * door de rijlus te kopiëren. Nu staat het gedrag naast de plekken en leest de
  * runtime het per exemplaar op.
  */
-export type DriveableHandling = Readonly<{
+type DriveableHandling = Readonly<{
 	/** Botsstraal rond het hart. */
 	radius: number;
 	maxSpeed: number;
@@ -4983,7 +4859,7 @@ export type DriveableHandling = Readonly<{
 	maxLean: number;
 }>;
 
-export const DRIVEABLE_HANDLING: Readonly<Record<DriveableKind, DriveableHandling>> = {
+const DRIVEABLE_HANDLING: Readonly<Record<DriveableKind, DriveableHandling>> = {
 	car: {
 		radius: 1.35,
 		maxSpeed: 18,
@@ -5015,7 +4891,7 @@ export const DRIVEABLE_HANDLING: Readonly<Record<DriveableKind, DriveableHandlin
 };
 
 /** Een voertuig dat op zijn bestuurder staat te wachten. */
-export type DriveableSpot = Readonly<{
+type DriveableSpot = Readonly<{
 	kind: DriveableKind;
 	x: number;
 	y: number;
@@ -5028,17 +4904,17 @@ export type DriveableSpot = Readonly<{
 /** Zo hoog boven het dek zetten de huurauto's hun wielen neer. */
 const RENTAL_CAR_LIFT = 0.12;
 
-export const RIDEABLE_MOTORCYCLE_SPOTS: readonly (MotorcycleSpot & Readonly<{ color: number; name: string }>)[] = [
+const RIDEABLE_MOTORCYCLE_SPOTS: readonly (MotorcycleSpot & Readonly<{ color: number; name: string }>)[] = [
 	{ x: -10.4, y: PARKING_DECK_Y + MOTORCYCLE_SPEC.standY, z: 14, yaw: Math.PI, color: 0x212121, name: 'ZWARTE MOTOR' },
 ];
 
-export const DRIVEABLE_SPOTS: readonly DriveableSpot[] = [
+const DRIVEABLE_SPOTS: readonly DriveableSpot[] = [
 	...RENTAL_CAR_SPOTS.map((spot): DriveableSpot => ({ ...spot, kind: 'car', y: PARKING_DECK_Y + RENTAL_CAR_LIFT })),
 	...RIDEABLE_MOTORCYCLE_SPOTS.map((spot): DriveableSpot => ({ ...spot, kind: 'motorcycle' })),
 	...ENTRANCE_RIDEABLE_MOTORCYCLES.map((spot): DriveableSpot => ({ ...spot, kind: 'motorcycle' })),
 ];
 
-export type WorldCollider = Readonly<{
+type WorldCollider = Readonly<{
 	minX: number;
 	maxX: number;
 	minY: number;
@@ -5054,7 +4930,7 @@ export type WorldCollider = Readonly<{
  * into. The lintel over the exit mouth starts above the deck and is skipped: it
  * hangs over the ramp with the full headroom under it.
  */
-export function parkingDeckColliders(): readonly WorldCollider[] {
+function parkingDeckColliders(): readonly WorldCollider[] {
 	return [PARKING_DECK_ENTITY, PARKING_BOOTH_ENTITY].flatMap((entity) =>
 		entity.volumes.flatMap((volume) => {
 			if (!volume.blocksMovement) return [];
@@ -5076,7 +4952,7 @@ export function parkingDeckColliders(): readonly WorldCollider[] {
  * geen voertuigtype, dus het staat hier naast de arm die het uitvoert, zoals
  * `carriesTargets` naast de lift staat. De runtime leest het en beslist niets zelf.
  */
-export type BarrierSpec = Readonly<{
+type BarrierSpec = Readonly<{
 	id: string;
 	label: string;
 	/** Voet van de paal, op het loopvlak waar hij op staat. */
@@ -5093,7 +4969,7 @@ export type BarrierSpec = Readonly<{
 }>;
 
 /** De stalen delen die elke boom deelt. Twee bomen, één maatvoering. */
-export const BARRIER_HARDWARE = {
+const BARRIER_HARDWARE = {
 	post: { radius: 0.11, height: 1.05 },
 	/** Hoogte van het scharnier boven het loopvlak. */
 	pivotY: 1.02,
@@ -5115,7 +4991,7 @@ const PARKING_EXIT_BOOM_POST_Z = PARKING_EXIT_RAIL_OUTER + BARRIER_POST_CLEARANC
 /** Vanaf hier ziet een boom een voertuig aankomen. */
 const BARRIER_SIGHT = 10;
 
-export const BARRIER_SPECS: readonly BarrierSpec[] = [
+const BARRIER_SPECS: readonly BarrierSpec[] = [
 	{
 		id: 'parking-exit-boom',
 		label: 'Parking exit barrier',
@@ -5150,7 +5026,7 @@ export const BARRIER_SPECS: readonly BarrierSpec[] = [
 ];
 
 /** De hoek waarover de arm kantelt. Hij ligt langs `armSide`, dus die kant bepaalt het teken. */
-export function barrierOpenAngle(spec: BarrierSpec): number {
+function barrierOpenAngle(spec: BarrierSpec): number {
 	return -spec.armSide * half(Math.PI);
 }
 
@@ -5179,12 +5055,12 @@ function barrierArmTopY(spec: BarrierSpec): number {
  * Van het loopvlak tot de bovenkant van de arm is wat je niet kunt kruisen zolang
  * hij ligt.
  */
-export function barrierGateCollider(spec: BarrierSpec): WorldCollider {
+function barrierGateCollider(spec: BarrierSpec): WorldCollider {
 	return { ...barrierArmBand(spec), minY: spec.post.y, maxY: barrierArmTopY(spec), label: `barrier_${spec.id}` };
 }
 
 /** Waar een voertuig vandaan komt: de aanloopstrook vóór de arm, plus de lengte van een auto erachter. */
-export function barrierApproachBounds(spec: BarrierSpec): Bounds2 {
+function barrierApproachBounds(spec: BarrierSpec): Bounds2 {
 	const band = barrierArmBand(spec);
 	const near = spec.post.x + spec.approachSide * spec.sight;
 	const far = spec.post.x - spec.approachSide * RENTAL_CAR_SPEC.body.length;
@@ -5195,7 +5071,7 @@ function barrierEntity(spec: BarrierSpec): MallWorldEntity {
 	const band = barrierArmBand(spec);
 	const approach = barrierApproachBounds(spec);
 	const mechanismId = `${spec.id}-arm`;
-	const armPlan = rectangle(spec.post.x, midpoint(band.minZ, band.maxZ), span(band.minX, band.maxX), span(band.minZ, band.maxZ));
+	const armPlan = rectangle({ centerX: spec.post.x, centerZ: midpoint(band.minZ, band.maxZ), width: span(band.minX, band.maxX), depth: span(band.minZ, band.maxZ) });
 	return {
 		id: spec.id,
 		label: spec.label,
@@ -5233,12 +5109,7 @@ function barrierEntity(spec: BarrierSpec): MallWorldEntity {
 				role: 'trigger',
 				geometry: {
 					kind: 'prism',
-					plan: rectangle(
-						midpoint(approach.minX, approach.maxX),
-						midpoint(approach.minZ, approach.maxZ),
-						span(approach.minX, approach.maxX),
-						span(approach.minZ, approach.maxZ),
-					),
+					plan: rectangle({ centerX: midpoint(approach.minX, approach.maxX), centerZ: midpoint(approach.minZ, approach.maxZ), width: span(approach.minX, approach.maxX), depth: span(approach.minZ, approach.maxZ) }),
 					minY: spec.post.y,
 					maxY: barrierArmTopY(spec),
 					holes: [],
@@ -5278,16 +5149,16 @@ function barrierEntity(spec: BarrierSpec): MallWorldEntity {
  * straat en niet bij het gebouw, en de gevelcontrole meet alles in die lijst tegen
  * de omhullende van de vier wandkasten.
  */
-export const BARRIER_ENTITIES: readonly MallWorldEntity[] = BARRIER_SPECS.map(barrierEntity);
+const BARRIER_ENTITIES: readonly MallWorldEntity[] = BARRIER_SPECS.map(barrierEntity);
 
-export function barrierSpec(id: string): BarrierSpec {
+function barrierSpec(id: string): BarrierSpec {
 	const found = BARRIER_SPECS.find((candidate) => candidate.id === id);
 	if (!found) throw new Error(`no barrier '${id}'`);
 	return found;
 }
 
 /** Of deze boom voor deze verkeersklasse omhoog gaat. Het beleid staat op de boom, niet in het voertuig. */
-export function barrierAdmits(spec: BarrierSpec, traffic: TrafficClass): boolean {
+function barrierAdmits(spec: BarrierSpec, traffic: TrafficClass): boolean {
 	return spec.admits.includes(traffic);
 }
 
@@ -5307,7 +5178,7 @@ export function barrierAdmits(spec: BarrierSpec, traffic: TrafficClass): boolean
  * het toneel: wie binnenkomt komt bovenaan binnen, en dat is wat een zaal rakeren
  * betekent.
  */
-export const THEATRE_PLAN = {
+const THEATRE_PLAN = {
 	/** Buitenvlak van de schil. De wanden staan er aan de binnenkant tegenaan. */
 	hall: { minX: 58, maxX: 86, minZ: -70, maxZ: -52 },
 	hallHeight: 13,
@@ -5372,12 +5243,12 @@ export const THEATRE_PLAN = {
 } as const;
 
 /** Bovenkant van trede `i`, geteld vanaf de bovenste (die tegen het podium ligt). */
-export function theatreTreadY(i: number): number {
+function theatreTreadY(i: number): number {
 	return THEATRE_PLAN.stair.rise * (THEATRE_PLAN.stair.treads - i);
 }
 
 /** Z-strook van trede `i`, van boven naar beneden. */
-export function theatreTreadZ(i: number): Readonly<{ minZ: number; maxZ: number }> {
+function theatreTreadZ(i: number): Readonly<{ minZ: number; maxZ: number }> {
 	const { zTop, tread } = THEATRE_PLAN.stair;
 	return { minZ: zTop + i * tread, maxZ: zTop + (i + 1) * tread };
 }
@@ -5415,7 +5286,7 @@ const THEATRE_FOOTPRINT_DEPTH = span(THEATRE_FOOTPRINT.minZ, THEATRE_FOOTPRINT.m
  * buitenvlak van de gevel ligt er een halve wanddikte buiten, en dat verschil is
  * wat een dorpel die de gevel doorsnijdt herkenbaar maakt als doorsnijding.
  */
-export const THEATRE_ENVELOPE: Bounds2 = {
+const THEATRE_ENVELOPE: Bounds2 = {
 	minX: THEATRE_FOOTPRINT.minX + half(THEATRE_WALL_T),
 	maxX: THEATRE_FOOTPRINT.maxX - half(THEATRE_WALL_T),
 	minZ: THEATRE_FOOTPRINT.minZ + half(THEATRE_WALL_T),
@@ -5423,7 +5294,7 @@ export const THEATRE_ENVELOPE: Bounds2 = {
 };
 
 /** Het binnenvlak van de schil: hier begint de zaal. */
-export const THEATRE_INTERIOR: Bounds2 = {
+const THEATRE_INTERIOR: Bounds2 = {
 	minX: THEATRE_PLAN.hall.minX + THEATRE_WALL_T,
 	maxX: THEATRE_PLAN.hall.maxX - THEATRE_WALL_T,
 	minZ: THEATRE_PLAN.hall.minZ + THEATRE_WALL_T,
@@ -5431,16 +5302,16 @@ export const THEATRE_INTERIOR: Bounds2 = {
 };
 
 /** De doos waar de zone `theatre` in ligt: de schil, van zijn voet tot zijn dak. */
-export const THEATRE_ZONE_VOLUME: Bounds3 = { ...THEATRE_ENVELOPE, minY: THEATRE_PLAN.baseY, maxY: THEATRE_PLAN.hallHeight };
+const THEATRE_ZONE_VOLUME: Bounds3 = { ...THEATRE_ENVELOPE, minY: THEATRE_PLAN.baseY, maxY: THEATRE_PLAN.hallHeight };
 
 /** Vloerhoogte binnen de foyer, gelijk aan het podium buiten. */
-export const THEATRE_FLOOR_Y = THEATRE_PLAN.podiumY;
+const THEATRE_FLOOR_Y = THEATRE_PLAN.podiumY;
 const THEATRE_CEILING_Y = THEATRE_PLAN.hallHeight - THEATRE_PLAN.roofThickness;
 
 /** Zuidgrens van het zaaldek: de achterkant van de foyerwand. */
 const THEATRE_HOUSE_BACK_Z = THEATRE_INTERIOR.maxZ - THEATRE_PLAN.foyer.depth - THEATRE_PLAN.foyer.wallThickness;
 /** Voorkant van het toneel, waar het zaaldek begint. */
-export const THEATRE_STAGE_FRONT_Z = THEATRE_INTERIOR.minZ + THEATRE_PLAN.stage.depth;
+const THEATRE_STAGE_FRONT_Z = THEATRE_INTERIOR.minZ + THEATRE_PLAN.stage.depth;
 
 /** Rug van rij `r`, geteld vanaf de achterste rij bij de foyer. */
 function theatreRowBackZ(row: number): number {
@@ -5448,7 +5319,7 @@ function theatreRowBackZ(row: number): number {
 }
 
 /** Loopvlak van rij `r`. De zaal zakt naar het toneel toe, dus achterin is hoogst. */
-export function theatreRowY(row: number): number {
+function theatreRowY(row: number): number {
 	return THEATRE_FLOOR_Y - row * THEATRE_PLAN.seating.rise;
 }
 
@@ -5459,7 +5330,7 @@ export function theatreRowY(row: number): number {
  * dwarsgangpad tot het toneel; daartussen is elk dek precies één rijafstand diep.
  * Zo tegelen ze het hele zaaldek en ligt er nergens een naad zonder vloer.
  */
-export function theatreRowDeck(row: number): Bounds2 {
+function theatreRowDeck(row: number): Bounds2 {
 	const last = THEATRE_PLAN.seating.rows - 1;
 	return {
 		minX: THEATRE_INTERIOR.minX,
@@ -5470,13 +5341,13 @@ export function theatreRowDeck(row: number): Bounds2 {
 }
 
 /** De strook waar de stoelen van rij `r` op staan. */
-export function theatreRowBank(row: number): Bounds2 {
+function theatreRowBank(row: number): Bounds2 {
 	const back = theatreRowBackZ(row);
 	return { minX: THEATRE_INTERIOR.minX, maxX: THEATRE_INTERIOR.maxX, minZ: back - THEATRE_PLAN.seating.bankDepth, maxZ: back };
 }
 
 /** De twee gangpaden overlangs, in x. */
-export const THEATRE_AISLES: readonly Bounds2[] = ([-1, 1] as const).map((sign) => {
+const THEATRE_AISLES: readonly Bounds2[] = ([-1, 1] as const).map((sign) => {
 	const center = THEATRE_CENTER.x + sign * THEATRE_PLAN.aisle.offset;
 	return {
 		minX: center - half(THEATRE_PLAN.aisle.width),
@@ -5487,14 +5358,14 @@ export const THEATRE_AISLES: readonly Bounds2[] = ([-1, 1] as const).map((sign) 
 });
 
 /** Een stoelenblok: één rij, één vak tussen twee gangpaden. */
-export type TheatreSeatBank = Readonly<{ id: string; row: number; block: number; minX: number; maxX: number }>;
+type TheatreSeatBank = Readonly<{ id: string; row: number; block: number; minX: number; maxX: number }>;
 
 /**
  * De vakken van één rij: west van het eerste gangpad, ertussen, en oost van het
  * tweede. De gangpaden snijden ze uit de rij, dus een gangpad verzetten verzet de
  * stoelen mee in plaats van ze erin te laten staan.
  */
-export function theatreSeatBanks(): readonly TheatreSeatBank[] {
+function theatreSeatBanks(): readonly TheatreSeatBank[] {
 	const margin = THEATRE_PLAN.seating.sideMargin;
 	const edges = [
 		THEATRE_INTERIOR.minX + margin,
@@ -5513,7 +5384,7 @@ export function theatreSeatBanks(): readonly TheatreSeatBank[] {
 }
 
 /** Elke stoel van een vak, op zijn eigen hart. De tekenaar zet er een stoel op, de controle telt ze. */
-export function theatreSeatXs(bank: TheatreSeatBank): readonly number[] {
+function theatreSeatXs(bank: TheatreSeatBank): readonly number[] {
 	const width = span(bank.minX, bank.maxX);
 	const count = Math.max(1, Math.floor(width / THEATRE_PLAN.seat.pitch));
 	const used = count * THEATRE_PLAN.seat.pitch;
@@ -5522,7 +5393,7 @@ export function theatreSeatXs(bank: TheatreSeatBank): readonly number[] {
 }
 
 /** Bovenkant van het toneel: de voorste rij plus de speelhoogte. */
-export const THEATRE_STAGE_TOP_Y = theatreRowY(THEATRE_PLAN.seating.rows - 1) + THEATRE_PLAN.stage.height;
+const THEATRE_STAGE_TOP_Y = theatreRowY(THEATRE_PLAN.seating.rows - 1) + THEATRE_PLAN.stage.height;
 
 const THEATRE_DOOR_BAY = {
 	minX: THEATRE_CENTER.x - half(THEATRE_PLAN.doors.width),
@@ -5530,7 +5401,7 @@ const THEATRE_DOOR_BAY = {
 } as const;
 
 /** De travee, de deuropening ertussen en de vlakken die de gevel er ter plaatse voor heeft. */
-export const THEATRE_PORTAL = {
+const THEATRE_PORTAL = {
 	minX: THEATRE_DOOR_BAY.minX,
 	maxX: THEATRE_DOOR_BAY.maxX,
 	centerX: THEATRE_CENTER.x,
@@ -5555,7 +5426,7 @@ const THEATRE_ARTIST_BAY = {
  * De backstage-vloer ligt op toneelhoogte, dus de dorpel en de latei worden vanaf
  * `THEATRE_STAGE_TOP_Y` gemeten en niet vanaf de foyervloer.
  */
-export const THEATRE_ARTIST_PORTAL = {
+const THEATRE_ARTIST_PORTAL = {
 	minX: THEATRE_ARTIST_BAY.minX,
 	maxX: THEATRE_ARTIST_BAY.maxX,
 	centerX: THEATRE_FOOTPRINT_CENTER.x,
@@ -5571,12 +5442,12 @@ export const THEATRE_ARTIST_PORTAL = {
 const BS = THEATRE_PLAN.backstage;
 
 /** Vloerhoogte van de backstage: gelijk met het toneel, dus de deur erheen is vlak. */
-export const BACKSTAGE_FLOOR_Y = THEATRE_STAGE_TOP_Y;
+const BACKSTAGE_FLOOR_Y = THEATRE_STAGE_TOP_Y;
 /** Plafond van de kleedkamers: de vloer plus de vrije hoogte. */
-export const BACKSTAGE_CEILING_Y = BACKSTAGE_FLOOR_Y + BS.ceiling;
+const BACKSTAGE_CEILING_Y = BACKSTAGE_FLOOR_Y + BS.ceiling;
 
 /** Het binnenvlak van de backstage: van de tussenwand tot de achtergevel. */
-export const BACKSTAGE_INTERIOR: Bounds2 = {
+const BACKSTAGE_INTERIOR: Bounds2 = {
 	minX: THEATRE_INTERIOR.minX,
 	maxX: THEATRE_INTERIOR.maxX,
 	minZ: THEATRE_FOOTPRINT.minZ + THEATRE_WALL_T,
@@ -5584,7 +5455,7 @@ export const BACKSTAGE_INTERIOR: Bounds2 = {
 };
 
 /** De gang over de as, tussen de twee kleedkamers, van de achtergevel tot het toneel. */
-export const BACKSTAGE_CORRIDOR = {
+const BACKSTAGE_CORRIDOR = {
 	minX: THEATRE_FOOTPRINT_CENTER.x - half(BS.corridorWidth),
 	maxX: THEATRE_FOOTPRINT_CENTER.x + half(BS.corridorWidth),
 } as const;
@@ -5618,7 +5489,7 @@ const BACKSTAGE_ROOM_CENTER_Z = midpoint(BACKSTAGE_INTERIOR.minZ, BACKSTAGE_INTE
  * naar het maaiveld. Buiten-circulatie zoals de voorportiek: geen wereldentiteit maar
  * loopvlakken die de collision en de tekenaar uit dezelfde maten lezen.
  */
-export const BACKSTAGE_LANDING = {
+const BACKSTAGE_LANDING = {
 	minX: THEATRE_ARTIST_PORTAL.centerX - half(BS.landing.width),
 	maxX: THEATRE_ARTIST_PORTAL.centerX + half(BS.landing.width),
 	minZ: THEATRE_ARTIST_PORTAL.outerZ - BS.landing.depth,
@@ -5630,12 +5501,12 @@ export const BACKSTAGE_LANDING = {
 const BACKSTAGE_LANDING_RISE = BACKSTAGE_FLOOR_Y / BS.landing.treads;
 
 /** Bovenkant van trede `i`, geteld vanaf het bordes omlaag naar het maaiveld. */
-export function backstageLandingTreadY(i: number): number {
+function backstageLandingTreadY(i: number): number {
 	return BACKSTAGE_FLOOR_Y - (i + 1) * BACKSTAGE_LANDING_RISE;
 }
 
 /** Z-strook van trede `i`, noordwaarts weglopend van de noordrand van het bordes. */
-export function backstageLandingTreadZ(i: number): Readonly<{ minZ: number; maxZ: number }> {
+function backstageLandingTreadZ(i: number): Readonly<{ minZ: number; maxZ: number }> {
 	return { minZ: BACKSTAGE_LANDING.minZ - (i + 1) * BS.landing.tread, maxZ: BACKSTAGE_LANDING.minZ - i * BS.landing.tread };
 }
 
@@ -5649,7 +5520,7 @@ const THEATRE_WALL_PANELS = cardinalWallPanels({
 	thickness: THEATRE_WALL_T,
 });
 
-export type TheatreWallSpec = Readonly<{ id: string; side: CardinalSide } & Bounds3>;
+type TheatreWallSpec = Readonly<{ id: string; side: CardinalSide } & Bounds3>;
 
 /**
  * De schil als dozen, met de travee uit de zuidgevel en de artiesteningang uit de
@@ -5657,7 +5528,7 @@ export type TheatreWallSpec = Readonly<{ id: string; side: CardinalSide } & Boun
  * ingreep als bij de westgevel van de mall, en om dezelfde reden: het gat dat deze
  * lijst laat vallen ís de opening die de zonegraaf erin vindt.
  */
-export const THEATRE_WALL_SPECS: readonly TheatreWallSpec[] = THEATRE_WALL_PANELS.flatMap((panel): TheatreWallSpec[] => {
+const THEATRE_WALL_SPECS: readonly TheatreWallSpec[] = THEATRE_WALL_PANELS.flatMap((panel): TheatreWallSpec[] => {
 	const box = {
 		minX: panel.center.x - half(panel.size.width),
 		maxX: panel.center.x + half(panel.size.width),
@@ -5715,14 +5586,14 @@ const THEATRE_FACADE_PANELS: Readonly<Record<CardinalSide, readonly FacadePanel[
 };
 
 /** Waar de theatergevel op deze zijde open is. Alleen de travee laat een gat vallen. */
-export function theatreOpeningWithin(side: CardinalSide, face: FacadePanel): FacadePanel | null {
+function theatreOpeningWithin(side: CardinalSide, face: FacadePanel): FacadePanel | null {
 	return panelOpeningWithin(THEATRE_FACADE_PANELS[side], face);
 }
 
 function theatreBox(id: string, box: Bounds3, role: SpatialRole = 'solid', blocksMovement = role === 'solid'): SpatialVolume {
 	return solidPrism(
 		id,
-		rectangle(midpoint(box.minX, box.maxX), midpoint(box.minZ, box.maxZ), span(box.minX, box.maxX), span(box.minZ, box.maxZ)),
+		rectangle({ centerX: midpoint(box.minX, box.maxX), centerZ: midpoint(box.minZ, box.maxZ), width: span(box.minX, box.maxX), depth: span(box.minZ, box.maxZ) }),
 		box.minY,
 		box.maxY,
 		[],
@@ -5795,10 +5666,10 @@ function backstageFloorVolumes(): readonly SpatialVolume[] {
 }
 
 /** De naam die de kaart aan het theater geeft. De controle op de schotel leest hem terug. */
-export const THEATRE_LABEL = 'PRAIRIE THEATRE';
+const THEATRE_LABEL = 'PRAIRIE THEATRE';
 
 /** De omhullende van de schil: waar de gevelcontrole van dit gebouw tegen meet. */
-export const THEATRE_WALL_ENVELOPE: Bounds2 = THEATRE_WALL_SPECS.reduce<Bounds2>(
+const THEATRE_WALL_ENVELOPE: Bounds2 = THEATRE_WALL_SPECS.reduce<Bounds2>(
 	(envelope, wall) => ({
 		minX: Math.min(envelope.minX, wall.minX),
 		maxX: Math.max(envelope.maxX, wall.maxX),
@@ -5822,7 +5693,7 @@ export const THEATRE_WALL_ENVELOPE: Bounds2 = THEATRE_WALL_SPECS.reduce<Bounds2>
  * en een vergunning die binnen één entiteit ligt snijdt volgens diezelfde regel in
  * niets.
  */
-export const THEATRE_SHELL_ENTITY: MallWorldEntity = {
+const THEATRE_SHELL_ENTITY: MallWorldEntity = {
 	id: 'theatre-shell',
 	label: 'Prairie Theatre shell',
 	category: 'wall',
@@ -5851,7 +5722,7 @@ export const THEATRE_SHELL_ENTITY: MallWorldEntity = {
  * tegen elkaar aan liggen delen per definitie hun naad; uit elkaar getrokken over
  * twee entiteiten zou elke naad als `coplanar-surface` gemeld worden.
  */
-export const THEATRE_HALL_ENTITY: MallWorldEntity = {
+const THEATRE_HALL_ENTITY: MallWorldEntity = {
 	id: 'theatre-hall',
 	label: 'Prairie Theatre auditorium',
 	category: 'theatre',
@@ -5937,7 +5808,7 @@ function theatreLeaf(id: string, minX: number, maxX: number): SpatialVolume {
 		role: 'solid',
 		geometry: {
 			kind: 'prism',
-			plan: rectangle(midpoint(minX, maxX), THEATRE_PORTAL.glassZ, span(minX, maxX), THEATRE_PLAN.doors.thickness),
+			plan: rectangle({ centerX: midpoint(minX, maxX), centerZ: THEATRE_PORTAL.glassZ, width: span(minX, maxX), depth: THEATRE_PLAN.doors.thickness }),
 			minY: THEATRE_FLOOR_Y,
 			maxY: THEATRE_FLOOR_Y + THEATRE_PLAN.doors.leafHeight,
 			holes: [],
@@ -5953,7 +5824,7 @@ function theatreSidelight(id: string, minX: number, maxX: number): SpatialVolume
 	return glazed(
 		solidPrism(
 			id,
-			rectangle(midpoint(minX, maxX), THEATRE_PORTAL.glassZ, span(minX, maxX), THEATRE_PLAN.doors.thickness),
+			rectangle({ centerX: midpoint(minX, maxX), centerZ: THEATRE_PORTAL.glassZ, width: span(minX, maxX), depth: THEATRE_PLAN.doors.thickness }),
 			THEATRE_FLOOR_Y,
 			THEATRE_FLOOR_Y + THEATRE_PLAN.doors.headY,
 		),
@@ -5974,7 +5845,7 @@ const THEATRE_TRIGGER = {
  * zonegraaf van dit gebouw als portaal ziet: hij snijdt de gevellijn, dus stad en
  * theater kijken hier op elkaar uit en nergens anders.
  */
-export const THEATRE_ENTRANCE_ENTITY: MallWorldEntity = {
+const THEATRE_ENTRANCE_ENTITY: MallWorldEntity = {
 	id: 'theatre-entrance',
 	label: 'Theatre doors',
 	category: 'opening',
@@ -5983,12 +5854,7 @@ export const THEATRE_ENTRANCE_ENTITY: MallWorldEntity = {
 	volumes: [
 		clearancePrism(
 			'threshold',
-			rectangle(
-				midpoint(THEATRE_PORTAL.doorMinX, THEATRE_PORTAL.doorMaxX),
-				midpoint(THEATRE_PORTAL.innerZ - THEATRE_PLAN.trigger.inreach, THEATRE_PORTAL.outerZ),
-				span(THEATRE_PORTAL.doorMinX, THEATRE_PORTAL.doorMaxX),
-				span(THEATRE_PORTAL.innerZ - THEATRE_PLAN.trigger.inreach, THEATRE_PORTAL.outerZ),
-			),
+			rectangle({ centerX: midpoint(THEATRE_PORTAL.doorMinX, THEATRE_PORTAL.doorMaxX), centerZ: midpoint(THEATRE_PORTAL.innerZ - THEATRE_PLAN.trigger.inreach, THEATRE_PORTAL.outerZ), width: span(THEATRE_PORTAL.doorMinX, THEATRE_PORTAL.doorMaxX), depth: span(THEATRE_PORTAL.innerZ - THEATRE_PLAN.trigger.inreach, THEATRE_PORTAL.outerZ) }),
 			THEATRE_FLOOR_Y,
 			THEATRE_FLOOR_Y + THEATRE_PLAN.doors.headY,
 			'opening-clearance',
@@ -6002,12 +5868,7 @@ export const THEATRE_ENTRANCE_ENTITY: MallWorldEntity = {
 			role: 'trigger',
 			geometry: {
 				kind: 'prism',
-				plan: rectangle(
-					midpoint(THEATRE_TRIGGER.minX, THEATRE_TRIGGER.maxX),
-					midpoint(THEATRE_TRIGGER.minZ, THEATRE_TRIGGER.maxZ),
-					span(THEATRE_TRIGGER.minX, THEATRE_TRIGGER.maxX),
-					span(THEATRE_TRIGGER.minZ, THEATRE_TRIGGER.maxZ),
-				),
+				plan: rectangle({ centerX: midpoint(THEATRE_TRIGGER.minX, THEATRE_TRIGGER.maxX), centerZ: midpoint(THEATRE_TRIGGER.minZ, THEATRE_TRIGGER.maxZ), width: span(THEATRE_TRIGGER.minX, THEATRE_TRIGGER.maxX), depth: span(THEATRE_TRIGGER.minZ, THEATRE_TRIGGER.maxZ) }),
 				minY: THEATRE_FLOOR_Y,
 				maxY: THEATRE_FLOOR_Y + THEATRE_PLAN.trigger.height,
 				holes: [],
@@ -6074,12 +5935,7 @@ function theatreAisleVolumes(): readonly SpatialVolume[] {
 				role: 'aisle-clearance',
 				geometry: {
 					kind: 'prism',
-					plan: rectangle(
-						midpoint(aisle.minX, aisle.maxX),
-						midpoint(deck.minZ, deck.maxZ),
-						span(aisle.minX, aisle.maxX),
-						span(deck.minZ, deck.maxZ),
-					),
+					plan: rectangle({ centerX: midpoint(aisle.minX, aisle.maxX), centerZ: midpoint(deck.minZ, deck.maxZ), width: span(aisle.minX, aisle.maxX), depth: span(deck.minZ, deck.maxZ) }),
 					minY: floor,
 					maxY: floor + STANDING_PEDESTRIAN.requiredHeadroom,
 					holes: [],
@@ -6100,7 +5956,7 @@ function theatreAisleVolumes(): readonly SpatialVolume[] {
  * over de vraag die hier gesteld wordt — staat er iets in het gangpad — precies
  * hetzelfde als achttien.
  */
-export const THEATRE_SEATING_ENTITY: MallWorldEntity = roomEntity({
+const THEATRE_SEATING_ENTITY: MallWorldEntity = roomEntity({
 	id: 'theatre-seating',
 	label: 'Theatre stalls',
 	category: 'theatre',
@@ -6125,7 +5981,7 @@ export const THEATRE_SEATING_ENTITY: MallWorldEntity = roomEntity({
 });
 
 /** De zaalvloer die vrij hoort te blijven, plus de kassa in de foyer. */
-export const THEATRE_FOYER_ENTITY: MallWorldEntity = roomEntity({
+const THEATRE_FOYER_ENTITY: MallWorldEntity = roomEntity({
 	id: 'theatre-foyer',
 	label: 'Theatre foyer',
 	category: 'theatre',
@@ -6173,7 +6029,7 @@ function backstageCorridorWall(id: string, minX: number, maxX: number): readonly
  * twee aangrenzende vlakken uit verschillende entiteiten zouden `coplanar-surface`
  * melden.
  */
-export const THEATRE_BACKSTAGE_ENTITY: MallWorldEntity = {
+const THEATRE_BACKSTAGE_ENTITY: MallWorldEntity = {
 	id: 'theatre-backstage',
 	label: 'Prairie Theatre backstage',
 	category: 'theatre',
@@ -6268,7 +6124,7 @@ function stageSetVolumes(): readonly SpatialVolume[] {
  * De schuifrichting van één blad van een schuifpaar: het mechanisme geeft de
  * slag, het blad de kant. Elk blad wijkt van het hart van zijn mechanisme af.
  */
-export function slidingLeafTravel(entity: MallWorldEntity, mechanism: ClearanceMechanism, volumeId: string): Vec3 {
+function slidingLeafTravel(entity: MallWorldEntity, mechanism: ClearanceMechanism, volumeId: string): Vec3 {
 	const translation = mechanism.openState.translation;
 	if (!translation) throw new Error(`${mechanism.id} schuift niet`);
 	const volume = entity.volumes.find((candidate) => candidate.id === volumeId);
@@ -6307,20 +6163,16 @@ const BACKSTAGE_STAGE_DOORS: ClearanceMechanism = {
 };
 
 /** Een schuifblad van een backstage-deur, staand in het gegeven z-vlak. */
-function backstageLeaf(
-	id: string,
-	minX: number,
-	maxX: number,
-	glassZ: number,
-	mechanismId: string,
-	glass: boolean,
-): SpatialVolume {
+type BackstageLeafArgs = readonly [id: string, minX: number, maxX: number, glassZ: number, mechanismId: string, glass: boolean];
+
+function backstageLeaf(...args: BackstageLeafArgs): SpatialVolume {
+	const [id, minX, maxX, glassZ, mechanismId, glass] = args;
 	const leaf: SpatialVolume = {
 		id,
 		role: 'solid',
 		geometry: {
 			kind: 'prism',
-			plan: rectangle(midpoint(minX, maxX), glassZ, span(minX, maxX), BS.door.thickness),
+			plan: rectangle({ centerX: midpoint(minX, maxX), centerZ: glassZ, width: span(minX, maxX), depth: BS.door.thickness }),
 			minY: BACKSTAGE_FLOOR_Y,
 			maxY: BACKSTAGE_FLOOR_Y + BS.door.leafHeight,
 			holes: [],
@@ -6339,12 +6191,7 @@ function backstageTriggerVolume(id: string, box: Bounds2): SpatialVolume {
 		role: 'trigger',
 		geometry: {
 			kind: 'prism',
-			plan: rectangle(
-				midpoint(box.minX, box.maxX),
-				midpoint(box.minZ, box.maxZ),
-				span(box.minX, box.maxX),
-				span(box.minZ, box.maxZ),
-			),
+			plan: rectangle({ centerX: midpoint(box.minX, box.maxX), centerZ: midpoint(box.minZ, box.maxZ), width: span(box.minX, box.maxX), depth: span(box.minZ, box.maxZ) }),
 			minY: BACKSTAGE_FLOOR_Y,
 			maxY: BACKSTAGE_FLOOR_Y + BS.trigger.height,
 			holes: [],
@@ -6365,7 +6212,7 @@ function backstageTriggerVolume(id: string, box: Bounds2): SpatialVolume {
  * verbindt geen twee zones. `validateSpatialWorld` laat allebei alleen door omdat er
  * een mechanisme aan hangt dat voetgangers toelaat.
  */
-export const THEATRE_BACKSTAGE_DOORS_ENTITY: MallWorldEntity = {
+const THEATRE_BACKSTAGE_DOORS_ENTITY: MallWorldEntity = {
 	id: 'theatre-backstage-doors',
 	label: 'Backstage doors',
 	category: 'opening',
@@ -6377,12 +6224,7 @@ export const THEATRE_BACKSTAGE_DOORS_ENTITY: MallWorldEntity = {
 	volumes: [
 		clearancePrism(
 			'artist-threshold',
-			rectangle(
-				THEATRE_ARTIST_PORTAL.centerX,
-				midpoint(THEATRE_ARTIST_PORTAL.outerZ, THEATRE_ARTIST_PORTAL.innerZ + BS.trigger.inreach),
-				BS.door.width,
-				span(THEATRE_ARTIST_PORTAL.outerZ, THEATRE_ARTIST_PORTAL.innerZ + BS.trigger.inreach),
-			),
+			rectangle({ centerX: THEATRE_ARTIST_PORTAL.centerX, centerZ: midpoint(THEATRE_ARTIST_PORTAL.outerZ, THEATRE_ARTIST_PORTAL.innerZ + BS.trigger.inreach), width: BS.door.width, depth: span(THEATRE_ARTIST_PORTAL.outerZ, THEATRE_ARTIST_PORTAL.innerZ + BS.trigger.inreach) }),
 			BACKSTAGE_FLOOR_Y,
 			BACKSTAGE_DOOR_TOP,
 			'opening-clearance',
@@ -6411,12 +6253,7 @@ export const THEATRE_BACKSTAGE_DOORS_ENTITY: MallWorldEntity = {
 		}),
 		clearancePrism(
 			'stage-threshold',
-			rectangle(
-				THEATRE_FOOTPRINT_CENTER.x,
-				midpoint(BACKSTAGE_PARTITION.minZ, BACKSTAGE_PARTITION.maxZ),
-				BS.door.width,
-				span(BACKSTAGE_PARTITION.minZ, BACKSTAGE_PARTITION.maxZ),
-			),
+			rectangle({ centerX: THEATRE_FOOTPRINT_CENTER.x, centerZ: midpoint(BACKSTAGE_PARTITION.minZ, BACKSTAGE_PARTITION.maxZ), width: BS.door.width, depth: span(BACKSTAGE_PARTITION.minZ, BACKSTAGE_PARTITION.maxZ) }),
 			BACKSTAGE_FLOOR_Y,
 			BACKSTAGE_DOOR_TOP,
 			'connector-clearance',
@@ -6550,7 +6387,7 @@ function backstageVanity(id: string, wallX: number, inward: 1 | -1): readonly Sp
  * lichaam tegen; `validateSpatialWorld` weigert er een dat in een wand of in een
  * naburige entiteit steekt, en `check-props` een cast die erin gaat staan.
  */
-export const THEATRE_BACKSTAGE_FIXTURES_ENTITY: MallWorldEntity = roomEntity({
+const THEATRE_BACKSTAGE_FIXTURES_ENTITY: MallWorldEntity = roomEntity({
 	id: 'theatre-backstage-fixtures',
 	label: 'Backstage fittings',
 	category: 'theatre',
@@ -6579,7 +6416,7 @@ export const THEATRE_BACKSTAGE_FIXTURES_ENTITY: MallWorldEntity = roomEntity({
 	tags: ['theatre', 'backstage', 'dressing'],
 });
 
-export const THEATRE_ENTITIES: readonly MallWorldEntity[] = [
+const THEATRE_ENTITIES: readonly MallWorldEntity[] = [
 	THEATRE_SHELL_ENTITY,
 	THEATRE_HALL_ENTITY,
 	THEATRE_ENTRANCE_ENTITY,
@@ -6598,7 +6435,7 @@ export const THEATRE_ENTITIES: readonly MallWorldEntity[] = [
  * tegen en geen blik, en een doos die allebei doet zet een muur in de travee waar
  * de zonegraaf juist doorheen kijkt.
  */
-export function theatreColliders(): readonly (WorldCollider & Readonly<{ seeThrough: boolean }>)[] {
+function theatreColliders(): readonly (WorldCollider & Readonly<{ seeThrough: boolean }>)[] {
 	return THEATRE_ENTITIES.flatMap((entity) =>
 		entity.volumes.flatMap((volume) =>
 			volume.blocksMovement
@@ -6615,7 +6452,7 @@ export function theatreColliders(): readonly (WorldCollider & Readonly<{ seeThro
 }
 
 /** De loopvlakken binnen het theater: de foyer, elk zaaldek, het toneel en de backstage. */
-export function theatreSurfaces(): readonly Readonly<Bounds2 & { y: number; label: string }>[] {
+function theatreSurfaces(): readonly Readonly<Bounds2 & { y: number; label: string }>[] {
 	return THEATRE_ENTITIES.flatMap((entity) =>
 		entity.volumes.flatMap((volume) => {
 			if (volume.role !== 'walkable') return [];
@@ -6634,7 +6471,7 @@ export function theatreSurfaces(): readonly Readonly<Bounds2 & { y: number; labe
 	);
 }
 
-function mapOnlyEntity(
+type MapOnlyEntityArgs = readonly [
 	id: string,
 	label: string,
 	levels: readonly LevelId[],
@@ -6643,7 +6480,10 @@ function mapOnlyEntity(
 	shapes: readonly PlanShape[],
 	position: Vec3,
 	elevation?: Readonly<{ minY: number; maxY: number }>,
-): MallWorldEntity {
+];
+
+function mapOnlyEntity(...args: MapOnlyEntityArgs): MallWorldEntity {
+	const [id, label, levels, layer, priority, shapes, position, elevation] = args;
 	return {
 		id,
 		label,
@@ -6670,18 +6510,13 @@ const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
 		'structure',
 		88,
 		[
-			rectangle(
-				midpoint(THEATRE_PLAN.podium.minX, THEATRE_PLAN.podium.maxX),
-				midpoint(
+			rectangle({ centerX: midpoint(THEATRE_PLAN.podium.minX, THEATRE_PLAN.podium.maxX), centerZ: midpoint(
 					THEATRE_PLAN.hall.minZ,
 					THEATRE_PLAN.stair.zTop + THEATRE_PLAN.stair.treads * THEATRE_PLAN.stair.tread + STANDING_PEDESTRIAN.requiredHeadroom,
-				),
-				span(THEATRE_PLAN.podium.minX, THEATRE_PLAN.podium.maxX),
-				span(
+				), width: span(THEATRE_PLAN.podium.minX, THEATRE_PLAN.podium.maxX), depth: span(
 					THEATRE_PLAN.hall.minZ,
 					THEATRE_PLAN.stair.zTop + THEATRE_PLAN.stair.treads * THEATRE_PLAN.stair.tread + STANDING_PEDESTRIAN.requiredHeadroom,
-				),
-			),
+				) }),
 		],
 		{ x: THEATRE_CENTER.x, y: THEATRE_FLOOR_Y, z: THEATRE_CENTER.z },
 	),
@@ -6692,10 +6527,10 @@ const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
 		'circulation',
 		35,
 		[
-			rectangle(0, -LANE_Z, ROAD_INNER_X * 2, ROAD_PLAN.width),
-			rectangle(0, LANE_Z, ROAD_INNER_X * 2, ROAD_PLAN.width),
-			rectangle(-LANE_X, 0, ROAD_PLAN.width, ROAD_INNER_Z * 2),
-			rectangle(LANE_X, 0, ROAD_PLAN.width, ROAD_INNER_Z * 2),
+			rectangle({ centerX: 0, centerZ: -LANE_Z, width: ROAD_INNER_X * 2, depth: ROAD_PLAN.width }),
+			rectangle({ centerX: 0, centerZ: LANE_Z, width: ROAD_INNER_X * 2, depth: ROAD_PLAN.width }),
+			rectangle({ centerX: -LANE_X, centerZ: 0, width: ROAD_PLAN.width, depth: ROAD_INNER_Z * 2 }),
+			rectangle({ centerX: LANE_X, centerZ: 0, width: ROAD_PLAN.width, depth: ROAD_INNER_Z * 2 }),
 		],
 		{ x: 0, y: 0, z: 0 },
 	),
@@ -6706,12 +6541,7 @@ const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
 		'fixture',
 		75,
 		[
-			rectangle(
-				midpoint(CITY_KAVELS.park.minX, CITY_KAVELS.park.maxX),
-				midpoint(CITY_KAVELS.park.minZ, CITY_KAVELS.park.maxZ),
-				span(CITY_KAVELS.park.minX, CITY_KAVELS.park.maxX),
-				span(CITY_KAVELS.park.minZ, CITY_KAVELS.park.maxZ),
-			),
+			rectangle({ centerX: midpoint(CITY_KAVELS.park.minX, CITY_KAVELS.park.maxX), centerZ: midpoint(CITY_KAVELS.park.minZ, CITY_KAVELS.park.maxZ), width: span(CITY_KAVELS.park.minX, CITY_KAVELS.park.maxX), depth: span(CITY_KAVELS.park.minZ, CITY_KAVELS.park.maxZ) }),
 		],
 		{ x: midpoint(PARK_LAWN.minX, PARK_LAWN.maxX), y: 0, z: midpoint(PARK_LAWN.minZ, PARK_LAWN.maxZ) },
 	),
@@ -6721,7 +6551,7 @@ const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
 		['v0'],
 		'fixture',
 		100,
-		[rectangle(COLOSSEUM_PLAN.x, COLOSSEUM_PLAN.z, COLOSSEUM_PLAN.radiusX * 2, COLOSSEUM_PLAN.radiusZ * 2)],
+		[rectangle({ centerX: COLOSSEUM_PLAN.x, centerZ: COLOSSEUM_PLAN.z, width: COLOSSEUM_PLAN.radiusX * 2, depth: COLOSSEUM_PLAN.radiusZ * 2 })],
 		{ x: COLOSSEUM_PLAN.x, y: 0, z: COLOSSEUM_PLAN.z },
 	),
 	mapOnlyEntity(
@@ -6730,7 +6560,7 @@ const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
 		LEVELS.map((entry) => entry.id),
 		'fixture',
 		100,
-		[rectangle(RIO_MOUNTAIN.x, RIO_MOUNTAIN.z, RIO_MOUNTAIN.baseW, RIO_MOUNTAIN.baseD)],
+		[rectangle({ centerX: RIO_MOUNTAIN.x, centerZ: RIO_MOUNTAIN.z, width: RIO_MOUNTAIN.baseW, depth: RIO_MOUNTAIN.baseD })],
 		{ x: RIO_MOUNTAIN.x, y: RIO_MOUNTAIN.rockH, z: RIO_MOUNTAIN.z },
 		{ minY: 0, maxY: RIO_MOUNTAIN.rockH + RIO_MOUNTAIN.statueH },
 	),
@@ -6741,12 +6571,7 @@ const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
 		'fixture',
 		100,
 		[
-			rectangle(
-				midpoint(FAVELA_PLAN.minX, FAVELA_PLAN.maxX),
-				midpoint(FAVELA_PLAN.minZ, FAVELA_PLAN.maxZ),
-				span(FAVELA_PLAN.minX, FAVELA_PLAN.maxX),
-				span(FAVELA_PLAN.minZ, FAVELA_PLAN.maxZ),
-			),
+			rectangle({ centerX: midpoint(FAVELA_PLAN.minX, FAVELA_PLAN.maxX), centerZ: midpoint(FAVELA_PLAN.minZ, FAVELA_PLAN.maxZ), width: span(FAVELA_PLAN.minX, FAVELA_PLAN.maxX), depth: span(FAVELA_PLAN.minZ, FAVELA_PLAN.maxZ) }),
 		],
 		{
 			x: midpoint(FAVELA_PLAN.minX, FAVELA_PLAN.maxX),
@@ -6763,12 +6588,7 @@ const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
 			'parking',
 			90,
 			[
-				rectangle(
-					midpoint(deck.minX, deck.maxX),
-					midpoint(deck.minZ, deck.maxZ),
-					span(deck.minX, deck.maxX),
-					span(deck.minZ, deck.maxZ),
-				),
+				rectangle({ centerX: midpoint(deck.minX, deck.maxX), centerZ: midpoint(deck.minZ, deck.maxZ), width: span(deck.minX, deck.maxX), depth: span(deck.minZ, deck.maxZ) }),
 			],
 			{ x: midpoint(deck.minX, deck.maxX), y: deck.y, z: midpoint(deck.minZ, deck.maxZ) },
 			{ minY: deck.y - 0.5, maxY: deck.y + 2.5 },
@@ -6776,7 +6596,7 @@ const CITY_MAP_ENTITIES: readonly MallWorldEntity[] = [
 	),
 ];
 
-export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
+const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 	floorV0,
 	floorV1,
 	roofSlab,
@@ -6819,12 +6639,15 @@ export const WORLD_ENTITIES: readonly MallWorldEntity[] = [
 ];
 
 /** Relational view of the authored world. Callers do not maintain parallel per-level feature lists. */
-export function entitiesOnLevel(levelId: LevelId): readonly MallWorldEntity[] {
+function entitiesOnLevel(levelId: LevelId): readonly MallWorldEntity[] {
 	return WORLD_ENTITIES.filter((entity) => entity.levels.includes(levelId));
 }
 
-export function levelsContaining(category: MallWorldCategory): readonly LevelId[] {
+function levelsContaining(category: MallWorldCategory): readonly LevelId[] {
 	return LEVELS.filter((entry) => entitiesOnLevel(entry.id).some((entity) => entity.category === category)).map(
 		(entry) => entry.id,
 	);
 }
+
+export { PARKING_EXIT_HEADROOM, ESCALATOR_SPEED, SHOP_HEIGHT, STOREFRONT_CLEARANCE_DEPTH, ELEVATOR_SPEC, ELEVATOR_SHAFT_WALLS, ELEVATOR_SHAFT_POSTS, PAINT_LIFT, PARKING_EXIT_RAMP, PARKING_EXIT_WALL_GAP, PARKING_EXIT_RAIL_OUTER, PARKING_EXIT_RAMP_ANGLE, PARKING_EXIT_RAMP_LENGTH, PARKING_EXIT_RAIL, PARKING_EXIT_RAIL_HEADS, parkingExitRampY, PARKING_EXIT_CHEVRONS, ATRIUM_OPENING, ELEVATOR_OPENING_V1, ELEVATOR_OPENING_ROOF, ELEVATOR_OPENING_V0, ELEVATOR_OPENING_P1, VERTICAL_CONNECTORS, ESCALATORS, STAIR_CONNECTORS, stairConnector, SECRET_STAIRS_OPENING_PLAN, SECRET_STAIRS_OPENING_BOUNDS, HELIPAD_DECK_PLAN, HELIPAD_DECK_BOUNDS, HELIPAD_DECK_THICKNESS, HELIPAD_DECK_TOP_Y, HELIPAD_HATCH_FRAME_SPEC, HELIPAD_PAD_SPEC, MALL_SLAB_SPECS, PARKING_SLAB_SPEC, SLAB_SPEC_BY_LEVEL, slabCeilingAbove, slabOpeningWithin, ENTRANCE_SPEC, ENTRANCE_PORTAL, ENTRANCE_CANOPY_PARTS, ENTRANCE_CANOPY_RIB_PITCH, ENTRANCE_CANOPY_RIB_ZS, ENTRANCE_CANOPY_BAY_ZS, ENTRANCE_CANOPY_WASH_Z, MALL_WALL_SPECS, panelOpeningWithin, facadeOpeningWithin, MALL_WALL_ENVELOPE, FACADE_RELIEF_SPEC, FACADE_SIGN_SPEC, MALL_FACADE_RELIEF, MALL_FACADE_SIGNS, MALL_FACADE_ENTITY, HELIPAD_DECK, HELIPAD_HATCH_FRAME_RAILS, HELIPAD_HATCH_SPEC, HELIPAD_HATCH_GATE, HELIPAD_HATCH, mechanismTriggerBounds, mechanismGateBounds, mechanismAdmits, CONNECTOR_ENTITIES, connectorClimbModes, PARKING_EXIT_RAMP_ENTITY, ELEVATOR_ENTITY, ELEVATOR_CLIMB_MODES, OPENING_ENTITIES, shopRoomDepth, CATWALK_SPEC, CATWALK_DECK, catwalkSeatRows, CATWALK_ENTITY, ENTRANCE_LABEL, ENTRANCE_ENTITY, RESTROOMS_SPEC, RESTROOMS_SHELL, RESTROOMS_DIVIDER, RESTROOMS_INTERIOR, RESTROOMS_ROOMS, RESTROOMS_ENTITY, BACK_TO_WALL_Y, alongZAgainst, RESTROOMS_MIRRORS, WUDU_ENTITY, WUDU_COLLIDER, PRAYER_ROOM_SPEC, PRAYER_ROOM_ENTITY, BEARD_CAVE_SPEC, BEARD_CAVE_LOOT_CENTER, BEARD_CAVE_ENTITY, ISLAND_HOP_SPEC, ISLAND_HOP_BANNERS, ISLAND_HOP_ENTITY, FOUNTAIN_SPEC, FOUNTAIN_ENTITY, KIOSK_SPEC, KIOSK_ENTITY, FOOD_COURT_SPEC, FOOD_COURT_ENTITY, PROTEST_ENTITY, SPACESHIP_SPEC, SPACESHIP_FRAME_RAILS, SPACESHIP_FRAME_Y, SPACESHIP_ENTITY, ATRIUM_BALUSTRADE_SPEC, ATRIUM_BALUSTRADE_TOP_Y, ATRIUM_PLANTER_SPEC, atriumPlanterTiers, ATRIUM_PLANTER_ENTITY, PARKING_DECK_SPEC, PARKING_WALL_PANELS, parkingPillarCenters, PARKING_EXIT_TRENCH, PARKING_EXIT_TRENCH_WALLS, PARKING_EXIT_TRENCH_GUARD, PARKING_EXIT_TRENCH_GUARDS, PARKING_EXIT_TRENCH_HEAD, PARKING_EXIT_TRENCH_ENTITY, parkingExitTrenchColliders, PARKING_CEILING_SPEC, ROOF_ISLAND_PAD, ROOF_ISLAND_DECK_THICKNESS, ROOF_TERRACE_ENTITY, TIKI_BAR_SPEC, TIKI_BAR_ENTITY, ROOF_RAILING_SPEC, ROOF_PALM_SPEC, ROOF_PALM_SPOTS, ROOF_LOUNGER_SPEC, ROOF_LOUNGER_SPOTS, ROOF_FURNITURE_ENTITY, SLIDE_PLATFORM, SLIDE_PLATFORM_TOP_Y, SLIDE_TOWER_SPEC, SLIDE_LADDER_CLIMB, SLIDE_LADDER_X, ROOF_SLIDE_ENTITY, PARKING_DECK_ENTITY, PARKING_BOOTH_LABEL, PARKING_BOOTH_ENTITY, PARKING_BAY_SPEC, parkingStalls, parkingPillarFootprints, parkingPaintPatches, PARKED_CAR_SPEC, RENTAL_CAR_SPEC, PARKED_CAR_SPOTS, RENTAL_CAR_SPOTS, PARKING_BAYS_ENTITY, PARKED_CARS_ENTITY, MOTORCYCLE_SPEC, MOTORCYCLE_HEIGHT, PARKED_MOTORCYCLE_SPOTS, ENTRANCE_RIDEABLE_MOTORCYCLES, PARKED_MOTORCYCLES_ENTITY, DRIVEABLE_HANDLING, RIDEABLE_MOTORCYCLE_SPOTS, DRIVEABLE_SPOTS, parkingDeckColliders, BARRIER_HARDWARE, BARRIER_SPECS, barrierOpenAngle, barrierGateCollider, barrierApproachBounds, BARRIER_ENTITIES, barrierSpec, barrierAdmits, THEATRE_PLAN, theatreTreadY, theatreTreadZ, THEATRE_ENVELOPE, THEATRE_INTERIOR, THEATRE_ZONE_VOLUME, THEATRE_FLOOR_Y, THEATRE_STAGE_FRONT_Z, theatreRowY, theatreRowDeck, theatreRowBank, THEATRE_AISLES, theatreSeatBanks, theatreSeatXs, THEATRE_STAGE_TOP_Y, THEATRE_PORTAL, THEATRE_ARTIST_PORTAL, BACKSTAGE_FLOOR_Y, BACKSTAGE_CEILING_Y, BACKSTAGE_INTERIOR, BACKSTAGE_CORRIDOR, BACKSTAGE_LANDING, backstageLandingTreadY, backstageLandingTreadZ, THEATRE_WALL_SPECS, theatreOpeningWithin, THEATRE_LABEL, THEATRE_WALL_ENVELOPE, THEATRE_SHELL_ENTITY, THEATRE_HALL_ENTITY, THEATRE_ENTRANCE_ENTITY, THEATRE_SEATING_ENTITY, THEATRE_FOYER_ENTITY, THEATRE_BACKSTAGE_ENTITY, slidingLeafTravel, THEATRE_BACKSTAGE_DOORS_ENTITY, THEATRE_BACKSTAGE_FIXTURES_ENTITY, THEATRE_ENTITIES, theatreColliders, theatreSurfaces, WORLD_ENTITIES, entitiesOnLevel, levelsContaining };
+export type { WorldCategory, ParkingExitRail, ParkingExitChevrons, MallWorldCategory, MallWorldEntity, StructuralSlabSpec, EntranceCanopyPart, MallWallSpec, FacadePanel, FacadeReliefKind, FacadeReliefPiece, ClimbMode, RestroomMirror, IslandHopBanner, AtriumPlanterTier, ParkingWallPanel, ParkingTrenchWall, ParkingTrenchGuard, RoofLounger, ParkingStall, ParkingPaintPatch, ParkedCarSpot, RentalCarSpot, MotorcycleSpot, DriveableKind, DriveableHandling, DriveableSpot, WorldCollider, BarrierSpec, TheatreSeatBank, TheatreWallSpec };

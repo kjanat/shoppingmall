@@ -94,7 +94,7 @@ const PAINT_DASH = '#d9d4c2';
  * met tussen elke wissel 2 s 'all-red' zodat niemand theoretisch botst.
  * Cyclus: ns 9 s → all-red 2 s → ew 9 s → all-red 2 s = 22 s.
  */
-export type LightPhase = 'ns' | 'ew' | 'all-red';
+type LightPhase = 'ns' | 'ew' | 'all-red';
 
 const GREEN_T = 7;
 const AMBER_T = 2;
@@ -120,7 +120,7 @@ interface Head {
 	green: MeshType;
 }
 
-export class CityRoads {
+class CityRoads {
 	readonly group = new Group();
 
 	private materials: Material[] = [];
@@ -560,3 +560,6 @@ export class CityRoads {
 		return m;
 	}
 }
+
+export { CityRoads };
+export type { LightPhase };

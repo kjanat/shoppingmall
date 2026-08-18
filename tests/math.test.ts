@@ -31,11 +31,11 @@ describe('shared calculations', () => {
 	});
 
 	test('segment helpers clamp projection and use the finite strip ends', () => {
-		assert.equal(segmentParameter2(5, 2, 0, 0, 10, 0), 0.5);
-		assert.equal(segmentParameter2(-5, 0, 0, 0, 10, 0), 0);
-		assert.equal(distanceToSegment2(5, 3, 0, 0, 10, 0), 3);
-		assert.equal(pointInSegmentStrip2(5, 0.9, 0, 0, 10, 0, 2), true);
-		assert.equal(pointInSegmentStrip2(11, 0, 0, 0, 10, 0, 2), false);
+		assert.equal(segmentParameter2({ x: 5, z: 2 }, { a: { x: 0, z: 0 }, b: { x: 10, z: 0 } }), 0.5);
+		assert.equal(segmentParameter2({ x: -5, z: 0 }, { a: { x: 0, z: 0 }, b: { x: 10, z: 0 } }), 0);
+		assert.equal(distanceToSegment2({ x: 5, z: 3 }, { a: { x: 0, z: 0 }, b: { x: 10, z: 0 } }), 3);
+		assert.equal(pointInSegmentStrip2({ point: { x: 5, z: 0.9 }, segment: { a: { x: 0, z: 0 }, b: { x: 10, z: 0 } }, width: 2 }), true);
+		assert.equal(pointInSegmentStrip2({ point: { x: 11, z: 0 }, segment: { a: { x: 0, z: 0 }, b: { x: 10, z: 0 } }, width: 2 }), false);
 	});
 
 	test('performance median keeps the existing upper-middle convention', () => {

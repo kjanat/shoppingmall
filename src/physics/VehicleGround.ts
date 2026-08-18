@@ -9,14 +9,14 @@ import { GRAVITY } from '#/player/constants';
  * huurauto's deden het nog steeds. Hier staat het één keer, met dezelfde `GRAVITY`
  * als de speler, zodat een rand afrijden een boog is en geen sprong in de montage.
  */
-export interface VehicleGroundState {
+interface VehicleGroundState {
 	/** Hoogte van de wielen. */
 	y: number;
 	vy: number;
 	grounded: boolean;
 }
 
-export type VehicleGroundOptions = Readonly<{
+type VehicleGroundOptions = Readonly<{
 	/**
 	 * Vloer die alles overstemt, of null. De liftcabine is er zo een: staat het
 	 * voertuig erin, dan is de cabinevloer zijn vloer en telt de wereld niet mee.
@@ -26,11 +26,19 @@ export type VehicleGroundOptions = Readonly<{
 	ceiling: number;
 }>;
 
+type VehicleGroundStep = Readonly<{
+	world: CollisionWorld;
+	state: VehicleGroundState;
+	x: number;
+	z: number;
+	dt: number;
+}> & VehicleGroundOptions;
+
 /** Zakt de vloer verder dan dit onder de wielen, dan rijd je een rand af en val je. */
-export const DROP_STEP = 0.9;
+const DROP_STEP = 0.9;
 
 /** Wat er van je vaart over is na een landing. */
-export const LANDING_GRIP = 0.8;
+const LANDING_GRIP = 0.8;
 
 /** Hoe ver een staand voertuig omhoog of omlaag naar zijn eigen loopvlak zoekt. */
 const STANDING_STEP = 2;
@@ -43,16 +51,10 @@ const FALLING_STEP = 0.5;
  * frame geland is, want dat is het moment waarop de aanroeper zijn vaart demp
  * met `LANDING_GRIP`.
  */
-export function stepVehicleGround(
-	world: CollisionWorld,
-	state: VehicleGroundState,
-	x: number,
-	z: number,
-	dt: number,
-	options: VehicleGroundOptions,
-): boolean {
-	if (options.floorOverride !== null) {
-		state.y = options.floorOverride;
+
+function stepVehicleGround({ world, state, x, z, dt, floorOverride, ceiling }: VehicleGroundStep): boolean {
+	if (floorOverride !== null) {
+		state.y = floorOverride;
 		state.vy = 0;
 		state.grounded = true;
 		return false;
@@ -64,7 +66,7 @@ export function stepVehicleGround(
 		// vasthouden en in de lucht blijven hangen (de kar bleef zo op 7,99 m halverwege
 		// de geheime trap staan), maar loslaten en met dezelfde GRAVITY naar de echte
 		// vloer eronder vallen, net als van een rand af.
-		if (surface >= options.ceiling || state.y - surface > DROP_STEP) {
+		if (surface >= ceiling || state.y - surface > DROP_STEP) {
 			state.grounded = false;
 			state.vy = 0;
 			return false;
@@ -81,3 +83,6 @@ export function stepVehicleGround(
 	state.grounded = true;
 	return true;
 }
+
+export { LANDING_GRIP, DROP_STEP, stepVehicleGround };
+export type { VehicleGroundState, VehicleGroundOptions, VehicleGroundStep };

@@ -7,13 +7,13 @@ import { lerp, midpoint } from '#/util/math';
 import type { Americans } from './Americans';
 
 /** Hoe hoog de schotel boven de vloer van zijn slachtoffers hangt. */
-export const HOVER_HEIGHT = 7;
+const HOVER_HEIGHT = 7;
 
 /** De koepeltop boven het schotelmidden: bol met straal 0.55 op +0.35. */
-export const SAUCER_DOME_RISE = 0.9;
+const SAUCER_DOME_RISE = 0.9;
 
 /** Amplitude van het op en neer deinen rond de zweefbasis. */
-export const SAUCER_BOB = 0.35;
+const SAUCER_BOB = 0.35;
 
 /** Vrije lucht die boven de koepeltop overblijft op het hoogste punt van de bob. */
 const SAUCER_CEILING_MARGIN = 0.3;
@@ -31,7 +31,7 @@ const SAUCER_APPROACH = { x: 4, z: -3 } as const;
  * hing de schotel boven een V0-cluster dwars door de V1-vloer, en onder het
  * atriumgat is er niets om op te klemmen.
  */
-export function saucerHoverY(floorY: number, x: number, z: number): number {
+function saucerHoverY(floorY: number, x: number, z: number): number {
 	const vrij = floorY + HOVER_HEIGHT;
 	const plafond = slabCeilingAbove(x, z, floorY);
 	if (plafond === null) return vrij;
@@ -42,7 +42,7 @@ export function saucerHoverY(floorY: number, x: number, z: number): number {
  * Aliens probe the fat Americans: UFO beam + lift + abductions vibes.
  * Triggered periodically and on demand from DJ Bartek's booth.
  */
-export class AlienProbe {
+class AlienProbe {
 	readonly group = new Group();
 	private materials: Material[] = [];
 	private saucer: Group;
@@ -218,3 +218,5 @@ export class AlienProbe {
 		return mesh;
 	}
 }
+
+export { AlienProbe, HOVER_HEIGHT, SAUCER_BOB, SAUCER_DOME_RISE, saucerHoverY };

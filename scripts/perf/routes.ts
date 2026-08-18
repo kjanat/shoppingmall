@@ -42,11 +42,11 @@ const PARK_VIEW = {
 	aimLevel: 'v1',
 } as const satisfies { x: number; z: number; aimLevel: LevelId };
 
-export interface ProfilePoint {
+interface ProfilePoint {
 	name: string;
 	pose: RoutePose;
 }
-export interface ProfileRoute {
+interface ProfileRoute {
 	id: string;
 	description: string;
 	seed: number | null;
@@ -57,7 +57,15 @@ function eye(level: LevelId): number {
 	return levelY(level) + EYE;
 }
 
-function point(name: string, x: number, y: number, z: number, lookX: number, lookY: number, lookZ: number): ProfilePoint {
+function point({ name, x, y, z, lookX, lookY, lookZ }: {
+	name: string;
+	x: number;
+	y: number;
+	z: number;
+	lookX: number;
+	lookY: number;
+	lookZ: number;
+}): ProfilePoint {
 	return { name, pose: { x, y, z, lookX, lookY, lookZ } };
 }
 
@@ -66,22 +74,22 @@ function point(name: string, x: number, y: number, z: number, lookX: number, loo
  * cheap wall view, crosses the busiest atrium sight lines, climbs the east
  * escalator and finishes at Kruidvat plus the upper atrium.
  */
-export const MALL_ROUTE: ProfileRoute = {
+const MALL_ROUTE: ProfileRoute = {
 	id: 'mall-main-v1',
 	description: 'West wall through both atriums, east escalator and Kruidvat',
 	seed: null,
 	points: [
-		point('west-wall', -27, eye('v0'), -1, -33, eye('v0'), -1),
-		point('west-ring', -20, eye('v0'), -10, -8, eye('v0'), -8),
-		point('north-spine', -6, eye('v0'), -8, 0, 2.2, 0),
-		point('atrium-north', 0, eye('v0'), -5, 0, 2.2, 5),
-		point('atrium-south', 0, eye('v0'), 7, 0, 2.2, 0),
-		point('east-concourse', 14, eye('v0'), 6, 21, 2, 1),
-		point('escalator-bottom', 21.5, eye('v0'), 7.5, 21.5, eye('v1'), -2),
-		point('escalator-top', 21.5, eye('v1'), -1.5, 14, eye('v1'), -8),
-		point('kruidvat', 17, eye('v1'), -9, 18, eye('v1'), -15),
-		point('upper-atrium-east', 12, eye('v1'), 0, 0, 5, 0),
-		point('upper-atrium-south', 0, eye('v1'), 9.5, 0, eye('v1'), 0),
+		point({ name: 'west-wall', x: -27, y: eye('v0'), z: -1, lookX: -33, lookY: eye('v0'), lookZ: -1 }),
+		point({ name: 'west-ring', x: -20, y: eye('v0'), z: -10, lookX: -8, lookY: eye('v0'), lookZ: -8 }),
+		point({ name: 'north-spine', x: -6, y: eye('v0'), z: -8, lookX: 0, lookY: 2.2, lookZ: 0 }),
+		point({ name: 'atrium-north', x: 0, y: eye('v0'), z: -5, lookX: 0, lookY: 2.2, lookZ: 5 }),
+		point({ name: 'atrium-south', x: 0, y: eye('v0'), z: 7, lookX: 0, lookY: 2.2, lookZ: 0 }),
+		point({ name: 'east-concourse', x: 14, y: eye('v0'), z: 6, lookX: 21, lookY: 2, lookZ: 1 }),
+		point({ name: 'escalator-bottom', x: 21.5, y: eye('v0'), z: 7.5, lookX: 21.5, lookY: eye('v1'), lookZ: -2 }),
+		point({ name: 'escalator-top', x: 21.5, y: eye('v1'), z: -1.5, lookX: 14, lookY: eye('v1'), lookZ: -8 }),
+		point({ name: 'kruidvat', x: 17, y: eye('v1'), z: -9, lookX: 18, lookY: eye('v1'), lookZ: -15 }),
+		point({ name: 'upper-atrium-east', x: 12, y: eye('v1'), z: 0, lookX: 0, lookY: 5, lookZ: 0 }),
+		point({ name: 'upper-atrium-south', x: 0, y: eye('v1'), z: 9.5, lookX: 0, lookY: eye('v1'), lookZ: 0 }),
 	],
 };
 
@@ -107,13 +115,15 @@ function backTo(name: string, from: ProfilePoint): ProfilePoint {
 
 /** Vanuit het park op de mall. Het enige standpunt dat het hele gebouw van buiten in beeld heeft. */
 const PARK_TOWARD_MALL = point(
-	'park-buiten-mall',
-	PARK_VIEW.x,
-	eye('v0'),
-	PARK_VIEW.z,
-	midpoint(MALL_WALL_ENVELOPE.minX, MALL_WALL_ENVELOPE.maxX),
-	levelY(PARK_VIEW.aimLevel),
-	midpoint(MALL_WALL_ENVELOPE.minZ, MALL_WALL_ENVELOPE.maxZ),
+	{
+		name: 'park-buiten-mall',
+		x: PARK_VIEW.x,
+		y: eye('v0'),
+		z: PARK_VIEW.z,
+		lookX: midpoint(MALL_WALL_ENVELOPE.minX, MALL_WALL_ENVELOPE.maxX),
+		lookY: levelY(PARK_VIEW.aimLevel),
+		lookZ: midpoint(MALL_WALL_ENVELOPE.minZ, MALL_WALL_ENVELOPE.maxZ),
+	},
 );
 
 /** Dezelfde plek met de mall in de rug: wat er van het gebouw overblijft als niets ervan in beeld staat. */
@@ -127,89 +137,89 @@ interface LevelCourse {
 
 const FULL_COURSE: readonly LevelCourse[] = [
 	{
-		entry: point('roof-helipad', 22, eye('roof'), 16, 12, levelY('roof'), 4),
+		entry: point({ name: 'roof-helipad', x: 22, y: eye('roof'), z: 16, lookX: 12, lookY: levelY('roof'), lookZ: 4 }),
 		areas: [
-			point('roof-middle', 20, eye('roof'), 4, 0, levelY('roof'), 0),
-			point('roof-west', -18, eye('roof'), 8, 0, levelY('roof'), 0),
+			point({ name: 'roof-middle', x: 20, y: eye('roof'), z: 4, lookX: 0, lookY: levelY('roof'), lookZ: 0 }),
+			point({ name: 'roof-west', x: -18, y: eye('roof'), z: 8, lookX: 0, lookY: levelY('roof'), lookZ: 0 }),
 		],
-		exit: point('roof-elevator-depart', 16, eye('roof'), -8, 0, eye('v1'), 0),
+		exit: point({ name: 'roof-elevator-depart', x: 16, y: eye('roof'), z: -8, lookX: 0, lookY: eye('v1'), lookZ: 0 }),
 	},
 	{
-		entry: point('v1-elevator-arrive', 16, eye('v1'), -8, 0, eye('v1'), 0),
+		entry: point({ name: 'v1-elevator-arrive', x: 16, y: eye('v1'), z: -8, lookX: 0, lookY: eye('v1'), lookZ: 0 }),
 		areas: [
-			point('v1-northeast', 14, eye('v1'), -10, 0, eye('v1'), 0),
-			point('v1-southeast', 14, eye('v1'), 10, 0, eye('v1'), 0),
-			point('v1-southwest', -14, eye('v1'), 10, 0, eye('v1'), 0),
-			point('v1-northwest', -14, eye('v1'), -10, 0, eye('v1'), 0),
+			point({ name: 'v1-northeast', x: 14, y: eye('v1'), z: -10, lookX: 0, lookY: eye('v1'), lookZ: 0 }),
+			point({ name: 'v1-southeast', x: 14, y: eye('v1'), z: 10, lookX: 0, lookY: eye('v1'), lookZ: 0 }),
+			point({ name: 'v1-southwest', x: -14, y: eye('v1'), z: 10, lookX: 0, lookY: eye('v1'), lookZ: 0 }),
+			point({ name: 'v1-northwest', x: -14, y: eye('v1'), z: -10, lookX: 0, lookY: eye('v1'), lookZ: 0 }),
 		],
-		exit: point('v1-elevator-depart', 16, eye('v1'), -8, 0, eye('v0'), 0),
+		exit: point({ name: 'v1-elevator-depart', x: 16, y: eye('v1'), z: -8, lookX: 0, lookY: eye('v0'), lookZ: 0 }),
 	},
 	{
-		entry: point('v0-elevator-arrive', 16, eye('v0'), -8, 0, eye('v0'), 0),
+		entry: point({ name: 'v0-elevator-arrive', x: 16, y: eye('v0'), z: -8, lookX: 0, lookY: eye('v0'), lookZ: 0 }),
 		areas: [
-			point('v0-northeast', 14, eye('v0'), -10, 0, eye('v0'), 0),
-			point('v0-southeast', 14, eye('v0'), 10, 0, eye('v0'), 0),
-			point('v0-center', 0, eye('v0'), 0, 12, eye('v0'), 0),
-			point('v0-southwest', -14, eye('v0'), 10, 0, eye('v0'), 0),
-			point('v0-west-corridor', -26, eye('v0'), 0, -14, eye('v0'), 0),
+			point({ name: 'v0-northeast', x: 14, y: eye('v0'), z: -10, lookX: 0, lookY: eye('v0'), lookZ: 0 }),
+			point({ name: 'v0-southeast', x: 14, y: eye('v0'), z: 10, lookX: 0, lookY: eye('v0'), lookZ: 0 }),
+			point({ name: 'v0-center', x: 0, y: eye('v0'), z: 0, lookX: 12, lookY: eye('v0'), lookZ: 0 }),
+			point({ name: 'v0-southwest', x: -14, y: eye('v0'), z: 10, lookX: 0, lookY: eye('v0'), lookZ: 0 }),
+			point({ name: 'v0-west-corridor', x: -26, y: eye('v0'), z: 0, lookX: -14, lookY: eye('v0'), lookZ: 0 }),
 			// Van de stoep terug op de hoofdingang. Het enige standpunt buiten de
 			// gevel op dit dek: de luifel, het portaal en de belettering zijn van
 			// binnenuit onzichtbaar en op een plattegrond een streep.
-			point(
-				'v0-entrance-street',
-				ENTRANCE_PORTAL.outerX - ENTRANCE_STREET_VIEW.back,
-				eye('v0'),
-				ENTRANCE_PORTAL.centerZ + ENTRANCE_STREET_VIEW.side,
-				ENTRANCE_PORTAL.innerX,
-				ENTRANCE_STREET_VIEW.aim,
-				ENTRANCE_PORTAL.centerZ,
-			),
+			point({
+				name: 'v0-entrance-street',
+				x: ENTRANCE_PORTAL.outerX - ENTRANCE_STREET_VIEW.back,
+				y: eye('v0'),
+				z: ENTRANCE_PORTAL.centerZ + ENTRANCE_STREET_VIEW.side,
+				lookX: ENTRANCE_PORTAL.innerX,
+				lookY: ENTRANCE_STREET_VIEW.aim,
+				lookZ: ENTRANCE_PORTAL.centerZ,
+			}),
 			PARK_TOWARD_MALL,
 			PARK_AWAY_FROM_MALL,
-			point('v0-northwest', -14, eye('v0'), -10, 0, eye('v0'), 0),
+			point({ name: 'v0-northwest', x: -14, y: eye('v0'), z: -10, lookX: 0, lookY: eye('v0'), lookZ: 0 }),
 		],
-		exit: point('v0-elevator-depart', 16, eye('v0'), -8, 0, eye('p1'), 0),
+		exit: point({ name: 'v0-elevator-depart', x: 16, y: eye('v0'), z: -8, lookX: 0, lookY: eye('p1'), lookZ: 0 }),
 	},
 	{
-		entry: point('p1-elevator-arrive', 16, eye('p1'), -8, 0, eye('p1'), 0),
+		entry: point({ name: 'p1-elevator-arrive', x: 16, y: eye('p1'), z: -8, lookX: 0, lookY: eye('p1'), lookZ: 0 }),
 		areas: [
-			point('p1-northeast', 20, eye('p1'), -14, 0, eye('p1'), 0),
-			point('p1-southeast', 20, eye('p1'), 14, 0, eye('p1'), 0),
-			point('p1-center', 0, eye('p1'), 0, 20, eye('p1'), 0),
-			point('p1-southwest', -20, eye('p1'), 14, 0, eye('p1'), 0),
-			point('p1-northwest', -20, eye('p1'), -14, 0, eye('p1'), 0),
-			point(
-				'p1-exit-bottom',
-				PARKING_EXIT_RAMP.start.x,
-				PARKING_EXIT_RAMP.start.y + EYE,
-				PARKING_EXIT_RAMP.start.z,
-				PARKING_EXIT_RAMP.end.x,
-				PARKING_EXIT_RAMP.end.y + EYE,
-				PARKING_EXIT_RAMP.end.z,
-			),
-			point(
-				'p1-exit-mid',
-				midpoint(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x),
-				midpoint(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y) + EYE,
-				midpoint(PARKING_EXIT_RAMP.start.z, PARKING_EXIT_RAMP.end.z),
-				PARKING_EXIT_RAMP.end.x,
-				PARKING_EXIT_RAMP.end.y + EYE,
-				PARKING_EXIT_RAMP.end.z,
-			),
-			point(
-				'p1-exit-top',
-				PARKING_EXIT_RAMP.end.x,
-				PARKING_EXIT_RAMP.end.y + EYE,
-				PARKING_EXIT_RAMP.end.z,
-				PARKING_EXIT_RAMP.start.x,
-				PARKING_EXIT_RAMP.start.y + EYE,
-				PARKING_EXIT_RAMP.start.z,
-			),
+			point({ name: 'p1-northeast', x: 20, y: eye('p1'), z: -14, lookX: 0, lookY: eye('p1'), lookZ: 0 }),
+			point({ name: 'p1-southeast', x: 20, y: eye('p1'), z: 14, lookX: 0, lookY: eye('p1'), lookZ: 0 }),
+			point({ name: 'p1-center', x: 0, y: eye('p1'), z: 0, lookX: 20, lookY: eye('p1'), lookZ: 0 }),
+			point({ name: 'p1-southwest', x: -20, y: eye('p1'), z: 14, lookX: 0, lookY: eye('p1'), lookZ: 0 }),
+			point({ name: 'p1-northwest', x: -20, y: eye('p1'), z: -14, lookX: 0, lookY: eye('p1'), lookZ: 0 }),
+			point({
+				name: 'p1-exit-bottom',
+				x: PARKING_EXIT_RAMP.start.x,
+				y: PARKING_EXIT_RAMP.start.y + EYE,
+				z: PARKING_EXIT_RAMP.start.z,
+				lookX: PARKING_EXIT_RAMP.end.x,
+				lookY: PARKING_EXIT_RAMP.end.y + EYE,
+				lookZ: PARKING_EXIT_RAMP.end.z,
+			}),
+			point({
+				name: 'p1-exit-mid',
+				x: midpoint(PARKING_EXIT_RAMP.start.x, PARKING_EXIT_RAMP.end.x),
+				y: midpoint(PARKING_EXIT_RAMP.start.y, PARKING_EXIT_RAMP.end.y) + EYE,
+				z: midpoint(PARKING_EXIT_RAMP.start.z, PARKING_EXIT_RAMP.end.z),
+				lookX: PARKING_EXIT_RAMP.end.x,
+				lookY: PARKING_EXIT_RAMP.end.y + EYE,
+				lookZ: PARKING_EXIT_RAMP.end.z,
+			}),
+			point({
+				name: 'p1-exit-top',
+				x: PARKING_EXIT_RAMP.end.x,
+				y: PARKING_EXIT_RAMP.end.y + EYE,
+				z: PARKING_EXIT_RAMP.end.z,
+				lookX: PARKING_EXIT_RAMP.start.x,
+				lookY: PARKING_EXIT_RAMP.start.y + EYE,
+				lookZ: PARKING_EXIT_RAMP.start.z,
+			}),
 		],
 	},
 ];
 
-export function fullMallRoute(seed: number | null = null): ProfileRoute {
+function fullMallRoute(seed: number | null = null): ProfileRoute {
 	const random = seed === null ? null : mulberry32(seed);
 	const points: ProfilePoint[] = [];
 	for (const level of FULL_COURSE) {
@@ -225,10 +235,10 @@ export function fullMallRoute(seed: number | null = null): ProfileRoute {
 	};
 }
 
-export const FULL_MALL_ROUTE = fullMallRoute();
-export const PROFILE_ROUTES: readonly ProfileRoute[] = [FULL_MALL_ROUTE, MALL_ROUTE];
+const FULL_MALL_ROUTE = fullMallRoute();
+const PROFILE_ROUTES: readonly ProfileRoute[] = [FULL_MALL_ROUTE, MALL_ROUTE];
 
-export function profileRoute(id: string, seed: number | null = null): ProfileRoute {
+function profileRoute(id: string, seed: number | null = null): ProfileRoute {
 	if (id === FULL_MALL_ROUTE.id) return fullMallRoute(seed);
 	const route = PROFILE_ROUTES.find((candidate) => candidate.id === id);
 	if (!route) throw new Error(`unknown route '${id}'; choose ${PROFILE_ROUTES.map((candidate) => candidate.id).join(', ')}`);
@@ -236,10 +246,13 @@ export function profileRoute(id: string, seed: number | null = null): ProfileRou
 	return route;
 }
 
-export function profilePoint(name: string): ProfilePoint {
+function profilePoint(name: string): ProfilePoint {
 	for (const route of PROFILE_ROUTES) {
 		const found = route.points.find((candidate) => candidate.name === name);
 		if (found) return found;
 	}
 	throw new Error(`unknown profile point '${name}'`);
 }
+
+export type { ProfilePoint, ProfileRoute };
+export { FULL_MALL_ROUTE, MALL_ROUTE, PROFILE_ROUTES, fullMallRoute, profilePoint, profileRoute };

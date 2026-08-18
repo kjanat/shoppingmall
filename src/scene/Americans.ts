@@ -36,9 +36,9 @@ import { clamp, ease, easeFactor, half, lerp, shortestAngle } from '#/util/math'
 import { at, jitter, mulberry32, pick, pickWith, plusMinusWith } from '#/util/rand';
 import { isOnViewerLevel, tagLevelCulled } from '#/util/visibility';
 
-export type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
+type LifeMeaning = 'love' | 'family' | 'health' | 'joy' | 'provide' | 'belong' | 'create';
 
-export interface SimFactors {
+interface SimFactors {
 	id: number;
 	name: string;
 	thicc: number;
@@ -86,7 +86,7 @@ interface Limb {
 const LABEL_W = 320;
 const LABEL_H = 120;
 
-export interface PersonRow {
+interface PersonRow {
 	id: number;
 	name: string;
 	x: number;
@@ -107,7 +107,7 @@ const SKULL_OUT = new Vector3(0, 0, 1);
  * out of the surface. `sink` < 1 pushes it slightly into the skull so flattened
  * features sit flush instead of floating.
  */
-function placeOnSkull(obj: Object3D, headR: number, yaw: number, pitch: number, sink: number): void {
+function placeOnSkull(obj: Object3D, { headR, yaw, pitch, sink }: { headR: number; yaw: number; pitch: number; sink: number }): void {
 	const n = new Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
 	obj.position.copy(n).multiplyScalar(headR * sink);
 	obj.quaternion.setFromUnitVectors(SKULL_OUT, n);
@@ -354,7 +354,7 @@ const GIBBER = [
 	'Squeak ergo sum',
 ];
 
-export class Americans {
+class Americans {
 	readonly group = new Group();
 	readonly roster: SimFactors[] = [];
 	/** global checkout count → triggers baker thief */
@@ -1075,7 +1075,13 @@ export class Americans {
 			this.constraints.length = 0;
 			this.collectNeighbourConstraints(sim, body, step);
 			this.collectWallConstraints(sim, body, step);
-			const solved = solveVelocity(this.desired.x, this.desired.z, this.walkSpeed(sim), this.constraints, SIM_SOLVER_ROUNDS);
+			const solved = solveVelocity({
+				prefVx: this.desired.x,
+				prefVz: this.desired.z,
+				maxSpeed: this.walkSpeed(sim),
+				constraints: this.constraints,
+				rounds: SIM_SOLVER_ROUNDS,
+			});
 			sim.steer.set(solved.vx, 0, solved.vz);
 		}
 	}
@@ -1102,7 +1108,13 @@ export class Americans {
 						vz: other.velocity.z,
 						radius: other.radius + margin,
 					};
-					const constraint = agentConstraint(body, neighbour, SIM_AVOIDANCE_HORIZON, step, RECIPROCAL_SHARE);
+					const constraint = agentConstraint({
+						self: body,
+						other: neighbour,
+						horizon: SIM_AVOIDANCE_HORIZON,
+						dt: step,
+						share: RECIPROCAL_SHARE,
+					});
 					if (constraint) this.constraints.push(constraint);
 				}
 			}
@@ -1121,7 +1133,7 @@ export class Americans {
 			this.blockers,
 		);
 		for (const box of this.blockers) {
-			this.constraints.push(staticConstraint(body, box, SIM_WALL_HORIZON, step));
+			this.constraints.push(staticConstraint({ self: body, box, horizon: SIM_WALL_HORIZON, dt: step }));
 		}
 	}
 
@@ -1334,7 +1346,7 @@ export class Americans {
 
 		const makeEye = (side: -1 | 1): Mesh => {
 			const anchor = new Group();
-			placeOnSkull(anchor, headR, side * 0.36, 0.1, 0.93);
+			placeOnSkull(anchor, { headR, yaw: side * 0.36, pitch: 0.1, sink: 0.93 });
 			const sclera = new Mesh(scleraGeo, scleraMat);
 			const pupil = new Mesh(pupilGeo, darkMat);
 			pupil.position.z = eyeRad * 0.36;
@@ -1350,7 +1362,7 @@ export class Americans {
 		// Kept as a Mesh whose scale/rotation.z belong to tickFace, inside an
 		// anchor group that owns the orientation.
 		const mouthAnchor = new Group();
-		placeOnSkull(mouthAnchor, headR, 0, -0.42, 0.95);
+		placeOnSkull(mouthAnchor, { headR, yaw: 0, pitch: -0.42, sink: 0.95 });
 		const mouthGeo = new TorusGeometry(headR * 0.3, headR * 0.055, 5, 14, Math.PI);
 		const mouth = new Mesh(mouthGeo, darkMat);
 		mouthAnchor.add(mouth);
@@ -1360,7 +1372,7 @@ export class Americans {
 		const browGeo = new BoxGeometry(headR * 0.34, headR * 0.06, headR * 0.05);
 		for (const side of [-1, 1] as const) {
 			const brow = new Group();
-			placeOnSkull(brow, headR, side * 0.36, 0.34, 0.95);
+			placeOnSkull(brow, { headR, yaw: side * 0.36, pitch: 0.34, sink: 0.95 });
 			const bar = new Mesh(browGeo, darkMat);
 			bar.rotation.z = side * -0.12;
 			brow.add(bar);
@@ -1674,7 +1686,7 @@ export class Americans {
 			for (let guard = 0; guard < MAX_DETOURS; guard++) {
 				const box = this.world.blockedBy(fromX, fromZ, point.x, point.z, point.y, sim.radius, true);
 				if (!box) break;
-				const detour = this.cornerDetour(sim, fromX, fromZ, point, box);
+				const detour = this.cornerDetour({ sim, fromX, fromZ, to: point, box });
 				if (detour.length === 0) break;
 				for (const corner of detour) {
 					out.push(corner);
@@ -1695,7 +1707,7 @@ export class Americans {
 	 * ligt, en niets als geen van de vier kanten begaanbaar is: dan is het gat
 	 * werkelijk dicht en moet de route zelf anders.
 	 */
-	private cornerDetour(sim: Sim, fromX: number, fromZ: number, to: Vector3, box: AABB): Vector3[] {
+	private cornerDetour({ sim, fromX, fromZ, to, box }: { sim: Sim; fromX: number; fromZ: number; to: Vector3; box: AABB }): Vector3[] {
 		const margin = sim.radius + DETOUR_MARGIN;
 		const minX = box.minX - margin;
 		const maxX = box.maxX + margin;
@@ -2458,3 +2470,6 @@ export class Americans {
 		o.stop(t0 + 0.2);
 	}
 }
+
+export { Americans };
+export type { LifeMeaning, PersonRow, SimFactors };

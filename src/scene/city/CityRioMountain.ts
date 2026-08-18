@@ -30,7 +30,7 @@ const SURFACE_LIP = 0.06;
 const RIDGE_H_FRAC = 0.45;
 
 /** Montanha de Janeiro — rock bulk under Vila do Monte, Redeemer on the peak. */
-export class CityRioMountain {
+class CityRioMountain {
 	readonly group = new Group();
 	readonly peak = new Vector3(RIO_MOUNTAIN.x, RIO_MOUNTAIN.rockH + RIO_MOUNTAIN.statueH, RIO_MOUNTAIN.z);
 
@@ -61,7 +61,8 @@ export class CityRioMountain {
 		for (const t of this.textures) t.dispose();
 	}
 
-	private box(w: number, h: number, d: number, mat: Material, x: number, y: number, z: number, rotY = 0): Mesh {
+	private box(options: { w: number; h: number; d: number; mat: Material; x: number; y: number; z: number; rotY?: number }): Mesh {
+		const { w, h, d, mat, x, y, z, rotY = 0 } = options;
 		const m = new Mesh(this.unit, mat);
 		m.scale.set(w, h, d);
 		m.position.set(x, y, z);
@@ -78,8 +79,8 @@ export class CityRioMountain {
 		this.materials.push(dirt, soil);
 		const { x, z, baseW, baseD } = RIO_MOUNTAIN;
 		const footH = FOUNDATION_DROP + 1.5;
-		this.box(baseW + SKIRT_PAD * 2, footH, baseD + SKIRT_PAD * 2, dirt, x, -FOUNDATION_DROP + half(footH), z);
-		this.box(baseW + SKIRT_PAD, 1.6, baseD + SKIRT_PAD, soil, x, 0.5, z);
+		this.box({ w: baseW + SKIRT_PAD * 2, h: footH, d: baseD + SKIRT_PAD * 2, mat: dirt, x: x, y: -FOUNDATION_DROP + half(footH), z: z });
+		this.box({ w: baseW + SKIRT_PAD, h: 1.6, d: baseD + SKIRT_PAD, mat: soil, x: x, y: 0.5, z: z });
 	}
 
 	private buildRock(): void {
@@ -95,11 +96,11 @@ export class CityRioMountain {
 			const w = baseW * tier.u;
 			const d = baseD * tier.u;
 			const mat = tier.mat === 'dirt' ? dirt : tier.mat === 'stone' ? stone : rock;
-			this.box(w, h, d, mat, x, y + half(h), z);
+			this.box({ w: w, h: h, d: d, mat: mat, x: x, y: y + half(h), z: z });
 			y += h;
 		}
-		this.box(baseW * 0.32, rockH * RIDGE_H_FRAC, baseD * 0.38, rock, x - 9, rockH * 0.22, z + 7, 0.4);
-		this.box(baseW * 0.28, rockH * 0.4, baseD * 0.32, rock, x + 6, rockH * 0.2, z - 8, -0.35);
+		this.box({ w: baseW * 0.32, h: rockH * RIDGE_H_FRAC, d: baseD * 0.38, mat: rock, x: x - 9, y: rockH * 0.22, z: z + 7, rotY: 0.4 });
+		this.box({ w: baseW * 0.28, h: rockH * 0.4, d: baseD * 0.32, mat: rock, x: x + 6, y: rockH * 0.2, z: z - 8, rotY: -0.35 });
 	}
 
 	private buildStatue(): void {
@@ -112,27 +113,27 @@ export class CityRioMountain {
 
 		const baseY = rockH;
 		// One flat village square under Jesus — no stepped rings.
-		this.box(plazaW, 0.28, plazaW, yard, x, baseY + 0.12, z);
-		this.box(5.2, 0.9, 5.2, robe, x, baseY + 0.7, z);
+		this.box({ w: plazaW, h: 0.28, d: plazaW, mat: yard, x: x, y: baseY + 0.12, z: z });
+		this.box({ w: 5.2, h: 0.9, d: 5.2, mat: robe, x: x, y: baseY + 0.7, z: z });
 
 		const feetY = baseY + 1.15;
-		this.box(1.6, statueH * 0.42, 1.1, white, x, feetY + statueH * 0.21, z);
-		this.box(2.4, statueH * 0.12, 1.2, white, x, feetY + statueH * 0.48, z);
-		this.box(0.95, statueH * 0.16, 0.9, white, x, feetY + statueH * 0.62, z);
-		this.box(1.05, statueH * 0.08, 1, white, x, feetY + statueH * 0.72, z + 0.05);
+		this.box({ w: 1.6, h: statueH * 0.42, d: 1.1, mat: white, x: x, y: feetY + statueH * 0.21, z: z });
+		this.box({ w: 2.4, h: statueH * 0.12, d: 1.2, mat: white, x: x, y: feetY + statueH * 0.48, z: z });
+		this.box({ w: 0.95, h: statueH * 0.16, d: 0.9, mat: white, x: x, y: feetY + statueH * 0.62, z: z });
+		this.box({ w: 1.05, h: statueH * 0.08, d: 1, mat: white, x: x, y: feetY + statueH * 0.72, z: z + 0.05 });
 
 		const armY = feetY + half(statueH);
 		const armLen = half(armSpan);
 		const armThick = 0.55;
-		this.box(armSpan, armThick, armThick, white, x, armY, z);
-		this.box(0.7, 0.55, 0.55, white, x - armLen, armY, z);
-		this.box(0.7, 0.55, 0.55, white, x + armLen, armY, z);
-		this.box(armSpan * 0.85, 0.35, 0.85, robe, x, armY - 0.35, z);
+		this.box({ w: armSpan, h: armThick, d: armThick, mat: white, x: x, y: armY, z: z });
+		this.box({ w: 0.7, h: 0.55, d: 0.55, mat: white, x: x - armLen, y: armY, z: z });
+		this.box({ w: 0.7, h: 0.55, d: 0.55, mat: white, x: x + armLen, y: armY, z: z });
+		this.box({ w: armSpan * 0.85, h: 0.35, d: 0.85, mat: robe, x: x, y: armY - 0.35, z: z });
 
 		const cross = lit({ color: 0xd0ccc4, roughness: 0.8 });
 		this.materials.push(cross);
-		this.box(0.25, statueH * 0.22, 0.15, cross, x, feetY + statueH * 0.38, z + 0.55);
-		this.box(0.7, 0.22, 0.15, cross, x, feetY + statueH * 0.42, z + 0.55);
+		this.box({ w: 0.25, h: statueH * 0.22, d: 0.15, mat: cross, x: x, y: feetY + statueH * 0.38, z: z + 0.55 });
+		this.box({ w: 0.7, h: 0.22, d: 0.15, mat: cross, x: x, y: feetY + statueH * 0.42, z: z + 0.55 });
 	}
 
 	private buildSign(): void {
@@ -175,7 +176,7 @@ function tierSpecs(): readonly TierSpec[] {
  * Solid under the mountain only where it must block walking through rock.
  * Climb is owned by the village slope; rock tiers are visual bulk, not walls.
  */
-export function rioMountainColliders(): readonly BoxCollider[] {
+function rioMountainColliders(): readonly BoxCollider[] {
 	const { x, z, baseW, baseD, rockH, statueH } = RIO_MOUNTAIN;
 	const out: BoxCollider[] = [];
 	out.push({
@@ -211,7 +212,7 @@ export function rioMountainColliders(): readonly BoxCollider[] {
 }
 
 /** Flat peak plaza shared with the village square. */
-export function rioMountainSurfaces(): readonly Surf[] {
+function rioMountainSurfaces(): readonly Surf[] {
 	const { x, z, rockH } = RIO_MOUNTAIN;
 	const pad = half(plazaW);
 	return [
@@ -225,3 +226,5 @@ export function rioMountainSurfaces(): readonly Surf[] {
 		},
 	];
 }
+
+export { CityRioMountain, rioMountainColliders, rioMountainSurfaces };

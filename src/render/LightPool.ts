@@ -15,7 +15,7 @@ import { clamp, easeFactor } from '#/util/math';
  * PointLights in the scene graph is the invariant this file exists to hold, and
  * a second copy of it in the check would be the first thing to drift.
  */
-export const LIGHT_POOL_SLOTS = 16;
+const LIGHT_POOL_SLOTS = 16;
 
 /** How fast a slot's intensity walks to its target, per second. */
 const FADE_RATE = 10;
@@ -41,14 +41,14 @@ interface LightBase {
 	snap?: boolean;
 }
 
-export type LightSpec = LightBase & ({ position: Vector3 } | { follow: Object3D; offset?: Vector3 });
+type LightSpec = LightBase & ({ position: Vector3 } | { follow: Object3D; offset?: Vector3 });
 
 /**
  * What a feature gets back instead of a `THREE.PointLight`. Animate it exactly
  * as a real light was animated: the fields are read once per frame and copied
  * into whichever pool slot won the light.
  */
-export class LightHandle {
+class LightHandle {
 	intensity: number;
 	distance: number;
 	decay: number;
@@ -113,7 +113,7 @@ function byRank(a: LightHandle, b: LightHandle): number {
  * exists to kill. An unused slot is switched off with `intensity = 0`, never
  * with `visible = false`.
  */
-export class LightPool {
+class LightPool {
 	private readonly lights: PointLight[] = [];
 	/** Which handle currently rents each slot. */
 	private readonly owners: (LightHandle | null)[] = [];
@@ -262,3 +262,6 @@ export class LightPool {
 		}
 	}
 }
+
+export { LIGHT_POOL_SLOTS, LightHandle, LightPool };
+export type { LightSpec };

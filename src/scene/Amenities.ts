@@ -59,8 +59,8 @@ export class Amenities {
 	}
 
 	update(dt: number, t: number): void {
-		this.updateParticles(this.fountainDrops, this.fountainVel, dt, 0, 1.2, 3.5);
-		this.updateParticles(this.aperolDrops, this.aperolVel, dt, -14, 1.0, 2.0);
+		this.updateParticles({ pts: this.fountainDrops, vel: this.fountainVel, dt, ox: 0, resetY: 1.2, maxY: 3.5 });
+		this.updateParticles({ pts: this.aperolDrops, vel: this.aperolVel, dt, ox: -14, resetY: 1.0, maxY: 2.0 });
 		// Monkey climbs/sways on palm
 		this.monkey.position.x = this.monkeyBase.x + Math.sin(t * 1.2) * 0.15;
 		this.monkey.position.y = this.monkeyBase.y + Math.sin(t * 2.5) * 0.08;
@@ -253,7 +253,14 @@ export class Amenities {
 		return v;
 	}
 
-	private updateParticles(pts: Points, vel: Float32Array, dt: number, ox: number, resetY: number, maxY: number): void {
+	private updateParticles({ pts, vel, dt, ox, resetY, maxY }: {
+		pts: Points;
+		vel: Float32Array;
+		dt: number;
+		ox: number;
+		resetY: number;
+		maxY: number;
+	}): void {
 		const pos = pts.geometry.getAttribute('position');
 		const arr = pos.array as Float32Array;
 		for (let i = 0; i + 2 < arr.length; i += 3) {

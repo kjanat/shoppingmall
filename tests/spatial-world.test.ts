@@ -60,7 +60,7 @@ function entity(id: string, placementClass: WorldEntity['placement']['class'], v
 	};
 }
 
-function prism(
+type PrismArgs = [
 	id: string,
 	role: SpatialVolume['role'],
 	centerX: number,
@@ -71,8 +71,11 @@ function prism(
 	maxY: number,
 	blocksMovement: boolean,
 	blocksClearance: boolean,
-	holes: readonly PlanShape[] = [],
-): SpatialVolume {
+	holes?: readonly PlanShape[],
+];
+
+function prism(...args: PrismArgs): SpatialVolume {
+	const [id, role, centerX, centerZ, width, depth, minY, maxY, blocksMovement, blocksClearance, holes = []] = args;
 	return {
 		id,
 		role,
@@ -170,8 +173,9 @@ function oldSamplerFindsOverlap(world: ClippedFlightWorld): boolean {
 		for (const z of [minZ, midpoint(minZ, maxZ), maxZ]) {
 			if (!pointInPlan(slab.plan, x, z) || slab.holes.some((hole) => pointInPlan(hole, x, z))) continue;
 			const { start, end } = flight;
-			if (!pointInSegmentStrip2(x, z, start.x, start.z, end.x, end.z, flight.width, SAMPLE_EPSILON)) continue;
-			const surfaceY = lerp(start.y, end.y, segmentParameter2(x, z, start.x, start.z, end.x, end.z));
+			const segment = { a: start, b: end };
+			if (!pointInSegmentStrip2({ point: { x, z }, segment, width: flight.width, epsilon: SAMPLE_EPSILON })) continue;
+			const surfaceY = lerp(start.y, end.y, segmentParameter2({ x, z }, segment));
 			if (slab.minY < surfaceY + flight.height && slab.maxY > surfaceY) return true;
 		}
 	}
@@ -349,7 +353,10 @@ describe('authoritative spatial world', () => {
 		assert.ok(clearance.geometry.height > STANDING_PEDESTRIAN.eyeHeight);
 
 		const obstructionZ = 1;
-		const progress = segmentParameter2(spec.x, obstructionZ, spec.x, spec.zBottom, spec.x, spec.zTop);
+		const progress = segmentParameter2(
+			{ x: spec.x, z: obstructionZ },
+			{ a: { x: spec.x, z: spec.zBottom }, b: { x: spec.x, z: spec.zTop } },
+		);
 		const surfaceY = lerp(clearance.geometry.start.y, clearance.geometry.end.y, progress);
 		const eyeY = surfaceY + STANDING_PEDESTRIAN.eyeHeight;
 		const bodyTopY = surfaceY + STANDING_PEDESTRIAN.bodyHeight;

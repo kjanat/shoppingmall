@@ -461,7 +461,7 @@ export class CleaningCart {
 		}
 
 		// Side “SCHOONMAAK / 清洁” plate
-		const plate = this.makePlate('清洁 CLEANING', '#1565c0', '#ffeb3b', 256, 64);
+		const plate = this.makePlate({ text: '清洁 CLEANING', bg: '#1565c0', fg: '#ffeb3b', w: 256, h: 64 });
 		const plateMesh = new Mesh(
 			new PlaneGeometry(0.7, 0.18),
 			this.track(new MeshBasicMaterial({ map: plate, toneMapped: false })),
@@ -580,7 +580,7 @@ export class CleaningCart {
 		const signPole = new Mesh(new CylinderGeometry(0.02, 0.02, 0.15, 5), grey);
 		signPole.position.y = -0.1;
 		this.wetSign.add(signPole);
-		const wetTex = this.makePlate('⚠ WET FLOOR\n小心地滑', '#ffeb3b', '#111', 256, 160);
+		const wetTex = this.makePlate({ text: '⚠ WET FLOOR\n小心地滑', bg: '#ffeb3b', fg: '#111', w: 256, h: 160 });
 		const wetBoard = backToBackLabel(
 			new PlaneGeometry(0.55, 0.45),
 			this.track(new MeshBasicMaterial({ map: wetTex, toneMapped: false })),
@@ -610,7 +610,7 @@ export class CleaningCart {
 		return g;
 	}
 
-	private makePlate(text: string, bg: string, fg: string, w: number, h: number): CanvasTexture {
+	private makePlate({ text, bg, fg, w, h }: { text: string; bg: string; fg: string; w: number; h: number }): CanvasTexture {
 		const { canvas: c, ctx } = labelCanvas(w, h);
 		ctx.fillStyle = bg;
 		ctx.fillRect(0, 0, w, h);

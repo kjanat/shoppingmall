@@ -30,9 +30,9 @@ function isRideKind(value: string): value is RideKind {
  * beton naast een auto die er nog wel stond. Hier staat genoeg om dezelfde auto
  * op dezelfde plek terug te zetten en er weer in te stappen.
  */
-export type PersistedRide = VehicleRide & { kind: RideKind };
+type PersistedRide = VehicleRide & { kind: RideKind };
 
-export interface PersistedGame {
+interface PersistedGame {
 	v: typeof VERSION;
 	/** epoch ms */
 	savedAt: number;
@@ -159,3 +159,5 @@ export function clearGame(): void {
 export function pathToPersist(path: GraphNode[]): PersistedGame['path'] {
 	return path.map((n) => ({ id: n.id, x: n.x, y: n.y, z: n.z }));
 }
+
+export type { PersistedGame, PersistedRide };

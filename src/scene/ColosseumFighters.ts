@@ -118,23 +118,29 @@ export class ColosseumFighters {
 		const { x: cx, z: cz, arenaRadiusZ } = COLOSSEUM_PLAN;
 
 		// Fighter 1: Secutor Gladiator (Maximus) from North Gate
-		const g1 = this.createGladiator('g1', 'MAXIMUS THE SECUTOR', 'secutor', new Vector3(cx - 3, 0.1, cz - arenaRadiusZ + 5), 0);
+		const g1 = this.createGladiator({ id: 'g1', name: 'MAXIMUS THE SECUTOR', role: 'secutor', startPos: new Vector3(cx - 3, 0.1, cz - arenaRadiusZ + 5), startRotY: 0 });
 
 		// Fighter 2: Retiarius Gladiator (Flavius) from South Gate
-		const g2 = this.createGladiator(
-			'g2',
-			'FLAVIUS THE RETIARIUS',
-			'retiarius',
-			new Vector3(cx + 3, 0.1, cz + arenaRadiusZ - 5),
-			Math.PI,
-		);
+		const g2 = this.createGladiator({
+			id: 'g2',
+			name: 'FLAVIUS THE RETIARIUS',
+			role: 'retiarius',
+			startPos: new Vector3(cx + 3, 0.1, cz + arenaRadiusZ - 5),
+			startRotY: Math.PI,
+		});
 
 		this.gladiators.push(g1, g2);
 		this.group.add(g1.group);
 		this.group.add(g2.group);
 	}
 
-	private createGladiator(id: string, name: string, role: GladiatorRole, startPos: Vector3, startRotY: number): Gladiator {
+	private createGladiator({ id, name, role, startPos, startRotY }: {
+		id: string;
+		name: string;
+		role: GladiatorRole;
+		startPos: Vector3;
+		startRotY: number;
+	}): Gladiator {
 		const gGroup = new Group();
 		gGroup.position.copy(startPos);
 		gGroup.rotation.y = startRotY;

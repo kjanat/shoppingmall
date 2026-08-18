@@ -114,7 +114,7 @@ export class ConVenue {
 		return m;
 	}
 
-	private box(w: number, h: number, d: number, material: Material, x: number, y: number, z: number): Mesh {
+	private box(...[w, h, d, material, x, y, z]: [number, number, number, Material, number, number, number]): Mesh {
 		const mesh = new Mesh(this.unitBox, material);
 		mesh.scale.set(w, h, d);
 		mesh.position.set(x, y, z);
@@ -302,7 +302,7 @@ export class ConVenue {
 		this.group.add(path2);
 	}
 
-	private wallSeg(mat: Material, minX: number, maxX: number, minZ: number, maxZ: number, minY: number, maxY: number): void {
+	private wallSeg(...[mat, minX, maxX, minZ, maxZ, minY, maxY]: [Material, number, number, number, number, number, number]): void {
 		const w = maxX - minX;
 		const d = maxZ - minZ;
 		const h = maxY - minY;

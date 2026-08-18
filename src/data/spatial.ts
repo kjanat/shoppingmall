@@ -3,13 +3,13 @@ import { postureHeadroom } from '#/data/character';
 import { pointInSegmentStrip2, segmentParameter2 } from '#/util/geometry2';
 import { clamp01, half, lerp, midpoint, span } from '#/util/math';
 
-export type Vec2 = Readonly<{ x: number; z: number }>;
-export type Vec3 = Readonly<{ x: number; y: number; z: number }>;
+type Vec2 = Readonly<{ x: number; z: number }>;
+type Vec3 = Readonly<{ x: number; y: number; z: number }>;
 
-export type CardinalSide = 'north' | 'south' | 'west' | 'east';
+type CardinalSide = 'north' | 'south' | 'west' | 'east';
 
 /** The outward unit normal of each elevation. Which way is out is a property of the side itself. */
-export const CARDINAL_OUTWARD = {
+const CARDINAL_OUTWARD = {
 	west: { x: -1, z: 0 },
 	east: { x: 1, z: 0 },
 	north: { x: 0, z: -1 },
@@ -17,24 +17,24 @@ export const CARDINAL_OUTWARD = {
 } as const satisfies Readonly<Record<CardinalSide, Vec2>>;
 
 /** The elevation across the building from each one. */
-export const CARDINAL_OPPOSITE = {
+const CARDINAL_OPPOSITE = {
 	west: 'east',
 	east: 'west',
 	north: 'south',
 	south: 'north',
 } as const satisfies Readonly<Record<CardinalSide, CardinalSide>>;
 
-export type RectangleSource2 = Readonly<{
+type RectangleSource2 = Readonly<{
 	center: Vec2;
 	size: Readonly<{ width: number; depth: number }>;
 }>;
 
-export type Transform3 = Readonly<{
+type Transform3 = Readonly<{
 	position: Vec3;
 	rotation: Readonly<{ yaw: number; pitch: number; roll: number }>;
 }>;
 
-export type Rectangle2 = Readonly<{
+type Rectangle2 = Readonly<{
 	kind: 'rectangle';
 	center: Vec2;
 	width: number;
@@ -42,20 +42,20 @@ export type Rectangle2 = Readonly<{
 	yaw: number;
 }>;
 
-export type Circle2 = Readonly<{
+type Circle2 = Readonly<{
 	kind: 'circle';
 	center: Vec2;
 	radius: number;
 }>;
 
-export type Polygon2 = Readonly<{
+type Polygon2 = Readonly<{
 	kind: 'polygon';
 	points: readonly Vec2[];
 }>;
 
-export type PlanShape = Rectangle2 | Circle2 | Polygon2;
+type PlanShape = Rectangle2 | Circle2 | Polygon2;
 
-export type PrismGeometry = Readonly<{
+type PrismGeometry = Readonly<{
 	kind: 'prism';
 	plan: PlanShape;
 	minY: number;
@@ -64,7 +64,7 @@ export type PrismGeometry = Readonly<{
 	holes: readonly PlanShape[];
 }>;
 
-export type StairGeometry = Readonly<{
+type StairGeometry = Readonly<{
 	kind: 'stair-flight';
 	start: Vec3;
 	end: Vec3;
@@ -75,7 +75,7 @@ export type StairGeometry = Readonly<{
 	underside: 'open' | 'closed';
 }>;
 
-export type RampGeometry = Readonly<{
+type RampGeometry = Readonly<{
 	kind: 'ramp';
 	start: Vec3;
 	end: Vec3;
@@ -83,7 +83,7 @@ export type RampGeometry = Readonly<{
 	thickness: number;
 }>;
 
-export type FlightClearanceGeometry = Readonly<{
+type FlightClearanceGeometry = Readonly<{
 	kind: 'flight-clearance';
 	start: Vec3;
 	end: Vec3;
@@ -91,7 +91,7 @@ export type FlightClearanceGeometry = Readonly<{
 	height: number;
 }>;
 
-export type CylinderGeometry = Readonly<{
+type CylinderGeometry = Readonly<{
 	kind: 'cylinder';
 	center: Vec3;
 	radius: number;
@@ -99,9 +99,9 @@ export type CylinderGeometry = Readonly<{
 	axis: 'x' | 'y' | 'z';
 }>;
 
-export type SpatialGeometry = PrismGeometry | StairGeometry | RampGeometry | FlightClearanceGeometry | CylinderGeometry;
+type SpatialGeometry = PrismGeometry | StairGeometry | RampGeometry | FlightClearanceGeometry | CylinderGeometry;
 
-export type SpatialRole =
+type SpatialRole =
 	| 'solid'
 	| 'walkable'
 	| 'support'
@@ -113,7 +113,7 @@ export type SpatialRole =
 	| 'trigger'
 	| 'fluid';
 
-export type PlacementClass = 'structure' | 'fixture' | 'furnishing' | 'clutter' | 'covering' | 'connector';
+type PlacementClass = 'structure' | 'fixture' | 'furnishing' | 'clutter' | 'covering' | 'connector';
 
 /**
  * How deep this volume may sink into geometry it is allowed to touch.
@@ -125,14 +125,14 @@ export type PlacementClass = 'structure' | 'fixture' | 'furnishing' | 'clutter' 
  * wall says so, and every other volume stays at zero and therefore cannot drift
  * through a wall unnoticed.
  */
-export type Penetration = Readonly<{
+type Penetration = Readonly<{
 	/** Metres of allowed intrusion. Zero still lets two faces rest against each other. */
 	depth: number;
 	/** Placement classes this volume may cut into, up to `depth`. */
 	into: readonly PlacementClass[];
 }>;
 
-export const NO_PENETRATION: Penetration = { depth: 0, into: [] };
+const NO_PENETRATION: Penetration = { depth: 0, into: [] };
 
 /**
  * How far this volume may reach past the outside face of the building, and where.
@@ -143,7 +143,7 @@ export const NO_PENETRATION: Penetration = { depth: 0, into: [] };
  * envelope. The volume that means it says so here, with the metres it needs, and
  * a declaration that reaches past nothing is itself a build failure.
  */
-export type Protrusion = Readonly<{
+type Protrusion = Readonly<{
 	/** Metres of allowed reach beyond the outside face. */
 	depth: number;
 	/** Facade sides this volume may reach past. */
@@ -159,7 +159,7 @@ export type Protrusion = Readonly<{
  * issues one above the same figure. Split them and a piece that reaches out by a
  * hair either goes unpermitted or carries a permit the control calls unused.
  */
-export const PROTRUSION_MARGIN = 0.02;
+const PROTRUSION_MARGIN = 0.02;
 
 /**
  * The gap this volume's back face keeps to the structure behind it, and why it may.
@@ -170,7 +170,7 @@ export const PROTRUSION_MARGIN = 0.02;
  * floating in the slit. `Penetration` answers the mirror question, how far a volume
  * may cut *into* what is behind it, so it cannot answer this one.
  */
-export type Standoff = Readonly<{
+type Standoff = Readonly<{
 	/** Which face of the volume is its back. */
 	side: CardinalSide;
 	/** Metres of gap allowed between that face and the nearest structure behind it. */
@@ -184,15 +184,15 @@ export type Standoff = Readonly<{
  * declaration above this figure and a declaration that covers less than this figure
  * is doing no work.
  */
-export const STANDOFF_MARGIN = 0.02;
+const STANDOFF_MARGIN = 0.02;
 
 /** Marks the room shell of a shop: the box whose back has to meet the wall behind it. */
-export const ROOM_SHELL_TAG = 'room-shell';
+const ROOM_SHELL_TAG = 'room-shell';
 
 /** Marks a sign hung on the building. It may rest against what carries it and cut into nothing. */
-export const SIGNAGE_TAG = 'signage';
+const SIGNAGE_TAG = 'signage';
 
-export type SpatialVolume = Readonly<{
+type SpatialVolume = Readonly<{
 	id: string;
 	role: SpatialRole;
 	geometry: SpatialGeometry;
@@ -216,9 +216,9 @@ export type SpatialVolume = Readonly<{
 	tags: readonly string[];
 }>;
 
-export type ConnectionKind = 'door' | 'stairs' | 'escalator' | 'elevator' | 'ladder' | 'ramp' | 'opening';
+type ConnectionKind = 'door' | 'stairs' | 'escalator' | 'elevator' | 'ladder' | 'ramp' | 'opening';
 
-export type ConnectionPort = Readonly<{
+type ConnectionPort = Readonly<{
 	id: string;
 	kind: ConnectionKind;
 	position: Vec3;
@@ -240,7 +240,7 @@ export type ConnectionPort = Readonly<{
 	posture: PedestrianPosture;
 }>;
 
-export type InteractionChannel =
+type InteractionChannel =
 	| 'linear-force'
 	| 'linear-acceleration'
 	| 'linear-velocity'
@@ -253,19 +253,19 @@ export type InteractionChannel =
 	| 'buoyancy'
 	| 'drag';
 
-export type VectorField =
+type VectorField =
 	| Readonly<{ kind: 'constant'; vector: Vec3; space: 'world' | 'local' }>
 	| Readonly<{ kind: 'state'; stateId: string; initial: Vec3; space: 'world' | 'local' }>
 	| Readonly<{ kind: 'radial'; origin: Vec3; magnitude: number; direction: 'inward' | 'outward' }>
 	| Readonly<{ kind: 'vortex'; origin: Vec3; axis: Vec3; magnitude: number }>
 	| Readonly<{ kind: 'surface'; vector: Vec3; space: 'world' | 'local' }>;
 
-export type EffectFalloff =
+type EffectFalloff =
 	| Readonly<{ kind: 'none' }>
 	| Readonly<{ kind: 'linear'; range: number }>
 	| Readonly<{ kind: 'inverse-square'; range: number; minimumDistance: number }>;
 
-export type TargetSelector = Readonly<{
+type TargetSelector = Readonly<{
 	mobility: readonly Mobility[];
 	requireTags: readonly string[];
 	excludeTags: readonly string[];
@@ -282,7 +282,7 @@ export type TargetSelector = Readonly<{
  * de andere kant van elke wand naar buiten, omdat de stap van een frame ergens
  * midden ín het steen eindigt en het frame erna daar begint.
  */
-export type Occlusion = Readonly<{
+type Occlusion = Readonly<{
 	mode: 'none' | 'solid' | 'line-of-sight' | 'projectile';
 	blockingTags: readonly string[];
 }>;
@@ -294,15 +294,15 @@ export type Occlusion = Readonly<{
  * boxes that exist to steer a walking body and reach from the floor to the sky;
  * reading them as walls would put a wall across the middle of the building.
  */
-export const SIGHT_BLOCKING_TAG = 'sight-blocking';
+const SIGHT_BLOCKING_TAG = 'sight-blocking';
 
 /** The occlusion every system that needs a clear view declares, so they cannot drift apart. */
-export const LINE_OF_SIGHT: Occlusion = { mode: 'line-of-sight', blockingTags: [SIGHT_BLOCKING_TAG] };
+const LINE_OF_SIGHT: Occlusion = { mode: 'line-of-sight', blockingTags: [SIGHT_BLOCKING_TAG] };
 
 /** Dezelfde dozen, gelezen als muur voor iets dat er tegenaan vliegt in plaats van erdoorheen kijkt. */
-export const PROJECTILE_PATH: Occlusion = { mode: 'projectile', blockingTags: [SIGHT_BLOCKING_TAG] };
+const PROJECTILE_PATH: Occlusion = { mode: 'projectile', blockingTags: [SIGHT_BLOCKING_TAG] };
 
-export type InteractionEmitter = Readonly<{
+type InteractionEmitter = Readonly<{
 	id: string;
 	channel: InteractionChannel;
 	field: VectorField;
@@ -316,9 +316,9 @@ export type InteractionEmitter = Readonly<{
 	occlusion: Occlusion;
 }>;
 
-export type Mobility = 'static' | 'kinematic' | 'dynamic' | 'character' | 'particle';
+type Mobility = 'static' | 'kinematic' | 'dynamic' | 'character' | 'particle';
 
-export type InteractionReceiver = Readonly<{
+type InteractionReceiver = Readonly<{
 	mobility: Mobility;
 	mass: number | null;
 	tags: readonly string[];
@@ -329,14 +329,14 @@ export type InteractionReceiver = Readonly<{
 	}>;
 }>;
 
-export type PlacementPolicy = Readonly<{
+type PlacementPolicy = Readonly<{
 	class: PlacementClass;
 	requiresSupport: boolean;
 	mayCover: readonly SpatialRole[];
 	mayBeCoveredBy: readonly PlacementClass[];
 }>;
 
-export type Kinematics =
+type Kinematics =
 	| Readonly<{ kind: 'static' }>
 	| Readonly<{
 			kind: 'linear-path';
@@ -361,16 +361,16 @@ export type Kinematics =
  * runtime dat verschil alleen aan het voertuigtype ophangen, en dan staat het
  * antwoord in de code van het voertuig in plaats van op de boom.
  */
-export const TRAFFIC_CLASSES = ['npc-traffic', 'player-vehicle', 'pedestrian'] as const;
+const TRAFFIC_CLASSES = ['npc-traffic', 'player-vehicle', 'pedestrian'] as const;
 
-export type TrafficClass = (typeof TRAFFIC_CLASSES)[number];
+type TrafficClass = (typeof TRAFFIC_CLASSES)[number];
 
-export type AccessPolicy = Readonly<{
+type AccessPolicy = Readonly<{
 	/** De klassen waarvoor dit mechanisme opengaat. */
 	admits: readonly TrafficClass[];
 }>;
 
-export type ClearanceMechanism = Readonly<{
+type ClearanceMechanism = Readonly<{
 	id: string;
 	kind: 'sliding' | 'hinged' | 'retracting';
 	stateId: string;
@@ -383,7 +383,7 @@ export type ClearanceMechanism = Readonly<{
 	access: AccessPolicy;
 }>;
 
-export type MapPresentation = Readonly<{
+type MapPresentation = Readonly<{
 	visible: boolean;
 	layer: 'structure' | 'opening' | 'shop' | 'circulation' | 'parking' | 'fixture' | 'clutter';
 	label?: string;
@@ -394,7 +394,7 @@ export type MapPresentation = Readonly<{
 	elevation?: Readonly<{ minY: number; maxY: number }>;
 }>;
 
-export type WorldEntity<Category extends string = string, Level extends string = string> = Readonly<{
+type WorldEntity<Category extends string = string, Level extends string = string> = Readonly<{
 	id: string;
 	label: string;
 	category: Category;
@@ -411,7 +411,7 @@ export type WorldEntity<Category extends string = string, Level extends string =
 	tags: readonly string[];
 }>;
 
-export type SpatialProblem = Readonly<{
+type SpatialProblem = Readonly<{
 	code:
 		| 'duplicate-id'
 		| 'invalid-geometry'
@@ -432,7 +432,7 @@ export type SpatialProblem = Readonly<{
 }>;
 
 /** Marks the volume whose plan every other volume of the same entity has to stay inside. */
-export const PLAN_ENVELOPE_TAG = 'plan-envelope';
+const PLAN_ENVELOPE_TAG = 'plan-envelope';
 
 /**
  * Marks a volume you see through but cannot walk through.
@@ -441,7 +441,7 @@ export const PLAN_ENVELOPE_TAG = 'plan-envelope';
  * doorway, so the street and both decks behind it stay in sight of each other
  * whether the sliding pair is open or shut.
  */
-export const GLASS_TAG = 'glass';
+const GLASS_TAG = 'glass';
 
 /**
  * Declares that an entity holding declared free space still joins nothing.
@@ -450,10 +450,10 @@ export const GLASS_TAG = 'glass';
  * schema and a niche in the building. A tag on an entity that does join two
  * zones fails the zone-graph control the way an unused exemption row does.
  */
-export const NOT_A_PORTAL_TAG = 'geen-portaal';
+const NOT_A_PORTAL_TAG = 'geen-portaal';
 
-export type Bounds2 = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
-export type Bounds3 = Bounds2 & Readonly<{ minY: number; maxY: number }>;
+type Bounds2 = Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }>;
+type Bounds3 = Bounds2 & Readonly<{ minY: number; maxY: number }>;
 
 const EPSILON = 1e-6;
 
@@ -469,11 +469,11 @@ function positive(value: number): boolean {
 }
 
 /** Converts the center-and-size records used by layout data into a spatial plan. */
-export function rectanglePlan(source: RectangleSource2, yaw = 0): Rectangle2 {
+function rectanglePlan(source: RectangleSource2, yaw = 0): Rectangle2 {
 	return { kind: 'rectangle', center: source.center, width: source.size.width, depth: source.size.depth, yaw };
 }
 
-export function planBounds(shape: PlanShape): Bounds2 {
+function planBounds(shape: PlanShape): Bounds2 {
 	if (shape.kind === 'circle') {
 		return {
 			minX: shape.center.x - shape.radius,
@@ -508,7 +508,7 @@ export function planBounds(shape: PlanShape): Bounds2 {
 }
 
 /** What remains of `vlak` once `gat` is cut out of it: zero to four rectangles. */
-export function boundsMinusHole(vlak: Bounds2, gat: Bounds2): Bounds2[] {
+function boundsMinusHole(vlak: Bounds2, gat: Bounds2): Bounds2[] {
 	const minX = Math.max(vlak.minX, gat.minX);
 	const maxX = Math.min(vlak.maxX, gat.maxX);
 	return [
@@ -520,13 +520,13 @@ export function boundsMinusHole(vlak: Bounds2, gat: Bounds2): Bounds2[] {
 }
 
 /** What remains of `vlak` once every hole in `gaten` is cut out of it. */
-export function boundsMinusHoles(vlak: Bounds2, gaten: readonly Bounds2[]): Bounds2[] {
+function boundsMinusHoles(vlak: Bounds2, gaten: readonly Bounds2[]): Bounds2[] {
 	let stukken: Bounds2[] = [vlak];
 	for (const gat of gaten) stukken = stukken.flatMap((stuk) => boundsMinusHole(stuk, gat));
 	return stukken;
 }
 
-export function geometryBounds(geometry: SpatialGeometry): Bounds3 {
+function geometryBounds(geometry: SpatialGeometry): Bounds3 {
 	if (geometry.kind === 'prism') return { ...planBounds(geometry.plan), minY: geometry.minY, maxY: geometry.maxY };
 	if (geometry.kind === 'cylinder') {
 		if (geometry.axis === 'y') {
@@ -573,7 +573,7 @@ export function geometryBounds(geometry: SpatialGeometry): Bounds3 {
  * A flight carries its own figure: its bounding box spans the whole rise, so reading
  * the box would report a stair as twelve metres of headroom.
  */
-export function clearanceHeight(geometry: SpatialGeometry): number {
+function clearanceHeight(geometry: SpatialGeometry): number {
 	if (geometry.kind === 'flight-clearance') return geometry.height;
 	const bounds = geometryBounds(geometry);
 	return span(bounds.minY, bounds.maxY);
@@ -590,7 +590,7 @@ function boundsOverlap(a: Bounds3, b: Bounds3): boolean {
 	);
 }
 
-export function pointInPlan(shape: PlanShape, x: number, z: number): boolean {
+function pointInPlan(shape: PlanShape, x: number, z: number): boolean {
 	if (shape.kind === 'circle') return Math.hypot(x - shape.center.x, z - shape.center.z) <= shape.radius + EPSILON;
 	if (shape.kind === 'rectangle') {
 		const dx = x - shape.center.x;
@@ -673,12 +673,13 @@ function horizontalOverlap(a: SpatialGeometry, b: SpatialGeometry): boolean {
 }
 
 function flightSurfaceY(geometry: StairGeometry | RampGeometry | FlightClearanceGeometry, x: number, z: number): number {
-	const t = segmentParameter2(x, z, geometry.start.x, geometry.start.z, geometry.end.x, geometry.end.z);
+	const segment = { a: geometry.start, b: geometry.end };
+	const t = segmentParameter2({ x, z }, segment);
 	return geometry.start.y + (geometry.end.y - geometry.start.y) * t;
 }
 
 function pointInFlightPlan(geometry: StairGeometry | RampGeometry, x: number, z: number): boolean {
-	return pointInSegmentStrip2(x, z, geometry.start.x, geometry.start.z, geometry.end.x, geometry.end.z, geometry.width, EPSILON);
+	return pointInSegmentStrip2({ point: { x, z }, segment: { a: geometry.start, b: geometry.end }, width: geometry.width, epsilon: EPSILON });
 }
 
 function prismFlightOverlap(prism: PrismGeometry, flight: StairGeometry | RampGeometry): boolean {
@@ -716,7 +717,7 @@ type AxisInterval = Readonly<{ min: number; max: number }>;
  * axis. A circular, polygonal or yawed hole has no such interval, and both silent
  * answers would be a guess.
  */
-export type FlightClearanceVerdict =
+type FlightClearanceVerdict =
 	| Readonly<{ kind: 'clear' }>
 	| Readonly<{ kind: 'blocked'; axis: 'x' | 'z'; from: number; to: number }>
 	| Readonly<{ kind: 'unmeasurable'; reason: string }>;
@@ -786,7 +787,7 @@ function foulingWindow(flight: FlightClearanceGeometry, prism: PrismGeometry): A
 	return max - min > EPSILON ? { min, max } : null;
 }
 
-export function flightClearanceVerdict(prism: PrismGeometry, flight: FlightClearanceGeometry): FlightClearanceVerdict {
+function flightClearanceVerdict(prism: PrismGeometry, flight: FlightClearanceGeometry): FlightClearanceVerdict {
 	if (!boundsOverlap(geometryBounds(flight), geometryBounds(prism))) return { kind: 'clear' };
 	const swath = flightSwath(flight);
 	if (!swath) return { kind: 'unmeasurable', reason: 'the flight does not run along a single plan axis' };
@@ -890,7 +891,7 @@ function clearanceVerdict(a: SpatialGeometry, b: SpatialGeometry): FlightClearan
 	return null;
 }
 
-export function geometriesOverlap(a: SpatialGeometry, b: SpatialGeometry): boolean {
+function geometriesOverlap(a: SpatialGeometry, b: SpatialGeometry): boolean {
 	if (!boundsOverlap(geometryBounds(a), geometryBounds(b))) return false;
 	if (a.kind === 'prism' && b.kind === 'prism') return prismPlanOverlap(a, b);
 	if (a.kind === 'prism' && (b.kind === 'stair-flight' || b.kind === 'ramp')) return prismFlightOverlap(a, b);
@@ -1220,7 +1221,7 @@ function authoredJoin(a: WorldEntity, volumeA: SpatialVolume, b: WorldEntity, vo
 	return declaredIntrusion(volumeA, b, depth) || declaredIntrusion(volumeB, a, depth);
 }
 
-export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialProblem[] {
+function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialProblem[] {
 	const problems: SpatialProblem[] = [];
 	const entityIds = new Set<string>();
 	const portOwners = new Map<string, WorldEntity>();
@@ -1581,7 +1582,7 @@ export function validateSpatialWorld(entities: readonly WorldEntity[]): SpatialP
 	return problems;
 }
 
-export function receiverAccepts(emitter: InteractionEmitter, receiver: InteractionReceiver): boolean {
+function receiverAccepts(emitter: InteractionEmitter, receiver: InteractionReceiver): boolean {
 	const selector = emitter.targets;
 	return (
 		selector.mobility.includes(receiver.mobility) &&
@@ -1591,3 +1592,6 @@ export function receiverAccepts(emitter: InteractionEmitter, receiver: Interacti
 		receiver.channels.includes(emitter.channel)
 	);
 }
+
+export { CARDINAL_OUTWARD, CARDINAL_OPPOSITE, NO_PENETRATION, PROTRUSION_MARGIN, STANDOFF_MARGIN, ROOM_SHELL_TAG, SIGNAGE_TAG, SIGHT_BLOCKING_TAG, LINE_OF_SIGHT, PROJECTILE_PATH, TRAFFIC_CLASSES, PLAN_ENVELOPE_TAG, GLASS_TAG, NOT_A_PORTAL_TAG, rectanglePlan, planBounds, boundsMinusHole, boundsMinusHoles, geometryBounds, clearanceHeight, pointInPlan, flightClearanceVerdict, geometriesOverlap, validateSpatialWorld, receiverAccepts };
+export type { Bounds3, Vec2, Vec3, CardinalSide, RectangleSource2, Transform3, Rectangle2, Circle2, Polygon2, PlanShape, PrismGeometry, StairGeometry, RampGeometry, FlightClearanceGeometry, CylinderGeometry, SpatialGeometry, SpatialRole, PlacementClass, Penetration, Protrusion, Standoff, SpatialVolume, ConnectionKind, ConnectionPort, InteractionChannel, VectorField, EffectFalloff, TargetSelector, Occlusion, InteractionEmitter, Mobility, InteractionReceiver, PlacementPolicy, Kinematics, TrafficClass, AccessPolicy, ClearanceMechanism, MapPresentation, WorldEntity, SpatialProblem, Bounds2, FlightClearanceVerdict };
